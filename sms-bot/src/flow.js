@@ -50,7 +50,7 @@ const WARM_FOLLOW_UP_MINUTES = [5, 15, 30, 60, 120, 240];
 const REENGAGEMENT_DAYS = [1, 2, 3, 4, 5, 6, 7];
 const REENGAGEMENT_SLOTS = ["am", "pm"];
 const HUMAN_ESCALATION_SLA_MINUTES = [5, 15, 30];
-const HUMAN_REPLY_TIMEOUT_MINUTES = 5;
+const HUMAN_REPLY_TIMEOUT_MINUTES = 60;
 const HUMAN_CALL_TIMEOUT_MINUTES = 30;
 const INBOUND_BUFFER_SECONDS = 30;
 const FRESH_LEAD_FOLLOW_UP_MINUTES = [15, 60];
@@ -2155,6 +2155,13 @@ class SmsBot {
       trigger: "inbound_sms",
       message: inbound.lastInboundMessage
     });
+    const now = new Date().toISOString();
+    await this.store.addJob({
+      type: "human_reply_timeout",
+      contactId: updated.id,
+      runAt: addMinutes(new Date(), HUMAN_REPLY_TIMEOUT_MINUTES).toISOString(),
+      payload: { lastHumanOutboundAt: now, timeoutMinutes: HUMAN_REPLY_TIMEOUT_MINUTES, sourceAction: "inbound_reply_handoff" }
+    });
     const suggestedReply = this.buildSuggestedReply(contact, inbound.lastInboundMessage);
     await slack.sendEscalation(this.config, updated, "replied_handed_to_human", { suggestedReply }).catch((err) =>
       this.notifyBotError("Slack escalation notification failed", { Error: err.message, contactId: updated.id })
@@ -3578,7 +3585,7 @@ class SmsBot {
     const humanAt = new Date(job.payload?.lastHumanOutboundAt || fresh.lastHumanOutboundAt || 0);
     const lastInboundAt = fresh.lastResponseTimestamp ? new Date(fresh.lastResponseTimestamp) : null;
     if (lastInboundAt && humanAt && lastInboundAt > humanAt) return fresh;
-    if (!fresh.humanEscalationStatus || !["human_working", "human_replied_waiting"].includes(fresh.humanEscalationStage)) {
+    if (!fresh.humanEscalationStatus || !["human_working", "human_replied_waiting", "human_review_pending"].includes(fresh.humanEscalationStage)) {
       return fresh;
     }
 
