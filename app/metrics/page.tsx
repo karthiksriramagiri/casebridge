@@ -169,6 +169,10 @@ export default function MetricsPage() {
     router.push('/login')
   }
 
+  const totalSignedCases = workers.reduce((s: number, w: any) => s + w.signedCases, 0)
+  const spend = parseFloat(metaData?.summary?.spend || 0)
+  const cpq = totalSignedCases > 0 ? (spend / totalSignedCases).toFixed(2) : null
+
   // Merge attribution signed cases with ad data
   const adsWithAttribution = (metaData?.ads || []).map((ad: any) => {
     const attrData = attribution?.byAd?.find((a: any) => a.adId === ad.id) || {}
@@ -217,14 +221,15 @@ export default function MetricsPage() {
             {activeTab === 'overview' && (
               <div className="space-y-6">
                 {/* Summary cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
-                  <StatCard label="Total Spend" value={`$${parseFloat(metaData?.summary?.spend || 0).toLocaleString()}`} />
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                  <StatCard label="Total Spend" value={`$${spend.toLocaleString()}`} />
                   <StatCard label="Impressions" value={metaData?.summary?.impressions?.toLocaleString()} />
                   <StatCard label="Clicks" value={metaData?.summary?.clicks?.toLocaleString()} />
                   <StatCard label="CTR" value={`${metaData?.summary?.ctr}%`} />
                   <StatCard label="Leads" value={metaData?.summary?.leads} />
                   <StatCard label="CPL" value={metaData?.summary?.cpl ? `$${metaData.summary.cpl}` : '—'} />
-                  <StatCard label="Signed Cases" value={attribution?.totals?.signedCases || 0} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
+                  <StatCard label="CPQ" value={cpq ? `$${cpq}` : '—'} sub="Cost per qualified" />
+                  <StatCard label="Signed Cases" value={totalSignedCases} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
                 </div>
 
                 {/* Cost per signed case */}
