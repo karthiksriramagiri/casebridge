@@ -52,9 +52,10 @@ export async function GET(req: NextRequest) {
       level: 'adset',
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
-      fields: `${insightFields},ad_name,adset_name,campaign_name`,
+      fields: `${insightFields},ad_name,adset_name,adset_id,campaign_name,campaign_id`,
       date_preset: datePreset,
       level: 'ad',
+      limit: '500',
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
       fields: 'spend,actions,impressions',
@@ -103,21 +104,39 @@ export async function GET(req: NextRequest) {
     cpl: getCPL(a.actions, a.spend),
   }))
 
+  function getLpvs(actions: any[] = []) {
+    return parseInt(actions.find(a => a.action_type === 'landing_page_view')?.value || '0')
+  }
+
   // Process ad/creative insights
-  const ads = (adInsights.data || []).map((a: any) => ({
-    id: a.ad_id,
-    name: a.ad_name,
-    adsetName: a.adset_name,
-    campaignName: a.campaign_name,
-    spend: parseFloat(a.spend || 0),
-    impressions: parseInt(a.impressions || 0),
-    clicks: parseInt(a.clicks || 0),
-    ctr: parseFloat(a.ctr || 0).toFixed(2),
-    cpc: parseFloat(a.cpc || 0).toFixed(2),
-    reach: parseInt(a.reach || 0),
-    leads: getLeads(a.actions),
-    cpl: getCPL(a.actions, a.spend),
-  }))
+  const ads = (adInsights.data || []).map((a: any) => {
+    const adSpend = parseFloat(a.spend || 0)
+    const metaLeads = getLeads(a.actions)
+    const lpvs = getLpvs(a.actions)
+    const clicks = parseInt(a.clicks || '0', 10)
+    return {
+      id: a.ad_id,
+      adId: a.ad_id,
+      name: a.ad_name,
+      adName: a.ad_name,
+      adsetId: a.adset_id,
+      adsetName: a.adset_name,
+      campaignId: a.campaign_id,
+      campaignName: a.campaign_name,
+      spend: adSpend,
+      impressions: parseInt(a.impressions || 0),
+      clicks,
+      ctr: parseFloat(a.ctr || 0),
+      cpc: parseFloat(a.cpc || 0),
+      reach: parseInt(a.reach || 0),
+      metaLeads,
+      leads: metaLeads,
+      landingPageViews: lpvs,
+      lpvToLeadPct: lpvs > 0 ? (metaLeads / lpvs) * 100 : null,
+      clickToLeadPct: clicks > 0 ? (metaLeads / clicks) * 100 : null,
+      cpl: metaLeads > 0 ? adSpend / metaLeads : null,
+    }
+  })
 
   // Daily data for charts
   const daily = (dailyInsights.data || []).map((d: any) => ({
