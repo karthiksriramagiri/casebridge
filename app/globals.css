@@ -60,3 +60,102 @@
     scroll-behavior: smooth;
   }
 }
+
+/* ── Metrics light/cream theme ─────────────────────────────────── */
+.metrics-page {
+  background-color: #EDE8DF;
+  color: #1A1A1A;
+  min-height: 100vh;
+}
+
+/* Backgrounds */
+.metrics-page .bg-gray-950 { background-color: #EDE8DF !important; }
+.metrics-page .bg-gray-900 { background-color: #FFFFFF !important; }
+.metrics-page .bg-gray-800 { background-color: #F0EAE0 !important; }
+.metrics-page .bg-gray-800\/30 { background-color: rgba(209,203,190,0.3) !important; }
+.metrics-page .bg-gray-800\/20 { background-color: rgba(209,203,190,0.2) !important; }
+.metrics-page .bg-gray-700 { background-color: #E5DFD5 !important; }
+.metrics-page .bg-gray-700\/80 { background-color: rgba(220,214,200,0.8) !important; }
+.metrics-page .bg-gray-700\/50 { background-color: rgba(220,214,200,0.5) !important; }
+
+/* Borders */
+.metrics-page .border-gray-800 { border-color: #D9D3C8 !important; }
+.metrics-page .border-gray-800\/50 { border-color: rgba(200,194,182,0.5) !important; }
+.metrics-page .border-gray-700 { border-color: #C9C3B8 !important; }
+.metrics-page .border-gray-600 { border-color: #B9B3A8 !important; }
+
+/* Text */
+.metrics-page .text-white { color: #1A1A1A !important; }
+.metrics-page .text-gray-100 { color: #1A1A1A !important; }
+.metrics-page .text-gray-200 { color: #2A2520 !important; }
+.metrics-page .text-gray-300 { color: #3D3830 !important; }
+.metrics-page .text-gray-400 { color: #6B6560 !important; }
+.metrics-page .text-gray-500 { color: #8A8480 !important; }
+.metrics-page .text-gray-600 { color: #A0998F !important; }
+.metrics-page .text-gray-700 { color: #BBBAB5 !important; }
+
+/* Hover backgrounds */
+.metrics-page .hover\:bg-gray-800\/30:hover { background-color: rgba(209,203,190,0.4) !important; }
+.metrics-page .hover\:bg-gray-800\/20:hover { background-color: rgba(209,203,190,0.25) !important; }
+.metrics-page .hover\:bg-gray-700:hover { background-color: #E0DAD0 !important; }
+.metrics-page .hover\:bg-gray-800:hover { background-color: #E8E2D8 !important; }
+
+/* Inputs / selects */
+.metrics-page select,
+.metrics-page input[type="text"],
+.metrics-page input[type="password"],
+.metrics-page input[type="number"],
+.metrics-page input[type="date"] {
+  background-color: #F5F0E8 !important;
+  border-color: #C9C3B8 !important;
+  color: #1A1A1A !important;
+}
+.metrics-page select option { background-color: #F5F0E8; color: #1A1A1A; }
+
+/* Tables */
+.metrics-page table { border-color: #D9D3C8; }
+.metrics-page th { color: #6B6560 !important; border-color: #D9D3C8 !important; }
+.metrics-page td { border-color: rgba(200,194,182,0.5) !important; }
+
+/* Active tab / selected button */
+.metrics-page .bg-gray-700.text-white,
+.metrics-page .bg-gray-800.text-white {
+  background-color: #1A1A1A !important;
+  color: #FFFFFF !important;
+}
+
+/* Stat cards - keep dark card dark for contrast */
+.metrics-page .bg-black { background-color: #1A1A1A !important; }
+
+/* Blue accent → terracotta */
+.metrics-page .bg-blue-600 { background-color: #C17A4A !important; }
+.metrics-page .hover\:bg-blue-500:hover { background-color: #D08A55 !important; }
+.metrics-page .bg-blue-700 { background-color: #B06A3A !important; }
+.metrics-page .text-blue-400 { color: #C17A4A !important; }
+.metrics-page .text-blue-300 { color: #D08A55 !important; }
+
+/* Keep status colors */
+.metrics-page .text-green-400 { color: #2A7A4A !important; }
+.metrics-page .text-red-400 { color: #C0392B !important; }
+.metrics-page .text-yellow-400 { color: #B8860B !important; }
+.metrics-page .text-orange-400 { color: #C17A4A !important; }
+.metrics-page .text-emerald-400 { color: #2A7A4A !important; }
+.metrics-page .text-amber-400 { color: #B8860B !important; }
+
+/* Badge backgrounds */
+.metrics-page .bg-blue-900\/40 { background-color: rgba(193,122,74,0.12) !important; }
+.metrics-page .bg-green-900\/40 { background-color: rgba(42,122,74,0.10) !important; }
+.metrics-page .bg-red-900\/40 { background-color: rgba(192,57,43,0.10) !important; }
+.metrics-page .bg-yellow-900\/40 { background-color: rgba(184,134,11,0.10) !important; }
+.metrics-page .bg-red-950\/10 { background-color: rgba(192,57,43,0.05) !important; }
+.metrics-page .bg-yellow-950\/10 { background-color: rgba(184,134,11,0.05) !important; }
+.metrics-page .bg-green-950\/10 { background-color: rgba(42,122,74,0.05) !important; }
+.metrics-page .bg-amber-950\/10 { background-color: rgba(184,134,11,0.05) !important; }
+
+/* Modal overlays */
+.metrics-page .bg-black\/60 { background-color: rgba(0,0,0,0.6) !important; }
+
+/* Scrollbar */
+.metrics-page ::-webkit-scrollbar { width: 6px; height: 6px; }
+.metrics-page ::-webkit-scrollbar-track { background: #EDE8DF; }
+.metrics-page ::-webkit-scrollbar-thumb { background: #C9C3B8; border-radius: 3px; }

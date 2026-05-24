@@ -20,7 +20,7 @@ function StatCard({ label, value, sub }: { label: string; value: string | number
   return (
     <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
       <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-white text-2xl font-bold">{value ?? '—'}</p>
+      <p className="text-2xl font-bold" style={{color:'#1A1A1A'}}>{value ?? '—'}</p>
       {sub && <p className="text-gray-500 text-xs mt-1">{sub}</p>}
     </div>
   )
@@ -486,9 +486,9 @@ export default function MetricsPage() {
   return (
     <div className="min-h-screen bg-gray-950 text-white">
       {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between">
+      <div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between" style={{backgroundColor:'#FFFFFF',borderColor:'#D9D3C8'}}>
         <div className="flex items-center gap-6">
-          <h1 className="text-lg font-bold text-white">CaseBridge <span className="text-gray-500 font-normal text-sm">Metrics</span></h1>
+          <h1 className="text-xl font-bold tracking-tight" style={{color:'#1A1A1A'}}>CaseBridge <span className="font-serif italic" style={{color:'#C17A4A',fontFamily:'var(--font-dm-serif)'}}>Metrics</span></h1>
           <div className="flex gap-1">
             {(['overview', 'marketing', 'hr', 'firms'] as const).map(tab => (
               <button
