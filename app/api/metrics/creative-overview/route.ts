@@ -6,9 +6,6 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const TOKEN = process.env.META_ACCESS_TOKEN!
-const AD_ACCOUNT = 'act_788484706914452'
-const BASE = 'https://graph.facebook.com/v25.0'
 const GHL_API_KEY = process.env.GHL_API_KEY || ''
 const GHL_LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 
@@ -26,31 +23,16 @@ const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu'> = {
   '87d0a194-8841-4062-b6a3-bfedd9186070': 'nr', 'bda11191-0a4a-40da-b368-cd925ec884dc': 'fu', '8206445b-2ac5-46bb-be3e-93d116420161': 'nq',
 }
 
-async function fetchActiveAdIds(): Promise<Set<string>> {
-  if (!TOKEN) return new Set()
-  try {
-    const url = new URL(`${BASE}/${AD_ACCOUNT}/ads`)
-    url.searchParams.set('access_token', TOKEN)
-    url.searchParams.set('fields', 'id,effective_status')
-    url.searchParams.set('filtering', JSON.stringify([{ field: 'effective_status', operator: 'IN', value: ['ACTIVE'] }]))
-    url.searchParams.set('limit', '500')
-    const res = await fetch(url.toString(), { cache: 'no-store' })
-    if (!res.ok) return new Set()
-    const json = await res.json()
-    return new Set((json.data || []).map((a: any) => String(a.id)))
-  } catch { return new Set() }
-}
-
-async function fetchAllPipelines(): Promise<Record<string, { nr: number; nq: number; fu: number; firmSlug: string }>> {
+async function fetchAllPipelines(): Promise<Record<string, { nr: number; nq: number; fu: number }>> {
   if (!GHL_API_KEY) return {}
   const now = new Date()
   const start = new Date(now); start.setDate(start.getDate() - 89)
   const startStr = start.toISOString().split('T')[0]
   const endStr = now.toISOString().split('T')[0]
-  const combined: Record<string, { nr: number; nq: number; fu: number; firmSlug: string }> = {}
+  const combined: Record<string, { nr: number; nq: number; fu: number }> = {}
 
   await Promise.all(
-    Object.entries(GHL_PIPELINES).map(async ([firmSlug, pipelineId]) => {
+    Object.entries(GHL_PIPELINES).map(async ([, pipelineId]) => {
       let url: string | null = `https://services.leadconnectorhq.com/opportunities/search?location_id=${GHL_LOCATION_ID}&pipeline_id=${pipelineId}&limit=100`
       let pages = 0
       while (url && pages < 20) {
@@ -67,7 +49,7 @@ async function fetchAllPipelines(): Promise<Record<string, { nr: number; nq: num
             const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
             const adId = attr?.utmAdId || attr?.utmContent || null
             if (!adId) continue
-            if (!combined[adId]) combined[adId] = { nr: 0, nq: 0, fu: 0, firmSlug }
+            if (!combined[adId]) combined[adId] = { nr: 0, nq: 0, fu: 0 }
             combined[adId][label]++
           }
           url = data.meta?.nextPageUrl || null
@@ -78,44 +60,49 @@ async function fetchAllPipelines(): Promise<Record<string, { nr: number; nq: num
   return combined
 }
 
-export async function GET() {
-  // Signed cases per ad_id from ghl_leads
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const includePipeline = searchParams.get('pipeline') === '1'
+
+  // Fast: signed cases per ad_id from Supabase + firm lookup
   const [leadsRes, firmsRes] = await Promise.all([
     supabase.from('ghl_leads').select('ad_id, firm_id'),
-    supabase.from('firms').select('id, slug'),
+    supabase.from('firms').select('id, slug, name'),
   ])
 
-  const firmSlugById: Record<string, string> = {}
+  const firmById: Record<string, { slug: string; name: string }> = {}
   for (const f of (firmsRes.data || [])) {
-    if (f.id && f.slug) firmSlugById[f.id] = f.slug
+    if (f.id) firmById[f.id] = { slug: f.slug, name: f.name }
   }
 
-  const byAdId: Record<string, { signedCases: number; firmSlug: string | null }> = {}
+  const byAdId: Record<string, { signedCases: number; firmSlug: string | null; firmName: string | null }> = {}
   for (const row of (leadsRes.data || [])) {
     if (!row.ad_id) continue
-    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, firmSlug: firmSlugById[row.firm_id] || null }
+    const firm = firmById[row.firm_id] || null
+    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, firmSlug: firm?.slug || null, firmName: firm?.name || null }
     byAdId[row.ad_id].signedCases++
   }
 
-  const [activeAdIds, pipelineData] = await Promise.all([fetchActiveAdIds(), fetchAllPipelines()])
+  // Optional slow: GHL pipeline counts
+  let pipelineData: Record<string, { nr: number; nq: number; fu: number }> = {}
+  if (includePipeline) {
+    pipelineData = await fetchAllPipelines()
+  }
 
   const result: Record<string, any> = {}
   for (const [adId, data] of Object.entries(byAdId)) {
     result[adId] = {
       ...data,
-      isActive: activeAdIds.has(adId),
       nrCount: pipelineData[adId]?.nr || 0,
       nqCount: pipelineData[adId]?.nq || 0,
       fuCount: pipelineData[adId]?.fu || 0,
     }
   }
-  for (const [adId, p] of Object.entries(pipelineData)) {
-    if (!result[adId]) result[adId] = { signedCases: 0, firmSlug: p.firmSlug, isActive: activeAdIds.has(adId), nrCount: p.nr, nqCount: p.nq, fuCount: p.fu }
-    else { result[adId].nrCount = p.nr; result[adId].nqCount = p.nq; result[adId].fuCount = p.fu; if (!result[adId].firmSlug) result[adId].firmSlug = p.firmSlug }
-  }
-  for (const adId of activeAdIds) {
-    if (!result[adId]) result[adId] = { signedCases: 0, firmSlug: null, isActive: true, nrCount: 0, nqCount: 0, fuCount: 0 }
-    else result[adId].isActive = true
+  if (includePipeline) {
+    for (const [adId, p] of Object.entries(pipelineData)) {
+      if (!result[adId]) result[adId] = { signedCases: 0, firmSlug: null, firmName: null, nrCount: p.nr, nqCount: p.nq, fuCount: p.fu }
+      else { result[adId].nrCount = p.nr; result[adId].nqCount = p.nq; result[adId].fuCount = p.fu }
+    }
   }
 
   return NextResponse.json({ byAdId: result })

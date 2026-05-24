@@ -115,7 +115,7 @@ function MarketingPanel({ ads, campaigns, adsets, subTab, setSubTab }: {
   const watchCount = ads.filter(a => alertLevel(a) === 'watch').length
   const scaleCount = ads.filter(a => alertLevel(a) === 'scale').length
   const readDecideCount = ads.filter(a => alertLevel(a) === 'read_decide').length
-  const activeCount = ads.filter(a => a.isActive).length
+  const activeCount = ads.filter((a: any) => a.isActive).length
 
   // Adset aggregation from ad-level data
   const adsetMap: Record<string, any> = {}
@@ -191,9 +191,9 @@ function MarketingPanel({ ads, campaigns, adsets, subTab, setSubTab }: {
                     const cpq = a.cpq != null ? parseFloat(String(a.cpq)) : null
                     const metaLeads = a.metaLeads ?? a.leads ?? 0
                     return (
-                      <tr key={i} className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${!a.isActive ? 'opacity-60' : ''} ${level === 'kill' ? 'bg-red-950/10' : level === 'watch' ? 'bg-yellow-950/10' : level === 'scale' ? 'bg-green-950/10' : ''}`}>
+                      <tr key={i} className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${!a.isActive ? 'opacity-50' : ''} ${level === 'kill' ? 'bg-red-950/10' : level === 'watch' ? 'bg-yellow-950/10' : level === 'scale' ? 'bg-green-950/10' : ''}`}>
                         <td className="py-3 px-3 w-6">
-                          {a.isActive && <span className="block w-1.5 h-1.5 rounded-full bg-blue-400" title="Active today" />}
+                          <span className={`block w-2 h-2 rounded-full ${a.isActive ? 'bg-green-500' : 'bg-gray-700'}`} title={a.isActive ? 'Active' : 'Paused'} />
                         </td>
                         <CreativeNameCell name={a.name || a.adName} firmSlug={a.firmSlug} />
                         <td className="py-3 px-4 max-w-[160px]">
@@ -228,9 +228,12 @@ function MarketingPanel({ ads, campaigns, adsets, subTab, setSubTab }: {
                           {a.fuCount > 0 ? <span className="text-blue-400">{a.fuCount}</span> : <span className="text-gray-700">—</span>}
                         </td>
                         <td className="py-3 px-4">
-                          {a.signedCases > 0
-                            ? <span className="text-green-400 font-semibold">{a.signedCases}</span>
-                            : <span className="text-gray-600">0</span>}
+                          {a.signedCases > 0 ? (
+                            <div>
+                              <span className="text-green-400 font-semibold">{a.signedCases}</span>
+                              {a.firmName && <p className="text-[10px] text-gray-500 mt-0.5">{a.firmName}</p>}
+                            </div>
+                          ) : <span className="text-gray-600">0</span>}
                         </td>
                         <td className="py-3 px-4">
                           {cpq != null
@@ -326,6 +329,7 @@ export default function MetricsPage() {
   const [activeTab, setActiveTab] = useState<'overview' | 'marketing' | 'hr' | 'firms'>('overview')
   const [marketingSubTab, setMarketingSubTab] = useState<'campaigns' | 'adsets' | 'ads'>('ads')
   const [creativeOverview, setCreativeOverview] = useState<Record<string, any>>({})
+  const [pipelineOverview, setPipelineOverview] = useState<Record<string, any>>({})
   const [workers, setWorkers] = useState<any[]>([])
   const [showAddWorker, setShowAddWorker] = useState(false)
   const [addName, setAddName] = useState('')
@@ -386,10 +390,19 @@ export default function MetricsPage() {
       .catch(() => {})
   }, [])
 
+  // Fast: signed cases + firm from Supabase (no GHL calls)
   useEffect(() => {
     fetch('/api/metrics/creative-overview')
       .then(r => r.json())
       .then(d => setCreativeOverview(d.byAdId || {}))
+      .catch(() => {})
+  }, [])
+
+  // Slow: GHL pipeline NR/NQ/FU counts (runs in background)
+  useEffect(() => {
+    fetch('/api/metrics/creative-overview?pipeline=1')
+      .then(r => r.json())
+      .then(d => setPipelineOverview(d.byAdId || {}))
       .catch(() => {})
   }, [])
 
@@ -445,25 +458,26 @@ export default function MetricsPage() {
   const spend = parseFloat(metaData?.summary?.spend || 0)
   const cpq = totalSignedCases > 0 ? (spend / totalSignedCases).toFixed(2) : null
 
-  // Merge creative overview data (signed cases, pipeline, firm, active status) with Meta ad data
+  // Merge creative overview data with Meta ad data
   const adsWithAttribution = (metaData?.ads || []).map((ad: any) => {
     const ov = creativeOverview[ad.id] || {}
+    const pl = pipelineOverview[ad.id] || {}
     const signedCases = ov.signedCases || 0
-    const cpq = signedCases > 0 ? (ad.spend / signedCases).toFixed(2) : null
-    const signRate = ad.leads > 0 ? ((signedCases / ad.leads) * 100).toFixed(1) : null
+    const cpq = signedCases > 0 ? ad.spend / signedCases : null
+    // Active = has spend today (most reliable signal) OR flagged active
+    const isActive = ad.spend > 0
     return {
       ...ad,
       signedCases,
       cpq,
-      signRate,
-      isActive: ov.isActive || false,
+      isActive,
       firmSlug: ov.firmSlug || null,
-      nrCount: ov.nrCount || 0,
-      nqCount: ov.nqCount || 0,
-      fuCount: ov.fuCount || 0,
+      firmName: ov.firmName || null,
+      nrCount: pl.nrCount || 0,
+      nqCount: pl.nqCount || 0,
+      fuCount: pl.fuCount || 0,
     }
   }).sort((a: any, b: any) => {
-    // Active ads first, then by spend desc
     if (a.isActive && !b.isActive) return -1
     if (!a.isActive && b.isActive) return 1
     return b.spend - a.spend
