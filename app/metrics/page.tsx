@@ -55,12 +55,13 @@ const BLANK_FIRM = { name: '', slug: '', case_value: '', meta_account_id: 'act_7
 
 export default function MetricsPage() {
   const router = useRouter()
-  const [datePreset, setDatePreset] = useState('last_30d')
+  const [datePreset, setDatePreset] = useState('today')
   const [metaData, setMetaData] = useState<any>(null)
   const [attribution, setAttribution] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [activeTab, setActiveTab] = useState<'overview' | 'marketing' | 'hr' | 'firms'>('overview')
-  const [marketingSubTab, setMarketingSubTab] = useState<'campaigns' | 'adsets' | 'ads'>('campaigns')
+  const [marketingSubTab, setMarketingSubTab] = useState<'campaigns' | 'adsets' | 'ads'>('ads')
+  const [creativeOverview, setCreativeOverview] = useState<Record<string, any>>({})
   const [workers, setWorkers] = useState<any[]>([])
   const [showAddWorker, setShowAddWorker] = useState(false)
   const [addName, setAddName] = useState('')
@@ -121,6 +122,13 @@ export default function MetricsPage() {
       .catch(() => {})
   }, [])
 
+  useEffect(() => {
+    fetch('/api/metrics/creative-overview')
+      .then(r => r.json())
+      .then(d => setCreativeOverview(d.byAdId || {}))
+      .catch(() => {})
+  }, [])
+
   async function handleAddWorker(e: React.FormEvent) {
     e.preventDefault()
     if (!addName.trim() || !addPassword.trim()) { setAddError('Name and password are required.'); return }
@@ -173,13 +181,28 @@ export default function MetricsPage() {
   const spend = parseFloat(metaData?.summary?.spend || 0)
   const cpq = totalSignedCases > 0 ? (spend / totalSignedCases).toFixed(2) : null
 
-  // Merge attribution signed cases with ad data
+  // Merge creative overview data (signed cases, pipeline, firm, active status) with Meta ad data
   const adsWithAttribution = (metaData?.ads || []).map((ad: any) => {
-    const attrData = attribution?.byAd?.find((a: any) => a.adId === ad.id) || {}
-    const signedCases = attrData.signedCases || 0
-    const cpsc = signedCases > 0 ? (ad.spend / signedCases).toFixed(2) : null
+    const ov = creativeOverview[ad.id] || {}
+    const signedCases = ov.signedCases || 0
+    const cpq = signedCases > 0 ? (ad.spend / signedCases).toFixed(2) : null
     const signRate = ad.leads > 0 ? ((signedCases / ad.leads) * 100).toFixed(1) : null
-    return { ...ad, signedCases, notQualified: attrData.notQualified || 0, cpsc, signRate }
+    return {
+      ...ad,
+      signedCases,
+      cpq,
+      signRate,
+      isActive: ov.isActive || false,
+      firmSlug: ov.firmSlug || null,
+      nrCount: ov.nrCount || 0,
+      nqCount: ov.nqCount || 0,
+      fuCount: ov.fuCount || 0,
+    }
+  }).sort((a: any, b: any) => {
+    // Active ads first, then by spend desc
+    if (a.isActive && !b.isActive) return -1
+    if (!a.isActive && b.isActive) return 1
+    return b.spend - a.spend
   })
 
   return (
@@ -326,15 +349,64 @@ export default function MetricsPage() {
 
                 {marketingSubTab === 'ads' && (
                   <div className="bg-gray-900 border border-gray-800 rounded-xl">
-                    <div className="p-5 border-b border-gray-800"><h2 className="text-sm font-medium text-gray-300">Creatives</h2></div>
-                    <Table
-                      columns={['Ad', 'Ad Set', 'Spend', 'Impressions', 'CTR', 'Leads', 'CPL', 'Signed', 'CPSC', 'Sign Rate']}
-                      rows={adsWithAttribution.map((a: any) => [
-                        a.name, a.adsetName, `$${a.spend.toLocaleString()}`, a.impressions.toLocaleString(),
-                        `${a.ctr}%`, a.leads, a.cpl ? `$${a.cpl}` : '—',
-                        a.signedCases, a.cpsc ? `$${a.cpsc}` : '—', a.signRate ? `${a.signRate}%` : '—',
-                      ])}
-                    />
+                    <div className="p-5 border-b border-gray-800 flex items-center justify-between">
+                      <h2 className="text-sm font-medium text-gray-300">Creatives</h2>
+                      <div className="flex items-center gap-3 text-xs text-gray-500">
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-green-500 inline-block" />Active</span>
+                        <span className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full bg-gray-600 inline-block" />Paused</span>
+                      </div>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b border-gray-800">
+                            {['', 'Creative', 'Ad Set', 'Spend', 'CTR', 'Leads', 'CPL', 'Signed', 'CPQ', 'Pipeline (NR·NQ·FU)'].map(c => (
+                              <th key={c} className="text-left text-gray-400 font-medium py-3 px-3 text-xs uppercase tracking-wider whitespace-nowrap">{c}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {adsWithAttribution.map((a: any) => (
+                            <tr key={a.id} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
+                              <td className="py-3 px-3 w-6">
+                                <span className={`block w-2 h-2 rounded-full ${a.isActive ? 'bg-green-500' : 'bg-gray-600'}`} title={a.isActive ? 'Active' : 'Paused'} />
+                              </td>
+                              <td className="py-3 px-3 max-w-[200px]">
+                                {a.firmSlug ? (
+                                  <Link href={`/metrics/firms/${a.firmSlug}`} className="text-gray-200 hover:text-blue-400 transition truncate block" title={a.name}>
+                                    {a.name || '—'}
+                                  </Link>
+                                ) : (
+                                  <span className="text-gray-200 truncate block" title={a.name}>{a.name || '—'}</span>
+                                )}
+                                {a.firmSlug && <span className="text-[10px] text-gray-600">{a.firmSlug}</span>}
+                              </td>
+                              <td className="py-3 px-3 text-gray-400 text-xs max-w-[140px] truncate">{a.adsetName || '—'}</td>
+                              <td className="py-3 px-3 text-gray-200">${a.spend.toLocaleString()}</td>
+                              <td className="py-3 px-3 text-gray-400">{a.ctr}%</td>
+                              <td className="py-3 px-3 text-gray-200">{a.leads}</td>
+                              <td className="py-3 px-3 text-gray-400">{a.cpl ? `$${a.cpl}` : '—'}</td>
+                              <td className="py-3 px-3 font-semibold text-white">{a.signedCases || '—'}</td>
+                              <td className="py-3 px-3 text-green-400 font-medium">{a.cpq ? `$${a.cpq}` : '—'}</td>
+                              <td className="py-3 px-3">
+                                {(a.nrCount + a.nqCount + a.fuCount) > 0 ? (
+                                  <div className="flex items-center gap-1.5 text-xs">
+                                    <span className="bg-yellow-900/40 text-yellow-300 px-1.5 py-0.5 rounded font-mono">{a.nrCount} NR</span>
+                                    <span className="bg-red-900/40 text-red-300 px-1.5 py-0.5 rounded font-mono">{a.nqCount} NQ</span>
+                                    <span className="bg-blue-900/40 text-blue-300 px-1.5 py-0.5 rounded font-mono">{a.fuCount} FU</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-700">—</span>
+                                )}
+                              </td>
+                            </tr>
+                          ))}
+                          {adsWithAttribution.length === 0 && (
+                            <tr><td colSpan={10} className="py-12 text-center text-gray-600">No creative data for this period.</td></tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 )}
               </div>
