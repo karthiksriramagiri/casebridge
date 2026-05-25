@@ -236,13 +236,14 @@ export default function FirmInvoicesHome() {
               <p style={{ color: '#DC2626' }}>{(meta as any).error}</p>
             </div>
           ) : meta ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-3">
               {[
                 { label: 'Total Spend', value: fmt(meta.spend, 2) },
                 { label: 'Impressions', value: fmtNum(meta.impressions) },
                 { label: 'Clicks', value: fmtNum(meta.clicks) },
                 { label: 'Meta Leads', value: fmtNum(meta.leads) },
                 { label: 'CPL', value: meta.cpl != null ? fmt(meta.cpl, 2) : '—' },
+                { label: 'CPQ', value: totalCases > 0 ? fmt(meta.spend / totalCases, 2) : '—' },
                 { label: 'CTR', value: meta.ctrPct != null ? meta.ctrPct.toFixed(2) + '%' : '—' },
               ].map(c => (
                 <div key={c.label} className="rounded-xl p-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
