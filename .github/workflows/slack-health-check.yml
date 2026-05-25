@@ -1,14 +1,15 @@
 name: Slack Health Check
 
-# 9AM, 12PM, 3PM, 6PM, 9PM EST (UTC-5 = 14, 17, 20, 23, 02 UTC)
-# During EDT (UTC-4) these run at 10AM, 1PM, 4PM, 7PM, 10PM EDT
+# 9AM, 12PM, 3PM, 6PM, 9PM Eastern Time
+# EDT (UTC-4, Mar–Nov): 13, 16, 19, 22, 01 UTC  ← active now
+# EST (UTC-5, Nov–Mar): 14, 17, 20, 23, 02 UTC  ← update in November
 on:
   schedule:
-    - cron: '0 14 * * *'  # 9:00 AM EST
-    - cron: '0 17 * * *'  # 12:00 PM EST
-    - cron: '0 20 * * *'  # 3:00 PM EST
-    - cron: '0 23 * * *'  # 6:00 PM EST
-    - cron: '0 2 * * *'   # 9:00 PM EST
+    - cron: '0 13 * * *'  # 9:00 AM EDT
+    - cron: '0 16 * * *'  # 12:00 PM EDT
+    - cron: '0 19 * * *'  # 3:00 PM EDT
+    - cron: '0 22 * * *'  # 6:00 PM EDT
+    - cron: '0 1 * * *'   # 9:00 PM EDT
   workflow_dispatch: {}   # Allow manual trigger from GitHub UI
 
 jobs:

@@ -52,7 +52,7 @@ const ALERT_EMOJI: Record<string, string> = {
   floor:       '⚪',
   read_decide: '🟠',
   scale:       '🟢',
-  active:      '🔵',
+  active:      '🟢',
 }
 const ALERT_LABEL: Record<string, string> = {
   kill:        'KILL',
@@ -60,7 +60,7 @@ const ALERT_LABEL: Record<string, string> = {
   floor:       'FLOOR',
   read_decide: 'READ/DECIDE',
   scale:       'SCALE',
-  active:      'ACTIVE',
+  active:      'SCALE',
 }
 
 // ─── Parse creative launch date from ad name (YYYYMMDD segment) ───────────────
@@ -108,9 +108,19 @@ export async function GET(req: NextRequest) {
 
   // Today's date in EST (YYYY-MM-DD)
   const todayEST = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(now)
+
+  // 3 hours ago (for per-notification delta)
+  const threeHoursAgoISO = new Date(now.getTime() - 3 * 60 * 60 * 1000).toISOString()
+
+  // Last 7 days window
   const sevenDaysAgoDate = new Date(now)
   sevenDaysAgoDate.setDate(sevenDaysAgoDate.getDate() - 6)
   const sevenDaysAgoEST = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(sevenDaysAgoDate)
+
+  // Previous 7-day window (14–7 days ago) for week-over-week comparison
+  const fourteenDaysAgoDate = new Date(now)
+  fourteenDaysAgoDate.setDate(fourteenDaysAgoDate.getDate() - 13)
+  const fourteenDaysAgoEST = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' }).format(fourteenDaysAgoDate)
 
   // ── Fetch all firms ───────────────────────────────────────────────────────
   const { data: firms } = await supabase
@@ -122,12 +132,28 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, message: 'No firms found' })
   }
 
+  // ── Exclude Eisenberg and MCA ─────────────────────────────────────────────
+  const activeFirms = firms.filter(f => {
+    const key = (f.name + ' ' + f.slug).toLowerCase()
+    return !key.includes('eisenberg') && !key.includes('mca')
+  })
+
   // ── Build per-firm blocks in parallel ────────────────────────────────────
-  const firmBlocks = await Promise.all(firms.map(async (firm) => {
+  const firmBlocks = await Promise.all(activeFirms.map(async (firm) => {
     if (!firm.meta_account_id) return null
 
-    const accountId     = firm.meta_account_id
-    const campaignFilter = (firm.meta_campaign_filter || '').trim().toLowerCase()
+    const accountId = firm.meta_account_id
+
+    // Firm identifier: used to match pipe-segment in ad names (e.g. "LHP", "MCA", "THL")
+    // Uses meta_campaign_filter if set, otherwise uppercased slug
+    const firmTag = (firm.meta_campaign_filter || firm.slug || '').trim().toUpperCase()
+
+    // Check if an ad belongs to this firm by looking for an exact pipe-segment match
+    function adBelongsToFirm(adName: string): boolean {
+      if (!firmTag) return true
+      const parts = (adName || '').split('|').map(p => p.trim().toUpperCase())
+      return parts.includes(firmTag)
+    }
 
     // Get latest invoice for this firm
     const { data: latestInv } = await supabase
@@ -140,26 +166,38 @@ export async function GET(req: NextRequest) {
 
     // All data fetches in parallel
     const [
-      todayAccountMeta,
       todayAdMeta,
+      lifetimeAdMeta,
+      invPeriodAdMeta,
       signedTodayRes,
       signed7dRes,
+      signed3hRes,
+      signedPrevWeekRes,
       invLeadsRes,
-      invSpendRes,
     ] = await Promise.all([
-      // Today's account-level totals (spend, leads)
-      fetchMeta(`/${accountId}/insights`, {
-        fields:      'spend,actions',
-        date_preset: 'today',
-        level:       'account',
-      }),
-      // Today's ad-level (active creatives, spend > 0)
+      // Today's ad-level data (all ads in account — will filter by firmTag below)
       fetchMeta(`/${accountId}/insights`, {
         fields:      'ad_id,ad_name,adset_name,campaign_name,spend,actions',
         date_preset: 'today',
         level:       'ad',
         limit:       '300',
       }),
+      // Lifetime ad-level data — used for alert level (Kill/Watch/Scale)
+      fetchMeta(`/${accountId}/insights`, {
+        fields:      'ad_id,ad_name,spend,actions',
+        date_preset: 'maximum',
+        level:       'ad',
+        limit:       '500',
+      }),
+      // Invoice period ad-level data for spend calculation
+      latestInv
+        ? fetchMeta(`/${accountId}/insights`, {
+            fields:     'ad_name,spend',
+            time_range: JSON.stringify({ since: latestInv.period_start, until: latestInv.period_end }),
+            level:      'ad',
+            limit:      '300',
+          })
+        : Promise.resolve({ data: [] }),
       // Today's signed cases
       supabase
         .from('ghl_leads')
@@ -174,6 +212,21 @@ export async function GET(req: NextRequest) {
         .eq('firm_id', firm.id)
         .or('case_status.is.null,case_status.eq.e_signed,case_status.eq.closed')
         .gte('qualified_at', `${sevenDaysAgoEST}T00:00:00Z`),
+      // Cases in last 3 hours (delta since last notification)
+      supabase
+        .from('ghl_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('firm_id', firm.id)
+        .or('case_status.is.null,case_status.eq.e_signed,case_status.eq.closed')
+        .gte('qualified_at', threeHoursAgoISO),
+      // Previous 7-day period (14–7 days ago) for week-over-week
+      supabase
+        .from('ghl_leads')
+        .select('id', { count: 'exact', head: true })
+        .eq('firm_id', firm.id)
+        .or('case_status.is.null,case_status.eq.e_signed,case_status.eq.closed')
+        .gte('qualified_at', `${fourteenDaysAgoEST}T00:00:00Z`)
+        .lt('qualified_at', `${sevenDaysAgoEST}T00:00:00Z`),
       // Current invoice cases (signed + replacements)
       latestInv
         ? supabase
@@ -182,25 +235,27 @@ export async function GET(req: NextRequest) {
             .eq('firm_id', firm.id)
             .eq('invoice_code', latestInv.code)
         : Promise.resolve({ data: [] }),
-      // Invoice period Meta spend
-      latestInv
-        ? fetchMeta(`/${accountId}/insights`, {
-            fields:     'spend',
-            time_range: JSON.stringify({ since: latestInv.period_start, until: latestInv.period_end }),
-            level:      'account',
-          })
-        : Promise.resolve({ data: [] }),
     ])
 
-    // ── Today's Meta stats ────────────────────────────────────────────────
-    const todayAcct   = todayAccountMeta.data?.[0] || {}
-    const todaySpend  = parseFloat(todayAcct.spend || '0')
-    const todayLeads  = getLeads(todayAcct.actions)
-    const todayCpl    = todayLeads > 0 ? todaySpend / todayLeads : null
+    // ── Filter today's ads to this firm only ──────────────────────────────
+    const firmAdsToday = (todayAdMeta.data || []).filter((a: any) =>
+      adBelongsToFirm(a.ad_name || '')
+    )
+
+    // ── Today's Meta stats (from firm-specific ads) ───────────────────────
+    const todaySpend = firmAdsToday.reduce((sum: number, a: any) => sum + parseFloat(a.spend || '0'), 0)
+    const todayLeads = firmAdsToday.reduce((sum: number, a: any) => sum + getLeads(a.actions), 0)
+    const todayCpl   = todayLeads > 0 ? todaySpend / todayLeads : null
 
     // ── Signed case counts ────────────────────────────────────────────────
-    const casesToday = signedTodayRes.count ?? 0
-    const cases7d    = signed7dRes.count ?? 0
+    const casesToday   = signedTodayRes.count ?? 0
+    const cases7d      = signed7dRes.count ?? 0
+    const cases3h      = signed3hRes.count ?? 0
+    const casesPrevWk  = signedPrevWeekRes.count ?? 0
+
+    const todayComp = cases3h > 0 ? ` (+${cases3h} last 3h)` : ' (none last 3h)'
+    const wkDiff    = cases7d - casesPrevWk
+    const wkComp    = wkDiff > 0 ? ` (+${wkDiff} vs prev wk)` : wkDiff < 0 ? ` (${wkDiff} vs prev wk)` : ' (same as prev wk)'
 
     // ── Invoice stats ─────────────────────────────────────────────────────
     let invBlock = ''
@@ -208,7 +263,10 @@ export async function GET(req: NextRequest) {
       const allLeads    = invLeadsRes.data || []
       const invSigned   = allLeads.filter((l: any) => (l.case_status || '').toLowerCase() !== 'replacement').length
       const invRepl     = allLeads.filter((l: any) => (l.case_status || '').toLowerCase() === 'replacement').length
-      const invSpend    = parseFloat(invSpendRes.data?.[0]?.spend || '0')
+      // Sum spend only from this firm's ads during the invoice period
+      const invSpend    = (invPeriodAdMeta.data || [])
+        .filter((a: any) => adBelongsToFirm(a.ad_name || ''))
+        .reduce((sum: number, a: any) => sum + parseFloat(a.spend || '0'), 0)
       const invCpq      = invSigned > 0 ? invSpend / invSigned : null
 
       // Pace: cases / days elapsed
@@ -226,33 +284,36 @@ export async function GET(req: NextRequest) {
         `• *${latestInv.code}*${invTitle} · ${invSigned} signed${invRepl > 0 ? ` + ${invRepl} repl` : ''} · Pace: ${pace.toFixed(1)}/day → projected ${projMonth}/month`,
         `• ${daysRemaining} days remaining${invCpq ? ` · CPQ: ${fmt$(invCpq)}` : ''}`,
       ].join('\n')
-
-      // Override period stats for the Cases line
-      const replNote = invRepl > 0 ? ` + ${invRepl} repl` : ''
-      const cpqNote  = invCpq ? ` · CPQ: ${fmt$(invCpq)}` : ''
     }
 
-    // ── Active creatives ──────────────────────────────────────────────────
-    let adsToday = (todayAdMeta.data || []).filter((a: any) => {
-      const spend = parseFloat(a.spend || '0')
-      if (spend <= 0) return false
-      if (!campaignFilter) return true
-      return (a.campaign_name || '').toLowerCase().includes(campaignFilter) ||
-             (a.adset_name   || '').toLowerCase().includes(campaignFilter)
-    })
+    // ── Lifetime lookup map (ad_id → lifetime stats) ─────────────────────
+    const lifetimeMap = new Map<string, { spend: number; leads: number }>()
+    for (const a of (lifetimeAdMeta.data || [])) {
+      if (adBelongsToFirm(a.ad_name || '')) {
+        lifetimeMap.set(a.ad_id, {
+          spend: parseFloat(a.spend || '0'),
+          leads: getLeads(a.actions),
+        })
+      }
+    }
+
+    // ── Active creatives (firm-specific, spend > 0) ───────────────────────
+    let adsToday = firmAdsToday.filter((a: any) => parseFloat(a.spend || '0') > 0)
 
     adsToday = sortCreativesOldToNew(adsToday, todayEST)
 
     const creativeLines = adsToday.map((ad: any) => {
-      const spend  = parseFloat(ad.spend || '0')
-      const leads  = getLeads(ad.actions)
-      const cpl    = leads > 0 ? spend / leads : null
-      const level  = alertLevel(spend, leads, cpl, null, 0)
-      const emoji  = ALERT_EMOJI[level] || '⚪'
-      const label  = ALERT_LABEL[level] || level.toUpperCase()
-      const age    = creativeAge(ad.ad_name || '', todayEST)
-      const dayTag = age != null ? ` · DAY ${age}` : ''
-      return `${emoji} ${label} · ${ad.ad_name || ad.ad_id} · ${fmt$(spend)} today · ${leads} lead${leads !== 1 ? 's' : ''}${dayTag}`
+      const todSpend  = parseFloat(ad.spend || '0')
+      const todLeads  = getLeads(ad.actions)
+      // Alert level uses lifetime stats since launch
+      const lt        = lifetimeMap.get(ad.ad_id) ?? { spend: todSpend, leads: todLeads }
+      const ltCpl     = lt.leads > 0 ? lt.spend / lt.leads : null
+      const level     = alertLevel(lt.spend, lt.leads, ltCpl, null, 0)
+      const emoji     = ALERT_EMOJI[level] || '⚪'
+      const label     = ALERT_LABEL[level] || level.toUpperCase()
+      const age       = creativeAge(ad.ad_name || '', todayEST)
+      const dayTag    = age != null ? ` · DAY ${age}` : ''
+      return `${emoji} ${label} · ${ad.ad_name || ad.ad_id} · ${fmt$(todSpend)} today · ${todLeads} lead${todLeads !== 1 ? 's' : ''}${dayTag}`
     })
 
     const creativesBlock = adsToday.length > 0
@@ -262,10 +323,12 @@ export async function GET(req: NextRequest) {
     // ── Invoice period case summary for Cases line ────────────────────────
     let periodStr = ''
     if (latestInv) {
-      const allLeads = invLeadsRes.data || []
+      const allLeads  = invLeadsRes.data || []
       const invSigned = allLeads.filter((l: any) => (l.case_status || '').toLowerCase() !== 'replacement').length
       const invRepl   = allLeads.filter((l: any) => (l.case_status || '').toLowerCase() === 'replacement').length
-      const invSpend  = parseFloat(invSpendRes.data?.[0]?.spend || '0')
+      const invSpend  = (invPeriodAdMeta.data || [])
+        .filter((a: any) => adBelongsToFirm(a.ad_name || ''))
+        .reduce((sum: number, a: any) => sum + parseFloat(a.spend || '0'), 0)
       const invCpq    = invSigned > 0 ? invSpend / invSigned : null
       periodStr = ` · Period: ${invSigned} signed${invRepl > 0 ? ` + ${invRepl} repl` : ''}${invCpq ? ` · CPQ: ${fmt$(invCpq)}` : ''}`
     }
@@ -273,7 +336,7 @@ export async function GET(req: NextRequest) {
     return [
       `\n⭐ *${firm.name}* ⭐`,
       `*Meta Today* · Spend: ${fmt$(todaySpend)} · Leads: ${todayLeads} · CPL: ${todayCpl ? fmt$(todayCpl) : '—'}`,
-      `*Cases* · Today: ${casesToday} · Last 7 days: ${cases7d}${periodStr}`,
+      `*Cases* · Today: ${casesToday}${todayComp} · Last 7 days: ${cases7d}${wkComp}${periodStr}`,
       invBlock,
       creativesBlock,
     ].filter(Boolean).join('\n')
