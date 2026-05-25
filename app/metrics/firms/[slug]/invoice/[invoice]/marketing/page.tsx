@@ -901,11 +901,12 @@ export default function MarketingPage() {
   if (loading) return <div className="p-6 text-gray-500">Loading...</div>
 
   const metaError = kpi?.meta?.error
-  const killCount       = ads.filter(a => alertLevel(a) === 'kill').length
-  const watchCount      = ads.filter(a => alertLevel(a) === 'watch').length
-  const scaleCount      = ads.filter(a => alertLevel(a) === 'scale').length
-  const readDecideCount = ads.filter(a => alertLevel(a) === 'read_decide').length
-  const activeCount     = ads.filter(a => resolvedActiveIds.has(a.adId)).length
+  const activeAds       = ads.filter(a => resolvedActiveIds.has(a.adId))
+  const killCount       = activeAds.filter(a => alertLevel(a) === 'kill').length
+  const watchCount      = activeAds.filter(a => alertLevel(a) === 'watch').length
+  const scaleCount      = activeAds.filter(a => alertLevel(a) === 'scale').length
+  const readDecideCount = activeAds.filter(a => alertLevel(a) === 'read_decide').length
+  const activeCount     = activeAds.length
 
   return (
     <div className="p-6 space-y-5">
