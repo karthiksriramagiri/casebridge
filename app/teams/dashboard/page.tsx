@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import LogoutButton from './LogoutButton'
+import TimeclockWidget from './TimeclockWidget'
 
 export default async function DashboardPage() {
   const supabase = await createClient()
@@ -113,6 +114,9 @@ export default async function DashboardPage() {
             Complete your training modules to get certified.
           </p>
         </div>
+
+        {/* Timeclock */}
+        <TimeclockWidget profileId={profile.id} />
 
         {/* Progress overview */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-6">

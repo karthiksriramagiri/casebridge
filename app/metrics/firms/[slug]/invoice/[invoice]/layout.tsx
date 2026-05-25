@@ -5,6 +5,12 @@ import { useParams, usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { invoiceCodeFromRouteSegment } from '@/app/metrics/firms/_lib/invoice-routes'
 
+const CARD = '#FFFFFF'
+const BORDER = '#D9D3C8'
+const TEXT = '#1A1A1A'
+const MUTED = '#6B6560'
+const ACCENT = '#C17A4A'
+
 export default function InvoiceSectionLayout({ children }: { children: React.ReactNode }) {
   const params = useParams()
   const pathname = usePathname()
@@ -40,56 +46,44 @@ export default function InvoiceSectionLayout({ children }: { children: React.Rea
 
   function openEdit() {
     if (!invoice) return
-    setEditTitle(invoice.title || '')
-    setEditStart(invoice.start)
-    setEditEnd(invoice.end)
-    setEditError('')
-    setShowEdit(true)
+    setEditTitle(invoice.title || ''); setEditStart(invoice.start); setEditEnd(invoice.end); setEditError(''); setShowEdit(true)
   }
 
   async function saveEdit(e: React.FormEvent) {
     e.preventDefault()
     if (!invoice || !editStart || !editEnd) return
-    setEditSaving(true)
-    setEditError('')
-    const res = await fetch('/api/metrics/firm-invoices', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: invoice.id, title: editTitle, period_start: editStart, period_end: editEnd }),
-    })
-    const data = await res.json()
-    setEditSaving(false)
+    setEditSaving(true); setEditError('')
+    const res = await fetch('/api/metrics/firm-invoices', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: invoice.id, title: editTitle, period_start: editStart, period_end: editEnd }) })
+    const data = await res.json(); setEditSaving(false)
     if (!res.ok) { setEditError(data.error || 'Failed to save.'); return }
-    setShowEdit(false)
-    loadInvoice()
+    setShowEdit(false); loadInvoice()
   }
 
+  const inputStyle = { background: '#F5F0E8', border: `1px solid ${BORDER}`, color: TEXT }
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <div className="border-b border-gray-800 px-6 py-3 flex flex-wrap items-center gap-3 text-sm">
-        <Link href="/metrics" className="text-gray-500 hover:text-white transition">Metrics</Link>
-        <span className="text-gray-700">/</span>
-        <Link href={`/metrics/firms/${slug}`} className="text-gray-400 hover:text-white transition">
-          {firmName}
-        </Link>
-        <span className="text-gray-700">/</span>
-        <span className="text-white font-medium">{code}</span>
+    <div style={{ minHeight: '100vh', background: '#EDE8DF', color: TEXT }}>
+      {/* Breadcrumb */}
+      <div className="px-6 py-3 flex flex-wrap items-center gap-3 text-sm" style={{ background: CARD, borderBottom: `1px solid ${BORDER}` }}>
+        <Link href="/metrics" className="transition" style={{ color: MUTED }}
+          onMouseEnter={e => (e.currentTarget.style.color = TEXT)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>Metrics</Link>
+        <span style={{ color: '#D1D5DB' }}>/</span>
+        <Link href={`/metrics/firms/${slug}`} className="transition" style={{ color: MUTED }}
+          onMouseEnter={e => (e.currentTarget.style.color = TEXT)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>{firmName}</Link>
+        <span style={{ color: '#D1D5DB' }}>/</span>
+        <span className="font-semibold" style={{ color: TEXT }}>{code}</span>
         {invoice && (
           <>
-            <span className="text-gray-500 text-xs ml-2">
+            <span className="text-xs ml-1" style={{ color: MUTED }}>
               {invoice.title ? `${invoice.title} · ` : ''}{invoice.start} → {invoice.end}
             </span>
-            <button
-              onClick={openEdit}
-              className="text-gray-600 hover:text-gray-300 transition text-xs ml-1"
-              title="Edit invoice dates"
-            >
-              ✎
-            </button>
+            <button onClick={openEdit} className="text-xs ml-1 transition" style={{ color: MUTED }} title="Edit invoice dates">✎</button>
           </>
         )}
       </div>
-      <div className="border-b border-gray-800 px-6 flex gap-1">
+
+      {/* Tab nav */}
+      <div className="px-6 flex gap-0" style={{ background: CARD, borderBottom: `1px solid ${BORDER}` }}>
         {[
           { label: 'Dashboard', href: base, active: !isPcs && !isMarketing && !isHr && !isFinances },
           { label: 'Signed PCs', href: `${base}/pcs`, active: isPcs },
@@ -97,65 +91,43 @@ export default function InvoiceSectionLayout({ children }: { children: React.Rea
           { label: 'HR', href: `${base}/hr`, active: isHr },
           { label: 'Finances', href: `${base}/finances`, active: isFinances },
         ].map(tab => (
-          <Link
-            key={tab.label}
-            href={tab.href}
-            className={`px-4 py-2.5 text-sm rounded-t-lg transition ${tab.active ? 'bg-gray-900 text-white' : 'text-gray-500 hover:text-gray-300'}`}
-          >
+          <Link key={tab.label} href={tab.href}
+            className="px-4 py-2.5 text-sm transition font-medium"
+            style={tab.active
+              ? { color: TEXT, borderBottom: `2px solid ${TEXT}` }
+              : { color: MUTED, borderBottom: '2px solid transparent' }}>
             {tab.label}
           </Link>
         ))}
       </div>
+
       {children}
 
-      {/* Edit Invoice Modal */}
       {showEdit && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
-            <h2 className="text-base font-semibold text-white">Edit Invoice — {code}</h2>
+        <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: 'rgba(0,0,0,0.5)' }}>
+          <div className="rounded-2xl p-6 w-full max-w-sm space-y-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+            <h2 className="text-base font-semibold" style={{ color: TEXT }}>Edit Invoice — {code}</h2>
             <form onSubmit={saveEdit} className="space-y-3">
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Title (optional)</label>
-                <input
-                  type="text"
-                  value={editTitle}
-                  onChange={e => setEditTitle(e.target.value)}
-                  placeholder="e.g. Invoice 1"
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Period Start</label>
-                <input
-                  type="date"
-                  value={editStart}
-                  onChange={e => setEditStart(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-500"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-gray-400 block mb-1">Period End</label>
-                <input
-                  type="date"
-                  value={editEnd}
-                  onChange={e => setEditEnd(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:border-gray-500"
-                />
-              </div>
-              {editError && <p className="text-xs text-red-400">{editError}</p>}
+              {[
+                { label: 'Title (optional)', type: 'text', val: editTitle, onChange: setEditTitle, placeholder: 'e.g. Invoice 1' },
+                { label: 'Period Start', type: 'date', val: editStart, onChange: setEditStart },
+                { label: 'Period End', type: 'date', val: editEnd, onChange: setEditEnd },
+              ].map(f => (
+                <div key={f.label}>
+                  <label className="text-xs block mb-1" style={{ color: MUTED }}>{f.label}</label>
+                  <input type={f.type} value={f.val} onChange={e => f.onChange(e.target.value)} placeholder={f.placeholder}
+                    className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+                </div>
+              ))}
+              {editError && <p className="text-xs" style={{ color: '#B91C1C' }}>{editError}</p>}
               <div className="flex gap-2 pt-1">
-                <button
-                  type="submit"
-                  disabled={editSaving}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition"
-                >
+                <button type="submit" disabled={editSaving}
+                  className="flex-1 text-sm font-medium py-2 rounded-lg transition disabled:opacity-50"
+                  style={{ background: TEXT, color: '#FFF' }}>
                   {editSaving ? 'Saving…' : 'Save'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setShowEdit(false)}
-                  className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition"
-                >
+                <button type="button" onClick={() => setShowEdit(false)}
+                  className="flex-1 text-sm py-2 rounded-lg transition" style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>
                   Cancel
                 </button>
               </div>

@@ -155,39 +155,85 @@ export default function FirmInvoicesHome() {
     setInvForm(BLANK_INV)
   }
 
+  const BG = '#EDE8DF', CARD = '#FFFFFF', BORDER = '#D9D3C8', TEXT = '#1A1A1A', MUTED = '#6B6560', ACCENT = '#C17A4A'
+  const inputStyle = { background: '#F5F0E8', border: `1px solid ${BORDER}`, color: TEXT }
+
+  function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: React.ReactNode }) {
+    return (
+      <div className="fixed inset-0 flex items-center justify-center z-50 p-4" style={{ background: 'rgba(0,0,0,0.5)' }}>
+        <div className="rounded-2xl p-6 w-full max-w-md" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+          <div className="flex items-center justify-between mb-5">
+            <h2 className="text-base font-semibold" style={{ color: TEXT }}>{title}</h2>
+            <button onClick={onClose} className="text-xl transition" style={{ color: MUTED }}>×</button>
+          </div>
+          {children}
+        </div>
+      </div>
+    )
+  }
+
+  function InvoiceFormFields({ form, setForm }: { form: typeof BLANK_INV; setForm: React.Dispatch<React.SetStateAction<typeof BLANK_INV>> }) {
+    return (
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="block text-xs mb-1" style={{ color: MUTED }}>Code * <span style={{ color: '#B5AFA8' }}>(e.g. INV-4)</span></label>
+          <input value={form.code} onChange={e => setForm(f => ({ ...f, code: e.target.value }))} placeholder="INV-4" required className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1" style={{ color: MUTED }}>Title</label>
+          <input value={form.title} onChange={e => setForm(f => ({ ...f, title: e.target.value }))} placeholder="Invoice 4" className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1" style={{ color: MUTED }}>Period Start *</label>
+          <input type="date" value={form.period_start} onChange={e => setForm(f => ({ ...f, period_start: e.target.value }))} required className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1" style={{ color: MUTED }}>Period End *</label>
+          <input type="date" value={form.period_end} onChange={e => setForm(f => ({ ...f, period_end: e.target.value }))} required className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1" style={{ color: MUTED }}>Payment Received ($)</label>
+          <input type="number" value={form.payment_received} onChange={e => setForm(f => ({ ...f, payment_received: e.target.value }))} placeholder="35000" className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+        </div>
+        <div>
+          <label className="block text-xs mb-1" style={{ color: MUTED }}>Interest Rate <span style={{ color: '#B5AFA8' }}>(e.g. 0.03)</span></label>
+          <input type="number" step="0.001" value={form.payment_interest_rate} onChange={e => setForm(f => ({ ...f, payment_interest_rate: e.target.value }))} placeholder="0.03" className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+        </div>
+      </div>
+    )
+  }
+
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      <div className="border-b border-gray-800 px-6 py-4 flex items-center gap-4">
-        <Link href="/metrics" className="text-gray-400 hover:text-white text-sm transition">
-          ← Metrics
-        </Link>
-        <div className="w-px h-4 bg-gray-700" />
-        <h1 className="text-lg font-bold text-white">{firmName || slug.toUpperCase()}</h1>
+    <div style={{ minHeight: '100vh', background: BG, color: TEXT }}>
+      {/* Header */}
+      <div className="px-6 py-4 flex items-center gap-4" style={{ background: CARD, borderBottom: `1px solid ${BORDER}` }}>
+        <Link href="/metrics" className="text-sm transition" style={{ color: MUTED }}
+          onMouseEnter={e => (e.currentTarget.style.color = TEXT)} onMouseLeave={e => (e.currentTarget.style.color = MUTED)}>← Metrics</Link>
+        <div className="w-px h-4" style={{ background: BORDER }} />
+        <h1 className="text-lg font-bold" style={{ color: TEXT }}>{firmName || slug.toUpperCase()}</h1>
       </div>
 
       <div className="p-6 max-w-5xl space-y-8">
-
-        {/* ── Meta Spend Panel ── */}
+        {/* Meta Stats */}
         <div>
           <div className="flex items-center gap-2 mb-3">
-            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Meta Ad Spend — All Time</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: MUTED }}>Meta Ad Spend — All Time</h2>
             {meta && (
-              <span className={`text-xs px-2 py-0.5 rounded-full ${meta.connected ? 'bg-green-900/40 text-green-400' : 'bg-gray-800 text-gray-500'}`}>
+              <span className="text-xs px-2 py-0.5 rounded-full" style={meta.connected
+                ? { background: '#F0FDF4', color: '#15803D', border: '1px solid #BBF7D0' }
+                : { background: '#F3F4F6', color: MUTED, border: `1px solid ${BORDER}` }}>
                 {meta.connected ? 'Connected' : 'No account'}
               </span>
             )}
           </div>
-
           {kpiLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
-              {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-gray-900 border border-gray-800 rounded-xl p-4 h-20 animate-pulse" />
-              ))}
+              {[...Array(6)].map((_, i) => <div key={i} className="rounded-xl p-4 h-20 animate-pulse" style={{ background: CARD, border: `1px solid ${BORDER}` }} />)}
             </div>
-          ) : meta?.error ? (
-            <div className="rounded-xl border border-red-500/40 bg-red-950/20 px-4 py-3 text-sm text-red-300">
-              <p className="font-medium mb-1">Meta API error</p>
-              <p className="text-red-300/80">{meta.error}</p>
+          ) : (meta as any)?.error ? (
+            <div className="rounded-xl px-4 py-3 text-sm" style={{ background: '#FEF2F2', border: '1px solid #FECACA' }}>
+              <p className="font-medium mb-1" style={{ color: '#B91C1C' }}>Meta API error</p>
+              <p style={{ color: '#DC2626' }}>{(meta as any).error}</p>
             </div>
           ) : meta ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
@@ -199,27 +245,27 @@ export default function FirmInvoicesHome() {
                 { label: 'CPL', value: meta.cpl != null ? fmt(meta.cpl, 2) : '—' },
                 { label: 'CTR', value: meta.ctrPct != null ? meta.ctrPct.toFixed(2) + '%' : '—' },
               ].map(c => (
-                <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 mb-1">{c.label}</p>
-                  <p className="text-lg font-bold text-white">{c.value}</p>
+                <div key={c.label} className="rounded-xl p-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                  <p className="text-xs mb-1 uppercase tracking-wider" style={{ color: MUTED }}>{c.label}</p>
+                  <p className="text-lg font-bold" style={{ color: TEXT }}>{c.value}</p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-gray-500 text-sm">Meta data unavailable — check META_ACCESS_TOKEN env var.</p>
+            <p className="text-sm" style={{ color: MUTED }}>Meta data unavailable — check META_ACCESS_TOKEN env var.</p>
           )}
         </div>
 
-        {/* ── Invoice Breakdown ── */}
+        {/* Invoice Breakdown */}
         {invoiceBreakdown.length > 0 && (
           <div>
-            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider mb-3">Signed Cases by Invoice</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: MUTED }}>Signed Cases by Invoice</h2>
             <div className="grid gap-3 sm:grid-cols-3">
               {invoiceBreakdown.map(b => (
-                <div key={b.invoiceCode} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{b.invoiceCode}</p>
-                  <p className="text-2xl font-bold text-white mb-1">{b.signedCases}</p>
-                  <p className="text-xs text-gray-500">
+                <div key={b.invoiceCode} className="rounded-xl p-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                  <p className="text-xs uppercase tracking-wider mb-1" style={{ color: MUTED }}>{b.invoiceCode}</p>
+                  <p className="text-2xl font-bold mb-1" style={{ color: TEXT }}>{b.signedCases}</p>
+                  <p className="text-xs" style={{ color: MUTED }}>
                     {b.totalVictims} victim{b.totalVictims !== 1 ? 's' : ''} · {fmt(b.grossRevenue)} gross rev
                   </p>
                 </div>
@@ -228,195 +274,109 @@ export default function FirmInvoicesHome() {
           </div>
         )}
 
-        {error && <p className="text-red-400">{error}</p>}
+        {error && <p className="text-sm" style={{ color: '#B91C1C' }}>{error}</p>}
 
         {setupHint && (
-          <div className="rounded-xl border border-amber-500/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100/90">
-            <p className="font-medium text-amber-200 mb-1">Database setup needed</p>
-            <p className="text-amber-100/80">{setupHint}</p>
-            <p className="text-xs text-amber-200/60 mt-2">
-              File in repo: <code className="text-amber-200/90">supabase/migration_firm_invoice_periods.sql</code>
+          <div className="rounded-xl px-4 py-3 text-sm" style={{ background: '#FFFBEB', border: '1px solid #FDE68A' }}>
+            <p className="font-medium mb-1" style={{ color: '#92400E' }}>Database setup needed</p>
+            <p style={{ color: '#78350F' }}>{setupHint}</p>
+            <p className="text-xs mt-2" style={{ color: '#92400E' }}>
+              File in repo: <code>supabase/migration_firm_invoice_periods.sql</code>
             </p>
           </div>
         )}
 
-        {/* ── Invoice Cards ── */}
+        {/* Invoices */}
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-300 uppercase tracking-wider">Invoices</h2>
+            <h2 className="text-xs font-semibold uppercase tracking-widest" style={{ color: MUTED }}>Invoices</h2>
             <button onClick={() => setShowAddInvoice(true)}
-              className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition">
+              className="text-xs px-3 py-1.5 rounded-lg transition font-medium"
+              style={{ background: TEXT, color: '#FFF' }}>
               + Add Invoice
             </button>
           </div>
-          <p className="text-gray-500 text-sm mb-4">
+          <p className="text-sm mb-4" style={{ color: MUTED }}>
             Open an invoice to see Meta spend, P&amp;L, and ops expenses for that billing window.
           </p>
-
           {invoices.length === 0 && !error && !setupHint && (
-            <p className="text-gray-500 text-sm">
+            <p className="text-sm" style={{ color: MUTED }}>
               No invoices configured. Run{' '}
-              <code className="text-gray-400">supabase/migration_firm_invoice_periods.sql</code>
-              {' '}and add rows in <code className="text-gray-400">firm_invoices</code> for this firm.
+              <code style={{ color: TEXT }}>supabase/migration_firm_invoice_periods.sql</code>
+              {' '}and add rows in <code style={{ color: TEXT }}>firm_invoices</code>.
             </p>
           )}
-
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {invoices.map(inv => {
               const breakdown = invoiceBreakdown.find(b => b.invoiceCode === inv.code)
               return (
                 <div key={inv.id} className="relative group">
-                  <Link
-                    href={`/metrics/firms/${slug}/invoice/${invoicePathSegment(inv.code)}`}
-                    className="block bg-gray-900 border border-gray-800 rounded-xl p-5 hover:border-blue-500/40 transition group"
-                  >
-                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">{inv.code}</p>
-                    <p className="font-semibold text-white group-hover:text-blue-300 transition mb-2">
-                      {inv.title || inv.code}
-                    </p>
-                    <p className="text-sm text-gray-400 mb-3">
-                      {inv.period_start} → {inv.period_end}
-                    </p>
+                  <Link href={`/metrics/firms/${slug}/invoice/${invoicePathSegment(inv.code)}`}
+                    className="block rounded-xl p-5 transition" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                    <p className="text-xs uppercase tracking-wider mb-1" style={{ color: MUTED }}>{inv.code}</p>
+                    <p className="font-semibold mb-2 transition" style={{ color: TEXT }}>{inv.title || inv.code}</p>
+                    <p className="text-sm mb-3" style={{ color: MUTED }}>{inv.period_start} → {inv.period_end}</p>
                     {breakdown && (
-                      <p className="text-xs text-gray-500">
+                      <p className="text-xs" style={{ color: MUTED }}>
                         {breakdown.signedCases} case{breakdown.signedCases !== 1 ? 's' : ''} · {fmt(breakdown.grossRevenue)} gross
                       </p>
                     )}
-                    <p className="text-xs text-gray-600 mt-2">Dashboard · Creatives · PCs</p>
+                    <p className="text-xs mt-2" style={{ color: '#B5AFA8' }}>Dashboard · Creatives · PCs</p>
                   </Link>
-                  <button
-                    onClick={e => openEditInvoice(inv, e)}
-                    className="absolute top-3 right-3 text-gray-600 hover:text-gray-300 transition text-sm opacity-0 group-hover:opacity-100"
-                    title="Edit invoice"
-                  >
-                    ✎
-                  </button>
+                  <button onClick={e => openEditInvoice(inv, e)}
+                    className="absolute top-3 right-3 text-sm opacity-0 group-hover:opacity-100 transition" style={{ color: MUTED }} title="Edit invoice">✎</button>
                 </div>
               )
             })}
           </div>
         </div>
-
       </div>
 
-      {/* Edit Invoice Modal */}
       {showEditInvoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-white">Edit Invoice — {editForm.code}</h2>
-              <button onClick={() => setShowEditInvoice(false)} className="text-gray-500 hover:text-white text-xl">×</button>
+        <Modal title={`Edit Invoice — ${editForm.code}`} onClose={() => setShowEditInvoice(false)}>
+          <form onSubmit={saveEditInvoice} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="col-span-2">
+                <label className="block text-xs mb-1" style={{ color: MUTED }}>Title</label>
+                <input value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} placeholder="Invoice 1" className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: MUTED }}>Period Start *</label>
+                <input type="date" value={editForm.period_start} onChange={e => setEditForm(f => ({ ...f, period_start: e.target.value }))} required className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: MUTED }}>Period End *</label>
+                <input type="date" value={editForm.period_end} onChange={e => setEditForm(f => ({ ...f, period_end: e.target.value }))} required className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: MUTED }}>Payment Received ($)</label>
+                <input type="number" value={editForm.payment_received} onChange={e => setEditForm(f => ({ ...f, payment_received: e.target.value }))} placeholder="35000" className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+              </div>
+              <div>
+                <label className="block text-xs mb-1" style={{ color: MUTED }}>Interest Rate</label>
+                <input type="number" step="0.001" value={editForm.payment_interest_rate} onChange={e => setEditForm(f => ({ ...f, payment_interest_rate: e.target.value }))} placeholder="0.03" className="w-full text-sm rounded-lg px-3 py-2 focus:outline-none" style={inputStyle} />
+              </div>
             </div>
-            <form onSubmit={saveEditInvoice} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div className="col-span-2">
-                  <label className="block text-xs text-gray-400 mb-1">Title</label>
-                  <input value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="Invoice 1"
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Period Start *</label>
-                  <input type="date" value={editForm.period_start} onChange={e => setEditForm(f => ({ ...f, period_start: e.target.value }))}
-                    required
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Period End *</label>
-                  <input type="date" value={editForm.period_end} onChange={e => setEditForm(f => ({ ...f, period_end: e.target.value }))}
-                    required
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Payment Received ($)</label>
-                  <input type="number" value={editForm.payment_received} onChange={e => setEditForm(f => ({ ...f, payment_received: e.target.value }))}
-                    placeholder="35000"
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Interest Rate <span className="text-gray-600">(e.g. 0.03)</span></label>
-                  <input type="number" step="0.001" value={editForm.payment_interest_rate} onChange={e => setEditForm(f => ({ ...f, payment_interest_rate: e.target.value }))}
-                    placeholder="0.03"
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-              </div>
-              {editError && <p className="text-red-400 text-xs">{editError}</p>}
-              <div className="flex gap-2 pt-1">
-                <button type="submit" disabled={editSaving}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition disabled:opacity-50">
-                  {editSaving ? 'Saving...' : 'Save Changes'}
-                </button>
-                <button type="button" onClick={() => setShowEditInvoice(false)}
-                  className="px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+            {editError && <p className="text-xs" style={{ color: '#B91C1C' }}>{editError}</p>}
+            <div className="flex gap-2 pt-1">
+              <button type="submit" disabled={editSaving} className="flex-1 text-sm py-2 rounded-lg transition disabled:opacity-50" style={{ background: TEXT, color: '#FFF' }}>{editSaving ? 'Saving...' : 'Save Changes'}</button>
+              <button type="button" onClick={() => setShowEditInvoice(false)} className="px-4 text-sm py-2 rounded-lg transition" style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>Cancel</button>
+            </div>
+          </form>
+        </Modal>
       )}
 
-      {/* Add Invoice Modal */}
       {showAddInvoice && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-md">
-            <div className="flex items-center justify-between mb-5">
-              <h2 className="text-base font-semibold text-white">Add Invoice</h2>
-              <button onClick={() => { setShowAddInvoice(false); setInvError(null) }} className="text-gray-500 hover:text-white text-xl">×</button>
+        <Modal title="Add Invoice" onClose={() => { setShowAddInvoice(false); setInvError(null) }}>
+          <form onSubmit={addInvoice} className="space-y-4">
+            <InvoiceFormFields form={invForm} setForm={setInvForm} />
+            {invError && <p className="text-xs" style={{ color: '#B91C1C' }}>{invError}</p>}
+            <div className="flex gap-2 pt-1">
+              <button type="submit" disabled={invSaving} className="flex-1 text-sm py-2 rounded-lg transition disabled:opacity-50" style={{ background: TEXT, color: '#FFF' }}>{invSaving ? 'Saving...' : 'Create Invoice'}</button>
+              <button type="button" onClick={() => { setShowAddInvoice(false); setInvError(null) }} className="px-4 text-sm py-2 rounded-lg transition" style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>Cancel</button>
             </div>
-            <form onSubmit={addInvoice} className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Code * <span className="text-gray-600">(e.g. INV-4)</span></label>
-                  <input value={invForm.code} onChange={e => setInvForm(f => ({ ...f, code: e.target.value }))}
-                    placeholder="INV-4" required
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Title</label>
-                  <input value={invForm.title} onChange={e => setInvForm(f => ({ ...f, title: e.target.value }))}
-                    placeholder="Invoice 4"
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Period Start *</label>
-                  <input type="date" value={invForm.period_start} onChange={e => setInvForm(f => ({ ...f, period_start: e.target.value }))}
-                    required
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Period End *</label>
-                  <input type="date" value={invForm.period_end} onChange={e => setInvForm(f => ({ ...f, period_end: e.target.value }))}
-                    required
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Payment Received ($)</label>
-                  <input type="number" value={invForm.payment_received} onChange={e => setInvForm(f => ({ ...f, payment_received: e.target.value }))}
-                    placeholder="35000"
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-400 mb-1">Interest Rate <span className="text-gray-600">(e.g. 0.03)</span></label>
-                  <input type="number" step="0.001" value={invForm.payment_interest_rate} onChange={e => setInvForm(f => ({ ...f, payment_interest_rate: e.target.value }))}
-                    placeholder="0.03"
-                    className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                </div>
-              </div>
-              {invError && <p className="text-red-400 text-xs">{invError}</p>}
-              <div className="flex gap-2 pt-1">
-                <button type="submit" disabled={invSaving}
-                  className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition disabled:opacity-50">
-                  {invSaving ? 'Saving...' : 'Create Invoice'}
-                </button>
-                <button type="button" onClick={() => { setShowAddInvoice(false); setInvError(null) }}
-                  className="px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
+          </form>
+        </Modal>
       )}
     </div>
   )

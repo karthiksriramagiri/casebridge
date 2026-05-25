@@ -8,57 +8,46 @@ import {
   Tooltip, ResponsiveContainer, Legend
 } from 'recharts'
 
+// ─── Design tokens ──────────────────────────────────────────────────────────
+const BG     = '#EDEAE3'
+const CARD   = '#FFFFFF'
+const DARK   = '#1A1A1A'
+const BORDER = '#D4CEBF'
+const MUTED  = '#7A7468'
+const ACCENT = '#C17A4A'
+
 const DATE_PRESETS = [
-  { label: 'Today', value: 'today' },
-  { label: 'Yesterday', value: 'yesterday' },
+  { label: 'Today',       value: 'today' },
+  { label: 'Yesterday',   value: 'yesterday' },
   { label: 'Last 7 days', value: 'last_7d' },
-  { label: 'Last 14 days', value: 'last_14d' },
-  { label: 'Last 30 days', value: 'last_30d' },
+  { label: 'Last 14 days',value: 'last_14d' },
+  { label: 'Last 30 days',value: 'last_30d' },
 ]
 
-function StatCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
+// ─── Stat cards ─────────────────────────────────────────────────────────────
+function LightCard({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
-    <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-      <p className="text-gray-400 text-xs uppercase tracking-wider mb-1">{label}</p>
-      <p className="text-2xl font-bold" style={{color:'#1A1A1A'}}>{value ?? '—'}</p>
-      {sub && <p className="text-gray-500 text-xs mt-1">{sub}</p>}
+    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '18px 20px' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: MUTED, marginBottom: 6 }}>{label}</p>
+      <p style={{ fontSize: 22, fontWeight: 700, color: DARK, lineHeight: 1 }}>{value ?? '—'}</p>
+      {sub && <p style={{ fontSize: 11, color: MUTED, marginTop: 4 }}>{sub}</p>}
+    </div>
+  )
+}
+function DarkCard({ label, value, sub, terracotta }: { label: string; value: string | number; sub?: string; terracotta?: boolean }) {
+  return (
+    <div style={{ background: DARK, border: `1px solid #333`, borderRadius: 10, padding: '18px 20px' }}>
+      <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#9CA3AF', marginBottom: 6 }}>{label}</p>
+      <p style={{ fontSize: 22, fontWeight: 700, color: terracotta ? ACCENT : '#FFFFFF', lineHeight: 1 }}>{value ?? '—'}</p>
+      {sub && <p style={{ fontSize: 11, color: '#6B7280', marginTop: 4 }}>{sub}</p>}
     </div>
   )
 }
 
-function Table({ columns, rows }: { columns: string[]; rows: any[][] }) {
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-gray-800">
-            {columns.map(c => (
-              <th key={c} className="text-left text-gray-400 font-medium py-3 px-4 text-xs uppercase tracking-wider">{c}</th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/30 transition">
-              {row.map((cell, j) => (
-                <td key={j} className="py-3 px-4 text-gray-200">{cell ?? '—'}</td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  )
-}
-
-// ─── Marketing helpers (mirrors firm marketing page) ───────────────────────
-
+// ─── Phase / alert helpers ───────────────────────────────────────────────────
 function alertLevel(ad: any): 'kill' | 'watch' | 'floor' | 'read_decide' | 'scale' | null {
-  const spend = ad.spend ?? 0
-  const leads = ad.metaLeads ?? ad.leads ?? 0
-  const cpl = ad.cpl ?? null
-  const cpq = ad.cpq != null ? parseFloat(ad.cpq) : null
-  const signed = ad.signedCases ?? 0
+  const spend = ad.spend ?? 0, leads = ad.metaLeads ?? ad.leads ?? 0
+  const cpl = ad.cpl ?? null, cpq = ad.cpq != null ? parseFloat(ad.cpq) : null, signed = ad.signedCases ?? 0
   if (spend < 600) { if (cpl != null && cpl > 300) return 'kill'; return 'floor' }
   if (leads === 0) return 'kill'
   if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpq == null || cpq <= 1200)) return 'scale'
@@ -70,35 +59,31 @@ function alertLevel(ad: any): 'kill' | 'watch' | 'floor' | 'read_decide' | 'scal
   return null
 }
 
-function AlertBadge({ level }: { level: ReturnType<typeof alertLevel> }) {
+function AlertPill({ level }: { level: ReturnType<typeof alertLevel> }) {
   if (!level) return null
-  const cfg = {
-    kill:        { cls: 'bg-red-900/40 text-red-400 border-red-700/40',         label: 'KILL' },
-    watch:       { cls: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40', label: 'WATCH' },
-    floor:       { cls: 'bg-gray-800 text-gray-400 border-gray-700',             label: 'FLOOR' },
-    read_decide: { cls: 'bg-orange-900/40 text-orange-400 border-orange-700/40', label: 'READ & DECIDE' },
-    scale:       { cls: 'bg-green-900/40 text-green-400 border-green-700/40',    label: 'SCALE ↑' },
-  }[level]
-  return <span className={`text-[10px] border px-1.5 py-0.5 rounded font-semibold ${cfg.cls}`}>{cfg.label}</span>
+  const cfg: Record<string, { bg: string; color: string; label: string }> = {
+    kill:        { bg: '#FEE2E2', color: '#991B1B', label: 'KILL'         },
+    watch:       { bg: '#FEF9C3', color: '#78350F', label: 'WATCH'        },
+    floor:       { bg: '#F3F4F6', color: '#4B5563', label: 'FLOOR'        },
+    read_decide: { bg: '#FFF7ED', color: '#9A3412', label: 'READ/DECIDE'  },
+    scale:       { bg: '#DCFCE7', color: '#14532D', label: 'SCALE ↑'      },
+  }
+  const c = cfg[level]
+  return (
+    <span style={{ background: c.bg, color: c.color, borderRadius: 4, padding: '2px 7px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
+      {c.label}
+    </span>
+  )
 }
 
-function CreativeNameCell({ name, firmSlug }: { name: string; firmSlug: string | null }) {
-  const [show, setShow] = useState(false)
-  return (
-    <td className="py-3 px-4 max-w-[200px]">
-      <div className="relative inline-block w-full" onMouseEnter={() => setShow(true)} onMouseLeave={() => setShow(false)}>
-        {firmSlug ? (
-          <Link href={`/metrics/firms/${firmSlug}`} className="text-gray-200 hover:text-blue-400 transition truncate block">{name || '—'}</Link>
-        ) : (
-          <p className="text-gray-200 truncate cursor-default">{name || '—'}</p>
-        )}
-        {show && name && (
-          <div className="absolute z-50 left-0 top-full mt-1.5 w-max max-w-xs bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-xs text-gray-100 shadow-xl pointer-events-none">{name}</div>
-        )}
-      </div>
-      {firmSlug && <p className="text-[10px] text-gray-600 mt-0.5">{firmSlug}</p>}
-    </td>
-  )
+function campaignPhase(ads: any[]): { label: string; bg: string; color: string } {
+  const levels = ads.map(alertLevel)
+  if (levels.includes('scale'))       return { label: 'SCALE',  bg: '#DCFCE7', color: '#14532D' }
+  if (levels.includes('read_decide')) return { label: 'REVIEW', bg: '#FFF7ED', color: '#9A3412' }
+  if (levels.includes('watch'))       return { label: 'WATCH',  bg: '#FEF9C3', color: '#78350F' }
+  if (levels.includes('kill'))        return { label: 'KILL',   bg: '#FEE2E2', color: '#991B1B' }
+  if (levels.includes('floor'))       return { label: 'FLOOR',  bg: '#F3F4F6', color: '#4B5563' }
+  return                                    { label: 'ACTIVE', bg: '#E0F2FE', color: '#075985' }
 }
 
 function fmt$(n: number | null | undefined) {
@@ -106,619 +91,741 @@ function fmt$(n: number | null | undefined) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 })
 }
 
-function MarketingPanel({ ads, campaigns, adsets, subTab, setSubTab }: {
-  ads: any[]; campaigns: any[]; adsets: any[]
-  subTab: 'campaigns' | 'adsets' | 'ads'
-  setSubTab: (t: 'campaigns' | 'adsets' | 'ads') => void
+// ─── Campaign section ────────────────────────────────────────────────────────
+function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
+  name: string; ads: any[]
+  onClickStage: (ad: any, stage: 'nr' | 'nq' | 'fu') => void
+  onClickLeads: (ad: any) => void
 }) {
-  const killCount = ads.filter(a => alertLevel(a) === 'kill').length
-  const watchCount = ads.filter(a => alertLevel(a) === 'watch').length
-  const scaleCount = ads.filter(a => alertLevel(a) === 'scale').length
-  const readDecideCount = ads.filter(a => alertLevel(a) === 'read_decide').length
-  const activeCount = ads.filter((a: any) => a.isActive).length
+  const totalSpend  = ads.reduce((s, a) => s + (a.spend ?? 0), 0)
+  const totalLeads  = ads.reduce((s, a) => s + (a.metaLeads ?? a.leads ?? 0), 0)
+  const totalSigned = ads.reduce((s, a) => s + (a.signedCases ?? 0), 0)
+  const totalNr     = ads.reduce((s, a) => s + (a.nrCount ?? 0), 0)
+  const totalNq     = ads.reduce((s, a) => s + (a.nqCount ?? 0), 0)
+  const totalFu     = ads.reduce((s, a) => s + (a.fuCount ?? 0), 0)
+  const cpl  = totalLeads  > 0 ? totalSpend / totalLeads  : null
+  const cpq  = totalSigned > 0 ? totalSpend / totalSigned : null
+  const phase = campaignPhase(ads)
 
-  // Adset aggregation from ad-level data
-  const adsetMap: Record<string, any> = {}
-  for (const a of ads) {
-    const key = a.adsetId || a.adsetName || '—'
-    if (!adsetMap[key]) adsetMap[key] = { name: a.adsetName || '—', spend: 0, metaLeads: 0, signedCases: 0, impressions: 0, adCount: 0 }
-    adsetMap[key].spend += a.spend; adsetMap[key].metaLeads += (a.metaLeads ?? a.leads ?? 0)
-    adsetMap[key].signedCases += a.signedCases; adsetMap[key].impressions += a.impressions; adsetMap[key].adCount += 1
-  }
-  const aggAdsets = Object.values(adsetMap).sort((a: any, b: any) => b.spend - a.spend)
+  const TH = ({ children, right }: { children: React.ReactNode; right?: boolean }) => (
+    <th style={{ textAlign: right ? 'right' : 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, padding: '9px 10px', whiteSpace: 'nowrap', borderBottom: `1px solid ${BORDER}`, background: '#F5F1EB' }}>
+      {children}
+    </th>
+  )
 
-  // Campaign aggregation
-  const campMap: Record<string, any> = {}
-  for (const a of ads) {
-    const key = a.campaignId || a.campaignName || '—'
-    if (!campMap[key]) campMap[key] = { name: a.campaignName || '—', spend: 0, metaLeads: 0, signedCases: 0, impressions: 0, adCount: 0 }
-    campMap[key].spend += a.spend; campMap[key].metaLeads += (a.metaLeads ?? a.leads ?? 0)
-    campMap[key].signedCases += a.signedCases; campMap[key].impressions += a.impressions; campMap[key].adCount += 1
-  }
-  const aggCampaigns = Object.values(campMap).sort((a: any, b: any) => b.spend - a.spend)
+  const dim = '#C4BAB0'
+  const fmtPct = (v: number | null | undefined) => v != null ? v.toFixed(2) + '%' : '—'
 
   return (
-    <div className="space-y-4">
-      {/* Alert banner */}
-      {(killCount > 0 || watchCount > 0 || scaleCount > 0 || readDecideCount > 0) && (
-        <div className="rounded-xl border border-gray-700/40 bg-gray-900 px-4 py-3 text-sm flex items-center gap-3 flex-wrap">
-          {killCount > 0 && <span className="text-red-400 font-semibold">{killCount} kill</span>}
-          {watchCount > 0 && <span className="text-yellow-400">{watchCount} watch</span>}
-          {readDecideCount > 0 && <span className="text-orange-400">{readDecideCount} read & decide</span>}
-          {scaleCount > 0 && <span className="text-green-400 font-semibold">{scaleCount} ready to scale ↑</span>}
-          <span className="text-gray-600 text-xs ml-auto">Phase logic</span>
+    <div style={{ border: `1px solid ${BORDER}`, borderRadius: 8, overflow: 'hidden', marginBottom: 20 }}>
+      {/* Campaign header — dark */}
+      <div style={{ background: DARK, padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ background: phase.bg, color: phase.color, fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+            {phase.label}
+          </span>
+          <span style={{ color: '#E5E7EB', fontWeight: 600, fontSize: 13 }}>{name}</span>
         </div>
-      )}
-
-      {/* View toggle */}
-      <div className="flex items-center justify-between">
-        <div className="flex gap-1">
-          {(['ads', 'adsets', 'campaigns'] as const).map(v => (
-            <button key={v} onClick={() => setSubTab(v)}
-              className={`px-3 py-1.5 rounded-lg text-sm transition ${subTab === v ? 'bg-gray-700 text-white' : 'text-gray-500 hover:text-gray-300'}`}>
-              {v === 'ads' ? 'Creatives' : v === 'adsets' ? 'Ad Sets' : 'Campaigns'}
-            </button>
-          ))}
+        <div style={{ display: 'flex', gap: 18, fontSize: 11, color: '#9CA3AF', flexShrink: 0 }}>
+          <span><span style={{ color: '#FFF', fontWeight: 700 }}>{fmt$(totalSpend)}</span> spend</span>
+          <span><span style={{ color: '#FFF', fontWeight: 700 }}>{totalLeads}</span> leads</span>
+          <span>CPL <span style={{ color: ACCENT, fontWeight: 700 }}>{fmt$(cpl)}</span></span>
+          <span>CPQ <span style={{ color: ACCENT, fontWeight: 700 }}>{fmt$(cpq)}</span></span>
+          {totalSigned > 0 && <span>SIGNED <span style={{ color: '#4ADE80', fontWeight: 700 }}>{totalSigned}</span></span>}
         </div>
-        {subTab === 'ads' && activeCount > 0 && (
-          <span className="text-xs text-blue-400">{activeCount} active today</span>
-        )}
       </div>
 
-      {/* Creatives table */}
-      {subTab === 'ads' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-300">Creatives</p>
-            <span className="text-xs text-gray-600">{ads.length} ads</span>
-          </div>
-          {ads.length === 0 ? (
-            <p className="text-gray-500 text-sm p-6 text-center">No ad data for this period.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-800">
-                    {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'NR', 'NQ', 'F/U', 'Signed', 'CPQ', 'Phase'].map(c => (
-                      <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {ads.map((a: any, i: number) => {
-                    const level = alertLevel(a)
-                    const cpl = a.cpl != null ? parseFloat(String(a.cpl)) : null
-                    const cpq = a.cpq != null ? parseFloat(String(a.cpq)) : null
-                    const metaLeads = a.metaLeads ?? a.leads ?? 0
-                    return (
-                      <tr key={i} className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${!a.isActive ? 'opacity-50' : ''} ${level === 'kill' ? 'bg-red-950/10' : level === 'watch' ? 'bg-yellow-950/10' : level === 'scale' ? 'bg-green-950/10' : ''}`}>
-                        <td className="py-3 px-3 w-6">
-                          <span className={`block w-2 h-2 rounded-full ${a.isActive ? 'bg-green-500' : 'bg-gray-700'}`} title={a.isActive ? 'Active' : 'Paused'} />
-                        </td>
-                        <CreativeNameCell name={a.name || a.adName} firmSlug={a.firmSlug} />
-                        <td className="py-3 px-4 max-w-[160px]">
-                          <p className="text-gray-400 text-xs truncate" title={a.adsetName}>{a.adsetName || '—'}</p>
-                        </td>
-                        <td className="py-3 px-4 text-gray-200 whitespace-nowrap">{fmt$(a.spend)}</td>
-                        <td className="py-3 px-4">
-                          {metaLeads > 0 ? <span className="text-gray-300">{metaLeads}</span> : <span className="text-gray-600">0</span>}
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={cpl == null ? 'text-gray-600' : cpl > 300 ? 'text-red-400 font-semibold' : cpl > 220 ? 'text-yellow-400' : 'text-gray-300'}>
-                            {cpl != null ? fmt$(cpl) : '—'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-gray-400">{a.cpc ? fmt$(a.cpc) : '—'}</td>
-                        <td className="py-3 px-4">
-                          <span className={a.ctr > 10 ? 'text-yellow-400' : 'text-gray-400'}>{a.ctr ? a.ctr.toFixed(2) + '%' : '—'}</span>
-                        </td>
-                        <td className="py-3 px-4">
-                          <span className={a.clickToLeadPct != null && a.clickToLeadPct < 0.5 ? 'text-red-400 font-semibold' : 'text-gray-400'}>
-                            {a.clickToLeadPct != null ? a.clickToLeadPct.toFixed(2) + '%' : '—'}
-                          </span>
-                        </td>
-                        <td className="py-3 px-4 text-gray-400">{a.lpvToLeadPct != null ? a.lpvToLeadPct.toFixed(2) + '%' : '—'}</td>
-                        <td className="py-3 px-4 text-xs">
-                          {a.nrCount > 0 ? <span className="text-gray-400">{a.nrCount}</span> : <span className="text-gray-700">—</span>}
-                        </td>
-                        <td className="py-3 px-4 text-xs">
-                          {a.nqCount > 0 ? <span className="text-red-400">{a.nqCount}</span> : <span className="text-gray-700">—</span>}
-                        </td>
-                        <td className="py-3 px-4 text-xs">
-                          {a.fuCount > 0 ? <span className="text-blue-400">{a.fuCount}</span> : <span className="text-gray-700">—</span>}
-                        </td>
-                        <td className="py-3 px-4">
-                          {a.signedCases > 0 ? (
-                            <div>
-                              <span className="text-green-400 font-semibold">{a.signedCases}</span>
-                              {a.firmName && <p className="text-[10px] text-gray-500 mt-0.5">{a.firmName}</p>}
-                            </div>
-                          ) : <span className="text-gray-600">0</span>}
-                        </td>
-                        <td className="py-3 px-4">
-                          {cpq != null
-                            ? <span className={cpq <= 1200 ? 'text-green-400 font-semibold' : cpq > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(cpq)}</span>
-                            : <span className="text-gray-600">—</span>}
-                        </td>
-                        <td className="py-3 px-4"><AlertBadge level={level} /></td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-      )}
+      {/* Ads table — same columns as firm marketing page */}
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+          <thead>
+            <tr>
+              <TH> </TH>
+              <TH>Creative</TH>
+              <TH>Ad Set</TH>
+              <TH>Spend</TH>
+              <TH>Leads</TH>
+              <TH>CPL</TH>
+              <TH>CPC</TH>
+              <TH>CTR</TH>
+              <TH>Click→Lead</TH>
+              <TH>LPV→Lead</TH>
+              <TH>NR</TH>
+              <TH>NQ</TH>
+              <TH>F/U</TH>
+              <TH>Signed</TH>
+              <TH>CPQ</TH>
+              <TH>Phase</TH>
+            </tr>
+          </thead>
+          <tbody>
+            {ads.map((ad, i) => {
+              const level  = alertLevel(ad)
+              const cplVal = ad.cpl != null ? parseFloat(String(ad.cpl)) : null
+              const cpqVal = ad.cpq != null ? parseFloat(String(ad.cpq)) : null
+              const leads  = ad.metaLeads ?? ad.leads ?? 0
+              const c2l    = ad.clickToLeadPct != null ? parseFloat(String(ad.clickToLeadPct)) : null
+              const lpv    = ad.lpvToLeadPct   != null ? parseFloat(String(ad.lpvToLeadPct))   : null
+              const rowBg  = level === 'kill' ? 'rgba(254,226,226,0.35)' : level === 'scale' ? 'rgba(220,252,231,0.25)' : i % 2 === 1 ? '#FAFAF8' : '#FFFFFF'
+              return (
+                <tr key={ad.id || i} style={{ borderBottom: `1px solid ${BORDER}`, background: rowBg }}>
+                  {/* Active dot */}
+                  <td style={{ padding: '8px 10px', width: 14 }}>
+                    <span style={{ display: 'block', width: 7, height: 7, borderRadius: '50%', background: ad.isActive ? '#22C55E' : '#D1D5DB' }} />
+                  </td>
 
-      {/* Ad Sets table */}
-      {subTab === 'adsets' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-gray-800"><p className="text-sm font-medium text-gray-300">Ad Sets</p></div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  {['Ad Set', 'Spend', 'Impressions', 'Leads', 'Signed', 'Conv %', 'CPQ', 'Ads'].map(c => (
-                    <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {aggAdsets.map((a: any, i: number) => (
-                  <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/20">
-                    <td className="py-3 px-4 max-w-[240px]"><p className="text-gray-200 truncate" title={a.name}>{a.name}</p></td>
-                    <td className="py-3 px-4 text-gray-200 whitespace-nowrap">{fmt$(a.spend)}</td>
-                    <td className="py-3 px-4 text-gray-400">{a.impressions?.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-gray-300">{a.metaLeads}</td>
-                    <td className="py-3 px-4 font-semibold text-green-400">{a.signedCases}</td>
-                    <td className="py-3 px-4 text-gray-400">{a.metaLeads > 0 ? (a.signedCases / a.metaLeads * 100).toFixed(1) + '%' : '—'}</td>
-                    <td className="py-3 px-4">{a.signedCases > 0 ? (() => { const c = a.spend / a.signedCases; return <span className={c <= 1200 ? 'text-green-400 font-semibold' : c > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(c)}</span> })() : <span className="text-gray-600">—</span>}</td>
-                    <td className="py-3 px-4 text-gray-500">{a.adCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+                  {/* Creative */}
+                  <td style={{ padding: '8px 10px', maxWidth: 200 }}>
+                    {ad.firmSlug ? (
+                      <Link href={`/metrics/firms/${ad.firmSlug}`} style={{ color: ACCENT, textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
+                        {ad.name || ad.adName || '—'}
+                      </Link>
+                    ) : (
+                      <span style={{ color: DARK, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
+                        {ad.name || ad.adName || '—'}
+                      </span>
+                    )}
+                    {ad.firmName && <span style={{ fontSize: 10, color: MUTED, display: 'block' }}>{ad.firmName}</span>}
+                    {ad.id && <span style={{ fontSize: 9, color: '#B5AFA8', display: 'block', fontFamily: 'monospace' }}>{ad.id}</span>}
+                  </td>
 
-      {/* Campaigns table */}
-      {subTab === 'campaigns' && (
-        <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-          <div className="p-4 border-b border-gray-800"><p className="text-sm font-medium text-gray-300">Campaigns</p></div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-800">
-                  {['Campaign', 'Spend', 'Impressions', 'Leads', 'Signed', 'Conv %', 'CPQ', 'Ads'].map(c => (
-                    <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
-                  ))}
+                  {/* Ad Set */}
+                  <td style={{ padding: '8px 10px', maxWidth: 160, color: MUTED }}>
+                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.adsetName}>
+                      {ad.adsetName || '—'}
+                    </span>
+                  </td>
+
+                  {/* Spend */}
+                  <td style={{ padding: '8px 10px', fontWeight: 600, color: DARK, whiteSpace: 'nowrap' }}>{fmt$(ad.spend)}</td>
+
+                  {/* Leads */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {leads > 0
+                      ? <button onClick={() => onClickLeads(ad)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: DARK, fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{leads}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+
+                  {/* CPL */}
+                  <td style={{ padding: '8px 10px', fontWeight: cplVal != null && cplVal > 300 ? 700 : 400, color: cplVal == null ? dim : cplVal > 300 ? '#B91C1C' : cplVal > 220 ? '#92400E' : DARK }}>
+                    {cplVal != null ? fmt$(cplVal) : '—'}
+                  </td>
+
+                  {/* CPC */}
+                  <td style={{ padding: '8px 10px', color: ad.cpc != null ? MUTED : dim }}>
+                    {ad.cpc != null ? fmt$(ad.cpc) : '—'}
+                  </td>
+
+                  {/* CTR */}
+                  <td style={{ padding: '8px 10px', color: MUTED }}>{ad.ctr ? ad.ctr.toFixed(2) + '%' : '—'}</td>
+
+                  {/* Click→Lead */}
+                  <td style={{ padding: '8px 10px', color: c2l == null ? dim : c2l < 0.5 ? '#B91C1C' : MUTED, fontWeight: c2l != null && c2l < 0.5 ? 700 : 400 }}>
+                    {fmtPct(c2l)}
+                  </td>
+
+                  {/* LPV→Lead */}
+                  <td style={{ padding: '8px 10px', color: lpv == null ? dim : MUTED }}>
+                    {fmtPct(lpv)}
+                  </td>
+
+                  {/* NR */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.nrCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'nr')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: DARK, fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.nrCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+
+                  {/* NQ */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.nqCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'nq')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#B91C1C', fontWeight: 700, textDecoration: 'underline', textDecorationColor: '#FCA5A5', textUnderlineOffset: 2, fontSize: 12 }}>{ad.nqCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+
+                  {/* F/U */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.fuCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'fu')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: ACCENT, fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#E8C4A0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.fuCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+
+                  {/* Signed */}
+                  <td style={{ padding: '8px 10px', fontWeight: (ad.signedCases ?? 0) > 0 ? 700 : 400, color: (ad.signedCases ?? 0) > 0 ? '#15803D' : dim }}>
+                    {(ad.signedCases ?? 0) > 0 ? ad.signedCases : '—'}
+                  </td>
+
+                  {/* CPQ */}
+                  <td style={{ padding: '8px 10px', fontWeight: cpqVal != null ? 700 : 400, color: cpqVal == null ? dim : cpqVal <= 1200 ? '#15803D' : cpqVal > 2000 ? '#B91C1C' : '#92400E' }}>
+                    {cpqVal != null ? fmt$(cpqVal) : '—'}
+                  </td>
+
+                  {/* Phase */}
+                  <td style={{ padding: '8px 10px' }}><AlertPill level={level} /></td>
                 </tr>
-              </thead>
-              <tbody>
-                {aggCampaigns.map((c: any, i: number) => (
-                  <tr key={i} className="border-b border-gray-800/50 hover:bg-gray-800/20">
-                    <td className="py-3 px-4 max-w-[240px]"><p className="text-gray-200 truncate" title={c.name}>{c.name}</p></td>
-                    <td className="py-3 px-4 text-gray-200 whitespace-nowrap">{fmt$(c.spend)}</td>
-                    <td className="py-3 px-4 text-gray-400">{c.impressions?.toLocaleString()}</td>
-                    <td className="py-3 px-4 text-gray-300">{c.metaLeads}</td>
-                    <td className="py-3 px-4 font-semibold text-green-400">{c.signedCases}</td>
-                    <td className="py-3 px-4 text-gray-400">{c.metaLeads > 0 ? (c.signedCases / c.metaLeads * 100).toFixed(1) + '%' : '—'}</td>
-                    <td className="py-3 px-4">{c.signedCases > 0 ? (() => { const q = c.spend / c.signedCases; return <span className={q <= 1200 ? 'text-green-400 font-semibold' : q > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(q)}</span> })() : <span className="text-gray-600">—</span>}</td>
-                    <td className="py-3 px-4 text-gray-500">{c.adCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+              )
+            })}
+          </tbody>
+          {/* Totals row */}
+          <tfoot>
+            <tr style={{ background: '#2A2520' }}>
+              <td colSpan={2}></td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF', fontSize: 11, fontWeight: 700, letterSpacing: '0.04em' }}>Totals</td>
+              <td style={{ padding: '9px 10px', color: '#FFF', fontWeight: 700, whiteSpace: 'nowrap' }}>{fmt$(totalSpend)}</td>
+              <td style={{ padding: '9px 10px', color: '#FFF', fontWeight: 600 }}>{totalLeads || '—'}</td>
+              <td style={{ padding: '9px 10px', color: ACCENT, fontWeight: 700 }}>{fmt$(cpl)}</td>
+              <td colSpan={4}></td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalNr || '—'}</td>
+              <td style={{ padding: '9px 10px', color: totalNq > 0 ? '#FCA5A5' : '#9CA3AF' }}>{totalNq || '—'}</td>
+              <td style={{ padding: '9px 10px', color: totalFu > 0 ? ACCENT : '#9CA3AF' }}>{totalFu || '—'}</td>
+              <td style={{ padding: '9px 10px', color: totalSigned > 0 ? '#4ADE80' : '#9CA3AF', fontWeight: 700 }}>{totalSigned || '—'}</td>
+              <td style={{ padding: '9px 10px', color: ACCENT, fontWeight: 700 }}>{fmt$(cpq)}</td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   )
 }
 
+// ─── Creative leads modal — lazy-loads from /api/metrics/creative-leads ──────
+const STAGE_BADGE: Record<string, { label: string; bg: string; color: string }> = {
+  fu:     { label: 'Follow Up',     bg: '#FEF3C7', color: '#92400E' },
+  nr:     { label: 'No Response',   bg: '#F3F4F6', color: '#374151' },
+  nq:     { label: 'Not Qualified', bg: '#FEE2E2', color: '#991B1B' },
+  signed: { label: 'Signed',        bg: '#DCFCE7', color: '#166534' },
+}
+
+function CreativeLeadsModal({ ad, filterStage, onClose }: {
+  ad: any; filterStage?: 'nr' | 'nq' | 'fu' | null; onClose: () => void
+}) {
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
+
+  // Data is pre-loaded from the same GHL pipeline fetch as the firm page
+  const all: any[] = [
+    ...(ad.nrLeads || []).map((l: any) => ({ ...l, stage: 'nr' })),
+    ...(ad.nqLeads || []).map((l: any) => ({ ...l, stage: 'nq' })),
+    ...(ad.fuLeads || []).map((l: any) => ({ ...l, stage: 'fu' })),
+  ]
+  const displayed = filterStage ? all.filter(l => l.stage === filterStage) : all
+  const metaLeads = ad.metaLeads ?? ad.leads ?? 0
+
+  const stageTitle = filterStage
+    ? (STAGE_BADGE[filterStage]?.label || filterStage.toUpperCase())
+    : 'GHL Pipeline Leads'
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, zIndex: 50, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(3px)', padding: 16 }}
+      onClick={e => { if (e.target === e.currentTarget) onClose() }}>
+      <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, width: '100%', maxWidth: 700, maxHeight: '80vh', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.15)' }}>
+        <div style={{ padding: '20px 24px 16px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ minWidth: 0 }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: filterStage ? (STAGE_BADGE[filterStage]?.color || MUTED) : MUTED, marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.06em' }}>{stageTitle}</p>
+            <p style={{ fontSize: 14, fontWeight: 700, color: DARK, lineHeight: 1.3 }}>{ad.name || ad.adName || '—'}</p>
+            {ad.id && <p style={{ fontSize: 10, color: MUTED, fontFamily: 'monospace', marginTop: 3 }}>{ad.id}</p>}
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: MUTED, fontSize: 20, lineHeight: 1, flexShrink: 0 }}>×</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {displayed.length === 0 ? (
+            <p style={{ textAlign: 'center', color: MUTED, fontSize: 14, padding: '40px 24px' }}>
+              {all.length === 0
+                ? 'No GHL pipeline leads matched to this creative in the last 90 days.'
+                : `No ${stageTitle} leads for this creative.`}
+            </p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ borderBottom: `1px solid ${BORDER}`, background: '#F5F1EB' }}>
+                  {['Contact', 'Phone', 'Status', 'Date'].map(h => (
+                    <th key={h} style={{ textAlign: 'left', fontSize: 9, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, padding: '10px 16px', whiteSpace: 'nowrap' }}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {displayed.map((lead: any, i: number) => {
+                  const sb = STAGE_BADGE[lead.stage] || STAGE_BADGE.nr
+                  return (
+                    <tr key={i} style={{ borderBottom: `1px solid ${BORDER}` }}>
+                      <td style={{ padding: '10px 16px', color: DARK, fontWeight: 500 }}>{lead.name || '—'}</td>
+                      <td style={{ padding: '10px 16px', color: MUTED, fontSize: 12 }}>{lead.phone || '—'}</td>
+                      <td style={{ padding: '10px 16px' }}>
+                        <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 99, background: sb.bg, color: sb.color }}>{sb.label}</span>
+                      </td>
+                      <td style={{ padding: '10px 16px', color: MUTED, fontSize: 12, whiteSpace: 'nowrap' }}>
+                        {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
+        <div style={{ padding: '10px 24px', borderTop: `1px solid ${BORDER}`, fontSize: 11, color: MUTED, display: 'flex', gap: 16 }}>
+          <span>{all.length} in GHL pipeline</span>
+          <span>{metaLeads} Meta leads</span>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── HR / Firms helpers ──────────────────────────────────────────────────────
 const BLANK_FIRM = { name: '', slug: '', case_value: '', meta_account_id: 'act_788484706914452', phase_initial: '5600', phase_scale: '11200', replacement_window_days: '14', sanguine_rate: '250' }
 
+// ─── Main page ───────────────────────────────────────────────────────────────
 export default function MetricsPage() {
   const router = useRouter()
   const [datePreset, setDatePreset] = useState('today')
   const [metaData, setMetaData] = useState<any>(null)
   const [attribution, setAttribution] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'marketing' | 'hr' | 'firms'>('overview')
-  const [marketingSubTab, setMarketingSubTab] = useState<'campaigns' | 'adsets' | 'ads'>('ads')
+  const [activeTab, setActiveTab] = useState<'overview' | 'marketing' | 'hr' | 'firms'>('marketing')
   const [creativeOverview, setCreativeOverview] = useState<Record<string, any>>({})
   const [pipelineOverview, setPipelineOverview] = useState<Record<string, any>>({})
   const [workers, setWorkers] = useState<any[]>([])
+  const [timeEntries, setTimeEntries] = useState<any[]>([]) // today's time entries
+  const [expandedWorker, setExpandedWorker] = useState<string | null>(null)
+  const [leadsModal, setLeadsModal] = useState<{ ad: any; stage?: 'nr' | 'nq' | 'fu' } | null>(null)
+  const [firms, setFirms] = useState<any[]>([])
   const [showAddWorker, setShowAddWorker] = useState(false)
   const [addName, setAddName] = useState('')
   const [addPassword, setAddPassword] = useState('')
   const [addError, setAddError] = useState('')
   const [addLoading, setAddLoading] = useState(false)
   const [createdWorker, setCreatedWorker] = useState<{ name: string; password: string } | null>(null)
-  const [firms, setFirms] = useState<any[]>([])
   const [showAddFirm, setShowAddFirm] = useState(false)
   const [firmForm, setFirmForm] = useState(BLANK_FIRM)
   const [firmSaving, setFirmSaving] = useState(false)
   const [firmError, setFirmError] = useState<string | null>(null)
 
   useEffect(() => {
-    setLoading(true)
-    let cancelled = false
-
-    const metaPromise = fetch(`/api/metrics?date_preset=${datePreset}`)
-      .then(r => r.json())
-      .catch(e => ({ error: (e as Error).message }))
-      .then(d => {
-        if (!cancelled) setMetaData(d)
-      })
-
-    const attrPromise = fetch('/api/metrics/attribution')
-      .then(r => r.json())
-      .catch(e => ({ error: (e as Error).message }))
-      .then(d => {
-        if (!cancelled) setAttribution(d)
-      })
-
-    Promise.allSettled([metaPromise, attrPromise]).then(() => {
-      if (!cancelled) setLoading(false)
-    })
-
-    return () => {
-      cancelled = true
-    }
+    setLoading(true); let cancelled = false
+    const p1 = fetch(`/api/metrics?date_preset=${datePreset}`).then(r => r.json()).catch(() => ({})).then(d => { if (!cancelled) setMetaData(d) })
+    const p2 = fetch('/api/metrics/attribution').then(r => r.json()).catch(() => ({})).then(d => { if (!cancelled) setAttribution(d) })
+    Promise.allSettled([p1, p2]).then(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [datePreset])
 
   useEffect(() => {
-    let cancelled = false
-    fetch('/api/metrics/firms')
-      .then(r => r.json())
-      .then(d => {
-        if (!cancelled) setFirms(d.firms || [])
-      })
-      .catch(() => {})
-    return () => {
-      cancelled = true
-    }
+    let c = false
+    fetch('/api/metrics/firms').then(r => r.json()).then(d => { if (!c) setFirms(d.firms || []) }).catch(() => {})
+    return () => { c = true }
   }, [])
 
   useEffect(() => {
-    fetch('/api/metrics/workers')
-      .then(r => r.json())
-      .then(d => setWorkers(d.workers || []))
-      .catch(() => {})
+    fetch('/api/metrics/workers').then(r => r.json()).then(d => setWorkers(d.workers || [])).catch(() => {})
+    const today = new Date().toISOString().slice(0, 10)
+    fetch(`/api/metrics/time-entries?date=${today}`).then(r => r.json()).then(d => setTimeEntries(d.workers || [])).catch(() => {})
   }, [])
 
-  // Fast: signed cases + firm from Supabase (no GHL calls)
   useEffect(() => {
-    fetch('/api/metrics/creative-overview')
-      .then(r => r.json())
-      .then(d => setCreativeOverview(d.byAdId || {}))
-      .catch(() => {})
+    fetch('/api/metrics/creative-overview').then(r => r.json()).then(d => setCreativeOverview(d.byAdId || {})).catch(() => {})
   }, [])
 
-  // Slow: GHL pipeline NR/NQ/FU counts (runs in background)
   useEffect(() => {
-    fetch('/api/metrics/creative-overview?pipeline=1')
-      .then(r => r.json())
-      .then(d => setPipelineOverview(d.byAdId || {}))
-      .catch(() => {})
+    // Fetch each pipeline separately (same as firm KPI page — one pipeline per call to avoid timeout)
+    const firms = ['lhp', 'eisenberg', 'thl', 'mca']
+    Promise.all(
+      firms.map(f =>
+        fetch(`/api/metrics/creative-overview?firm=${f}&leads=1`)
+          .then(r => r.json())
+          .catch(() => ({ byAdId: {} }))
+      )
+    ).then(results => {
+      const merged: Record<string, any> = {}
+      for (const d of results) {
+        for (const [adId, data] of Object.entries(d.byAdId || {})) {
+          if (!merged[adId]) {
+            merged[adId] = data
+          } else {
+            const m = merged[adId] as any
+            const p = data as any
+            m.nrCount  = (m.nrCount  || 0) + (p.nrCount  || 0)
+            m.nqCount  = (m.nqCount  || 0) + (p.nqCount  || 0)
+            m.fuCount  = (m.fuCount  || 0) + (p.fuCount  || 0)
+            m.nrLeads  = [...(m.nrLeads || []), ...(p.nrLeads || [])]
+            m.nqLeads  = [...(m.nqLeads || []), ...(p.nqLeads || [])]
+            m.fuLeads  = [...(m.fuLeads || []), ...(p.fuLeads || [])]
+          }
+        }
+      }
+      setPipelineOverview(merged)
+    })
   }, [])
 
   async function handleAddWorker(e: React.FormEvent) {
     e.preventDefault()
-    if (!addName.trim() || !addPassword.trim()) { setAddError('Name and password are required.'); return }
+    if (!addName.trim() || !addPassword.trim()) { setAddError('Name and password required.'); return }
     setAddLoading(true); setAddError('')
-    const res = await fetch('/api/teams/admin/reps', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: addName.trim(), password: addPassword }),
-    })
-    const data = await res.json()
-    setAddLoading(false)
-    if (!res.ok) { setAddError(data.error || 'Failed to create worker.'); return }
-    setCreatedWorker({ name: addName.trim(), password: addPassword })
-    setAddName(''); setAddPassword('')
+    const res = await fetch('/api/teams/admin/reps', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: addName.trim(), password: addPassword }) })
+    const data = await res.json(); setAddLoading(false)
+    if (!res.ok) { setAddError(data.error || 'Failed.'); return }
+    setCreatedWorker({ name: addName.trim(), password: addPassword }); setAddName(''); setAddPassword('')
     setWorkers(prev => [...prev, { id: data.id, name: addName.trim() }])
   }
 
   async function addFirm(e: React.FormEvent) {
-    e.preventDefault()
-    setFirmSaving(true)
-    setFirmError(null)
-    const res = await fetch('/api/metrics/firms', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: firmForm.name,
-        slug: firmForm.slug,
-        case_value: firmForm.case_value,
-        meta_account_id: firmForm.meta_account_id,
-        phase_initial_max_weekly_spend: firmForm.phase_initial,
-        phase_scale_max_weekly_spend: firmForm.phase_scale,
-        replacement_window_days: firmForm.replacement_window_days,
-        sanguine_rate_per_closed_case: firmForm.sanguine_rate,
-      }),
-    })
-    const data = await res.json()
-    setFirmSaving(false)
+    e.preventDefault(); setFirmSaving(true); setFirmError(null)
+    const res = await fetch('/api/metrics/firms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: firmForm.name, slug: firmForm.slug, case_value: firmForm.case_value, meta_account_id: firmForm.meta_account_id, phase_initial_max_weekly_spend: firmForm.phase_initial, phase_scale_max_weekly_spend: firmForm.phase_scale, replacement_window_days: firmForm.replacement_window_days, sanguine_rate_per_closed_case: firmForm.sanguine_rate }) })
+    const data = await res.json(); setFirmSaving(false)
     if (data.error) { setFirmError(data.error); return }
-    setFirms(prev => [...prev, data.firm])
-    setShowAddFirm(false)
-    setFirmForm(BLANK_FIRM)
+    setFirms(prev => [...prev, data.firm]); setShowAddFirm(false); setFirmForm(BLANK_FIRM)
   }
 
   async function logout() {
-    await fetch('/api/auth/logout', { method: 'POST' })
-    router.push('/login')
+    await fetch('/api/auth/logout', { method: 'POST' }); router.push('/login')
   }
 
-  const totalSignedCases = workers.reduce((s: number, w: any) => s + w.signedCases, 0)
+  // ── Derived data ──────────────────────────────────────────────────────────
   const spend = parseFloat(metaData?.summary?.spend || 0)
-  const cpq = totalSignedCases > 0 ? (spend / totalSignedCases).toFixed(2) : null
+  const totalLeads = metaData?.summary?.leads ?? 0
+  const totalImpressions = metaData?.summary?.impressions ?? 0
+  const totalClicks = metaData?.summary?.clicks ?? 0
 
-  // Merge creative overview data with Meta ad data
+  // Build ad-level attribution first so CPQ uses the same signed-case source
   const adsWithAttribution = (metaData?.ads || []).map((ad: any) => {
     const ov = creativeOverview[ad.id] || {}
     const pl = pipelineOverview[ad.id] || {}
     const signedCases = ov.signedCases || 0
-    const cpq = signedCases > 0 ? ad.spend / signedCases : null
-    // Active = has spend today (most reliable signal) OR flagged active
-    const isActive = ad.spend > 0
-    return {
-      ...ad,
-      signedCases,
-      cpq,
-      isActive,
-      firmSlug: ov.firmSlug || null,
-      firmName: ov.firmName || null,
-      nrCount: pl.nrCount || 0,
-      nqCount: pl.nqCount || 0,
-      fuCount: pl.fuCount || 0,
-    }
-  }).sort((a: any, b: any) => {
-    if (a.isActive && !b.isActive) return -1
-    if (!a.isActive && b.isActive) return 1
-    return b.spend - a.spend
-  })
+    const adCpq = signedCases > 0 ? ad.spend / signedCases : null
+    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [] }
+  }).sort((a: any, b: any) => b.spend - a.spend)
+
+  // CPQ = total spend / total signed cases (both from the same date-filtered Meta + attribution data)
+  const totalSignedCases = adsWithAttribution.reduce((s: number, ad: any) => s + (ad.signedCases || 0), 0)
+  const cpl = totalLeads > 0 ? (spend / totalLeads) : null
+  const cpq = totalSignedCases > 0 ? (spend / totalSignedCases) : null
+
+  // Group ads by campaign for Ops Dashboard view
+  const campaignGroups: Record<string, { name: string; ads: any[] }> = {}
+  for (const ad of adsWithAttribution) {
+    const key = ad.campaignId || ad.campaignName || '—'
+    if (!campaignGroups[key]) campaignGroups[key] = { name: ad.campaignName || 'Unknown Campaign', ads: [] }
+    campaignGroups[key].ads.push(ad)
+  }
+  const sortedGroups = Object.values(campaignGroups).sort((a, b) =>
+    b.ads.reduce((s: number, ad: any) => s + ad.spend, 0) - a.ads.reduce((s: number, ad: any) => s + ad.spend, 0)
+  )
+
+  // ── Input style ──────────────────────────────────────────────────────────
+  const inputStyle = { background: '#F5F0E8', border: `1px solid ${BORDER}`, color: DARK, borderRadius: 8, padding: '8px 12px', fontSize: 13, width: '100%', outline: 'none' }
+
+  // ── Shared section label ──────────────────────────────────────────────────
+  const SectionLabel = ({ children }: { children: React.ReactNode }) => (
+    <p style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em', color: MUTED, marginBottom: 12 }}>{children}</p>
+  )
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Header */}
-      <div className="border-b border-gray-800 px-6 py-4 flex items-center justify-between" style={{backgroundColor:'#FFFFFF',borderColor:'#D9D3C8'}}>
-        <div className="flex items-center gap-6">
-          <h1 className="text-xl font-bold tracking-tight" style={{color:'#1A1A1A'}}>CaseBridge <span className="font-serif italic" style={{color:'#C17A4A',fontFamily:'var(--font-dm-serif)'}}>Metrics</span></h1>
-          <div className="flex gap-1">
-            {(['overview', 'marketing', 'hr', 'firms'] as const).map(tab => (
-              <button
-                key={tab}
-                onClick={() => setActiveTab(tab)}
-                className={`px-3 py-1.5 rounded-lg text-sm capitalize transition ${activeTab === tab ? 'bg-gray-800 text-white' : 'text-gray-400 hover:text-white'}`}
-              >
-                {tab === 'hr' ? 'HR' : tab.charAt(0).toUpperCase() + tab.slice(1)}
-              </button>
-            ))}
+    <div style={{ minHeight: '100vh', background: BG, color: DARK }}>
+
+      {/* ── Top nav bar ─────────────────────────────────────────────────── */}
+      <div style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, padding: '0 24px', display: 'flex', alignItems: 'stretch', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', paddingRight: 28, marginRight: 8 }}>
+            <span style={{ fontWeight: 700, fontSize: 16, color: DARK }}>CaseBridge</span>
+            <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, fontSize: 16, color: ACCENT, marginLeft: 5 }}>Metrics</span>
           </div>
+          {(['overview', 'marketing', 'hr', 'firms'] as const).map(tab => (
+            <button key={tab} onClick={() => setActiveTab(tab)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', fontSize: 13, fontWeight: activeTab === tab ? 700 : 500, color: activeTab === tab ? DARK : MUTED, borderBottom: activeTab === tab ? `2px solid ${DARK}` : '2px solid transparent', transition: 'all 0.15s' }}>
+              {tab === 'hr' ? 'HR' : tab.charAt(0).toUpperCase() + tab.slice(1)}
+            </button>
+          ))}
         </div>
-        <div className="flex items-center gap-3">
-          <select
-            value={datePreset}
-            onChange={e => setDatePreset(e.target.value)}
-            className="bg-gray-800 border border-gray-700 text-sm text-white rounded-lg px-3 py-1.5 focus:outline-none"
-          >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <select value={datePreset} onChange={e => setDatePreset(e.target.value)}
+            style={{ background: DARK, color: '#FFF', border: 'none', borderRadius: 7, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', outline: 'none' }}>
             {DATE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
-          <button onClick={logout} className="text-gray-400 hover:text-white text-sm transition">Logout</button>
+          <button onClick={logout} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: MUTED }}>Logout</button>
         </div>
       </div>
 
-      <div className="p-6">
+      {/* ── Page content ────────────────────────────────────────────────── */}
+      <div style={{ padding: '32px 28px', maxWidth: 1400, margin: '0 auto' }}>
         {loading ? (
-          <div className="flex items-center justify-center h-64 text-gray-400">Loading...</div>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200, color: MUTED, fontSize: 14 }}>Loading…</div>
         ) : (
           <>
-            {/* Overview Tab */}
-            {activeTab === 'overview' && (
-              <div className="space-y-6">
-                {/* Summary cards */}
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                  <StatCard label="Total Spend" value={`$${spend.toLocaleString()}`} />
-                  <StatCard label="Impressions" value={metaData?.summary?.impressions?.toLocaleString()} />
-                  <StatCard label="Clicks" value={metaData?.summary?.clicks?.toLocaleString()} />
-                  <StatCard label="CTR" value={`${metaData?.summary?.ctr}%`} />
-                  <StatCard label="Leads" value={metaData?.summary?.leads} />
-                  <StatCard label="CPL" value={metaData?.summary?.cpl ? `$${metaData.summary.cpl}` : '—'} />
-                  <StatCard label="CPQ" value={cpq ? `$${cpq}` : '—'} sub="Cost per qualified" />
-                  <StatCard label="Signed Cases" value={totalSignedCases} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
+
+            {/* ══ MARKETING / OPS DASHBOARD ════════════════════════════════ */}
+            {activeTab === 'marketing' && (
+              <div>
+                {/* Title */}
+                <div style={{ marginBottom: 6 }}>
+                  <h1 style={{ fontSize: 36, fontWeight: 800, lineHeight: 1, margin: 0, color: DARK }}>
+                    Ops{' '}
+                    <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: ACCENT }}>Dashboard</span>
+                  </h1>
+                </div>
+                <p style={{ fontSize: 13, color: MUTED, marginBottom: 28, marginTop: 6 }}>
+                  {fmt$(spend)} spent &nbsp;·&nbsp; {totalLeads} leads &nbsp;·&nbsp; CPQ {cpq ? fmt$(cpq) : '—'} &nbsp;·&nbsp; {totalSignedCases} signed cases
+                </p>
+
+                {/* Stat cards — 2 dark (CPL + CPQ) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10, marginBottom: 32 }}>
+                  <LightCard label="Total Spend"   value={fmt$(spend)} />
+                  <LightCard label="Impressions"   value={(totalImpressions || 0).toLocaleString()} />
+                  <LightCard label="Clicks"        value={(totalClicks || 0).toLocaleString()} />
+                  <LightCard label="Leads"         value={totalLeads} />
+                  <DarkCard  label="CPL"           value={cpl ? fmt$(cpl) : '—'}  sub="Cost per lead" />
+                  <DarkCard  label="CPQ"           value={cpq ? fmt$(cpq) : '—'}  sub="Cost per qualified" terracotta />
+                  <LightCard label="CTR"           value={metaData?.summary?.ctr ? `${metaData.summary.ctr}%` : '—'} />
+                  <LightCard label="Signed Cases"  value={totalSignedCases} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
                 </div>
 
-                {/* Cost per signed case */}
+                {/* Campaign-grouped creative sections */}
+                {sortedGroups.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '60px 0', color: MUTED, fontSize: 14 }}>No ad data for this period.</div>
+                ) : (
+                  sortedGroups.map(g => (
+                    <CampaignSection
+                      key={g.name}
+                      name={g.name}
+                      ads={g.ads}
+                      onClickStage={(ad, stage) => setLeadsModal({ ad, stage })}
+                      onClickLeads={ad => setLeadsModal({ ad })}
+                    />
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* ══ OVERVIEW ═════════════════════════════════════════════════ */}
+            {activeTab === 'overview' && (
+              <div>
+                <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 4, color: DARK }}>
+                  Overview{' '}
+                  <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: ACCENT, fontSize: 28 }}>Summary</span>
+                </h1>
+                <p style={{ fontSize: 13, color: MUTED, marginBottom: 24 }}>
+                  {fmt$(spend)} spent &nbsp;·&nbsp; {totalLeads} leads &nbsp;·&nbsp; {totalSignedCases} signed cases
+                </p>
+
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10, marginBottom: 24 }}>
+                  <LightCard label="Total Spend"  value={fmt$(spend)} />
+                  <LightCard label="Impressions"  value={(totalImpressions || 0).toLocaleString()} />
+                  <LightCard label="Clicks"       value={(totalClicks || 0).toLocaleString()} />
+                  <LightCard label="CTR"          value={metaData?.summary?.ctr ? `${metaData.summary.ctr}%` : '—'} />
+                  <LightCard label="Leads"        value={totalLeads} />
+                  <DarkCard  label="CPL"          value={cpl ? fmt$(cpl) : '—'} />
+                  <DarkCard  label="CPQ"          value={cpq ? fmt$(cpq) : '—'} terracotta />
+                  <LightCard label="Signed Cases" value={totalSignedCases} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
+                </div>
+
                 {attribution?.totals?.signedCases > 0 && (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-                    <StatCard
-                      label="Cost Per Signed Case"
-                      value={`$${(parseFloat(metaData?.summary?.spend) / attribution.totals.signedCases).toFixed(2)}`}
-                      sub="Total spend ÷ signed cases"
-                    />
-                    <StatCard
-                      label="Sign Rate"
-                      value={`${metaData?.summary?.leads > 0 ? ((attribution.totals.signedCases / metaData.summary.leads) * 100).toFixed(1) : 0}%`}
-                      sub="Leads → Signed Cases"
-                    />
-                    <StatCard
-                      label="NQ Rate"
-                      value={`${metaData?.summary?.leads > 0 ? ((attribution.totals.notQualified / metaData.summary.leads) * 100).toFixed(1) : 0}%`}
-                      sub="Leads → Not Qualified"
-                    />
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
+                    <LightCard label="Cost Per Signed Case" value={`$${(spend / attribution.totals.signedCases).toFixed(2)}`} sub="Total spend ÷ signed cases" />
+                    <LightCard label="Sign Rate" value={`${totalLeads > 0 ? ((attribution.totals.signedCases / totalLeads) * 100).toFixed(1) : 0}%`} sub="Leads → Signed Cases" />
+                    <LightCard label="NQ Rate" value={`${totalLeads > 0 ? ((attribution.totals.notQualified / totalLeads) * 100).toFixed(1) : 0}%`} sub="Leads → Not Qualified" />
                   </div>
                 )}
 
-                {/* Daily spend + leads chart */}
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                  <h2 className="text-sm font-medium text-gray-300 mb-4">Daily Spend & Leads</h2>
-                  <ResponsiveContainer width="100%" height={250}>
-                    <LineChart data={metaData?.daily || []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={d => d.slice(5)} />
-                      <YAxis yAxisId="left" tick={{ fill: '#6b7280', fontSize: 11 }} />
-                      <YAxis yAxisId="right" orientation="right" tick={{ fill: '#6b7280', fontSize: 11 }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '8px' }} />
-                      <Legend />
-                      <Line yAxisId="left" type="monotone" dataKey="spend" stroke="#3b82f6" name="Spend ($)" dot={false} strokeWidth={2} />
-                      <Line yAxisId="right" type="monotone" dataKey="leads" stroke="#10b981" name="Leads" dot={false} strokeWidth={2} />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
+                  <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 20 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: DARK, marginBottom: 16 }}>Daily Spend &amp; Leads</p>
+                    <ResponsiveContainer width="100%" height={240}>
+                      <LineChart data={metaData?.daily || []}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                        <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickFormatter={d => d.slice(5)} />
+                        <YAxis yAxisId="left" tick={{ fill: '#9CA3AF', fontSize: 10 }} />
+                        <YAxis yAxisId="right" orientation="right" tick={{ fill: '#9CA3AF', fontSize: 10 }} />
+                        <Tooltip contentStyle={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, color: DARK }} />
+                        <Legend />
+                        <Line yAxisId="left"  type="monotone" dataKey="spend" stroke="#3b82f6" name="Spend ($)" dot={false} strokeWidth={2} />
+                        <Line yAxisId="right" type="monotone" dataKey="leads" stroke="#10b981" name="Leads"     dot={false} strokeWidth={2} />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
 
-                {/* Daily spend bar chart */}
-                <div className="bg-gray-900 border border-gray-800 rounded-xl p-5">
-                  <h2 className="text-sm font-medium text-gray-300 mb-4">Daily Spend</h2>
-                  <ResponsiveContainer width="100%" height={200}>
-                    <BarChart data={metaData?.daily || []}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#1f2937" />
-                      <XAxis dataKey="date" tick={{ fill: '#6b7280', fontSize: 11 }} tickFormatter={d => d.slice(5)} />
-                      <YAxis tick={{ fill: '#6b7280', fontSize: 11 }} />
-                      <Tooltip contentStyle={{ backgroundColor: '#111827', border: '1px solid #374151', borderRadius: '8px' }} />
-                      <Bar dataKey="spend" fill="#3b82f6" name="Spend ($)" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
+                  <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 20 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: DARK, marginBottom: 16 }}>Daily Spend</p>
+                    <ResponsiveContainer width="100%" height={180}>
+                      <BarChart data={metaData?.daily || []}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
+                        <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickFormatter={d => d.slice(5)} />
+                        <YAxis tick={{ fill: '#9CA3AF', fontSize: 10 }} />
+                        <Tooltip contentStyle={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, color: DARK }} />
+                        <Bar dataKey="spend" fill="#3b82f6" name="Spend ($)" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             )}
 
-            {/* Marketing Tab */}
-            {activeTab === 'marketing' && (
-              <MarketingPanel
-                ads={adsWithAttribution}
-                campaigns={metaData?.campaigns || []}
-                adsets={metaData?.adsets || []}
-                subTab={marketingSubTab}
-                setSubTab={setMarketingSubTab}
-              />
-            )}
+            {/* ══ HR ═══════════════════════════════════════════════════════ */}
+            {activeTab === 'hr' && (() => {
+              // Merge time-entry hours into workers
+              const teByProfileId: Record<string, any> = {}
+              for (const te of timeEntries) teByProfileId[te.profileId] = te
 
-            {/* HR Tab */}
-            {activeTab === 'hr' && (
-              <div className="space-y-5">
-                {/* Pay structure info */}
-                <div className="flex gap-3 text-xs text-gray-500 flex-wrap">
-                  <span className="bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-                    Base pay: <span className="text-gray-300">$5 / hr</span>
-                  </span>
-                  <span className="bg-gray-900 border border-gray-800 px-3 py-1.5 rounded-lg">
-                    Commission: <span className="text-gray-300">$25 / closed case</span>
-                  </span>
-                </div>
+              const workersWithHours = workers.map((w: any) => {
+                const te = teByProfileId[w.profileId] || { entries: [] }
+                const now = Date.now()
+                const hoursToday = (te.entries as any[]).reduce((total: number, e: any) => {
+                  const end = e.clock_out ? new Date(e.clock_out).getTime() : now
+                  const mins = Math.max(0, (end - new Date(e.clock_in).getTime()) / 60000)
+                  return total + mins / 60
+                }, 0)
+                const clockedIn = (te.entries as any[]).some((e: any) => !e.clock_out)
+                return { ...w, hoursToday, clockedIn }
+              })
 
-                {/* Summary cards */}
-                {workers.length > 0 && (
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: 'Total Workers', value: workers.length },
-                      { label: 'Total Signed Cases', value: workers.reduce((s: number, w: any) => s + w.signedCases, 0) },
-                      { label: 'Total Closed Cases', value: workers.reduce((s: number, w: any) => s + w.closedCases, 0) },
-                      { label: 'Total Commission', value: '$' + workers.reduce((s: number, w: any) => s + w.commission, 0).toLocaleString() },
-                    ].map(c => (
-                      <div key={c.label} className="bg-gray-900 border border-gray-800 rounded-xl p-4">
-                        <p className="text-xs text-gray-500 mb-1">{c.label}</p>
-                        <p className="text-lg font-bold text-white">{c.value}</p>
-                      </div>
-                    ))}
+              return (
+              <div>
+                <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 4, color: DARK }}>
+                  Team{' '}
+                  <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: ACCENT, fontSize: 28 }}>HR</span>
+                </h1>
+                <p style={{ fontSize: 13, color: MUTED, marginBottom: 24 }}>
+                  Commission $25/closed case &nbsp;·&nbsp; OT ${6}/hr after 9h &nbsp;·&nbsp; Paid biweekly Friday
+                </p>
+
+                {workersWithHours.length > 0 && (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 20 }}>
+                    <LightCard label="Total Workers"    value={workersWithHours.length} />
+                    <LightCard label="Clocked In Now"   value={workersWithHours.filter((w: any) => w.clockedIn).length} />
+                    <LightCard label="Period Hours"     value={`${workersWithHours.reduce((s: number, w: any) => s + (w.regularHours || 0) + (w.overtimeHours || 0), 0).toFixed(1)}h`} sub={`${workers[0]?.payPeriodStart || ''} – ${workers[0]?.payPeriodEnd || ''}`} />
+                    <LightCard label="Closed Cases"     value={workersWithHours.reduce((s: number, w: any) => s + w.closedCases, 0)} />
+                    <DarkCard  label={`Next Payment · ${workers[0]?.nextPaymentDate || ''}`} value={'$' + workersWithHours.reduce((s: number, w: any) => s + (w.nextPayment || 0), 0).toLocaleString()} terracotta />
                   </div>
                 )}
 
-                {/* Workers table */}
-                <div className="bg-gray-900 border border-gray-800 rounded-xl overflow-hidden">
-                  <div className="p-4 border-b border-gray-800 flex items-center justify-between">
-                    <p className="text-sm font-medium text-gray-300">All Workers</p>
+                <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, overflow: 'hidden' }}>
+                  <div style={{ padding: '14px 20px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ fontWeight: 700, fontSize: 13, color: DARK }}>All Workers</span>
                     <button onClick={() => { setShowAddWorker(true); setAddError('') }}
-                      className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition">
+                      style={{ background: DARK, color: '#FFF', border: 'none', borderRadius: 7, padding: '6px 14px', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
                       + Add Worker
                     </button>
                   </div>
-                  {workers.length === 0 ? (
-                    <p className="text-gray-500 text-sm p-6 text-center">No workers yet.</p>
+                  {workersWithHours.length === 0 ? (
+                    <p style={{ padding: 40, textAlign: 'center', color: MUTED, fontSize: 13 }}>No workers yet.</p>
                   ) : (
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
+                    <div style={{ overflowX: 'auto' }}>
+                      <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
-                          <tr className="border-b border-gray-800">
-                            {['Worker', 'Signed Cases', 'Closed Cases', 'Close Rate', 'Commission', 'Total Pay'].map(c => (
-                              <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
+                          <tr style={{ borderBottom: `1px solid ${BORDER}`, background: '#F5F1EB' }}>
+                            {['Worker', 'Rate', 'Hours Today', 'Period Hrs', 'OT Hrs', 'Signed', 'Closed', `Next Payment`, 'Closed by Firm'].map(h => (
+                              <th key={h} style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
                         </thead>
                         <tbody>
-                          {workers.map((w: any, i: number) => (
-                            <tr key={i} className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${w.signedCases === 0 ? 'opacity-50' : ''}`}>
-                              <td className="py-3 px-4">
-                                <div className="flex items-center gap-2">
-                                  <span className="text-gray-200 font-medium">{w.name}</span>
-                                  {w.signedCases === 0 && (
-                                    <span className="text-[10px] bg-gray-800 text-gray-500 border border-gray-700 px-1.5 py-0.5 rounded">not started</span>
-                                  )}
-                                </div>
-                              </td>
-                              <td className="py-3 px-4 text-white font-semibold">{w.signedCases}</td>
-                              <td className="py-3 px-4 text-green-400 font-semibold">{w.closedCases}</td>
-                              <td className="py-3 px-4 text-gray-400">{w.signedCases > 0 ? `${w.closeRate}%` : '—'}</td>
-                              <td className="py-3 px-4 text-blue-400">{w.commission > 0 ? '$' + w.commission.toLocaleString() : '—'}</td>
-                              <td className="py-3 px-4 text-gray-400 text-xs italic">Base ($5/hr) + {w.commission > 0 ? '$' + w.commission.toLocaleString() : '$0'} commission</td>
-                            </tr>
+                          {workersWithHours.map((w: any, i: number) => (
+                            <>
+                              <tr key={w.name + i}
+                                style={{ borderBottom: expandedWorker === w.name ? 'none' : `1px solid ${BORDER}`, opacity: w.signedCases === 0 && !w.regularHours ? 0.45 : 1, cursor: w.closedByFirm?.length > 0 ? 'pointer' : 'default', background: expandedWorker === w.name ? '#FAFAF8' : undefined }}
+                                onClick={() => w.closedByFirm?.length > 0 && setExpandedWorker(expandedWorker === w.name ? null : w.name)}>
+                                <td style={{ padding: '10px 16px', fontWeight: 600, color: DARK }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                                    {w.clockedIn && <span style={{ display: 'inline-block', width: 7, height: 7, borderRadius: '50%', background: '#22C55E', flexShrink: 0 }} title="Clocked in" />}
+                                    {w.name}
+                                  </div>
+                                </td>
+                                <td style={{ padding: '10px 16px', color: MUTED }}>${(w.hourlyRate ?? 5).toFixed(2)}/hr</td>
+                                <td style={{ padding: '10px 16px', color: w.hoursToday > 0 ? DARK : '#C4BAB0', fontWeight: w.hoursToday > 0 ? 600 : 400 }}>
+                                  {w.hoursToday > 0 ? `${w.hoursToday.toFixed(2)}h` : '—'}
+                                </td>
+                                <td style={{ padding: '10px 16px', color: DARK, fontWeight: 600 }}>
+                                  {w.regularHours > 0 ? `${w.regularHours.toFixed(2)}h` : '—'}
+                                </td>
+                                <td style={{ padding: '10px 16px', color: w.overtimeHours > 0 ? ACCENT : '#C4BAB0', fontWeight: w.overtimeHours > 0 ? 700 : 400 }}>
+                                  {w.overtimeHours > 0 ? `${w.overtimeHours.toFixed(2)}h` : '—'}
+                                </td>
+                                <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>{w.signedCases}</td>
+                                <td style={{ padding: '10px 16px', fontWeight: 700, color: '#15803D' }}>{w.closedCases}</td>
+                                <td style={{ padding: '10px 16px', fontWeight: 700, color: w.nextPayment > 0 ? DARK : '#C4BAB0' }}>
+                                  {w.nextPayment > 0 ? (
+                                    <span title={`Base $${w.basePay?.toFixed(2)} + Commission $${w.commissionInPeriod}`}>
+                                      ${w.nextPayment.toLocaleString()}
+                                    </span>
+                                  ) : '—'}
+                                </td>
+                                <td style={{ padding: '10px 16px', color: MUTED, fontSize: 11 }}>
+                                  {w.closedByFirm?.length > 0
+                                    ? <span style={{ color: ACCENT }}>{expandedWorker === w.name ? '▲ hide' : `▼ ${w.closedByFirm.length} firm${w.closedByFirm.length > 1 ? 's' : ''}`}</span>
+                                    : '—'}
+                                </td>
+                              </tr>
+                              {expandedWorker === w.name && w.closedByFirm?.length > 0 && (
+                                <tr key={w.name + '-firms'} style={{ borderBottom: `1px solid ${BORDER}`, background: '#F5F1EB' }}>
+                                  <td colSpan={9} style={{ padding: '8px 16px 12px 32px' }}>
+                                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                                      {w.closedByFirm.map((f: any) => (
+                                        <div key={f.firmId} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 14px', fontSize: 12 }}>
+                                          <span style={{ fontWeight: 700, color: DARK }}>{f.firmName}</span>
+                                          <span style={{ color: MUTED, marginLeft: 8 }}>{f.signedCases} signed</span>
+                                          <span style={{ color: '#15803D', fontWeight: 700, marginLeft: 8 }}>{f.closedCases} closed</span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </>
                           ))}
-                          {workers.length > 0 && (
-                            <tr className="border-t border-gray-700 bg-gray-800/30">
-                              <td className="py-3 px-4 text-gray-400 font-medium">Total</td>
-                              <td className="py-3 px-4 text-white font-semibold">{workers.reduce((s: number, w: any) => s + w.signedCases, 0)}</td>
-                              <td className="py-3 px-4 text-green-400 font-semibold">{workers.reduce((s: number, w: any) => s + w.closedCases, 0)}</td>
-                              <td className="py-3 px-4 text-gray-500">—</td>
-                              <td className="py-3 px-4 text-blue-400 font-semibold">${workers.reduce((s: number, w: any) => s + w.commission, 0).toLocaleString()}</td>
-                              <td className="py-3 px-4 text-gray-500">—</td>
-                            </tr>
-                          )}
+                          <tr style={{ background: '#F5F1EB', borderTop: `2px solid ${BORDER}` }}>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: MUTED }}>Total</td>
+                            <td></td>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>
+                              {workersWithHours.reduce((s: number, w: any) => s + w.hoursToday, 0).toFixed(1)}h
+                            </td>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>
+                              {workersWithHours.reduce((s: number, w: any) => s + (w.regularHours || 0), 0).toFixed(1)}h
+                            </td>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: ACCENT }}>
+                              {workersWithHours.reduce((s: number, w: any) => s + (w.overtimeHours || 0), 0).toFixed(1)}h
+                            </td>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>{workersWithHours.reduce((s: number, w: any) => s + w.signedCases, 0)}</td>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: '#15803D' }}>{workersWithHours.reduce((s: number, w: any) => s + w.closedCases, 0)}</td>
+                            <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>${workersWithHours.reduce((s: number, w: any) => s + (w.nextPayment || 0), 0).toLocaleString()}</td>
+                            <td></td>
+                          </tr>
                         </tbody>
                       </table>
                     </div>
                   )}
                 </div>
 
+                {/* Add Worker Modal */}
                 {(showAddWorker || createdWorker) && (
-                  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-sm space-y-4">
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50 }}>
+                    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
                       {createdWorker ? (
                         <>
-                          <h2 className="text-base font-semibold text-white">Worker Created</h2>
-                          <div className="bg-gray-800 rounded-xl p-4 space-y-3 text-sm">
-                            <div><p className="text-xs text-gray-500 mb-0.5">Name</p><p className="text-white font-medium">{createdWorker.name}</p></div>
-                            <div><p className="text-xs text-gray-500 mb-0.5">Temp Password</p><p className="text-white font-mono">{createdWorker.password}</p></div>
-                            <div><p className="text-xs text-gray-500 mb-0.5">Login URL</p><p className="text-blue-400 font-mono text-xs">teams.case-bridge.com/teams/login</p></div>
+                          <p style={{ fontWeight: 700, fontSize: 15, color: DARK, marginBottom: 16 }}>Worker Created</p>
+                          <div style={{ background: '#F5F0E8', border: `1px solid ${BORDER}`, borderRadius: 10, padding: 16, marginBottom: 16 }}>
+                            <p style={{ fontSize: 11, color: MUTED, marginBottom: 2 }}>Name</p><p style={{ fontWeight: 600, color: DARK }}>{createdWorker.name}</p>
+                            <p style={{ fontSize: 11, color: MUTED, marginBottom: 2, marginTop: 10 }}>Temp Password</p><p style={{ fontFamily: 'monospace', color: DARK }}>{createdWorker.password}</p>
+                            <p style={{ fontSize: 11, color: MUTED, marginBottom: 2, marginTop: 10 }}>Login URL</p><p style={{ fontSize: 12, color: ACCENT, fontFamily: 'monospace' }}>teams.case-bridge.com/teams/login</p>
                           </div>
-                          <button onClick={() => { setCreatedWorker(null); setShowAddWorker(false) }}
-                            className="w-full bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">Done</button>
+                          <button onClick={() => { setCreatedWorker(null); setShowAddWorker(false) }} style={{ width: '100%', background: '#F5F0E8', border: `1px solid ${BORDER}`, borderRadius: 8, padding: '8px 0', fontSize: 13, color: DARK, cursor: 'pointer' }}>Done</button>
                         </>
                       ) : (
                         <>
-                          <h2 className="text-base font-semibold text-white">Add Worker</h2>
-                          <form onSubmit={handleAddWorker} className="space-y-3">
+                          <p style={{ fontWeight: 700, fontSize: 15, color: DARK, marginBottom: 16 }}>Add Worker</p>
+                          <form onSubmit={handleAddWorker} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
                             <div>
-                              <label className="text-xs text-gray-400 block mb-1">Full Name</label>
-                              <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="e.g. Pablo Hernandez"
-                                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500" />
+                              <label style={{ fontSize: 11, color: MUTED, display: 'block', marginBottom: 4 }}>Full Name</label>
+                              <input type="text" value={addName} onChange={e => setAddName(e.target.value)} placeholder="e.g. Pablo Hernandez" style={inputStyle} />
                             </div>
                             <div>
-                              <label className="text-xs text-gray-400 block mb-1">Password</label>
-                              <input type="password" value={addPassword} onChange={e => setAddPassword(e.target.value)} placeholder="Temporary password"
-                                className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-600 focus:outline-none focus:border-gray-500" />
+                              <label style={{ fontSize: 11, color: MUTED, display: 'block', marginBottom: 4 }}>Password</label>
+                              <input type="password" value={addPassword} onChange={e => setAddPassword(e.target.value)} placeholder="Temporary password" style={inputStyle} />
                             </div>
-                            {addError && <p className="text-xs text-red-400">{addError}</p>}
-                            <div className="flex gap-2 pt-1">
-                              <button type="submit" disabled={addLoading}
-                                className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition">
-                                {addLoading ? 'Creating…' : 'Create Worker'}
-                              </button>
-                              <button type="button" onClick={() => setShowAddWorker(false)}
-                                className="flex-1 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">Cancel</button>
+                            {addError && <p style={{ color: '#B91C1C', fontSize: 12 }}>{addError}</p>}
+                            <div style={{ display: 'flex', gap: 8 }}>
+                              <button type="submit" disabled={addLoading} style={{ flex: 1, background: DARK, color: '#FFF', border: 'none', borderRadius: 8, padding: '9px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: addLoading ? 0.6 : 1 }}>{addLoading ? 'Creating…' : 'Create Worker'}</button>
+                              <button type="button" onClick={() => setShowAddWorker(false)} style={{ flex: 1, background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '9px 0', fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                             </div>
                           </form>
                         </>
@@ -727,113 +834,69 @@ export default function MetricsPage() {
                   </div>
                 )}
               </div>
-            )}
+              )
+            })()}
 
-            {/* Firms Tab */}
+            {/* ══ FIRMS ════════════════════════════════════════════════════ */}
             {activeTab === 'firms' && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-medium text-gray-300">Firms</h2>
-                  <button
-                    onClick={() => setShowAddFirm(true)}
-                    className="text-xs bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg transition"
-                  >
-                    + Add Firm
-                  </button>
+              <div>
+                <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 4, color: DARK }}>
+                  Client{' '}
+                  <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: ACCENT, fontSize: 28 }}>Firms</span>
+                </h1>
+                <p style={{ fontSize: 13, color: MUTED, marginBottom: 24 }}>Click a firm to open its dashboard.</p>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+                  <button onClick={() => setShowAddFirm(true)}
+                    style={{ background: DARK, color: '#FFF', border: 'none', borderRadius: 7, padding: '8px 18px', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>+ Add Firm</button>
                 </div>
 
                 {firms.length === 0 ? (
-                  <div className="bg-gray-900 border border-gray-800 rounded-xl px-6 py-12 text-center text-gray-500">
-                    No firms configured yet.
-                  </div>
+                  <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '60px 0', textAlign: 'center', color: MUTED, fontSize: 13 }}>No firms configured yet.</div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
                     {firms.map((firm: any) => (
-                      <Link
-                        key={firm.id}
-                        href={`/metrics/firms/${firm.slug}`}
-                        className="bg-gray-900 border border-gray-800 hover:border-gray-600 rounded-xl p-6 transition group"
-                      >
-                        <div className="flex items-start justify-between">
-                          <div>
-                            <h3 className="font-semibold text-white group-hover:text-blue-400 transition">{firm.name}</h3>
-                            <p className="text-gray-500 text-xs mt-1">Case value: ${firm.case_value?.toLocaleString()} · {firm.meta_account_id ? 'Meta connected' : 'No Meta account'}</p>
-                          </div>
-                          <span className="text-gray-400 group-hover:text-white transition text-sm">→</span>
-                        </div>
-                        <div className="mt-4 text-xs text-gray-600">
-                          Phase thresholds: Initial ≤${firm.phase_initial_max_weekly_spend?.toLocaleString()}/wk · Scale ≤${firm.phase_scale_max_weekly_spend?.toLocaleString()}/wk · Max above
-                        </div>
+                      <Link key={firm.id} href={`/metrics/firms/${firm.slug}`} style={{ display: 'block', background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 20, textDecoration: 'none', transition: 'border-color 0.15s' }}>
+                        <p style={{ fontWeight: 700, fontSize: 15, color: DARK, marginBottom: 4 }}>{firm.name}</p>
+                        <p style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Case value: ${firm.case_value?.toLocaleString()} · {firm.meta_account_id ? 'Meta connected' : 'No Meta'}</p>
+                        <p style={{ fontSize: 11, color: '#B5AFA8' }}>Initial ≤${firm.phase_initial_max_weekly_spend?.toLocaleString()}/wk · Scale ≤${firm.phase_scale_max_weekly_spend?.toLocaleString()}/wk</p>
                       </Link>
                     ))}
                   </div>
                 )}
 
-                {/* Add Firm Modal */}
                 {showAddFirm && (
-                  <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4">
-                    <div className="bg-gray-900 border border-gray-700 rounded-2xl p-6 w-full max-w-lg">
-                      <div className="flex items-center justify-between mb-5">
-                        <h2 className="text-base font-semibold text-white">Add Firm</h2>
-                        <button onClick={() => { setShowAddFirm(false); setFirmError(null) }} className="text-gray-500 hover:text-white text-xl">×</button>
+                  <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50, padding: 16 }}>
+                    <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 16, padding: 24, width: '100%', maxWidth: 480 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+                        <p style={{ fontWeight: 700, fontSize: 15, color: DARK }}>Add Firm</p>
+                        <button onClick={() => { setShowAddFirm(false); setFirmError(null) }} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: MUTED }}>×</button>
                       </div>
-                      <form onSubmit={addFirm} className="space-y-4">
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="col-span-2">
-                            <label className="block text-xs text-gray-400 mb-1">Firm Name *</label>
-                            <input value={firmForm.name} onChange={e => setFirmForm(f => ({ ...f, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') }))}
-                              placeholder="e.g. Georgia-MCA" required
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
+                      <form onSubmit={addFirm} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                          <div style={{ gridColumn: '1/-1' }}>
+                            <label style={{ fontSize: 11, color: MUTED, display: 'block', marginBottom: 4 }}>Firm Name *</label>
+                            <input value={firmForm.name} onChange={e => setFirmForm(f => ({ ...f, name: e.target.value, slug: e.target.value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '') }))} placeholder="e.g. Georgia-MCA" required style={inputStyle} />
                           </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Slug * <span className="text-gray-600">(URL key)</span></label>
-                            <input value={firmForm.slug} onChange={e => setFirmForm(f => ({ ...f, slug: e.target.value }))}
-                              placeholder="e.g. mca" required
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Case Value ($)</label>
-                            <input type="number" value={firmForm.case_value} onChange={e => setFirmForm(f => ({ ...f, case_value: e.target.value }))}
-                              placeholder="2000"
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Meta Account ID</label>
-                            <input value={firmForm.meta_account_id} onChange={e => setFirmForm(f => ({ ...f, meta_account_id: e.target.value }))}
-                              placeholder="act_123..."
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Initial Phase Max ($/wk)</label>
-                            <input type="number" value={firmForm.phase_initial} onChange={e => setFirmForm(f => ({ ...f, phase_initial: e.target.value }))}
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Scale Phase Max ($/wk)</label>
-                            <input type="number" value={firmForm.phase_scale} onChange={e => setFirmForm(f => ({ ...f, phase_scale: e.target.value }))}
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Replacement Window (days)</label>
-                            <input type="number" value={firmForm.replacement_window_days} onChange={e => setFirmForm(f => ({ ...f, replacement_window_days: e.target.value }))}
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
-                          <div>
-                            <label className="block text-xs text-gray-400 mb-1">Sanguine Rate ($/closed case)</label>
-                            <input type="number" value={firmForm.sanguine_rate} onChange={e => setFirmForm(f => ({ ...f, sanguine_rate: e.target.value }))}
-                              className="w-full bg-gray-800 border border-gray-700 text-white text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500" />
-                          </div>
+                          {[
+                            { label: 'Slug *', key: 'slug', placeholder: 'e.g. mca' },
+                            { label: 'Case Value ($)', key: 'case_value', placeholder: '2000', type: 'number' },
+                            { label: 'Meta Account ID', key: 'meta_account_id', placeholder: 'act_123...' },
+                            { label: 'Initial Phase Max ($/wk)', key: 'phase_initial', type: 'number' },
+                            { label: 'Scale Phase Max ($/wk)', key: 'phase_scale', type: 'number' },
+                            { label: 'Replacement Window (days)', key: 'replacement_window_days', type: 'number' },
+                            { label: 'Sanguine Rate ($/closed case)', key: 'sanguine_rate', type: 'number' },
+                          ].map((f: any) => (
+                            <div key={f.key}>
+                              <label style={{ fontSize: 11, color: MUTED, display: 'block', marginBottom: 4 }}>{f.label}</label>
+                              <input type={f.type || 'text'} value={(firmForm as any)[f.key]} onChange={e => setFirmForm(ff => ({ ...ff, [f.key]: e.target.value }))} placeholder={f.placeholder} style={inputStyle} />
+                            </div>
+                          ))}
                         </div>
-                        {firmError && <p className="text-red-400 text-xs">{firmError}</p>}
-                        <div className="flex gap-2 pt-1">
-                          <button type="submit" disabled={firmSaving}
-                            className="flex-1 bg-blue-600 hover:bg-blue-500 text-white text-sm py-2 rounded-lg transition disabled:opacity-50">
-                            {firmSaving ? 'Saving...' : 'Create Firm'}
-                          </button>
-                          <button type="button" onClick={() => { setShowAddFirm(false); setFirmError(null) }}
-                            className="px-4 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm py-2 rounded-lg transition">
-                            Cancel
-                          </button>
+                        {firmError && <p style={{ color: '#B91C1C', fontSize: 12 }}>{firmError}</p>}
+                        <div style={{ display: 'flex', gap: 8, paddingTop: 4 }}>
+                          <button type="submit" disabled={firmSaving} style={{ flex: 1, background: DARK, color: '#FFF', border: 'none', borderRadius: 8, padding: '9px 0', fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: firmSaving ? 0.6 : 1 }}>{firmSaving ? 'Saving...' : 'Create Firm'}</button>
+                          <button type="button" onClick={() => { setShowAddFirm(false); setFirmError(null) }} style={{ padding: '9px 20px', background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}`, borderRadius: 8, fontSize: 13, cursor: 'pointer' }}>Cancel</button>
                         </div>
                       </form>
                     </div>
@@ -842,10 +905,18 @@ export default function MetricsPage() {
               </div>
             )}
 
-
           </>
         )}
       </div>
+
+      {/* ── Modals ────────────────────────────────────────────────────────── */}
+      {leadsModal && (
+        <CreativeLeadsModal
+          ad={leadsModal.ad}
+          filterStage={leadsModal.stage}
+          onClose={() => setLeadsModal(null)}
+        />
+      )}
     </div>
   )
 }
