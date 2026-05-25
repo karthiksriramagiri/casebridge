@@ -30,6 +30,8 @@ type MetaSummary = {
 type InvoiceBreakdown = {
   invoiceCode: string
   signedCases: number
+  originalCases: number
+  replacementCases: number
   totalVictims: number
   grossRevenue: number
 }
@@ -89,7 +91,7 @@ export default function FirmInvoicesHome() {
         if (!d.error) {
           setMeta(d.meta || null)
           setInvoiceBreakdown(d.invoiceBreakdown || [])
-          setTotalCases(d.summary?.signedCases ?? 0)
+          setTotalCases(d.summary?.originalCases ?? 0)
         }
       })
       .catch(() => {})
@@ -263,13 +265,15 @@ export default function FirmInvoicesHome() {
             <h2 className="text-xs font-semibold uppercase tracking-widest mb-3" style={{ color: MUTED }}>Signed Cases by Invoice</h2>
             <div className="grid gap-3 sm:grid-cols-3">
               {invoiceBreakdown.map(b => (
-                <div key={b.invoiceCode} className="rounded-xl p-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>
+                <Link key={b.invoiceCode} href={`/metrics/firms/${slug}/invoice/${invoicePathSegment(b.invoiceCode)}/pcs`}
+                  className="block rounded-xl p-4 transition hover:shadow-md" style={{ background: CARD, border: `1px solid ${BORDER}`, textDecoration: 'none' }}>
                   <p className="text-xs uppercase tracking-wider mb-1" style={{ color: MUTED }}>{b.invoiceCode}</p>
-                  <p className="text-2xl font-bold mb-1" style={{ color: TEXT }}>{b.signedCases}</p>
+                  <p className="text-2xl font-bold mb-1" style={{ color: TEXT }}>{b.originalCases}</p>
                   <p className="text-xs" style={{ color: MUTED }}>
                     {b.totalVictims} victim{b.totalVictims !== 1 ? 's' : ''} · {fmt(b.grossRevenue)} gross rev
+                    {b.replacementCases > 0 && ` · ${b.replacementCases} replacement${b.replacementCases !== 1 ? 's' : ''}`}
                   </p>
-                </div>
+                </Link>
               ))}
             </div>
           </div>
