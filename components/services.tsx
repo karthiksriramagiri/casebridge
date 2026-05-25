@@ -90,9 +90,9 @@ export function Services() {
           </p>
         </div>
 
-        {/* Top 2 featured cards */}
+        {/* Top 4 featured cards */}
         <div className="mt-16 grid gap-6 lg:grid-cols-2">
-          {services.slice(0, 2).map((service) => (
+          {services.slice(0, 4).map((service) => (
             <div
               key={service.title}
               className="group relative overflow-hidden rounded-xl border border-border bg-primary p-6 transition-all hover:shadow-lg sm:p-8 md:p-10"
@@ -119,7 +119,7 @@ export function Services() {
 
         {/* Bottom 4 cards */}
         <div className="mt-4 grid gap-4 sm:mt-6 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-          {services.slice(2).map((service) => (
+          {services.slice(4).map((service) => (
             <div
               key={service.title}
               className="group relative rounded-xl border border-border bg-background p-7 transition-all hover:border-secondary/30 hover:shadow-md"
