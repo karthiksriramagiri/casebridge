@@ -1,1 +1,12 @@
-{}
+{
+  "crons": [
+    {
+      "path": "/api/slack/health-check",
+      "schedule": "0 14,17,20,23 * * *"
+    },
+    {
+      "path": "/api/slack/health-check",
+      "schedule": "0 2 * * *"
+    }
+  ]
+}

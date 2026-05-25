@@ -303,7 +303,11 @@ export async function GET(request: NextRequest) {
   // Pull Meta data + weekly spend in parallel
   const ghlPipelineId = GHL_PIPELINES[firmSlug] || null
 
-  const [adInsightsRes, dailyInsightsRes, weeklyInsightsRes, ghlLeadsRes, allFirmLeadsRes, opsRes, workerRatesRes, ghlPipelineBreakdown] = await Promise.all([
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+  const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10)
+
+  const [adInsightsRes, dailyInsightsRes, weeklyInsightsRes, ghlLeadsRes, allFirmLeadsRes, opsRes, workerRatesRes, ghlPipelineBreakdown, weeklySignedRes] = await Promise.all([
     // Ad-level insights for creative CPQ breakdown
     noMeta ? Promise.resolve({ data: [] }) : fetchMeta(`/${accountId}/insights`, {
       fields: insightFields,
@@ -376,6 +380,14 @@ export async function GET(request: NextRequest) {
     ghlPipelineId
       ? fetchGHLPipelineBreakdown(ghlPipelineId, start, end)
       : Promise.resolve({} as Record<string, PipelineAdLeads>),
+    // Weekly signed cases — last 7 days across ALL invoices (not scoped to current invoice)
+    // Count all non-replacement cases: null, e_signed, closed all count
+    supabase
+      .from('ghl_leads')
+      .select('id', { count: 'exact', head: true })
+      .eq('firm_id', firm.id)
+      .or('case_status.is.null,case_status.eq.e_signed,case_status.eq.closed')
+      .gte('qualified_at', `${sevenDaysAgoStr}T00:00:00Z`),
   ])
 
   // Apply campaign filter if set (filters ad rows by campaign/adset/ad name)
@@ -447,12 +459,8 @@ export async function GET(request: NextRequest) {
   const replacementCases = allFirmLeads.filter((l: any) => (l.case_status || '').toLowerCase() === 'replacement').length
   const outOfWindowCases = signedCases - inWindowCases
 
-  // Weekly signed cases for CPQ (cases qualified in the last 7 days within the current view)
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
-  const weeklySignedCases = allFirmLeads.filter((l: any) =>
-    l.qualified_at && new Date(l.qualified_at) >= sevenDaysAgo
-  ).length
+  // Weekly signed cases — last 7 days across ALL invoices (cross-invoice KPI tracking)
+  const weeklySignedCases = weeklySignedRes.count ?? 0
   const weeklyCpq = weeklySignedCases > 0 ? weeklySpend / weeklySignedCases : null
 
   const closerIds = [...new Set(allFirmLeads.map((r: any) => r.closed_by_profile_id).filter(Boolean))]
@@ -718,6 +726,12 @@ export async function GET(request: NextRequest) {
       pct: targets.grossMargin > 0 ? (grossMargin / targets.grossMargin) * 100 : null,
       status: grossMargin >= targets.grossMargin * 0.95 ? 'on_track' : grossMargin >= targets.grossMargin * 0.7 ? 'behind' : 'far_behind',
     } : null,
+    weeklySignedCases: {
+      actual: weeklySignedCases,
+      target: 15,
+      pct: (weeklySignedCases / 15) * 100,
+      status: weeklySignedCases >= 14 ? 'on_track' : weeklySignedCases >= 8 ? 'behind' : 'far_behind',
+    },
   }
 
   // Overall health — critical if any key metric is far_behind, warning if any behind
@@ -735,6 +749,7 @@ export async function GET(request: NextRequest) {
     phase,
     weeklySpend,
     weeklyMetaLeads,
+    weeklySignedCases,
     dailySpendAvg,
     dailyLeadsAvg,
     overallHealth,

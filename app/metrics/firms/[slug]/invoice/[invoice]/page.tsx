@@ -154,6 +154,7 @@ export default function FirmInvoiceDashboard() {
                   { label: 'Weekly Spend', ...ks.weeklySpend, fmt: fmt$, higherBetter: true },
                   { label: 'Weekly Leads', ...ks.weeklyLeads, fmt: (v: number) => v.toFixed(1), higherBetter: true },
                   { label: 'Weekly CPL', actual: ks.weeklyCpl?.actual ?? null, target: ks.weeklyCpl?.target ?? null, pct: ks.weeklyCpl?.pct ?? null, status: ks.weeklyCpl?.status ?? null, fmt: fmt$, higherBetter: false },
+                  { label: 'Weekly Signed', actual: ks.weeklySignedCases?.actual ?? null, target: ks.weeklySignedCases?.target ?? null, pct: ks.weeklySignedCases?.pct ?? null, status: ks.weeklySignedCases?.status ?? null, fmt: (v: number) => String(Math.round(v)), higherBetter: true },
                   { label: 'CPQ (period)', ...ks.cpq, fmt: fmt$, higherBetter: false },
                   { label: 'Gross Margin', ...ks.grossMargin, fmt: fmtPct, higherBetter: true },
                 ].filter(r => r.actual !== undefined || r.target != null)
@@ -167,7 +168,7 @@ export default function FirmInvoiceDashboard() {
                       </div>
                       <span className="text-xs" style={{ color: MUTED }}>vs model targets</span>
                     </div>
-                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-7 gap-3">
                       {rows.map((row: any) => {
                         const hasData = row.actual != null
                         const st = row.status
