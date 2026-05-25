@@ -1,0 +1,21 @@
+name: Pablo Bi-Weekly Report
+
+# Every Friday at 8:00 PM Eastern Time
+# EDT (UTC-4, Mar–Nov): Saturday 00:00 UTC  ← active now
+# EST (UTC-5, Nov–Mar): Saturday 01:00 UTC  ← update in November
+# Route checks internally if it's the 2nd or 4th Friday; skips otherwise.
+on:
+  schedule:
+    - cron: '0 0 * * 6'  # Friday 8:00 PM EDT (Saturday 00:00 UTC)
+  workflow_dispatch: {}   # Allow manual trigger from GitHub UI
+
+jobs:
+  pablo-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send Pablo bi-weekly report
+        run: |
+          curl -f -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.PRODUCTION_URL }}/api/slack/pablo-report"
