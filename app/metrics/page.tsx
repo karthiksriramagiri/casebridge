@@ -335,7 +335,7 @@ function CreativeLeadsModal({ ad, filterStage, onClose }: {
           {displayed.length === 0 ? (
             <p style={{ textAlign: 'center', color: MUTED, fontSize: 14, padding: '40px 24px' }}>
               {all.length === 0
-                ? 'No GHL pipeline leads matched to this creative in the last 90 days.'
+                ? 'No GHL pipeline leads matched to this creative.'
                 : `No ${stageTitle} leads for this creative.`}
             </p>
           ) : (
@@ -426,37 +426,15 @@ export default function MetricsPage() {
   }, [])
 
   useEffect(() => {
-    fetch('/api/metrics/creative-overview').then(r => r.json()).then(d => setCreativeOverview(d.byAdId || {})).catch(() => {})
-  }, [])
-
-  useEffect(() => {
-    // Fetch each firm's GHL pipeline separately (no date filter — includes all historical leads)
-    const firms = ['lhp', 'eisenberg', 'thl', 'mca']
-    Promise.all(
-      firms.map(f =>
-        fetch(`/api/metrics/creative-overview?firm=${f}&leads=1`)
-          .then(r => r.json())
-          .catch(() => ({ byAdId: {} }))
-      )
-    ).then(results => {
-      const merged: Record<string, any> = {}
-      for (const d of results) {
-        for (const [adId, data] of Object.entries(d.byAdId || {})) {
-          const p = data as any
-          if (!merged[adId]) {
-            merged[adId] = p
-          } else {
-            merged[adId].nrCount = (merged[adId].nrCount || 0) + (p.nrCount || 0)
-            merged[adId].nqCount = (merged[adId].nqCount || 0) + (p.nqCount || 0)
-            merged[adId].fuCount = (merged[adId].fuCount || 0) + (p.fuCount || 0)
-            merged[adId].nrLeads = [...(merged[adId].nrLeads || []), ...(p.nrLeads || [])]
-            merged[adId].nqLeads = [...(merged[adId].nqLeads || []), ...(p.nqLeads || [])]
-            merged[adId].fuLeads = [...(merged[adId].fuLeads || []), ...(p.fuLeads || [])]
-          }
-        }
-      }
-      setPipelineOverview(merged)
-    })
+    // Single call — signed cases + NR/NQ/FU all from Supabase webhook data
+    fetch('/api/metrics/creative-overview')
+      .then(r => r.json())
+      .then(d => {
+        const data = d.byAdId || {}
+        setCreativeOverview(data)
+        setPipelineOverview(data)
+      })
+      .catch(() => {})
   }, [])
 
   async function handleAddWorker(e: React.FormEvent) {
