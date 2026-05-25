@@ -347,7 +347,12 @@ export async function GET(request: NextRequest) {
         )
         .eq('firm_id', firm.id)
         .order('qualified_at', { ascending: false })
-      if (invoiceParam) q = q.eq('invoice_code', invoiceParam)
+      if (invoiceParam) {
+        q = q.eq('invoice_code', invoiceParam)
+      } else {
+        // Apply same date range as the count query so modal matches table count
+        q = q.gte('qualified_at', `${start}T00:00:00Z`).lte('qualified_at', `${end}T23:59:59Z`)
+      }
       return q
     })(),
     // Ops — invoice view loads firm/shared rows; attribution filtered below (tagged invoice_code or dated in period)
