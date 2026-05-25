@@ -1,0 +1,23 @@
+name: Slack Health Check
+
+# 9AM, 12PM, 3PM, 6PM, 9PM EST (UTC-5 = 14, 17, 20, 23, 02 UTC)
+# During EDT (UTC-4) these run at 10AM, 1PM, 4PM, 7PM, 10PM EDT
+on:
+  schedule:
+    - cron: '0 14 * * *'  # 9:00 AM EST
+    - cron: '0 17 * * *'  # 12:00 PM EST
+    - cron: '0 20 * * *'  # 3:00 PM EST
+    - cron: '0 23 * * *'  # 6:00 PM EST
+    - cron: '0 2 * * *'   # 9:00 PM EST
+  workflow_dispatch: {}   # Allow manual trigger from GitHub UI
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Send health check notification
+        run: |
+          curl -f -X GET \
+            -H "Authorization: Bearer ${{ secrets.CRON_SECRET }}" \
+            "${{ secrets.PRODUCTION_URL }}/api/slack/health-check"
