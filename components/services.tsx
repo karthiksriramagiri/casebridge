@@ -1,6 +1,8 @@
 import {
   Car,
   Truck,
+  PersonStanding,
+  CarTaxiFront,
   UserCheck,
   PhoneCall,
   BarChart3,
@@ -29,6 +31,20 @@ const services: Service[] = [
     description:
       "Vetted cases for commercial trucking collisions, fleet accidents, and premises liability matters with verified policy coverage and documented injuries.",
     highlight: "High Value",
+  },
+  {
+    icon: PersonStanding,
+    title: "Pedestrian Accident Cases",
+    description:
+      "Pre-qualified cases from pedestrians struck by vehicles, including crosswalk accidents and hit-and-run incidents, with verified injuries and documented liability.",
+    highlight: "Growing Segment",
+  },
+  {
+    icon: CarTaxiFront,
+    title: "Rideshare Accident Cases",
+    description:
+      "Screened cases involving Uber, Lyft, and other rideshare collisions — passengers, drivers, and third parties — with confirmed coverage and documented injuries.",
+    highlight: "High Demand",
   },
   {
     icon: UserCheck,

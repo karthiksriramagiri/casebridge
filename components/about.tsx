@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 
 const qualityIndicators = [
   "Every case matched to your firm's specific qualifying criteria",
-  "One firm per case -- your prospect speaks only with your team",
+  "One firm per case — your prospect speaks only with your team",
   "Real-time transfer via live call, CRM integration, or secure portal",
   "Multi-channel acquisition across search, social, and partner networks",
   "Geographic and case-type targeting tailored to your practice",
