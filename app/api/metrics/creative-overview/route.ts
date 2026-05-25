@@ -29,10 +29,11 @@ type PipelineContact = { name: string | null; phone: string | null; email: strin
 type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[] }
 
 /**
- * Identical to fetchGHLPipelineBreakdown in kpi/route.ts.
- * Fetches ONE pipeline and returns contact details per ad ID.
+ * Fetches ONE GHL pipeline and returns contact details per Meta ad ID.
+ * No date filter — includes all opportunities in the pipeline so we never
+ * miss leads that were created before any arbitrary cutoff window.
  */
-async function fetchGHLPipelineBreakdown(pipelineId: string, start: string, end: string): Promise<Record<string, PipelineAdLeads>> {
+async function fetchGHLPipelineBreakdown(pipelineId: string): Promise<Record<string, PipelineAdLeads>> {
   if (!GHL_API_KEY) return {}
   const breakdown: Record<string, PipelineAdLeads> = {}
   let url: string | null =
@@ -52,9 +53,6 @@ async function fetchGHLPipelineBreakdown(pipelineId: string, start: string, end:
     for (const opp of (data.opportunities || [])) {
       const label = GHL_STAGE_LABEL[opp.pipelineStageId]
       if (!label) continue
-
-      const created = opp.createdAt ? opp.createdAt.split('T')[0] : ''
-      if (created < start || created > end) continue
 
       const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
       const adId = attr?.utmAdId || attr?.utmContent || null
@@ -105,18 +103,12 @@ export async function GET(req: Request) {
     byAdId[row.ad_id].signedCases++
   }
 
-  // GHL pipeline data — same logic as kpi/route.ts, for ONE pipeline at a time
+  // GHL pipeline data — no date filter, fetch all opportunities in the pipeline
   let pipelineBreakdown: Record<string, PipelineAdLeads> = {}
   if (firmSlug && includeLeads) {
     const pipelineId = GHL_PIPELINES[firmSlug]
     if (pipelineId) {
-      const now = new Date()
-      const start = new Date(now); start.setDate(start.getDate() - 89)
-      pipelineBreakdown = await fetchGHLPipelineBreakdown(
-        pipelineId,
-        start.toISOString().split('T')[0],
-        now.toISOString().split('T')[0]
-      )
+      pipelineBreakdown = await fetchGHLPipelineBreakdown(pipelineId)
     }
   }
 

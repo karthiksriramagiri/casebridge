@@ -430,26 +430,28 @@ export default function MetricsPage() {
   }, [])
 
   useEffect(() => {
-    // Use the same KPI endpoint the firm pages use — already returns nrCount/nqCount/fuCount/nrLeads/nqLeads/fuLeads per ad
+    // Fetch each firm's GHL pipeline separately (no date filter — includes all historical leads)
     const firms = ['lhp', 'eisenberg', 'thl', 'mca']
     Promise.all(
       firms.map(f =>
-        fetch(`/api/metrics/kpi?firm=${f}&date_preset=last_30d`)
+        fetch(`/api/metrics/creative-overview?firm=${f}&leads=1`)
           .then(r => r.json())
-          .catch(() => ({ adBreakdown: [] }))
+          .catch(() => ({ byAdId: {} }))
       )
     ).then(results => {
       const merged: Record<string, any> = {}
       for (const d of results) {
-        for (const ad of (d.adBreakdown || [])) {
-          if (!ad.adId) continue
-          merged[ad.adId] = {
-            nrCount:  ad.nrCount  || 0,
-            nqCount:  ad.nqCount  || 0,
-            fuCount:  ad.fuCount  || 0,
-            nrLeads:  ad.nrLeads  || [],
-            nqLeads:  ad.nqLeads  || [],
-            fuLeads:  ad.fuLeads  || [],
+        for (const [adId, data] of Object.entries(d.byAdId || {})) {
+          const p = data as any
+          if (!merged[adId]) {
+            merged[adId] = p
+          } else {
+            merged[adId].nrCount = (merged[adId].nrCount || 0) + (p.nrCount || 0)
+            merged[adId].nqCount = (merged[adId].nqCount || 0) + (p.nqCount || 0)
+            merged[adId].fuCount = (merged[adId].fuCount || 0) + (p.fuCount || 0)
+            merged[adId].nrLeads = [...(merged[adId].nrLeads || []), ...(p.nrLeads || [])]
+            merged[adId].nqLeads = [...(merged[adId].nqLeads || []), ...(p.nqLeads || [])]
+            merged[adId].fuLeads = [...(merged[adId].fuLeads || []), ...(p.fuLeads || [])]
           }
         }
       }
