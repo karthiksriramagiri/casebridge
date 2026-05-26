@@ -44,6 +44,12 @@ const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu'> = {
 type PipelineContact = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
 type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[] }
 
+const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu'> = {
+  no_response:   'nr',
+  not_qualified: 'nq',
+  follow_up:     'fu',
+}
+
 // Fetch all opportunities for a pipeline and return per-ad NR/NQ/FU contact lists
 // Filters by createdAt within the invoice/date window
 async function fetchGHLPipelineBreakdown(
@@ -307,7 +313,7 @@ export async function GET(request: NextRequest) {
   sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
   const sevenDaysAgoStr = sevenDaysAgo.toISOString().slice(0, 10)
 
-  const [adInsightsRes, dailyInsightsRes, weeklyInsightsRes, ghlLeadsRes, allFirmLeadsRes, opsRes, workerRatesRes, ghlPipelineBreakdown, weeklySignedRes] = await Promise.all([
+  const [adInsightsRes, dailyInsightsRes, weeklyInsightsRes, ghlLeadsRes, allFirmLeadsRes, opsRes, workerRatesRes, pipelineLeadsRes, weeklySignedRes] = await Promise.all([
     // Ad-level insights for creative CPQ breakdown
     noMeta ? Promise.resolve({ data: [] }) : fetchMeta(`/${accountId}/insights`, {
       fields: insightFields,
@@ -376,10 +382,20 @@ export async function GET(request: NextRequest) {
       .select('weekly_rate, effective_from, effective_to')
       .lte('effective_from', end)
       .or(`effective_to.is.null,effective_to.gte.${start}`),
-    // GHL pipeline breakdown — NR/NQ/FU counts per ad_id
-    ghlPipelineId
-      ? fetchGHLPipelineBreakdown(ghlPipelineId, start, end)
-      : Promise.resolve({} as Record<string, PipelineAdLeads>),
+    // Pipeline stage leads from Supabase ghl_leads (pipeline_stage IS NOT NULL)
+    (() => {
+      let q = supabase
+        .from('ghl_leads')
+        .select('ad_id, ad_name, pipeline_stage, contact_name, contact_phone, contact_email, created_at')
+        .eq('firm_id', firm.id)
+        .not('pipeline_stage', 'is', null)
+      if (invoiceParam) {
+        q = q.eq('invoice_code', invoiceParam)
+      } else {
+        q = q.gte('created_at', `${start}T00:00:00Z`).lte('created_at', `${end}T23:59:59Z`)
+      }
+      return q
+    })(),
     // Weekly signed cases — last 7 days across ALL invoices (not scoped to current invoice)
     // Count all non-replacement cases: null, e_signed, closed all count
     supabase
@@ -389,6 +405,28 @@ export async function GET(request: NextRequest) {
       .or('case_status.is.null,case_status.eq.e_signed,case_status.eq.closed')
       .gte('qualified_at', `${sevenDaysAgoStr}T00:00:00Z`),
   ])
+
+  // Build pipeline breakdown from Supabase ghl_leads (NR/NQ/FU records)
+  const ghlPipelineBreakdown: Record<string, PipelineAdLeads> = {}
+  const ghlPipelineByName:    Record<string, PipelineAdLeads> = {}
+  for (const row of (pipelineLeadsRes.data || [])) {
+    const label = STAGE_MAP[row.pipeline_stage]
+    if (!label) continue
+    const contact: PipelineContact = {
+      name:      row.contact_name,
+      phone:     row.contact_phone,
+      email:     row.contact_email,
+      createdAt: row.created_at,
+    }
+    const hasRealAdId = row.ad_id && !row.ad_id.includes('{{')
+    if (hasRealAdId) {
+      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { nr: [], nq: [], fu: [] }
+      ghlPipelineBreakdown[row.ad_id][label].push(contact)
+    } else if (row.ad_name) {
+      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [] }
+      ghlPipelineByName[row.ad_name][label].push(contact)
+    }
+  }
 
   // Apply campaign filter if set (filters ad rows by campaign/adset/ad name)
   function matchesCampaignFilter(a: any) {
@@ -615,8 +653,8 @@ export async function GET(request: NextRequest) {
     const adSignedCases = adMatchedLeads.length
     const adVictims = adMatchedLeads.reduce((s: number, l: any) => s + (l.victim_count || 1), 0)
 
-    // Pipeline stage counts — live from GHL API, keyed by Meta ad_id
-    const pipeline = ghlPipelineBreakdown[a.ad_id] || { nr: [], nq: [], fu: [] }
+    // Pipeline stage counts — from Supabase ghl_leads, matched by ad_id then ad_name
+    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { nr: [], nq: [], fu: [] }
 
     return {
       adId: a.ad_id,
