@@ -106,47 +106,56 @@ async function fetchPipelineBreakdown(pipelineId: string): Promise<Record<string
  * Returns per-ad signed cases + NR/NQ/FU/Chase counts from GHL API + Supabase.
  */
 export async function GET() {
-  // Fetch signed cases from Supabase + firm list + GHL pipeline data in parallel
-  const pipelinePromises = Object.entries(GHL_PIPELINES).map(([slug, pid]) =>
-    fetchPipelineBreakdown(pid).then(data => ({ slug, data }))
-  )
+  try {
+    // Fetch Supabase data and GHL pipeline data in parallel (separately to avoid spread issues)
+    const [signedRes, firmsRes, pipelineResults] = await Promise.all([
+      supabase.from('ghl_leads').select('ad_id, firm_id'),
+      supabase.from('firms').select('id, slug, name'),
+      Promise.all(
+        Object.entries(GHL_PIPELINES).map(([slug, pid]) =>
+          fetchPipelineBreakdown(pid)
+            .then(data => ({ slug, data }))
+            .catch(() => ({ slug, data: {} as Record<string, { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: Lead }[]> }))
+        )
+      ),
+    ])
 
-  const [signedRes, firmsRes, ...pipelineResults] = await Promise.all([
-    supabase.from('ghl_leads').select('ad_id, firm_id'),
-    supabase.from('firms').select('id, slug, name'),
-    ...pipelinePromises,
-  ])
-
-  // Build firm lookup
-  const firmById: Record<string, { slug: string; name: string }> = {}
-  for (const f of (firmsRes.data || [])) {
-    if (f.id) firmById[f.id] = { slug: f.slug, name: f.name }
-  }
-
-  const byAdId: Record<string, AdData> = {}
-
-  // Signed cases from Supabase
-  for (const row of (signedRes.data || [])) {
-    if (!row.ad_id) continue
-    const firm = firmById[row.firm_id] || null
-    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = emptyAdData(firm?.slug || null, firm?.name || null)
-    byAdId[row.ad_id].signedCases++
-    if (firm?.slug && !byAdId[row.ad_id].firmSlug) {
-      byAdId[row.ad_id].firmSlug = firm.slug
-      byAdId[row.ad_id].firmName = firm.name
+    // Build firm lookup
+    const firmById: Record<string, { slug: string; name: string }> = {}
+    for (const f of (firmsRes.data || [])) {
+      if (f.id) firmById[f.id] = { slug: f.slug, name: f.name }
     }
-  }
 
-  // Pipeline data from GHL API
-  for (const { slug, data } of pipelineResults as { slug: string; data: Record<string, { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: Lead }[]> }[]) {
-    for (const [adId, entries] of Object.entries(data)) {
-      if (!byAdId[adId]) byAdId[adId] = emptyAdData(slug, slug)
-      for (const { label, contact } of entries) {
-        byAdId[adId][`${label}Count`]++
-        byAdId[adId][`${label}Leads`].push(contact)
+    const byAdId: Record<string, AdData> = {}
+
+    // Signed cases from Supabase
+    for (const row of (signedRes.data || [])) {
+      if (!row.ad_id) continue
+      const firm = firmById[row.firm_id] || null
+      if (!byAdId[row.ad_id]) byAdId[row.ad_id] = emptyAdData(firm?.slug || null, firm?.name || null)
+      byAdId[row.ad_id].signedCases++
+      if (firm?.slug && !byAdId[row.ad_id].firmSlug) {
+        byAdId[row.ad_id].firmSlug = firm.slug
+        byAdId[row.ad_id].firmName = firm.name
       }
     }
-  }
 
-  return NextResponse.json({ byAdId })
+    // Pipeline data from GHL API
+    for (const { slug, data } of pipelineResults) {
+      for (const [adId, entries] of Object.entries(data)) {
+        if (!byAdId[adId]) byAdId[adId] = emptyAdData(slug, slug)
+        for (const { label, contact } of entries) {
+          if (label === 'nr') { byAdId[adId].nrCount++; byAdId[adId].nrLeads.push(contact) }
+          else if (label === 'nq') { byAdId[adId].nqCount++; byAdId[adId].nqLeads.push(contact) }
+          else if (label === 'fu') { byAdId[adId].fuCount++; byAdId[adId].fuLeads.push(contact) }
+          else if (label === 'chase') { byAdId[adId].chaseCount++; byAdId[adId].chaseLeads.push(contact) }
+        }
+      }
+    }
+
+    return NextResponse.json({ byAdId })
+  } catch (err) {
+    console.error('[creative-overview] unhandled error:', err)
+    return NextResponse.json({ error: String(err), byAdId: {} }, { status: 500 })
+  }
 }

@@ -88,6 +88,8 @@ function getLeads(actions: any[] = []) {
 }
 
 // ─── Aggregation types ───────────────────────────────────────────────────────
+type PipelineLead = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
+
 type AngleStat = {
   code: string
   name: string
@@ -98,6 +100,10 @@ type AngleStat = {
   nqCount: number
   fuCount: number
   chaseCount: number
+  nrLeads: PipelineLead[]
+  nqLeads: PipelineLead[]
+  fuLeads: PipelineLead[]
+  chaseLeads: PipelineLead[]
   adCount: number     // how many distinct ads use this angle
   cpl: number | null
   cpq: number | null
@@ -139,10 +145,11 @@ export async function GET(req: NextRequest) {
   }
 
   // 2. Supabase signed cases + GHL pipeline data in parallel
+  type GHLEntry = { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: PipelineLead }
   const ghlPipelineFetches = GHL_API_KEY
     ? Object.values(GHL_PIPELINES).map(pid =>
         (async () => {
-          const out: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {}
+          const out: Record<string, GHLEntry[]> = {}
           let url: string | null = `https://services.leadconnectorhq.com/opportunities/search?location_id=${GHL_LOCATION_ID}&pipeline_id=${pid}&limit=100`
           let p = 0
           while (url && p < 20) {
@@ -158,39 +165,62 @@ export async function GET(req: NextRequest) {
               if (!label) continue
               const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
               const adId = attr?.utmAdId || attr?.utmContent || null
-              if (adId) out[`${adId}::${opp.id}`] = label  // unique key per opp
+              if (!adId) continue
+              if (!out[adId]) out[adId] = []
+              out[adId].push({
+                label,
+                contact: {
+                  name:      opp.contact?.name || opp.name || null,
+                  phone:     opp.contact?.phone || null,
+                  email:     opp.contact?.email || null,
+                  createdAt: opp.createdAt || null,
+                },
+              })
             }
             url = d.meta?.nextPageUrl || null
           }
           return out
-        })()
+        })().catch(() => ({} as Record<string, GHLEntry[]>))
       )
     : []
 
-  const [signedRes, ...ghlResults] = await Promise.all([
+  const [signedRes, ghlResultsArr] = await Promise.all([
     supabase.from('ghl_leads').select('ad_id, ad_name'),
-    ...ghlPipelineFetches,
+    Promise.all(ghlPipelineFetches),
   ])
 
   const signedRows = (signedRes.data || []) as any[]
 
   // ─── Build signed + pipeline counts per ad_id ──────────────────────────────
-  type AdPipelineData = { signedCases: number; nrCount: number; nqCount: number; fuCount: number; chaseCount: number; adName: string | null }
+  type AdPipelineData = {
+    signedCases: number
+    nrCount: number; nqCount: number; fuCount: number; chaseCount: number
+    nrLeads: PipelineLead[]; nqLeads: PipelineLead[]; fuLeads: PipelineLead[]; chaseLeads: PipelineLead[]
+    adName: string | null
+  }
   const byAdId: Record<string, AdPipelineData> = {}
+
+  function emptyAdData(adName: string | null = null): AdPipelineData {
+    return { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adName }
+  }
 
   for (const row of signedRows) {
     if (!row.ad_id) continue
-    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adName: row.ad_name || null }
+    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = emptyAdData(row.ad_name || null)
     byAdId[row.ad_id].signedCases++
     if (row.ad_name && !byAdId[row.ad_id].adName) byAdId[row.ad_id].adName = row.ad_name
   }
 
   // Merge GHL pipeline data
-  for (const result of ghlResults as Record<string, 'nr' | 'nq' | 'fu' | 'chase'>[]) {
-    for (const [key, label] of Object.entries(result)) {
-      const adId = key.split('::')[0]
-      if (!byAdId[adId]) byAdId[adId] = { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adName: null }
-      byAdId[adId][`${label}Count`]++
+  for (const result of ghlResultsArr) {
+    for (const [adId, entries] of Object.entries(result)) {
+      if (!byAdId[adId]) byAdId[adId] = emptyAdData(null)
+      for (const { label, contact } of entries) {
+        if (label === 'nr') { byAdId[adId].nrCount++; byAdId[adId].nrLeads.push(contact) }
+        else if (label === 'nq') { byAdId[adId].nqCount++; byAdId[adId].nqLeads.push(contact) }
+        else if (label === 'fu') { byAdId[adId].fuCount++; byAdId[adId].fuLeads.push(contact) }
+        else if (label === 'chase') { byAdId[adId].chaseCount++; byAdId[adId].chaseLeads.push(contact) }
+      }
     }
   }
 
@@ -209,7 +239,7 @@ export async function GET(req: NextRequest) {
 
     const spend       = parseFloat(ad.spend || '0')
     const leads       = getLeads(ad.actions)
-    const adData      = byAdId[ad.ad_id] || { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0 }
+    const adData      = byAdId[ad.ad_id] || { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [] as PipelineLead[], nqLeads: [] as PipelineLead[], fuLeads: [] as PipelineLead[], chaseLeads: [] as PipelineLead[], adName: null }
     const signedCases = adData.signedCases
     const nrCount     = adData.nrCount
     const nqCount     = adData.nqCount
@@ -223,7 +253,7 @@ export async function GET(req: NextRequest) {
     }
 
     function addTo(map: Record<string, AngleStat>, code: string, name: string) {
-      if (!map[code]) map[code] = { code, name, spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adCount: 0, cpl: null, cpq: null, conversionRate: null }
+      if (!map[code]) map[code] = { code, name, spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adCount: 0, cpl: null, cpq: null, conversionRate: null }
       map[code].spend       += spend
       map[code].leads       += leads
       map[code].signedCases += signedCases
@@ -231,6 +261,10 @@ export async function GET(req: NextRequest) {
       map[code].nqCount     += nqCount
       map[code].fuCount     += fuCount
       map[code].chaseCount  += chaseCount
+      map[code].nrLeads.push(...adData.nrLeads)
+      map[code].nqLeads.push(...adData.nqLeads)
+      map[code].fuLeads.push(...adData.fuLeads)
+      map[code].chaseLeads.push(...adData.chaseLeads)
       map[code].adCount++
     }
 
@@ -241,11 +275,14 @@ export async function GET(req: NextRequest) {
       const comboKey = `${visualCode}+${verbalCode}`
       if (!comboMap[comboKey]) comboMap[comboKey] = {
         code: comboKey, name: `${visualCode} × ${verbalCode}`, visualCode, verbalCode,
-        spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adCount: 0, cpl: null, cpq: null, conversionRate: null,
+        spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adCount: 0, cpl: null, cpq: null, conversionRate: null,
       }
       const c = comboMap[comboKey]
       c.spend += spend; c.leads += leads; c.signedCases += signedCases
-      c.nrCount += nrCount; c.nqCount += nqCount; c.fuCount += fuCount; c.chaseCount += chaseCount; c.adCount++
+      c.nrCount += nrCount; c.nqCount += nqCount; c.fuCount += fuCount; c.chaseCount += chaseCount
+      c.nrLeads.push(...adData.nrLeads); c.nqLeads.push(...adData.nqLeads)
+      c.fuLeads.push(...adData.fuLeads); c.chaseLeads.push(...adData.chaseLeads)
+      c.adCount++
     }
   }
 

@@ -20,6 +20,8 @@ const DATE_PRESETS = [
 ]
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+type PipelineLead = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
+
 type AngleStat = {
   code:           string
   name:           string
@@ -30,6 +32,10 @@ type AngleStat = {
   nqCount:        number
   fuCount:        number
   chaseCount:     number
+  nrLeads:        PipelineLead[]
+  nqLeads:        PipelineLead[]
+  fuLeads:        PipelineLead[]
+  chaseLeads:     PipelineLead[]
   adCount:        number
   cpl:            number | null
   cpq:            number | null
@@ -37,6 +43,8 @@ type AngleStat = {
 }
 
 type ComboStat = AngleStat & { visualCode: string; verbalCode: string }
+
+type PipelineModalState = { stat: AngleStat; stage: 'nr' | 'nq' | 'fu' | 'chase' } | null
 
 type AnglesData = {
   datePreset:    string
@@ -98,7 +106,16 @@ function RankBadge({ rank }: { rank: number }) {
 }
 
 // ─── Angle stats table ────────────────────────────────────────────────────────
-function AngleTable({ stats, showVisual, showVerbal }: { stats: AngleStat[]; showVisual?: boolean; showVerbal?: boolean }) {
+function StageBtn({ count, color, onClick }: { count: number; color: string; onClick: () => void }) {
+  if (count === 0) return <span style={{ color: MUTED, fontSize: 12 }}>—</span>
+  return (
+    <button onClick={onClick} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color, fontSize: 12, fontWeight: 600, textDecoration: 'underline', textDecorationColor: `${color}55` }}>
+      {count}
+    </button>
+  )
+}
+
+function AngleTable({ stats, showVisual, showVerbal, onStageClick }: { stats: AngleStat[]; showVisual?: boolean; showVerbal?: boolean; onStageClick: (stat: AngleStat, stage: 'nr' | 'nq' | 'fu' | 'chase') => void }) {
   if (stats.length === 0) {
     return <p style={{ fontSize: 13, color: MUTED, padding: '24px 0' }}>No data yet for this period.</p>
   }
@@ -141,10 +158,10 @@ function AngleTable({ stats, showVisual, showVerbal }: { stats: AngleStat[]; sho
               <td style={{ padding: '10px 12px', textAlign: 'right', color: s.signedCases > 0 ? '#15803D' : MUTED, fontWeight: s.signedCases > 0 ? 700 : 400 }}>{s.signedCases || '—'}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: cpqColor(s.cpq) }}>{fmt$(s.cpq)}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{fmtPct(s.conversionRate)}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.nrCount || '—'}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.nqCount || '—'}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.fuCount || '—'}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#EA580C', fontSize: 12 }}>{s.chaseCount || '—'}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.nrCount} color='#2563EB' onClick={() => onStageClick(s, 'nr')} /></td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.nqCount} color='#DC2626' onClick={() => onStageClick(s, 'nq')} /></td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.fuCount} color='#CA8A04' onClick={() => onStageClick(s, 'fu')} /></td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.chaseCount} color='#EA580C' onClick={() => onStageClick(s, 'chase')} /></td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 11 }}>{s.adCount}</td>
             </tr>
           ))}
@@ -155,7 +172,7 @@ function AngleTable({ stats, showVisual, showVerbal }: { stats: AngleStat[]; sho
 }
 
 // ─── Combination table ────────────────────────────────────────────────────────
-function ComboTable({ stats }: { stats: ComboStat[] }) {
+function ComboTable({ stats, onStageClick }: { stats: ComboStat[]; onStageClick: (stat: AngleStat, stage: 'nr' | 'nq' | 'fu' | 'chase') => void }) {
   if (stats.length === 0) {
     return <p style={{ fontSize: 13, color: MUTED, padding: '24px 0' }}>No combination data yet.</p>
   }
@@ -176,6 +193,7 @@ function ComboTable({ stats }: { stats: ComboStat[] }) {
             <TH right>NR</TH>
             <TH right>NQ</TH>
             <TH right>F/U</TH>
+            <TH right>Chase</TH>
           </tr>
         </thead>
         <tbody>
@@ -186,7 +204,6 @@ function ComboTable({ stats }: { stats: ComboStat[] }) {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
                   <span style={{ fontWeight: 700, fontFamily: 'monospace', fontSize: 11, color: '#92400E', background: '#FEF3C7', borderRadius: 4, padding: '1px 5px', display: 'inline-block' }}>{s.visualCode}</span>
                   <span style={{ fontSize: 11, color: MUTED, maxWidth: 140, lineHeight: 1.3 }}>
-                    {/* Look up visual name */}
                     {VISUAL_HOOK_NAMES[s.visualCode] || s.visualCode}
                   </span>
                 </div>
@@ -205,9 +222,10 @@ function ComboTable({ stats }: { stats: ComboStat[] }) {
               <td style={{ padding: '10px 12px', textAlign: 'right', color: s.signedCases > 0 ? '#15803D' : MUTED, fontWeight: s.signedCases > 0 ? 700 : 400 }}>{s.signedCases || '—'}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: 700, color: cpqColor(s.cpq) }}>{fmt$(s.cpq)}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{fmtPct(s.conversionRate)}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.nrCount || '—'}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.nqCount || '—'}</td>
-              <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.fuCount || '—'}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.nrCount} color='#2563EB' onClick={() => onStageClick(s, 'nr')} /></td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.nqCount} color='#DC2626' onClick={() => onStageClick(s, 'nq')} /></td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.fuCount} color='#CA8A04' onClick={() => onStageClick(s, 'fu')} /></td>
+              <td style={{ padding: '10px 12px', textAlign: 'right' }}><StageBtn count={s.chaseCount} color='#EA580C' onClick={() => onStageClick(s, 'chase')} /></td>
             </tr>
           ))}
         </tbody>
@@ -232,6 +250,63 @@ const VERBAL_HOOK_NAMES: Record<string, string> = {
   B14: '3 Mistakes', B15: 'Eligible for a bigger payout', B16: 'Do Not Call Attorney',
   B17: 'Been in car accident and did not go to the hospital',
   B18: 'Life after getting $100k (Banner)', B19: "Didn't Go To ER",
+}
+
+// ─── Pipeline leads modal ─────────────────────────────────────────────────────
+const STAGE_LABELS: Record<string, string> = { nr: 'No Response', nq: 'Not Qualified', fu: 'Follow Up', chase: 'Chase' }
+const STAGE_COLORS: Record<string, string> = { nr: '#2563EB', nq: '#DC2626', fu: '#CA8A04', chase: '#EA580C' }
+
+function PipelineLeadsModal({ modal, onClose }: { modal: PipelineModalState; onClose: () => void }) {
+  if (!modal) return null
+  const leads = modal.stat[`${modal.stage}Leads` as 'nrLeads' | 'nqLeads' | 'fuLeads' | 'chaseLeads'] || []
+  const color = STAGE_COLORS[modal.stage]
+  const label = STAGE_LABELS[modal.stage]
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}
+      onClick={onClose}>
+      <div style={{ background: '#FFF', borderRadius: 14, width: '100%', maxWidth: 560, maxHeight: '80vh', overflow: 'hidden', display: 'flex', flexDirection: 'column', boxShadow: '0 20px 60px rgba(0,0,0,0.25)' }}
+        onClick={e => e.stopPropagation()}>
+        <div style={{ padding: '20px 24px', borderBottom: `1px solid ${BORDER}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div>
+            <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color, marginBottom: 4 }}>{label}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: DARK }}>
+              {modal.stat.code} — {modal.stat.name}
+            </div>
+            <div style={{ fontSize: 12, color: MUTED, marginTop: 2 }}>{leads.length} lead{leads.length !== 1 ? 's' : ''}</div>
+          </div>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: MUTED, lineHeight: 1 }}>✕</button>
+        </div>
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {leads.length === 0 ? (
+            <p style={{ padding: '32px 24px', textAlign: 'center', color: MUTED, fontSize: 14 }}>No leads in this stage.</p>
+          ) : (
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <thead>
+                <tr style={{ background: '#F5F1EB' }}>
+                  <th style={{ textAlign: 'left', padding: '8px 16px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, borderBottom: `1px solid ${BORDER}` }}>Name</th>
+                  <th style={{ textAlign: 'left', padding: '8px 16px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, borderBottom: `1px solid ${BORDER}` }}>Phone</th>
+                  <th style={{ textAlign: 'left', padding: '8px 16px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, borderBottom: `1px solid ${BORDER}` }}>Email</th>
+                  <th style={{ textAlign: 'left', padding: '8px 16px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, borderBottom: `1px solid ${BORDER}` }}>Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {leads.map((lead, i) => (
+                  <tr key={i} style={{ borderBottom: `1px solid ${BORDER}`, background: i % 2 === 0 ? '#FFF' : '#FAFAF8' }}>
+                    <td style={{ padding: '10px 16px', fontWeight: 500 }}>{lead.name || '—'}</td>
+                    <td style={{ padding: '10px 16px', color: MUTED }}>{lead.phone || '—'}</td>
+                    <td style={{ padding: '10px 16px', color: MUTED, fontSize: 12 }}>{lead.email || '—'}</td>
+                    <td style={{ padding: '10px 16px', color: MUTED, fontSize: 11, whiteSpace: 'nowrap' }}>
+                      {lead.createdAt ? new Date(lead.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '—'}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+      </div>
+    </div>
+  )
 }
 
 // ─── AI Analysis renderer ─────────────────────────────────────────────────────
@@ -288,11 +363,12 @@ function AIAnalysis({ text }: { text: string }) {
 // ─── Main page ────────────────────────────────────────────────────────────────
 export default function AnglesPage() {
   const router = useRouter()
-  const [datePreset, setDatePreset]   = useState('maximum')
-  const [data,       setData]         = useState<AnglesData | null>(null)
-  const [loading,    setLoading]      = useState(true)
-  const [analyzing,  setAnalyzing]    = useState(false)
-  const [section,    setSection]      = useState<'visual' | 'verbal' | 'combos'>('visual')
+  const [datePreset,    setDatePreset]    = useState('maximum')
+  const [data,          setData]          = useState<AnglesData | null>(null)
+  const [loading,       setLoading]       = useState(true)
+  const [analyzing,     setAnalyzing]     = useState(false)
+  const [section,       setSection]       = useState<'visual' | 'verbal' | 'combos'>('visual')
+  const [pipelineModal, setPipelineModal] = useState<PipelineModalState>(null)
 
   const load = useCallback((preset: string) => {
     setLoading(true)
@@ -327,6 +403,7 @@ export default function AnglesPage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG, color: DARK }}>
+      <PipelineLeadsModal modal={pipelineModal} onClose={() => setPipelineModal(null)} />
 
       {/* ── Nav ─────────────────────────────────────────────────────────────── */}
       <div style={{ background: CARD, borderBottom: `1px solid ${BORDER}`, padding: '0 24px', display: 'flex', alignItems: 'stretch', justifyContent: 'space-between' }}>
@@ -473,7 +550,7 @@ export default function AnglesPage() {
                 <p style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
                   Visual hooks (A codes) are ranked by CPQ then spend. Green CPQ = under $600, yellow = under $900, red = over $900.
                 </p>
-                <AngleTable stats={data.visual} showVisual />
+                <AngleTable stats={data.visual} showVisual onStageClick={(stat, stage) => setPipelineModal({ stat, stage })} />
               </div>
             )}
             {section === 'verbal' && (
@@ -481,7 +558,7 @@ export default function AnglesPage() {
                 <p style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
                   Verbal hooks (B codes) represent the spoken message or text overlay. Ranked by CPQ then spend.
                 </p>
-                <AngleTable stats={data.verbal} showVerbal />
+                <AngleTable stats={data.verbal} showVerbal onStageClick={(stat, stage) => setPipelineModal({ stat, stage })} />
               </div>
             )}
             {section === 'combos' && (
@@ -489,7 +566,7 @@ export default function AnglesPage() {
                 <p style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>
                   Combinations showing both visual and verbal hook performance together. Ranked by CPQ then spend.
                 </p>
-                <ComboTable stats={data.combos} />
+                <ComboTable stats={data.combos} onStageClick={(stat, stage) => setPipelineModal({ stat, stage })} />
               </div>
             )}
 
