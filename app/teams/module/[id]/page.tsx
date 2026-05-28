@@ -119,7 +119,6 @@ export default function ModulePage() {
         .order('position', { ascending: true })
 
       if (qError) throw new Error('Failed to load questions.')
-      if (!questionsData || questionsData.length === 0) throw new Error('This module has no questions yet.')
 
       // Check previous attempt count for this user+module
       const { count: prevCount } = await supabase
@@ -264,6 +263,24 @@ export default function ModulePage() {
     }
   }
 
+  async function completeLesson() {
+    setState('submitting')
+    try {
+      const res = await fetch('/api/teams/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleId, answers: [], contentViewSeconds: contentViewSecondsRef.current }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to complete lesson.')
+      setResult({ ...data, breakdown: [] })
+      setState('results')
+    } catch (err: any) {
+      setErrorMsg(err.message)
+      setState('error')
+    }
+  }
+
   // ── Loading ──────────────────────────────────────────────────────────
   if (state === 'loading') {
     return (
@@ -324,10 +341,14 @@ export default function ModulePage() {
             <div className="flex items-center gap-2 bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
               Step 1 · {moduleData.content_type === 'video' ? '🎬 Watch' : moduleData.content_type === 'file' ? '📎 Review' : '📄 Read'}
             </div>
-            <div className="h-px flex-1 bg-gray-200" />
-            <div className="flex items-center gap-2 bg-gray-200 text-gray-500 text-xs font-semibold px-3 py-1.5 rounded-full">
-              Step 2 · 📝 Quiz
-            </div>
+            {questions.length > 0 && (
+              <>
+                <div className="h-px flex-1 bg-gray-200" />
+                <div className="flex items-center gap-2 bg-gray-200 text-gray-500 text-xs font-semibold px-3 py-1.5 rounded-full">
+                  Step 2 · 📝 Quiz
+                </div>
+              </>
+            )}
           </div>
 
           {/* Video */}
@@ -402,9 +423,13 @@ export default function ModulePage() {
               />
               <span className="text-sm text-gray-700">
                 {moduleData.content_type === 'video'
-                  ? 'I have watched the full video and am ready for the quiz.'
+                  ? questions.length > 0
+                    ? 'I have watched the full video and am ready for the quiz.'
+                    : 'I have watched the full video.'
                   : moduleData.content_type === 'file'
-                  ? 'I have reviewed the document and am ready for the quiz.'
+                  ? questions.length > 0
+                    ? 'I have reviewed the document and am ready for the quiz.'
+                    : 'I have reviewed the document.'
                   : 'I have read and understood all the material above.'}
               </span>
             </label>
@@ -413,12 +438,16 @@ export default function ModulePage() {
                 if (contentStartRef.current) {
                   contentViewSecondsRef.current = Math.round((Date.now() - contentStartRef.current) / 1000)
                 }
-                setState('taking')
+                if (questions.length === 0) {
+                  completeLesson()
+                } else {
+                  setState('taking')
+                }
               }}
               disabled={!contentConfirmed}
               className="shrink-0 bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
             >
-              Start Quiz →
+              {questions.length === 0 ? 'Complete Lesson →' : 'Start Quiz →'}
             </button>
           </div>
         </div>
@@ -454,7 +483,7 @@ export default function ModulePage() {
             </div>
 
             {/* Breakdown */}
-            <div className="px-5 py-4 border-t border-gray-100">
+            {result.breakdown.length > 0 && <div className="px-5 py-4 border-t border-gray-100">
               <h3 className="text-sm font-semibold text-gray-700 mb-4">Question Breakdown</h3>
               <div className="space-y-3">
                 {result.breakdown.map((item, idx) => (
@@ -489,7 +518,7 @@ export default function ModulePage() {
                   </div>
                 ))}
               </div>
-            </div>
+            </div>}
           </div>
 
           <Link

@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
     contentViewSeconds?: number
   }
 
-  if (!moduleId || !answers || !Array.isArray(answers) || answers.length === 0) {
+  if (!moduleId || !answers || !Array.isArray(answers)) {
     return NextResponse.json({ error: 'moduleId and answers are required.' }, { status: 400 })
   }
 
@@ -53,6 +53,38 @@ export async function POST(request: NextRequest) {
 
   if (questionsError || !questions) {
     return NextResponse.json({ error: 'Failed to load questions.' }, { status: 500 })
+  }
+
+  // Video-only completion: no answers to grade
+  if (answers.length === 0) {
+    const { count: previousAttempts } = await supabase
+      .from('attempts')
+      .select('*', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('module_id', moduleId)
+
+    const attemptNumber = (previousAttempts ?? 0) + 1
+
+    const { data: newAttempt, error: attemptError } = await supabase
+      .from('attempts')
+      .insert({
+        user_id: user.id,
+        module_id: moduleId,
+        score: 100,
+        passed: true,
+        attempt_number: attemptNumber,
+        is_invalidated: false,
+        tab_leave_count: 0,
+        content_view_seconds: contentViewSeconds ?? 0,
+      })
+      .select()
+      .single()
+
+    if (attemptError || !newAttempt) {
+      return NextResponse.json({ error: 'Failed to save completion.' }, { status: 500 })
+    }
+
+    return NextResponse.json({ score: 100, passed: true, attemptNumber, breakdown: [] })
   }
 
   // Build a map: questionId -> { correctOptionId, questionText, allOptions }

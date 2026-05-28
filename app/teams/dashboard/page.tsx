@@ -5,6 +5,77 @@ import { format } from 'date-fns'
 import LogoutButton from './LogoutButton'
 import TimeclockWidget from './TimeclockWidget'
 
+function ModuleCard({ mod, data, qCount }: {
+  mod: { id: string; title: string; description: string; pass_threshold: number; is_required: boolean; created_at: string }
+  data: { completed: boolean; lastScore: number | null; lastPassed: boolean | null; attemptCount: number; lastAttemptDate: string | null }
+  qCount: number
+}) {
+  let statusLabel = 'Not Started'
+  let statusClass = 'bg-gray-100 text-gray-500'
+  if (data.completed) {
+    statusLabel = 'Completed ✓'
+    statusClass = 'bg-green-100 text-green-700 font-semibold'
+  } else if (data.attemptCount > 0 && !data.completed) {
+    statusLabel = 'Failed'
+    statusClass = 'bg-red-100 text-red-600'
+  }
+
+  const btnLabel = data.attemptCount === 0
+    ? (qCount === 0 ? 'Watch' : 'Take Quiz')
+    : data.completed ? 'Rewatch' : 'Retry Quiz'
+
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-semibold text-gray-900">{mod.title}</span>
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${mod.is_required ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+            {mod.is_required ? 'Required' : 'Optional'}
+          </span>
+        </div>
+        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
+          {qCount > 0 ? (
+            <>
+              <span>{qCount} question{qCount !== 1 ? 's' : ''}</span>
+              <span>·</span>
+              <span>Pass: {mod.pass_threshold}%</span>
+            </>
+          ) : (
+            <span>Video lesson</span>
+          )}
+          {data.lastScore !== null && qCount > 0 && (
+            <>
+              <span>·</span>
+              <span>Last score: {data.lastScore}%</span>
+            </>
+          )}
+          {data.lastAttemptDate && (
+            <>
+              <span>·</span>
+              <span>{format(new Date(data.lastAttemptDate), 'M/d/yyyy')}</span>
+            </>
+          )}
+        </div>
+      </div>
+      <div className="flex items-center gap-3 shrink-0">
+        <span className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap ${statusClass}`}>
+          {statusLabel}
+        </span>
+        <Link
+          href={`/teams/module/${mod.id}`}
+          className={`text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${
+            data.completed
+              ? 'border border-gray-300 text-gray-600 hover:bg-gray-50'
+              : 'bg-[#0f1e3c] text-white hover:bg-[#1a3060]'
+          }`}
+        >
+          {btnLabel}
+        </Link>
+      </div>
+    </div>
+  )
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient()
 
@@ -35,6 +106,17 @@ export default async function DashboardPage() {
     .select('id, title, description, pass_threshold, is_required, is_active, created_at')
     .eq('is_active', true)
     .order('created_at', { ascending: true })
+
+  // Programs (sections) with ordered module links
+  const { data: programs } = await supabase
+    .from('programs')
+    .select('id, name')
+    .order('created_at', { ascending: true })
+
+  const { data: programModuleLinks } = await supabase
+    .from('program_modules')
+    .select('program_id, module_id, position')
+    .order('position', { ascending: true })
 
   // Question counts
   const moduleIds = (modules ?? []).map((m) => m.id)
@@ -84,6 +166,21 @@ export default async function DashboardPage() {
   const requiredModules = (modules ?? []).filter((m) => m.is_required)
   const completedRequired = requiredModules.filter((m) => moduleAttemptData[m.id]?.completed).length
 
+  // Build program sections
+  const moduleMap = Object.fromEntries((modules ?? []).map((m) => [m.id, m]))
+  const assignedModuleIds = new Set((programModuleLinks ?? []).map((l) => l.module_id))
+
+  const sections = (programs ?? []).map((prog) => ({
+    id: prog.id,
+    name: prog.name,
+    modules: (programModuleLinks ?? [])
+      .filter((l) => l.program_id === prog.id)
+      .sort((a, b) => a.position - b.position)
+      .map((l) => moduleMap[l.module_id])
+      .filter(Boolean),
+  })).filter((s) => s.modules.length > 0)
+
+  const ungroupedModules = (modules ?? []).filter((m) => !assignedModuleIds.has(m.id))
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -153,76 +250,34 @@ export default async function DashboardPage() {
         </div>
 
         {/* Module list */}
-        <h2 className="text-base font-semibold text-gray-800 mb-3">Training Modules</h2>
-
         {(modules ?? []).length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center">
             <p className="text-gray-500">No training modules available yet.</p>
           </div>
         ) : (
-          <div className="space-y-3">
-            {(modules ?? []).map((mod) => {
-              const data = moduleAttemptData[mod.id]
-              const qCount = questionCounts[mod.id] ?? 0
-
-              let statusLabel = 'Not Started'
-              let statusClass = 'bg-gray-100 text-gray-500'
-              if (data.completed) {
-                statusLabel = 'Completed ✓'
-                statusClass = 'bg-green-100 text-green-700 font-semibold'
-              } else if (data.attemptCount > 0 && !data.completed) {
-                statusLabel = 'Failed'
-                statusClass = 'bg-red-100 text-red-600'
-              }
-
-              const btnLabel = data.attemptCount === 0 ? 'Take Quiz' : data.completed ? 'Retake' : 'Retry Quiz'
-
-              return (
-                <div key={mod.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-semibold text-gray-900">{mod.title}</span>
-                      <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${mod.is_required ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-                        {mod.is_required ? 'Required' : 'Optional'}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
-                      <span>{qCount} question{qCount !== 1 ? 's' : ''}</span>
-                      <span>·</span>
-                      <span>Pass: {mod.pass_threshold}%</span>
-                      {data.lastScore !== null && (
-                        <>
-                          <span>·</span>
-                          <span>Last score: {data.lastScore}%</span>
-                        </>
-                      )}
-                      {data.lastAttemptDate && (
-                        <>
-                          <span>·</span>
-                          <span>{format(new Date(data.lastAttemptDate), 'M/d/yyyy')}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-3 shrink-0">
-                    <span className={`text-xs px-2.5 py-1 rounded-full whitespace-nowrap ${statusClass}`}>
-                      {statusLabel}
-                    </span>
-                    <Link
-                      href={`/teams/module/${mod.id}`}
-                      className={`text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${
-                        data.completed
-                          ? 'border border-gray-300 text-gray-600 hover:bg-gray-50'
-                          : 'bg-[#0f1e3c] text-white hover:bg-[#1a3060]'
-                      }`}
-                    >
-                      {btnLabel}
-                    </Link>
-                  </div>
+          <div className="space-y-8">
+            {/* Sections (programs) */}
+            {sections.map((section) => (
+              <div key={section.id}>
+                <h2 className="text-base font-semibold text-gray-800 mb-3">{section.name}</h2>
+                <div className="space-y-3">
+                  {section.modules.map((mod) => mod && <ModuleCard key={mod.id} mod={mod} data={moduleAttemptData[mod.id]} qCount={questionCounts[mod.id] ?? 0} />)}
                 </div>
-              )
-            })}
+              </div>
+            ))}
+
+            {/* Ungrouped modules */}
+            {ungroupedModules.length > 0 && (
+              <div>
+                {sections.length > 0 && <h2 className="text-base font-semibold text-gray-800 mb-3">Other Modules</h2>}
+                {sections.length === 0 && <h2 className="text-base font-semibold text-gray-800 mb-3">Training Modules</h2>}
+                <div className="space-y-3">
+                  {ungroupedModules.map((mod) => (
+                    <ModuleCard key={mod.id} mod={mod} data={moduleAttemptData[mod.id]} qCount={questionCounts[mod.id] ?? 0} />
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </main>
