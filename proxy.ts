@@ -26,8 +26,8 @@ export async function proxy(request: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   const { pathname } = request.nextUrl
 
-  // Allow login page
-  if (pathname === '/teams/login') {
+  // Allow public pages (login, signup)
+  if (pathname === '/teams/login' || pathname === '/teams/signup') {
     if (user) {
       // Already logged in — redirect based on role
       const { data: profile } = await supabase
