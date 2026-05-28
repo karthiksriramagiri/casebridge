@@ -529,6 +529,10 @@ export default function MetricsPage() {
             style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', fontSize: 13, fontWeight: 500, color: MUTED, borderBottom: '2px solid transparent', textDecoration: 'none', transition: 'all 0.15s' }}>
             Angles
           </Link>
+          <Link href="/metrics/oos-cases"
+            style={{ display: 'flex', alignItems: 'center', padding: '14px 16px', fontSize: 13, fontWeight: 500, color: MUTED, borderBottom: '2px solid transparent', textDecoration: 'none', transition: 'all 0.15s' }}>
+            OOS Cases
+          </Link>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <select value={datePreset} onChange={e => setDatePreset(e.target.value)}
