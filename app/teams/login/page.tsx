@@ -139,6 +139,15 @@ export default function LoginPage() {
               )}
             </button>
           </form>
+
+          <div className="mt-6 pt-5 border-t border-gray-100 text-center">
+            <p className="text-sm text-gray-500">
+              New to CaseBridge?{' '}
+              <a href="/teams" className="text-[#0f1e3c] font-semibold hover:underline">
+                Sign up here →
+              </a>
+            </p>
+          </div>
         </div>
       </div>
     </div>
