@@ -65,28 +65,52 @@ export async function POST(request: NextRequest) {
     Object.assign(customFields, payload.customData)
   }
 
-  // Attribution
-  const adId =
+  // Attribution — from payload first, then inherit from signed record if missing
+  let adId =
     payload.adId || payload.ad_id ||
     customFields.adId || customFields.ad_id ||
     payload.contact?.attributionSource?.adId ||
     payload.utm_content || customFields.utm_content || null
-  const adName =
+  let adName =
     payload.adName || payload.ad_name ||
     customFields.adName || customFields.ad_name ||
     customFields['Ad Name'] || null
-  const adsetId =
+  let adsetId =
     payload.adGroupId || payload.adset_id ||
     customFields.adGroupId || customFields.adset_id || null
-  const campaignId =
+  let campaignId =
     payload.campaignId || payload.campaign_id ||
     customFields.campaignId || customFields.campaign_id ||
     payload.utm_campaign || customFields.utm_campaign || null
-  const utmSource   = payload.utm_source   || customFields.utm_source   || null
-  const utmMedium   = payload.utm_medium   || customFields.utm_medium   || null
-  const utmCampaign = payload.utm_campaign || customFields.utm_campaign || null
-  const utmContent  = payload.utm_content  || customFields.utm_content  || null
-  const utmTerm     = payload.utm_term     || customFields.utm_term     || null
+  let utmSource   = payload.utm_source   || customFields.utm_source   || null
+  let utmMedium   = payload.utm_medium   || customFields.utm_medium   || null
+  let utmCampaign = payload.utm_campaign || customFields.utm_campaign || null
+  let utmContent  = payload.utm_content  || customFields.utm_content  || null
+  let utmTerm     = payload.utm_term     || customFields.utm_term     || null
+
+  // If no ad attribution in payload, look up the contact's signed record to inherit it
+  const missingAdAttrib = (!adId || adId.includes('{{')) && !adName
+  if (contactId && missingAdAttrib) {
+    const { data: signedRecord } = await supabase
+      .from('ghl_leads')
+      .select('ad_id, ad_name, adset_id, campaign_id, utm_source, utm_medium, utm_campaign, utm_content, utm_term')
+      .eq('contact_id', contactId)
+      .is('pipeline_stage', null)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
+    if (signedRecord) {
+      adId        = adId        || signedRecord.ad_id
+      adName      = adName      || signedRecord.ad_name
+      adsetId     = adsetId     || signedRecord.adset_id
+      campaignId  = campaignId  || signedRecord.campaign_id
+      utmSource   = utmSource   || signedRecord.utm_source
+      utmMedium   = utmMedium   || signedRecord.utm_medium
+      utmCampaign = utmCampaign || signedRecord.utm_campaign
+      utmContent  = utmContent  || signedRecord.utm_content
+      utmTerm     = utmTerm     || signedRecord.utm_term
+    }
+  }
 
   // Firm resolution
   const locationName =

@@ -387,7 +387,7 @@ export async function GET(request: NextRequest) {
     (() => {
       let q = supabase
         .from('ghl_leads')
-        .select('ad_id, ad_name, pipeline_stage, contact_name, contact_phone, contact_email, created_at')
+        .select('contact_id, ad_id, ad_name, pipeline_stage, contact_name, contact_phone, contact_email, created_at')
         .eq('firm_id', firm.id)
         .not('pipeline_stage', 'is', null)
       if (invoiceParam) {
@@ -410,6 +410,7 @@ export async function GET(request: NextRequest) {
   // Build pipeline breakdown from Supabase ghl_leads (NR/NQ/FU records)
   const ghlPipelineBreakdown: Record<string, PipelineAdLeads> = {}
   const ghlPipelineByName:    Record<string, PipelineAdLeads> = {}
+  const unattributedPipelineRows: any[] = []
   for (const row of (pipelineLeadsRes.data || [])) {
     const label = STAGE_MAP[row.pipeline_stage]
     if (!label) continue
@@ -426,6 +427,47 @@ export async function GET(request: NextRequest) {
     } else if (row.ad_name) {
       if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [], chase: [] }
       ghlPipelineByName[row.ad_name][label].push(contact)
+    } else if (row.contact_id) {
+      // No ad attribution in this record — will try to inherit from signed record below
+      unattributedPipelineRows.push(row)
+    }
+  }
+
+  // Secondary attribution: look up signed records for unattributed pipeline contacts
+  // (GHL stage-change webhooks often omit Meta ad attribution)
+  if (unattributedPipelineRows.length > 0) {
+    const contactIds = [...new Set(unattributedPipelineRows.map((r: any) => r.contact_id).filter(Boolean))]
+    if (contactIds.length > 0) {
+      const { data: signedRecords } = await supabase
+        .from('ghl_leads')
+        .select('contact_id, ad_id, ad_name')
+        .eq('firm_id', firm.id)
+        .is('pipeline_stage', null)
+        .in('contact_id', contactIds)
+      const contactAdMap: Record<string, { ad_id: string | null; ad_name: string | null }> = {}
+      for (const sr of (signedRecords || [])) {
+        if (sr.contact_id) contactAdMap[sr.contact_id] = { ad_id: sr.ad_id, ad_name: sr.ad_name }
+      }
+      for (const row of unattributedPipelineRows) {
+        const label = STAGE_MAP[(row as any).pipeline_stage]
+        if (!label) continue
+        const attrib = contactAdMap[(row as any).contact_id]
+        if (!attrib) continue
+        const contact: PipelineContact = {
+          name:      (row as any).contact_name,
+          phone:     (row as any).contact_phone,
+          email:     (row as any).contact_email,
+          createdAt: (row as any).created_at,
+        }
+        const hasRealAdId = attrib.ad_id && !attrib.ad_id.includes('{{')
+        if (hasRealAdId) {
+          if (!ghlPipelineBreakdown[attrib.ad_id!]) ghlPipelineBreakdown[attrib.ad_id!] = { nr: [], nq: [], fu: [], chase: [] }
+          ghlPipelineBreakdown[attrib.ad_id!][label].push(contact)
+        } else if (attrib.ad_name) {
+          if (!ghlPipelineByName[attrib.ad_name]) ghlPipelineByName[attrib.ad_name] = { nr: [], nq: [], fu: [], chase: [] }
+          ghlPipelineByName[attrib.ad_name][label].push(contact)
+        }
+      }
     }
   }
 
@@ -655,7 +697,7 @@ export async function GET(request: NextRequest) {
     const adVictims = adMatchedLeads.reduce((s: number, l: any) => s + (l.victim_count || 1), 0)
 
     // Pipeline stage counts — from Supabase ghl_leads, matched by ad_id then ad_name
-    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { nr: [], nq: [], fu: [] }
+    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { nr: [], nq: [], fu: [], chase: [] }
 
     return {
       adId: a.ad_id,
