@@ -120,6 +120,80 @@ export default function ModulePage() {
 
       if (qError) throw new Error('Failed to load questions.')
 
+      // ── Sequential access check ──────────────────────────────────────
+      const { data: progLink } = await supabase
+        .from('program_modules')
+        .select('program_id, position')
+        .eq('module_id', moduleId)
+        .maybeSingle()
+
+      if (progLink) {
+        const { program_id, position } = progLink
+
+        if (position === 0) {
+          // First module of program — ensure all previous programs are complete
+          const { data: thisProgram } = await supabase
+            .from('programs')
+            .select('created_at')
+            .eq('id', program_id)
+            .single()
+
+          if (thisProgram) {
+            const { data: prevPrograms } = await supabase
+              .from('programs')
+              .select('id')
+              .lt('created_at', thisProgram.created_at)
+
+            if (prevPrograms && prevPrograms.length > 0) {
+              const { data: prevLinks } = await supabase
+                .from('program_modules')
+                .select('module_id')
+                .in('program_id', prevPrograms.map((p) => p.id))
+
+              const prevModIds = (prevLinks ?? []).map((l) => l.module_id)
+              if (prevModIds.length > 0) {
+                const { data: passing } = await supabase
+                  .from('attempts')
+                  .select('module_id')
+                  .eq('user_id', user.id)
+                  .in('module_id', prevModIds)
+                  .eq('passed', true)
+                  .eq('is_invalidated', false)
+
+                const completedSet = new Set((passing ?? []).map((a) => a.module_id))
+                if (!prevModIds.every((id) => completedSet.has(id))) {
+                  throw new Error('Complete the previous section first.')
+                }
+              }
+            }
+          }
+        } else {
+          // Not first — check all preceding modules in this program are done
+          const { data: prevLinks } = await supabase
+            .from('program_modules')
+            .select('module_id')
+            .eq('program_id', program_id)
+            .lt('position', position)
+
+          const prevModIds = (prevLinks ?? []).map((l) => l.module_id)
+          if (prevModIds.length > 0) {
+            const { data: passing } = await supabase
+              .from('attempts')
+              .select('module_id')
+              .eq('user_id', user.id)
+              .in('module_id', prevModIds)
+              .eq('passed', true)
+              .eq('is_invalidated', false)
+
+            const completedSet = new Set((passing ?? []).map((a) => a.module_id))
+            if (!prevModIds.every((id) => completedSet.has(id))) {
+              throw new Error('Complete the previous lesson first.')
+            }
+          }
+        }
+      }
+      // ────────────────────────────────────────────────────────────────
+
       // Check previous attempt count for this user+module
       const { count: prevCount } = await supabase
         .from('attempts')
