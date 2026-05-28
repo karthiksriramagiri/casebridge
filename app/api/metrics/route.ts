@@ -52,7 +52,7 @@ export async function GET(req: NextRequest) {
       level: 'adset',
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
-      fields: `${insightFields},ad_name,adset_name,adset_id,campaign_name,campaign_id`,
+      fields: `${insightFields},ad_id,ad_name,adset_name,adset_id,campaign_name,campaign_id`,
       date_preset: datePreset,
       level: 'ad',
       limit: '500',
