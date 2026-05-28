@@ -498,24 +498,37 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
     return () => window.removeEventListener('keydown', onKey)
   }, [onClose])
 
-  // Only show GHL pipeline contacts for this timeframe (NR/NQ/FU) — already time-filtered by the API
-  // Signed cases are shown separately via the Signed column
   const all = [
-    ...(ad.fuLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'fu' })),
     ...(ad.nrLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nr' })),
     ...(ad.nqLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nq' })),
+    ...(ad.fuLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'fu' })),
     ...(ad.chaseLeads || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'chase' })),
-  ]
+  ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
+
+  const stageSummary = [
+    { key: 'nr',    label: 'No Response', count: (ad.nrLeads    || []).length, cls: 'bg-gray-800 text-gray-400' },
+    { key: 'nq',    label: 'Not Qualified', count: (ad.nqLeads  || []).length, cls: 'bg-red-900/40 text-red-400' },
+    { key: 'fu',    label: 'Follow Up',   count: (ad.fuLeads    || []).length, cls: 'bg-blue-900/40 text-blue-400' },
+    { key: 'chase', label: 'Chase',       count: (ad.chaseLeads || []).length, cls: 'bg-orange-900/40 text-orange-400' },
+  ].filter(s => s.count > 0)
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
       <div className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-2xl max-h-[80vh] flex flex-col shadow-2xl">
         <div className="p-5 border-b border-gray-800 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs text-gray-500 mb-1">GHL Leads — Creative</p>
+          <div className="min-w-0 flex-1">
+            <p className="text-xs text-gray-500 mb-1">GHL Pipeline Leads — Creative</p>
             <p className="text-sm font-semibold text-white leading-snug">{ad.adName || '—'}</p>
-            {ad.adId && <p className="text-[10px] text-gray-600 font-mono mt-1">{ad.adId}</p>}
+            {stageSummary.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {stageSummary.map(s => (
+                  <span key={s.key} className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${s.cls}`}>
+                    {s.count} {s.label}
+                  </span>
+                ))}
+              </div>
+            )}
           </div>
           <button onClick={onClose} className="text-gray-500 hover:text-gray-300 flex-shrink-0 mt-0.5">
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
@@ -523,12 +536,12 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
         </div>
         <div className="overflow-y-auto flex-1">
           {all.length === 0
-            ? <p className="text-gray-500 text-sm p-6 text-center">No GHL leads matched to this creative.</p>
+            ? <p className="text-gray-500 text-sm p-6 text-center">No GHL pipeline leads matched to this creative.</p>
             : (
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-900">
                 <tr className="border-b border-gray-800">
-                  {['Contact', 'Phone', 'Stage', 'Date'].map(h => (
+                  {['Contact', 'Phone', 'Status', 'Date'].map(h => (
                     <th key={h} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -541,7 +554,7 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
                       <td className="py-3 px-4 text-gray-200">{lead.name || '—'}</td>
                       <td className="py-3 px-4 text-gray-400 text-xs">{lead.phone || '—'}</td>
                       <td className="py-3 px-4">
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg.cls}`}>{cfg.label}</span>
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${cfg?.cls}`}>{cfg?.label}</span>
                       </td>
                       <td className="py-3 px-4 text-gray-500 text-xs whitespace-nowrap">
                         {lead.date ? new Date(lead.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: '2-digit' }) : '—'}
@@ -554,7 +567,7 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
           )}
         </div>
         <div className="px-5 py-3 border-t border-gray-800 text-xs text-gray-600">
-          {all.length} in GHL pipeline · {ad.metaLeads ?? 0} Meta leads total
+          {all.length} lead{all.length !== 1 ? 's' : ''} in GHL pipeline · {ad.metaLeads ?? 0} Meta leads total
         </div>
       </div>
     </div>
@@ -997,7 +1010,7 @@ export default function MarketingPage() {
                   isActive={resolvedActiveIds.has(a.adId)}
                   onClickMetric={metric => setTrendState({ ad: a, metric })}
                   onClickCases={() => setSelectedAd(a)}
-                  onClickStage={stage => setPipelineModal({ ad: a, stage })}
+                  onClickStage={() => setLeadsModal(a)}
                   onClickLeads={() => setLeadsModal(a)}
                 />
               ))}
@@ -1057,22 +1070,22 @@ export default function MarketingPage() {
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.nrCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nr' })} className="text-gray-400 hover:underline underline-offset-2">{a.nrCount}</button>
+                              ? <button onClick={() => setLeadsModal(a)} className="text-gray-400 hover:underline underline-offset-2">{a.nrCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.nqCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nq' })} className="text-red-400 hover:underline underline-offset-2">{a.nqCount}</button>
+                              ? <button onClick={() => setLeadsModal(a)} className="text-red-400 hover:underline underline-offset-2">{a.nqCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.fuCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'fu' })} className="text-blue-400 hover:underline underline-offset-2">{a.fuCount}</button>
+                              ? <button onClick={() => setLeadsModal(a)} className="text-blue-400 hover:underline underline-offset-2">{a.fuCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.chaseCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'chase' })} className="text-orange-400 hover:underline underline-offset-2">{a.chaseCount}</button>
+                              ? <button onClick={() => setLeadsModal(a)} className="text-orange-400 hover:underline underline-offset-2">{a.chaseCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4">
