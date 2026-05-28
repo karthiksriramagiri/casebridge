@@ -9,7 +9,7 @@ const supabase = createClient(
 const WEBHOOK_SECRET = process.env.GHL_WEBHOOK_SECRET
 
 // Valid pipeline stages GHL can send
-const VALID_STAGES = new Set(['no_response', 'not_qualified', 'follow_up', 'sent'])
+const VALID_STAGES = new Set(['no_response', 'not_qualified', 'follow_up', 'chase', 'sent'])
 
 export async function POST(request: NextRequest) {
   if (WEBHOOK_SECRET) {

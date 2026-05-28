@@ -379,12 +379,13 @@ function AlertBadge({ level }: { level: ReturnType<typeof alertLevel> }) {
 }
 
 function PipelineBreakdown({ ad, onClickStage }: {
-  ad: any; onClickStage: (stage: 'nr' | 'nq' | 'fu') => void
+  ad: any; onClickStage: (stage: 'nr' | 'nq' | 'fu' | 'chase') => void
 }) {
   const items = ([
-    { label: 'NR',  stage: 'nr' as const, count: (ad.nrCount ?? 0) as number, color: 'text-gray-400' },
-    { label: 'NQ',  stage: 'nq' as const, count: (ad.nqCount ?? 0) as number, color: 'text-red-400' },
-    { label: 'F/U', stage: 'fu' as const, count: (ad.fuCount ?? 0) as number, color: 'text-blue-400' },
+    { label: 'NR',    stage: 'nr'    as const, count: (ad.nrCount    ?? 0) as number, color: 'text-gray-400' },
+    { label: 'NQ',    stage: 'nq'    as const, count: (ad.nqCount    ?? 0) as number, color: 'text-red-400' },
+    { label: 'F/U',   stage: 'fu'    as const, count: (ad.fuCount    ?? 0) as number, color: 'text-blue-400' },
+    { label: 'Chase', stage: 'chase' as const, count: (ad.chaseCount ?? 0) as number, color: 'text-orange-400' },
   ]).filter(i => i.count > 0)
 
   if (!items.length) return null
@@ -403,7 +404,7 @@ function PipelineBreakdown({ ad, onClickStage }: {
 function CreativeChartCard({ ad, maxes, isActive, onClickMetric, onClickCases, onClickStage, onClickLeads }: {
   ad: any; maxes: Record<string, number>; isActive: boolean
   onClickMetric: (metric: string) => void; onClickCases: () => void
-  onClickStage: (stage: 'nr' | 'nq' | 'fu') => void; onClickLeads: () => void
+  onClickStage: (stage: 'nr' | 'nq' | 'fu' | 'chase') => void; onClickLeads: () => void
 }) {
   const level = alertLevel(ad)
   const border =
@@ -487,6 +488,7 @@ const STAGE_CFG: Record<string, { label: string; cls: string }> = {
   fu:     { label: 'Follow Up',        cls: 'bg-blue-900/40 text-blue-400' },
   nr:     { label: 'No Response',      cls: 'bg-gray-800 text-gray-400' },
   nq:     { label: 'Not Qualified',    cls: 'bg-red-900/40 text-red-400' },
+  chase:  { label: 'Chase',            cls: 'bg-orange-900/40 text-orange-400' },
 }
 
 function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
@@ -499,9 +501,10 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
   // Only show GHL pipeline contacts for this timeframe (NR/NQ/FU) — already time-filtered by the API
   // Signed cases are shown separately via the Signed column
   const all = [
-    ...(ad.fuLeads  || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'fu' })),
-    ...(ad.nrLeads  || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nr' })),
-    ...(ad.nqLeads  || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nq' })),
+    ...(ad.fuLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'fu' })),
+    ...(ad.nrLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nr' })),
+    ...(ad.nqLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nq' })),
+    ...(ad.chaseLeads || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'chase' })),
   ]
 
   return (
@@ -562,13 +565,14 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
 // Pipeline Leads Modal (NR / NQ / F/U)
 // ─────────────────────────────────────────────────────────────────────────────
 const PIPELINE_LABEL: Record<string, { label: string; color: string }> = {
-  nr: { label: 'No Response',        color: 'text-gray-400' },
-  nq: { label: 'Not Qualified',      color: 'text-red-400' },
-  fu: { label: 'Follow Up Required', color: 'text-blue-400' },
+  nr:    { label: 'No Response',        color: 'text-gray-400' },
+  nq:    { label: 'Not Qualified',      color: 'text-red-400' },
+  fu:    { label: 'Follow Up Required', color: 'text-blue-400' },
+  chase: { label: 'Chase',             color: 'text-orange-400' },
 }
 
 function PipelineLeadsModal({ ad, stage, onClose }: {
-  ad: any; stage: 'nr' | 'nq' | 'fu'; onClose: () => void
+  ad: any; stage: 'nr' | 'nq' | 'fu' | 'chase'; onClose: () => void
 }) {
   const leads: any[] = ad[`${stage}Leads`] || []
   const cfg = PIPELINE_LABEL[stage]
@@ -790,7 +794,7 @@ export default function MarketingPage() {
   const [timeframe, setTimeframe] = useState<TF>('invoice')
   const [selectedAd, setSelectedAd] = useState<any | null>(null)
   const [trendState, setTrendState] = useState<{ ad: any; metric: string } | null>(null)
-  const [pipelineModal, setPipelineModal] = useState<{ ad: any; stage: 'nr' | 'nq' | 'fu' } | null>(null)
+  const [pipelineModal, setPipelineModal] = useState<{ ad: any; stage: 'nr' | 'nq' | 'fu' | 'chase' } | null>(null)
   const [leadsModal, setLeadsModal] = useState<any | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -1008,7 +1012,7 @@ export default function MarketingPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'NR', 'NQ', 'F/U', 'Signed', 'CPQ', 'Phase'].map(c => (
+                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'NR', 'NQ', 'F/U', 'Chase', 'Signed', 'CPQ', 'Phase'].map(c => (
                         <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
                       ))}
                     </tr>
@@ -1064,6 +1068,11 @@ export default function MarketingPage() {
                           <td className="py-3 px-4 text-xs">
                             {a.fuCount > 0
                               ? <button onClick={() => setPipelineModal({ ad: a, stage: 'fu' })} className="text-blue-400 hover:underline underline-offset-2">{a.fuCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {a.chaseCount > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'chase' })} className="text-orange-400 hover:underline underline-offset-2">{a.chaseCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4">

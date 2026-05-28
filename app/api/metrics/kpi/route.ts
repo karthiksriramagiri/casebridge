@@ -42,12 +42,13 @@ const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu'> = {
 }
 
 type PipelineContact = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
-type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[] }
+type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[]; chase: PipelineContact[] }
 
-const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu'> = {
+const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
   no_response:   'nr',
   not_qualified: 'nq',
   follow_up:     'fu',
+  chase:         'chase',
 }
 
 // Fetch all opportunities for a pipeline and return per-ad NR/NQ/FU contact lists
@@ -86,7 +87,7 @@ async function fetchGHLPipelineBreakdown(
       const adId = attr?.utmAdId || attr?.utmContent || null
       if (!adId) continue
 
-      if (!breakdown[adId]) breakdown[adId] = { nr: [], nq: [], fu: [] }
+      if (!breakdown[adId]) breakdown[adId] = { nr: [], nq: [], fu: [], chase: [] }
       breakdown[adId][label].push({
         name:      opp.contact?.name || opp.name || null,
         phone:     opp.contact?.phone || null,
@@ -420,10 +421,10 @@ export async function GET(request: NextRequest) {
     }
     const hasRealAdId = row.ad_id && !row.ad_id.includes('{{')
     if (hasRealAdId) {
-      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { nr: [], nq: [], fu: [] }
+      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { nr: [], nq: [], fu: [], chase: [] }
       ghlPipelineBreakdown[row.ad_id][label].push(contact)
     } else if (row.ad_name) {
-      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [] }
+      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [], chase: [] }
       ghlPipelineByName[row.ad_name][label].push(contact)
     }
   }
@@ -677,12 +678,14 @@ export async function GET(request: NextRequest) {
       ctr: parseFloat(a.ctr || 0),
       impressions: parseInt(a.impressions || 0),
       // Pipeline breakdown — live from GHL (contacts + counts)
-      nrLeads: pipeline.nr,
-      nqLeads: pipeline.nq,
-      fuLeads: pipeline.fu,
-      nrCount: pipeline.nr.length,
-      nqCount: pipeline.nq.length,
-      fuCount: pipeline.fu.length,
+      nrLeads:    pipeline.nr,
+      nqLeads:    pipeline.nq,
+      fuLeads:    pipeline.fu,
+      chaseLeads: pipeline.chase,
+      nrCount:    pipeline.nr.length,
+      nqCount:    pipeline.nq.length,
+      fuCount:    pipeline.fu.length,
+      chaseCount: pipeline.chase.length,
     }
   }).sort((a: any, b: any) => {
     // Sort: ads with signed cases first (by CPQ asc), then by spend desc
