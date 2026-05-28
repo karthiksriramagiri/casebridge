@@ -75,7 +75,14 @@ async function fetchGHLPipelineBreakdown(
     const data: any = await res.json()
 
     for (const opp of (data.opportunities || [])) {
-      const label = GHL_STAGE_LABEL[opp.pipelineStageId]
+      const stageName = (opp.pipelineStage?.name || '').toLowerCase()
+      const label: 'nr' | 'nq' | 'fu' | 'chase' | undefined =
+        GHL_STAGE_LABEL[opp.pipelineStageId] ||
+        (stageName.includes('chase') ? 'chase' :
+         stageName.includes('no response') || stageName.includes('no_response') ? 'nr' :
+         stageName.includes('not qualified') || stageName.includes('not_qualified') ? 'nq' :
+         stageName.includes('follow up') || stageName.includes('follow_up') ? 'fu' :
+         undefined)
       if (!label) continue
 
       // Filter to invoice/date window by opportunity createdAt
@@ -407,8 +414,9 @@ export async function GET(request: NextRequest) {
       .gte('qualified_at', `${sevenDaysAgoStr}T00:00:00Z`),
   ])
 
-  // Build pipeline breakdown from Supabase ghl_leads (NR/NQ/FU records)
-  const ghlPipelineBreakdown: Record<string, PipelineAdLeads> = {}
+  // Fetch live pipeline data from GHL API (primary source — keyed by ad_id)
+  const ghlPipelineBreakdown: Record<string, PipelineAdLeads> =
+    ghlPipelineId ? await fetchGHLPipelineBreakdown(ghlPipelineId, start, end) : {}
   const ghlPipelineByName:    Record<string, PipelineAdLeads> = {}
   const unattributedPipelineRows: any[] = []
   for (const row of (pipelineLeadsRes.data || [])) {
