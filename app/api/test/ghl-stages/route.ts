@@ -14,23 +14,25 @@ export async function GET(request: NextRequest) {
 
   const results: Record<string, any> = {}
 
-  for (const [slug, pipelineId] of Object.entries(GHL_PIPELINES)) {
-    const res = await fetch(
-      `https://services.leadconnectorhq.com/opportunities/pipelines/${pipelineId}`,
-      {
-        headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
-        cache: 'no-store',
-      }
-    )
-    if (!res.ok) {
-      results[slug] = { error: `HTTP ${res.status}` }
-      continue
+  // Fetch all pipelines for the location once
+  const res = await fetch(
+    `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=AGAoUCwWTwc4Bqslwt9r`,
+    {
+      headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
+      cache: 'no-store',
     }
-    const data = await res.json()
-    results[slug] = (data.stages || data.pipeline?.stages || []).map((s: any) => ({
-      id: s.id,
-      name: s.name,
-    }))
+  )
+  if (!res.ok) {
+    return NextResponse.json({ error: `HTTP ${res.status}`, body: await res.text() }, { status: 500 })
+  }
+  const data = await res.json()
+  const pipelines: any[] = data.pipelines || []
+
+  for (const [slug, pipelineId] of Object.entries(GHL_PIPELINES)) {
+    const pipeline = pipelines.find((p: any) => p.id === pipelineId)
+    results[slug] = pipeline
+      ? (pipeline.stages || []).map((s: any) => ({ id: s.id, name: s.name }))
+      : { error: 'not found' }
   }
 
   return NextResponse.json(results)
