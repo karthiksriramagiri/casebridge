@@ -22,10 +22,11 @@ const GHL_PIPELINES: Record<string, string> = {
 }
 
 // Stage IDs → normalized label (covers all four firm pipelines)
-const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu'> = {
+const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
   // LHP
   '1175a360-9914-4ce5-906d-d89adb27c732': 'nr',
   '87759fbc-6d3e-46b1-aa47-9ae42ff88393': 'fu',
+  '1a4eed62-09ea-4108-ab64-2e16930350d6': 'chase',
   'a9e1b12f-94c4-4ca2-b696-1b3bf349d158': 'nq',
   // Eisenberg
   'c63f684a-f2eb-48f8-84f1-7ab35a1ba25b': 'nr',
