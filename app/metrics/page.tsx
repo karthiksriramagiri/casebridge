@@ -3,10 +3,6 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import {
-  LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend
-} from 'recharts'
 
 // ─── Design tokens ──────────────────────────────────────────────────────────
 const BG     = '#EDEAE3'
@@ -397,7 +393,7 @@ export default function MetricsPage() {
   const [metaData, setMetaData] = useState<any>(null)
   const [attribution, setAttribution] = useState<any>(null)
   const [loading, setLoading] = useState(true)
-  const [activeTab, setActiveTab] = useState<'overview' | 'marketing' | 'hr' | 'firms'>('marketing')
+  const [activeTab, setActiveTab] = useState<'marketing' | 'hr' | 'firms'>('marketing')
   const [creativeOverview, setCreativeOverview] = useState<Record<string, any>>({})
   const [pipelineOverview, setPipelineOverview] = useState<Record<string, any>>({})
   const [workers, setWorkers] = useState<any[]>([])
@@ -519,7 +515,7 @@ export default function MetricsPage() {
             <span style={{ fontWeight: 700, fontSize: 16, color: DARK }}>CaseBridge</span>
             <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, fontSize: 16, color: ACCENT, marginLeft: 5 }}>Metrics</span>
           </div>
-          {(['overview', 'marketing', 'hr', 'firms'] as const).map(tab => (
+          {(['marketing', 'hr', 'firms'] as const).map(tab => (
             <button key={tab} onClick={() => setActiveTab(tab)}
               style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '14px 16px', fontSize: 13, fontWeight: activeTab === tab ? 700 : 500, color: activeTab === tab ? DARK : MUTED, borderBottom: activeTab === tab ? `2px solid ${DARK}` : '2px solid transparent', transition: 'all 0.15s' }}>
               {tab === 'hr' ? 'HR' : tab.charAt(0).toUpperCase() + tab.slice(1)}
@@ -594,68 +590,6 @@ export default function MetricsPage() {
             )}
 
             {/* ══ OVERVIEW ═════════════════════════════════════════════════ */}
-            {activeTab === 'overview' && (
-              <div>
-                <h1 style={{ fontSize: 30, fontWeight: 800, marginBottom: 4, color: DARK }}>
-                  Overview{' '}
-                  <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: ACCENT, fontSize: 28 }}>Summary</span>
-                </h1>
-                <p style={{ fontSize: 13, color: MUTED, marginBottom: 24 }}>
-                  {fmt$(spend)} spent &nbsp;·&nbsp; {totalLeads} leads &nbsp;·&nbsp; {totalSignedCases} signed cases
-                </p>
-
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10, marginBottom: 24 }}>
-                  <LightCard label="Total Spend"  value={fmt$(spend)} />
-                  <LightCard label="Impressions"  value={(totalImpressions || 0).toLocaleString()} />
-                  <LightCard label="Clicks"       value={(totalClicks || 0).toLocaleString()} />
-                  <LightCard label="CTR"          value={metaData?.summary?.ctr ? `${metaData.summary.ctr}%` : '—'} />
-                  <LightCard label="Leads"        value={totalLeads} />
-                  <DarkCard  label="CPL"          value={cpl ? fmt$(cpl) : '—'} />
-                  <DarkCard  label="CPQ"          value={cpq ? fmt$(cpq) : '—'} terracotta />
-                  <LightCard label="Signed Cases" value={totalSignedCases} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
-                </div>
-
-                {attribution?.totals?.signedCases > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 24 }}>
-                    <LightCard label="Cost Per Signed Case" value={`$${(spend / attribution.totals.signedCases).toFixed(2)}`} sub="Total spend ÷ signed cases" />
-                    <LightCard label="Sign Rate" value={`${totalLeads > 0 ? ((attribution.totals.signedCases / totalLeads) * 100).toFixed(1) : 0}%`} sub="Leads → Signed Cases" />
-                    <LightCard label="NQ Rate" value={`${totalLeads > 0 ? ((attribution.totals.notQualified / totalLeads) * 100).toFixed(1) : 0}%`} sub="Leads → Not Qualified" />
-                  </div>
-                )}
-
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }}>
-                  <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 20 }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: DARK, marginBottom: 16 }}>Daily Spend &amp; Leads</p>
-                    <ResponsiveContainer width="100%" height={240}>
-                      <LineChart data={metaData?.daily || []}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                        <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickFormatter={d => d.slice(5)} />
-                        <YAxis yAxisId="left" tick={{ fill: '#9CA3AF', fontSize: 10 }} />
-                        <YAxis yAxisId="right" orientation="right" tick={{ fill: '#9CA3AF', fontSize: 10 }} />
-                        <Tooltip contentStyle={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, color: DARK }} />
-                        <Legend />
-                        <Line yAxisId="left"  type="monotone" dataKey="spend" stroke="#3b82f6" name="Spend ($)" dot={false} strokeWidth={2} />
-                        <Line yAxisId="right" type="monotone" dataKey="leads" stroke="#10b981" name="Leads"     dot={false} strokeWidth={2} />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  </div>
-
-                  <div style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 20 }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: DARK, marginBottom: 16 }}>Daily Spend</p>
-                    <ResponsiveContainer width="100%" height={180}>
-                      <BarChart data={metaData?.daily || []}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#E5E7EB" />
-                        <XAxis dataKey="date" tick={{ fill: '#9CA3AF', fontSize: 10 }} tickFormatter={d => d.slice(5)} />
-                        <YAxis tick={{ fill: '#9CA3AF', fontSize: 10 }} />
-                        <Tooltip contentStyle={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, color: DARK }} />
-                        <Bar dataKey="spend" fill="#3b82f6" name="Spend ($)" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-              </div>
-            )}
-
             {/* ══ HR ═══════════════════════════════════════════════════════ */}
             {activeTab === 'hr' && (() => {
               // Merge time-entry hours into workers
