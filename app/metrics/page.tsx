@@ -178,8 +178,8 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
 
                   {/* Creative */}
                   <td style={{ padding: '8px 10px', maxWidth: 200 }}>
-                    {ad.firmSlug ? (
-                      <Link href={`/metrics/firms/${ad.firmSlug}`} style={{ color: ACCENT, textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
+                    {ad.firmSlug && ad.latestInvoice ? (
+                      <Link href={`/metrics/firms/${ad.firmSlug}/invoice/${ad.latestInvoice}/marketing`} style={{ color: ACCENT, textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
                         {ad.name || ad.adName || '—'}
                       </Link>
                     ) : (
@@ -482,7 +482,7 @@ export default function MetricsPage() {
     const pl = pipelineOverview[ad.id] || {}
     const signedCases = ov.signedCases || 0
     const adCpq = signedCases > 0 ? ad.spend / signedCases : null
-    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: pl.chaseCount || 0, nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [] }
+    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, latestInvoice: ov.latestInvoice || null, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: pl.chaseCount || 0, nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [] }
   }).sort((a: any, b: any) => b.spend - a.spend)
 
   // CPQ = total spend / total signed cases (both from the same date-filtered Meta + attribution data)

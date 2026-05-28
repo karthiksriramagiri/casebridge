@@ -43,6 +43,7 @@ type AdData = {
   signedCases: number
   firmSlug: string | null
   firmName: string | null
+  latestInvoice: string | null
   nrCount: number
   nqCount: number
   fuCount: number
@@ -53,12 +54,17 @@ type AdData = {
   chaseLeads: Lead[]
 }
 
-function emptyAdData(firmSlug: string | null = null, firmName: string | null = null): AdData {
-  return { signedCases: 0, firmSlug, firmName, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [] }
+function emptyAdData(firmSlug: string | null = null, firmName: string | null = null, latestInvoice: string | null = null): AdData {
+  return { signedCases: 0, firmSlug, firmName, latestInvoice, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [] }
 }
 
 // Fetch all opportunities for a pipeline and return per-adId breakdown
-async function fetchPipelineBreakdown(pipelineId: string): Promise<Record<string, { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: Lead }[]>> {
+// If start/end provided, filters by opp.createdAt date range
+async function fetchPipelineBreakdown(
+  pipelineId: string,
+  start: string | null = null,
+  end: string | null = null,
+): Promise<Record<string, { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: Lead }[]>> {
   if (!GHL_API_KEY) return {}
   const result: Record<string, { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: Lead }[]> = {}
   let url: string | null =
@@ -74,6 +80,11 @@ async function fetchPipelineBreakdown(pipelineId: string): Promise<Record<string
     if (!res.ok) break
     const data: any = await res.json()
     for (const opp of (data.opportunities || [])) {
+      // Date filter: skip opps outside the requested date range
+      if (start && end) {
+        const created = (opp.createdAt || '').split('T')[0]
+        if (created < start || created > end) continue
+      }
       const stageName = (opp.pipelineStage?.name || '').toLowerCase()
       const label: 'nr' | 'nq' | 'fu' | 'chase' | undefined =
         GHL_STAGE_LABEL[opp.pipelineStageId] ||
@@ -138,27 +149,38 @@ export async function GET(req: Request) {
 
   try {
     // Fetch Supabase data and GHL pipeline data in parallel (separately to avoid spread issues)
+    const pipelineStart = datePreset !== 'maximum' ? start : null
+    const pipelineEnd   = datePreset !== 'maximum' ? end   : null
+
     let signedQuery = supabase.from('ghl_leads').select('ad_id, firm_id, created_at')
     if (datePreset !== 'maximum') {
       signedQuery = signedQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', `${end}T23:59:59`)
     }
 
-    const [signedRes, firmsRes, pipelineResults] = await Promise.all([
+    const [signedRes, firmsRes, invoicesRes, pipelineResults] = await Promise.all([
       signedQuery,
       supabase.from('firms').select('id, slug, name'),
+      supabase.from('firm_invoices').select('firm_id, code').order('sort_order', { ascending: false }).order('period_start', { ascending: false }),
       Promise.all(
         Object.entries(GHL_PIPELINES).map(([slug, pid]) =>
-          fetchPipelineBreakdown(pid)
+          fetchPipelineBreakdown(pid, pipelineStart, pipelineEnd)
             .then(data => ({ slug, data }))
             .catch(() => ({ slug, data: {} as Record<string, { label: 'nr' | 'nq' | 'fu' | 'chase'; contact: Lead }[]> }))
         )
       ),
     ])
 
-    // Build firm lookup
-    const firmById: Record<string, { slug: string; name: string }> = {}
+    // Build firm lookup with latest invoice
+    const latestInvoiceByFirmId: Record<string, string> = {}
+    for (const inv of (invoicesRes.data || [])) {
+      if (inv.firm_id && !latestInvoiceByFirmId[inv.firm_id]) {
+        latestInvoiceByFirmId[inv.firm_id] = inv.code
+      }
+    }
+
+    const firmById: Record<string, { slug: string; name: string; latestInvoice: string | null }> = {}
     for (const f of (firmsRes.data || [])) {
-      if (f.id) firmById[f.id] = { slug: f.slug, name: f.name }
+      if (f.id) firmById[f.id] = { slug: f.slug, name: f.name, latestInvoice: latestInvoiceByFirmId[f.id] || null }
     }
 
     const byAdId: Record<string, AdData> = {}
@@ -167,18 +189,25 @@ export async function GET(req: Request) {
     for (const row of (signedRes.data || [])) {
       if (!row.ad_id) continue
       const firm = firmById[row.firm_id] || null
-      if (!byAdId[row.ad_id]) byAdId[row.ad_id] = emptyAdData(firm?.slug || null, firm?.name || null)
+      if (!byAdId[row.ad_id]) byAdId[row.ad_id] = emptyAdData(firm?.slug || null, firm?.name || null, firm?.latestInvoice || null)
       byAdId[row.ad_id].signedCases++
       if (firm?.slug && !byAdId[row.ad_id].firmSlug) {
         byAdId[row.ad_id].firmSlug = firm.slug
         byAdId[row.ad_id].firmName = firm.name
+        byAdId[row.ad_id].latestInvoice = firm.latestInvoice
       }
     }
 
     // Pipeline data from GHL API
+    const firmBySlug: Record<string, { slug: string; name: string; latestInvoice: string | null }> = {}
+    for (const f of Object.values(firmById)) firmBySlug[f.slug] = f
+
     for (const { slug, data } of pipelineResults) {
       for (const [adId, entries] of Object.entries(data)) {
-        if (!byAdId[adId]) byAdId[adId] = emptyAdData(slug, slug)
+        if (!byAdId[adId]) {
+          const firm = firmBySlug[slug] || null
+          byAdId[adId] = emptyAdData(slug, slug, firm?.latestInvoice || null)
+        }
         for (const { label, contact } of entries) {
           if (label === 'nr') { byAdId[adId].nrCount++; byAdId[adId].nrLeads.push(contact) }
           else if (label === 'nq') { byAdId[adId].nqCount++; byAdId[adId].nqLeads.push(contact) }
