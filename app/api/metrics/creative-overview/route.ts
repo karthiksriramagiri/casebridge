@@ -101,15 +101,50 @@ async function fetchPipelineBreakdown(pipelineId: string): Promise<Record<string
   return result
 }
 
+function getDateRange(preset: string): { start: string; end: string } {
+  const now = new Date()
+  const today = now.toISOString().split('T')[0]
+  switch (preset) {
+    case 'today':     return { start: today, end: today }
+    case 'yesterday': {
+      const y = new Date(now); y.setDate(y.getDate() - 1)
+      const d = y.toISOString().split('T')[0]
+      return { start: d, end: d }
+    }
+    case 'last_7d': {
+      const s = new Date(now); s.setDate(s.getDate() - 6)
+      return { start: s.toISOString().split('T')[0], end: today }
+    }
+    case 'last_14d': {
+      const s = new Date(now); s.setDate(s.getDate() - 13)
+      return { start: s.toISOString().split('T')[0], end: today }
+    }
+    case 'last_30d': {
+      const s = new Date(now); s.setDate(s.getDate() - 29)
+      return { start: s.toISOString().split('T')[0], end: today }
+    }
+    default: return { start: '2020-01-01', end: today }
+  }
+}
+
 /**
  * GET /api/metrics/creative-overview
- * Returns per-ad signed cases + NR/NQ/FU/Chase counts from GHL API + Supabase.
+ * Returns per-ad signed cases (date-filtered) + NR/NQ/FU/Chase counts from GHL API + Supabase.
  */
-export async function GET() {
+export async function GET(req: Request) {
+  const { searchParams } = new URL(req.url)
+  const datePreset = searchParams.get('date_preset') || 'maximum'
+  const { start, end } = getDateRange(datePreset)
+
   try {
     // Fetch Supabase data and GHL pipeline data in parallel (separately to avoid spread issues)
+    let signedQuery = supabase.from('ghl_leads').select('ad_id, firm_id, created_at')
+    if (datePreset !== 'maximum') {
+      signedQuery = signedQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', `${end}T23:59:59`)
+    }
+
     const [signedRes, firmsRes, pipelineResults] = await Promise.all([
-      supabase.from('ghl_leads').select('ad_id, firm_id'),
+      signedQuery,
       supabase.from('firms').select('id, slug, name'),
       Promise.all(
         Object.entries(GHL_PIPELINES).map(([slug, pid]) =>

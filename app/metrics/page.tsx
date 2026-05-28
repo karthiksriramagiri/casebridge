@@ -437,8 +437,7 @@ export default function MetricsPage() {
   }, [])
 
   useEffect(() => {
-    // Single call — signed cases + NR/NQ/FU all from Supabase webhook data
-    fetch('/api/metrics/creative-overview')
+    fetch(`/api/metrics/creative-overview?date_preset=${datePreset}`)
       .then(r => r.json())
       .then(d => {
         const data = d.byAdId || {}
@@ -446,7 +445,7 @@ export default function MetricsPage() {
         setPipelineOverview(data)
       })
       .catch(() => {})
-  }, [])
+  }, [datePreset])
 
   async function handleAddWorker(e: React.FormEvent) {
     e.preventDefault()
