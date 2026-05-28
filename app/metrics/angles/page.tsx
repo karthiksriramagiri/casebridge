@@ -29,6 +29,7 @@ type AngleStat = {
   nrCount:        number
   nqCount:        number
   fuCount:        number
+  chaseCount:     number
   adCount:        number
   cpl:            number | null
   cpq:            number | null
@@ -118,6 +119,7 @@ function AngleTable({ stats, showVisual, showVerbal }: { stats: AngleStat[]; sho
             <TH right>NR</TH>
             <TH right>NQ</TH>
             <TH right>F/U</TH>
+            <TH right>Chase</TH>
             <TH right>Ads</TH>
           </tr>
         </thead>
@@ -142,6 +144,7 @@ function AngleTable({ stats, showVisual, showVerbal }: { stats: AngleStat[]; sho
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.nrCount || '—'}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.nqCount || '—'}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 12 }}>{s.fuCount || '—'}</td>
+              <td style={{ padding: '10px 12px', textAlign: 'right', color: '#EA580C', fontSize: 12 }}>{s.chaseCount || '—'}</td>
               <td style={{ padding: '10px 12px', textAlign: 'right', color: MUTED, fontSize: 11 }}>{s.adCount}</td>
             </tr>
           ))}

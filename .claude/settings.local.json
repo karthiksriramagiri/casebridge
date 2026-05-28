@@ -146,7 +146,19 @@
       "Bash(wc:*)",
       "Bash(npm test:*)",
       "Bash(git stash:*)",
-      "Bash(gh repo:*)"
+      "Bash(gh repo:*)",
+      "Bash(git remote:*)",
+      "Bash(railway project:*)",
+      "Bash(railway service:*)",
+      "Bash(railway link:*)",
+      "Bash(gh run:*)",
+      "Bash(git -C . status)",
+      "Bash(/dev/null cat:*)",
+      "Bash(pnpm remove:*)",
+      "Bash(git -C . rev-parse --git-dir)",
+      "Bash(gh secret:*)",
+      "Bash(wait)",
+      "Bash(git rm:*)"
     ]
   }
 }

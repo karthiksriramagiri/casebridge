@@ -1010,7 +1010,7 @@ export default function MarketingPage() {
                   isActive={resolvedActiveIds.has(a.adId)}
                   onClickMetric={metric => setTrendState({ ad: a, metric })}
                   onClickCases={() => setSelectedAd(a)}
-                  onClickStage={() => setLeadsModal(a)}
+                  onClickStage={(stage) => setPipelineModal({ ad: a, stage })}
                   onClickLeads={() => setLeadsModal(a)}
                 />
               ))}
@@ -1070,22 +1070,22 @@ export default function MarketingPage() {
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.nrCount > 0
-                              ? <button onClick={() => setLeadsModal(a)} className="text-gray-400 hover:underline underline-offset-2">{a.nrCount}</button>
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nr' })} className="text-gray-400 hover:underline underline-offset-2">{a.nrCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.nqCount > 0
-                              ? <button onClick={() => setLeadsModal(a)} className="text-red-400 hover:underline underline-offset-2">{a.nqCount}</button>
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nq' })} className="text-red-400 hover:underline underline-offset-2">{a.nqCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.fuCount > 0
-                              ? <button onClick={() => setLeadsModal(a)} className="text-blue-400 hover:underline underline-offset-2">{a.fuCount}</button>
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'fu' })} className="text-blue-400 hover:underline underline-offset-2">{a.fuCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
                             {a.chaseCount > 0
-                              ? <button onClick={() => setLeadsModal(a)} className="text-orange-400 hover:underline underline-offset-2">{a.chaseCount}</button>
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'chase' })} className="text-orange-400 hover:underline underline-offset-2">{a.chaseCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4">

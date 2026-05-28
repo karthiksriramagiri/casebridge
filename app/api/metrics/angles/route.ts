@@ -97,6 +97,7 @@ type AngleStat = {
   nrCount: number
   nqCount: number
   fuCount: number
+  chaseCount: number
   adCount: number     // how many distinct ads use this angle
   cpl: number | null
   cpq: number | null
@@ -133,19 +134,20 @@ export async function GET(req: NextRequest) {
   const pipelineRows = (pipelineRes.data || []) as any[]
 
   // ─── Build signed + pipeline counts per ad_id from Supabase ────────────────
-  type AdPipelineData = { signedCases: number; nrCount: number; nqCount: number; fuCount: number; adName: string | null }
+  type AdPipelineData = { signedCases: number; nrCount: number; nqCount: number; fuCount: number; chaseCount: number; adName: string | null }
   const byAdId: Record<string, AdPipelineData> = {}
 
-  const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu'> = {
+  const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
     no_response:   'nr',
     not_qualified: 'nq',
     follow_up:     'fu',
     sent:          'fu',
+    chase:         'chase',
   }
 
   for (const row of signedRows) {
     if (!row.ad_id) continue
-    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, adName: row.ad_name || null }
+    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adName: row.ad_name || null }
     byAdId[row.ad_id].signedCases++
     if (row.ad_name && !byAdId[row.ad_id].adName) byAdId[row.ad_id].adName = row.ad_name
   }
@@ -154,7 +156,7 @@ export async function GET(req: NextRequest) {
     if (!row.ad_id || !row.pipeline_stage) continue
     const stage = STAGE_MAP[row.pipeline_stage.toLowerCase()]
     if (!stage) continue
-    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, adName: row.ad_name || null }
+    if (!byAdId[row.ad_id]) byAdId[row.ad_id] = { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adName: row.ad_name || null }
     byAdId[row.ad_id][`${stage}Count`]++
     if (row.ad_name && !byAdId[row.ad_id].adName) byAdId[row.ad_id].adName = row.ad_name
   }
@@ -174,11 +176,12 @@ export async function GET(req: NextRequest) {
 
     const spend       = parseFloat(ad.spend || '0')
     const leads       = getLeads(ad.actions)
-    const adData      = byAdId[ad.ad_id] || { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0 }
+    const adData      = byAdId[ad.ad_id] || { signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0 }
     const signedCases = adData.signedCases
     const nrCount     = adData.nrCount
     const nqCount     = adData.nqCount
     const fuCount     = adData.fuCount
+    const chaseCount  = adData.chaseCount
 
     if (!visualCode && !verbalCode) {
       unparsedSpend += spend
@@ -187,13 +190,14 @@ export async function GET(req: NextRequest) {
     }
 
     function addTo(map: Record<string, AngleStat>, code: string, name: string) {
-      if (!map[code]) map[code] = { code, name, spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, adCount: 0, cpl: null, cpq: null, conversionRate: null }
+      if (!map[code]) map[code] = { code, name, spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adCount: 0, cpl: null, cpq: null, conversionRate: null }
       map[code].spend       += spend
       map[code].leads       += leads
       map[code].signedCases += signedCases
       map[code].nrCount     += nrCount
       map[code].nqCount     += nqCount
       map[code].fuCount     += fuCount
+      map[code].chaseCount  += chaseCount
       map[code].adCount++
     }
 
@@ -204,11 +208,11 @@ export async function GET(req: NextRequest) {
       const comboKey = `${visualCode}+${verbalCode}`
       if (!comboMap[comboKey]) comboMap[comboKey] = {
         code: comboKey, name: `${visualCode} × ${verbalCode}`, visualCode, verbalCode,
-        spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, adCount: 0, cpl: null, cpq: null, conversionRate: null,
+        spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, adCount: 0, cpl: null, cpq: null, conversionRate: null,
       }
       const c = comboMap[comboKey]
       c.spend += spend; c.leads += leads; c.signedCases += signedCases
-      c.nrCount += nrCount; c.nqCount += nqCount; c.fuCount += fuCount; c.adCount++
+      c.nrCount += nrCount; c.nqCount += nqCount; c.fuCount += fuCount; c.chaseCount += chaseCount; c.adCount++
     }
   }
 

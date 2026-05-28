@@ -94,7 +94,7 @@ function fmt$(n: number | null | undefined) {
 // ─── Campaign section ────────────────────────────────────────────────────────
 function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
   name: string; ads: any[]
-  onClickStage: (ad: any, stage: 'nr' | 'nq' | 'fu') => void
+  onClickStage: (ad: any, stage: 'nr' | 'nq' | 'fu' | 'chase') => void
   onClickLeads: (ad: any) => void
 }) {
   const totalSpend  = ads.reduce((s, a) => s + (a.spend ?? 0), 0)
@@ -103,6 +103,7 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
   const totalNr     = ads.reduce((s, a) => s + (a.nrCount ?? 0), 0)
   const totalNq     = ads.reduce((s, a) => s + (a.nqCount ?? 0), 0)
   const totalFu     = ads.reduce((s, a) => s + (a.fuCount ?? 0), 0)
+  const totalChase  = ads.reduce((s, a) => s + (a.chaseCount ?? 0), 0)
   const cpl  = totalLeads  > 0 ? totalSpend / totalLeads  : null
   const cpq  = totalSigned > 0 ? totalSpend / totalSigned : null
   const phase = campaignPhase(ads)
@@ -153,6 +154,7 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
               <TH>NR</TH>
               <TH>NQ</TH>
               <TH>F/U</TH>
+              <TH>Chase</TH>
               <TH>Signed</TH>
               <TH>CPQ</TH>
               <TH>Phase</TH>
@@ -250,6 +252,13 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
                       : <span style={{ color: dim }}>—</span>}
                   </td>
 
+                  {/* Chase */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.chaseCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'chase')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#EA580C', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#FDBA74', textUnderlineOffset: 2, fontSize: 12 }}>{ad.chaseCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+
                   {/* Signed */}
                   <td style={{ padding: '8px 10px', fontWeight: (ad.signedCases ?? 0) > 0 ? 700 : 400, color: (ad.signedCases ?? 0) > 0 ? '#15803D' : dim }}>
                     {(ad.signedCases ?? 0) > 0 ? ad.signedCases : '—'}
@@ -294,11 +303,12 @@ const STAGE_BADGE: Record<string, { label: string; bg: string; color: string }> 
   fu:     { label: 'Follow Up',     bg: '#FEF3C7', color: '#92400E' },
   nr:     { label: 'No Response',   bg: '#F3F4F6', color: '#374151' },
   nq:     { label: 'Not Qualified', bg: '#FEE2E2', color: '#991B1B' },
+  chase:  { label: 'Chase',         bg: '#FFF7ED', color: '#C2410C' },
   signed: { label: 'Signed',        bg: '#DCFCE7', color: '#166534' },
 }
 
 function CreativeLeadsModal({ ad, filterStage, onClose }: {
-  ad: any; filterStage?: 'nr' | 'nq' | 'fu' | null; onClose: () => void
+  ad: any; filterStage?: 'nr' | 'nq' | 'fu' | 'chase' | null; onClose: () => void
 }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -308,9 +318,10 @@ function CreativeLeadsModal({ ad, filterStage, onClose }: {
 
   // Data is pre-loaded from the same GHL pipeline fetch as the firm page
   const all: any[] = [
-    ...(ad.nrLeads || []).map((l: any) => ({ ...l, stage: 'nr' })),
-    ...(ad.nqLeads || []).map((l: any) => ({ ...l, stage: 'nq' })),
-    ...(ad.fuLeads || []).map((l: any) => ({ ...l, stage: 'fu' })),
+    ...(ad.nrLeads    || []).map((l: any) => ({ ...l, stage: 'nr' })),
+    ...(ad.nqLeads    || []).map((l: any) => ({ ...l, stage: 'nq' })),
+    ...(ad.fuLeads    || []).map((l: any) => ({ ...l, stage: 'fu' })),
+    ...(ad.chaseLeads || []).map((l: any) => ({ ...l, stage: 'chase' })),
   ]
   const displayed = filterStage ? all.filter(l => l.stage === filterStage) : all
   const metaLeads = ad.metaLeads ?? ad.leads ?? 0
@@ -392,7 +403,7 @@ export default function MetricsPage() {
   const [workers, setWorkers] = useState<any[]>([])
   const [timeEntries, setTimeEntries] = useState<any[]>([]) // today's time entries
   const [expandedWorker, setExpandedWorker] = useState<string | null>(null)
-  const [leadsModal, setLeadsModal] = useState<{ ad: any; stage?: 'nr' | 'nq' | 'fu' } | null>(null)
+  const [leadsModal, setLeadsModal] = useState<{ ad: any; stage?: 'nr' | 'nq' | 'fu' | 'chase' } | null>(null)
   const [firms, setFirms] = useState<any[]>([])
   const [showAddWorker, setShowAddWorker] = useState(false)
   const [addName, setAddName] = useState('')
@@ -472,7 +483,7 @@ export default function MetricsPage() {
     const pl = pipelineOverview[ad.id] || {}
     const signedCases = ov.signedCases || 0
     const adCpq = signedCases > 0 ? ad.spend / signedCases : null
-    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [] }
+    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: pl.chaseCount || 0, nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [] }
   }).sort((a: any, b: any) => b.spend - a.spend)
 
   // CPQ = total spend / total signed cases (both from the same date-filtered Meta + attribution data)

@@ -6,11 +6,12 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu'> = {
+const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
   no_response:   'nr',
   not_qualified: 'nq',
   follow_up:     'fu',
   sent:          'fu',
+  chase:         'chase',
 }
 
 type Lead = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
@@ -48,9 +49,11 @@ export async function GET() {
     nrCount: number
     nqCount: number
     fuCount: number
+    chaseCount: number
     nrLeads: Lead[]
     nqLeads: Lead[]
     fuLeads: Lead[]
+    chaseLeads: Lead[]
   }
 
   const byAdId: Record<string, AdData> = {}
@@ -60,7 +63,7 @@ export async function GET() {
     const firm = firmById[row.firm_id] || null
     if (!byAdId[row.ad_id]) byAdId[row.ad_id] = {
       signedCases: 0, firmSlug: firm?.slug || null, firmName: firm?.name || null,
-      nrCount: 0, nqCount: 0, fuCount: 0, nrLeads: [], nqLeads: [], fuLeads: [],
+      nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [],
     }
     byAdId[row.ad_id].signedCases++
     if (firm?.slug && !byAdId[row.ad_id].firmSlug) {
@@ -78,7 +81,7 @@ export async function GET() {
     const firm = firmById[row.firm_id] || null
     if (!byAdId[row.ad_id]) byAdId[row.ad_id] = {
       signedCases: 0, firmSlug: firm?.slug || null, firmName: firm?.name || null,
-      nrCount: 0, nqCount: 0, fuCount: 0, nrLeads: [], nqLeads: [], fuLeads: [],
+      nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [],
     }
 
     const lead: Lead = {
