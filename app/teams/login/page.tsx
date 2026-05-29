@@ -144,7 +144,7 @@ export default function LoginPage() {
             <p className="text-sm text-gray-500">
               New to CaseBridge?{' '}
               <a href="/teams/signup" className="text-[#0f1e3c] font-semibold hover:underline">
-                Sign up here →
+                Click now →
               </a>
             </p>
           </div>
