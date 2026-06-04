@@ -1,6 +1,6 @@
 // Firm-specific NR tags that are eligible for bot enrollment.
 // Only contacts with one of these exact tags will be enrolled.
-const ELIGIBLE_NR_TAGS = new Set(["lhp_nr", "eb_nr", "thl_nr"])
+const ELIGIBLE_NR_TAGS = new Set(["lhp_nr", "eb_nr", "thl_nr", "jll_nr", "fl_nr"])
 
 // For each firm, the ONLY tags a contact may have for the bot to send messages.
 // Any tag outside this set means the contact has been assigned another status — do not send.
@@ -8,6 +8,8 @@ const FIRM_ALLOWED_TAGS = {
   lhp_nr: new Set(["lhp", "lhp_nr"]),
   eb_nr:  new Set(["eb",  "eb_nr"]),
   thl_nr: new Set(["thl", "thl_nr"]),
+  jll_nr: new Set(["jll", "jll_nr"]),
+  fl_nr:  new Set(["fl",  "fl_nr"]),
 }
 
 function normalizeSingleTag(tag) {
