@@ -30,7 +30,14 @@ async function fetchMeta(path: string, params: Record<string, string> = {}) {
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
-  const datePreset = searchParams.get('date_preset') || 'last_30d'
+  const datePreset = searchParams.get('date_preset')
+  const startDate  = searchParams.get('start_date')
+  const endDate    = searchParams.get('end_date')
+
+  // Build Meta date params — use time_range for custom, date_preset otherwise
+  const dateParam: Record<string, string> = startDate && endDate
+    ? { time_range: JSON.stringify({ since: startDate, until: endDate }) }
+    : { date_preset: datePreset || 'last_30d' }
 
   const insightFields = 'spend,impressions,clicks,ctr,cpc,reach,frequency,actions,cost_per_action_type'
 
@@ -43,23 +50,23 @@ export async function GET(req: NextRequest) {
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
       fields: insightFields,
-      date_preset: datePreset,
+      ...dateParam,
       level: 'campaign',
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
       fields: insightFields,
-      date_preset: datePreset,
+      ...dateParam,
       level: 'adset',
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
       fields: `${insightFields},ad_id,ad_name,adset_name,adset_id,campaign_name,campaign_id`,
-      date_preset: datePreset,
+      ...dateParam,
       level: 'ad',
       limit: '500',
     }),
     fetchMeta(`/${AD_ACCOUNT}/insights`, {
       fields: 'spend,actions,impressions',
-      date_preset: datePreset,
+      ...dateParam,
       time_increment: '1',
       level: 'account',
     }),

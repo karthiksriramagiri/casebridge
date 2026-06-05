@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { billableHoursForDay, splitOvertimeHours, clockInIsLate, OVERTIME_HOURLY, COMMISSION_PER_CLOSED } from '@/lib/pay'
+import { billableHoursForDay, splitOvertimeHours, clockInIsLate, OVERTIME_HOURLY, COMMISSION_PER_CLOSED, COMMISSION_PER_REPLACEMENT } from '@/lib/pay'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -110,9 +110,8 @@ export async function GET(req: NextRequest) {
 
     supabase
       .from('ghl_leads')
-      .select('id, qualified_at, case_status, closer')
+      .select('id, qualified_at, case_status, closer, contact_name')
       .eq('closed_by_profile_id', pablo.id)
-      .or('case_status.is.null,case_status.eq.e_signed,case_status.eq.closed')
       .gte('qualified_at', `${periodStartStr}T00:00:00Z`)
       .lte('qualified_at', `${periodEndStr}T23:59:59Z`)
       .order('qualified_at', { ascending: true }),
@@ -162,13 +161,18 @@ export async function GET(req: NextRequest) {
   }
 
   const totalHours  = totalRegular + totalOvertime
-  const signedCases = signedRes.data || []
-  const signedCount = signedCases.length
+  const allCases    = signedRes.data || []
+  const signedCases = allCases.filter(c => (c.case_status || '') !== 'replacement')
+  const replacementCases = allCases.filter(c => (c.case_status || '') === 'replacement')
+  const signedCount      = signedCases.length
+  const replacementCount = replacementCases.length
 
   // ── Pay calculation ────────────────────────────────────────────────────────
-  const basePay    = totalRegular * hourlyRate + totalOvertime * OVERTIME_HOURLY
-  const commission = signedCount * COMMISSION_PER_CLOSED
-  const totalPay   = basePay + commission
+  const basePay            = totalRegular * hourlyRate + totalOvertime * OVERTIME_HOURLY
+  const commissionSigned   = signedCount * COMMISSION_PER_CLOSED
+  const commissionReplace  = replacementCount * COMMISSION_PER_REPLACEMENT
+  const commission         = commissionSigned + commissionReplace
+  const totalPay           = basePay + commission
 
   // ── Build Slack message ────────────────────────────────────────────────────
   const periodLabel = `${fmtDate(periodStartStr)} – ${fmtDate(periodEndStr)}`
@@ -197,16 +201,27 @@ export async function GET(req: NextRequest) {
   }
 
   lines.push(``)
-  lines.push(`*Signed PCs Closed (${periodLabel})*`)
+  lines.push(`*Cases Closed (${periodLabel})*`)
 
-  if (signedCount === 0) {
-    lines.push(`• No signed cases this period`)
+  if (signedCount === 0 && replacementCount === 0) {
+    lines.push(`• No cases this period`)
   } else {
-    for (const c of signedCases) {
-      const closedDate = fmtDate(c.qualified_at.slice(0, 10))
-      lines.push(`• ${closedDate} — ${c.closer || 'case closed'}`)
+    if (signedCount > 0) {
+      lines.push(`_Signed — ${fmt$(COMMISSION_PER_CLOSED)} each_`)
+      for (const c of signedCases) {
+        const closedDate = fmtDate(c.qualified_at.slice(0, 10))
+        lines.push(`• ${closedDate} — ${c.contact_name || c.closer || 'case closed'}`)
+      }
+      lines.push(`• *${signedCount} signed case${signedCount !== 1 ? 's' : ''} = ${fmt$(commissionSigned)}*`)
     }
-    lines.push(`• *Total: ${signedCount} signed case${signedCount !== 1 ? 's' : ''}*`)
+    if (replacementCount > 0) {
+      lines.push(`_Replacements — ${fmt$(COMMISSION_PER_REPLACEMENT)} each_`)
+      for (const c of replacementCases) {
+        const closedDate = fmtDate(c.qualified_at.slice(0, 10))
+        lines.push(`• ${closedDate} — ${c.contact_name || c.closer || 'replacement'}`)
+      }
+      lines.push(`• *${replacementCount} replacement${replacementCount !== 1 ? 's' : ''} = ${fmt$(commissionReplace)}*`)
+    }
   }
 
   lines.push(``)
@@ -215,7 +230,8 @@ export async function GET(req: NextRequest) {
   if (totalOvertime > 0) {
     lines.push(`• OT: ${totalOvertime.toFixed(2)}h × ${fmt$(OVERTIME_HOURLY)}/hr = ${fmt$(totalOvertime * OVERTIME_HOURLY)}`)
   }
-  lines.push(`• Commission: ${signedCount} × ${fmt$(COMMISSION_PER_CLOSED)} = ${fmt$(commission)}`)
+  if (signedCount > 0) lines.push(`• Signed commission: ${signedCount} × ${fmt$(COMMISSION_PER_CLOSED)} = ${fmt$(commissionSigned)}`)
+  if (replacementCount > 0) lines.push(`• Replacement commission: ${replacementCount} × ${fmt$(COMMISSION_PER_REPLACEMENT)} = ${fmt$(commissionReplace)}`)
   lines.push(`• *Total owed: ${fmt$(totalPay)}*`)
 
   const message = lines.join('\n')

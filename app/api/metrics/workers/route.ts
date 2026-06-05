@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
   billableHoursForDay, splitOvertimeHours, grossPay,
-  COMMISSION_PER_CLOSED,
+  COMMISSION_PER_CLOSED, COMMISSION_PER_REPLACEMENT,
 } from '@/lib/pay'
 
 const supabase = createClient(
@@ -40,7 +40,8 @@ export async function GET() {
     profileId: string | null
     signedCases: number
     closedCases: number
-    closedInPeriod: number   // closed cases in current pay period
+    closedInPeriod: number        // signed cases in current pay period
+    replacementsInPeriod: number  // replacement cases in current pay period
     byFirm: Record<string, FirmStats>
   }> = {}
 
@@ -51,17 +52,22 @@ export async function GET() {
     if (!name) continue
 
     const key = name.trim()
-    if (!byWorker[key]) byWorker[key] = { profileId: lead.closed_by_profile_id || profileIds[key] || null, signedCases: 0, closedCases: 0, closedInPeriod: 0, byFirm: {} }
+    if (!byWorker[key]) byWorker[key] = { profileId: lead.closed_by_profile_id || profileIds[key] || null, signedCases: 0, closedCases: 0, closedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
 
     byWorker[key].signedCases += 1
-    const isClosed = (lead.case_status || '').toLowerCase() === 'closed'
+    const status = (lead.case_status || '').toLowerCase()
+    const isClosed = status === 'closed'
+    const isReplacement = status === 'replacement'
     if (isClosed) {
       byWorker[key].closedCases += 1
-      // Check if closed in pay period
       if (lead.qualified_at) {
         const d = lead.qualified_at.slice(0, 10)
         if (d >= periodStartStr && d < periodEndStr) byWorker[key].closedInPeriod += 1
       }
+    }
+    if (isReplacement && lead.qualified_at) {
+      const d = lead.qualified_at.slice(0, 10)
+      if (d >= periodStartStr && d < periodEndStr) byWorker[key].replacementsInPeriod += 1
     }
 
     const firmId = lead.firm_id || 'unknown'
@@ -78,7 +84,7 @@ export async function GET() {
   for (const rep of reps || []) {
     const name = (rep.name || '').trim()
     if (!name) continue
-    if (!byWorker[name]) byWorker[name] = { profileId: rep.id, signedCases: 0, closedCases: 0, closedInPeriod: 0, byFirm: {} }
+    if (!byWorker[name]) byWorker[name] = { profileId: rep.id, signedCases: 0, closedCases: 0, closedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
     if (!byWorker[name].profileId) byWorker[name].profileId = rep.id
   }
 
@@ -136,7 +142,9 @@ export async function GET() {
     const pid = stats.profileId
     const rate = pid ? (hourlyRateMap[pid] ?? 5) : 5
     const { regularHours = 0, overtimeHours = 0, basePay = 0 } = pid ? (hoursAndPay[pid] || {}) : {}
-    const commissionInPeriod = stats.closedInPeriod * COMMISSION_PER_CLOSED
+    const commissionInPeriod =
+      stats.closedInPeriod * COMMISSION_PER_CLOSED +
+      stats.replacementsInPeriod * COMMISSION_PER_REPLACEMENT
     const totalPayment = Math.round((basePay + commissionInPeriod) * 100) / 100
 
     return {
@@ -153,11 +161,13 @@ export async function GET() {
       overtimeHours,
       basePay,
       commissionInPeriod,
+      closedInPeriod: stats.closedInPeriod,
+      replacementsInPeriod: stats.replacementsInPeriod,
       nextPayment: totalPayment,
       nextPaymentDate: nextPayLabel,
       closedByFirm: Object.values(stats.byFirm).sort((a, b) => b.closedCases - a.closedCases),
     }
   }).sort((a, b) => b.signedCases - a.signedCases)
 
-  return NextResponse.json({ workers, commissionPerClosed: COMMISSION_PER_CLOSED, nextPaymentDate: nextPayLabel, periodStart: periodStartStr, periodEnd: periodEndStr })
+  return NextResponse.json({ workers, commissionPerClosed: COMMISSION_PER_CLOSED, commissionPerReplacement: COMMISSION_PER_REPLACEMENT, nextPaymentDate: nextPayLabel, periodStart: periodStartStr, periodEnd: periodEndStr })
 }

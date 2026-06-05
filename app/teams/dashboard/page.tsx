@@ -3,7 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import LogoutButton from './LogoutButton'
-import TimeclockWidget from './TimeclockWidget'
+import UserNav from './UserNav'
 
 type AttemptData = {
   completed: boolean
@@ -125,12 +125,13 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, name, role, created_at')
+    .select('id, name, role, created_at, nda_signed, timeclock_enabled')
     .eq('id', user.id)
     .single()
 
   if (!profile) redirect('/teams/login')
   if (profile.role === 'admin') redirect('/teams/admin')
+  if (!profile.nda_signed) redirect('/teams/onboarding')
 
   // Active announcement
   const { data: announcement } = await supabase
@@ -148,11 +149,15 @@ export default async function DashboardPage() {
     .eq('is_active', true)
     .order('created_at', { ascending: true })
 
-  // Programs (sections) + links
-  const [{ data: programs }, { data: programModuleLinks }] = await Promise.all([
-    supabase.from('programs').select('id, name').order('created_at', { ascending: true }),
+  // Programs (sections) + links — order by position if column exists, fall back to created_at
+  const [programsRes, { data: programModuleLinks }] = await Promise.all([
+    supabase.from('programs').select('id, name, position').order('position', { ascending: true }),
     supabase.from('program_modules').select('program_id, module_id, position').order('position', { ascending: true }),
   ])
+  // If position column doesn't exist yet, fall back to created_at ordering
+  const programs = programsRes.error
+    ? (await supabase.from('programs').select('id, name').order('created_at', { ascending: true })).data
+    : programsRes.data
 
   // Question counts
   const moduleIds = (modules ?? []).map((m) => m.id)
@@ -209,18 +214,28 @@ export default async function DashboardPage() {
 
   // Sequential locking: each program unlocks only after the previous is fully done;
   // each module unlocks only after the previous module in the same program is done.
+  // Exception: if a new module is added to a program the user has already progressed past,
+  // don't retroactively lock modules/programs they could previously access.
   let prevProgramDone = true
-  const sections = rawSections.map((section) => {
+  const sections = rawSections.map((section, sectionIdx) => {
     const programUnlocked = prevProgramDone
     const programDone = section.modules.every((m) => moduleAttemptData[m.id]?.completed)
-    // next program is unlocked only if this one is both unlocked AND fully done
-    prevProgramDone = programUnlocked && programDone
 
-    let prevModDone = true
+    // If user has already progressed into a later program, don't let a newly-added
+    // module in this program re-lock those later programs.
+    const userInLaterProgram = rawSections.slice(sectionIdx + 1).some((s) =>
+      s.modules.some((m) => moduleAttemptData[m.id]?.completed)
+    )
+    prevProgramDone = programUnlocked && (programDone || userInLaterProgram)
+
     const modulesWithLock = section.modules.map((mod, idx) => {
-      const modUnlocked = programUnlocked && prevModDone
-      const modDone = moduleAttemptData[mod.id]?.completed ?? false
-      if (!modDone) prevModDone = false
+      // Normal sequential: all modules before this one must be done.
+      const allPrevDone = section.modules.slice(0, idx).every((m) => moduleAttemptData[m.id]?.completed)
+      // Bypass: user has already completed this module or a later one in this program,
+      // meaning they've already passed this point (new module was inserted after they progressed).
+      const userAlreadyPastHere = section.modules.slice(idx).some((m) => moduleAttemptData[m.id]?.completed)
+
+      const modUnlocked = programUnlocked && (allPrevDone || userAlreadyPastHere)
       return { mod, isUnlocked: modUnlocked, position: idx }
     })
 
@@ -242,6 +257,8 @@ export default async function DashboardPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
+        <UserNav timeclockEnabled={!!profile.timeclock_enabled} />
+
         {announcement && (
           <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-start gap-3">
             <span className="text-xl shrink-0">📢</span>
@@ -257,8 +274,6 @@ export default async function DashboardPage() {
             Complete each lesson in order to progress through the training.
           </p>
         </div>
-
-        <TimeclockWidget profileId={profile.id} />
 
         {/* Overall progress */}
         <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-8">

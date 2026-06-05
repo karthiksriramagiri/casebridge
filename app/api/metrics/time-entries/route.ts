@@ -7,27 +7,18 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const SLACK_WEBHOOK        = process.env.SLACK_TIMECLOCK_WEBHOOK
-const SLACK_PABLO_WEBHOOK  = process.env.SLACK_PABLO_TIMECLOCK_WEBHOOK
+// Use dedicated timeclock webhook if set, otherwise fall back to the task reminders webhook
+const SLACK_WEBHOOK =
+  process.env.SLACK_TIMECLOCK_WEBHOOK ||
+  process.env.SLACK_TASK_REMINDERS
 
-async function sendSlack(text: string, workerName?: string) {
-  const isPablo = workerName && workerName.toLowerCase().includes('pablo')
-  // Always send to Pablo's dedicated webhook when it's him
-  if (isPablo && SLACK_PABLO_WEBHOOK) {
-    await fetch(SLACK_PABLO_WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    }).catch(() => {})
-  }
-  // Also send to the general timeclock channel if configured
-  if (SLACK_WEBHOOK && !isPablo) {
-    await fetch(SLACK_WEBHOOK, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
-    }).catch(() => {})
-  }
+async function sendSlack(text: string) {
+  if (!SLACK_WEBHOOK) return
+  await fetch(SLACK_WEBHOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text }),
+  }).catch(() => {})
 }
 
 function fmtTimeEST(iso: string) {
@@ -135,7 +126,7 @@ export async function POST(req: NextRequest) {
     slackMsg = `✅ *${name}* clocked in at ${timeStr} EST — on time`
   }
 
-  await sendSlack(slackMsg, name)
+  await sendSlack(slackMsg)
 
   return NextResponse.json({ entry })
 }
@@ -182,7 +173,7 @@ export async function PATCH(req: NextRequest) {
   let slackMsg = `🕐 *${name}* clocked out at ${timeStr} EST — ${billable.toFixed(2)}h billable today`
   if (overtime > 0) slackMsg += ` (${overtime.toFixed(2)}h OT @ $${6}/hr)`
 
-  await sendSlack(slackMsg, name)
+  await sendSlack(slackMsg)
 
   return NextResponse.json({ entry })
 }

@@ -144,22 +144,29 @@ function getDateRange(preset: string): { start: string; end: string } {
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url)
-  const datePreset = searchParams.get('date_preset') || 'maximum'
-  const { start, end } = getDateRange(datePreset)
+  const datePreset  = searchParams.get('date_preset') || 'maximum'
+  const startParam  = searchParams.get('start_date')
+  const endParam    = searchParams.get('end_date')
+
+  // Custom date range takes priority over preset
+  const { start, end } = (startParam && endParam)
+    ? { start: startParam, end: endParam }
+    : getDateRange(datePreset)
+  const isCustomOrPreset = !!(startParam && endParam) || datePreset !== 'maximum'
 
   try {
     // Fetch Supabase data and GHL pipeline data in parallel (separately to avoid spread issues)
-    const pipelineStart = datePreset !== 'maximum' ? start : null
-    const pipelineEnd   = datePreset !== 'maximum' ? end   : null
+    const pipelineStart = isCustomOrPreset ? start : null
+    const pipelineEnd   = isCustomOrPreset ? end   : null
 
     let signedQuery = supabase.from('ghl_leads').select('ad_id, firm_id, created_at')
-    if (datePreset !== 'maximum') {
+    if (isCustomOrPreset) {
       signedQuery = signedQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', `${end}T23:59:59`)
     }
 
     const [signedRes, firmsRes, invoicesRes, pipelineResults] = await Promise.all([
       signedQuery,
-      supabase.from('firms').select('id, slug, name'),
+      supabase.from('firms').select('id, slug, name, meta_campaign_filter'),
       supabase.from('firm_invoices').select('firm_id, code').order('sort_order', { ascending: false }).order('period_start', { ascending: false }),
       Promise.all(
         Object.entries(GHL_PIPELINES).map(([slug, pid]) =>
@@ -178,10 +185,13 @@ export async function GET(req: Request) {
       }
     }
 
-    const firmById: Record<string, { slug: string; name: string; latestInvoice: string | null }> = {}
+    const firmById: Record<string, { slug: string; name: string; latestInvoice: string | null; filter: string | null }> = {}
     for (const f of (firmsRes.data || [])) {
-      if (f.id) firmById[f.id] = { slug: f.slug, name: f.name, latestInvoice: latestInvoiceByFirmId[f.id] || null }
+      if (f.id) firmById[f.id] = { slug: f.slug, name: f.name, latestInvoice: latestInvoiceByFirmId[f.id] || null, filter: f.meta_campaign_filter || null }
     }
+
+    // Build adId pattern → firm map from meta_campaign_filter (e.g. "JLL" → Levine Law)
+    const filterFirms = Object.values(firmById).filter(f => f.filter)
 
     const byAdId: Record<string, AdData> = {}
 
@@ -213,6 +223,20 @@ export async function GET(req: Request) {
           else if (label === 'nq') { byAdId[adId].nqCount++; byAdId[adId].nqLeads.push(contact) }
           else if (label === 'fu') { byAdId[adId].fuCount++; byAdId[adId].fuLeads.push(contact) }
           else if (label === 'chase') { byAdId[adId].chaseCount++; byAdId[adId].chaseLeads.push(contact) }
+        }
+      }
+    }
+
+    // Attribution via meta_campaign_filter: any adId containing a firm's filter string → assign that firm
+    for (const [adId, adData] of Object.entries(byAdId)) {
+      if (adData.firmSlug) continue // already attributed
+      const adIdUpper = adId.toUpperCase()
+      for (const firm of filterFirms) {
+        if (firm.filter && adIdUpper.includes(firm.filter.toUpperCase())) {
+          adData.firmSlug      = firm.slug
+          adData.firmName      = firm.name
+          adData.latestInvoice = firm.latestInvoice
+          break
         }
       }
     }

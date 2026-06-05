@@ -12,9 +12,12 @@ const navItems = [
   { label: 'Completions', href: '/teams/admin/completions', exact: false },
   { label: 'Retakes', href: '/teams/admin/retakes', exact: false, badge: true },
   { label: 'Reps', href: '/teams/admin/reps', exact: false },
+  { label: 'Performance', href: '/teams/admin/performance', exact: false },
+  { label: 'Cases', href: '/teams/admin/cases', exact: false },
   { label: 'Timeclock', href: '/teams/admin/timeclock', exact: false },
   { label: 'Programs', href: '/teams/admin/programs', exact: false },
   { label: 'Modules', href: '/teams/admin/modules', exact: false },
+  { label: 'Urgent Tasks', href: '/teams/admin/urgent-tasks', exact: false },
 ]
 
 export default function AdminNav({ retakeCount }: AdminNavProps) {

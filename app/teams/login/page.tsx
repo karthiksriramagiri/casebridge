@@ -60,7 +60,7 @@ export default function LoginPage() {
       if (profile.role === 'admin') {
         router.push('/teams/admin')
       } else {
-        router.push('/teams/dashboard')
+        router.push('/teams/home')
       }
     } catch {
       setError('An unexpected error occurred. Please try again.')

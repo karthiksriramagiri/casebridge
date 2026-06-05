@@ -26,7 +26,7 @@ export async function GET(_request: NextRequest) {
   // Fetch all rep profiles
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, name, created_at')
+    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids')
     .eq('role', 'rep')
     .order('created_at', { ascending: false })
 
@@ -108,6 +108,10 @@ export async function GET(_request: NextRequest) {
       certified,
       passedRequired,
       totalRequired: requiredModuleIds.length,
+      ndaSigned: (rep as any).nda_signed ?? false,
+      timeclockEnabled: (rep as any).timeclock_enabled ?? false,
+      shift: (rep as any).shift ?? null,
+      ghlUserIds: (rep as any).ghl_user_ids ?? [],
     }
   })
 

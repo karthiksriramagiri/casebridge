@@ -1,0 +1,114 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
+
+const SLACK_WEBHOOK = process.env.SLACK_TASK_REMINDERS
+
+export async function GET(request: NextRequest) {
+  // Verify cron secret via query param or header
+  const secret = request.nextUrl.searchParams.get('secret')
+  const authHeader = request.headers.get('authorization')
+  if (secret !== process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  if (!SLACK_WEBHOOK) {
+    return NextResponse.json({ error: 'No Slack webhook configured' }, { status: 500 })
+  }
+
+  function stripHtml(html: string | null): string | null {
+    if (!html) return null
+    return html.replace(/<[^>]*>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').trim() || null
+  }
+
+  const now = new Date()
+  const nowIso = now.toISOString()
+  // Grace window: allow up to 30 minutes past due (handles late cron runs)
+  const graceIso = new Date(now.getTime() - 30 * 60 * 1000).toISOString()
+
+  // Find tasks: notify_at has passed AND due_date is within the last 30 min (not way past due)
+  const { data: tasks, error } = await supabase
+    .from('ghl_task_reminders')
+    .select('*')
+    .eq('notified', false)
+    .lte('notify_at', nowIso)
+    .gte('due_date', graceIso)
+
+  if (error) {
+    console.error('[task-reminders] Supabase error:', error)
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  if (!tasks || tasks.length === 0) {
+    return NextResponse.json({ sent: 0 })
+  }
+
+  const results: string[] = []
+
+  for (const task of tasks) {
+    const dueTime = new Date(task.due_date).toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+      timeZone: 'America/Los_Angeles',
+    })
+    const dueDate = new Date(task.due_date).toLocaleDateString('en-US', {
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+      timeZone: 'America/Los_Angeles',
+    })
+
+    const contactLine = task.contact_name ? `*Contact:* ${task.contact_name}` : ''
+    const bodyLine = stripHtml(task.body) ? `*Notes:* ${stripHtml(task.body)}` : ''
+
+    const message = {
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:alarm_clock: *Task Due in 5 Minutes*\n\n*${task.title}*\n${[contactLine, bodyLine].filter(Boolean).join('\n')}`,
+          },
+        },
+        {
+          type: 'context',
+          elements: [
+            {
+              type: 'mrkdwn',
+              text: `Due at *${dueTime}* on ${dueDate}`,
+            },
+          ],
+        },
+      ],
+    }
+
+    try {
+      const slackRes = await fetch(SLACK_WEBHOOK!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message),
+      })
+
+      if (slackRes.ok) {
+        // Mark as notified
+        await supabase
+          .from('ghl_task_reminders')
+          .update({ notified: true })
+          .eq('id', task.id)
+
+        results.push(`✓ ${task.title}`)
+      } else {
+        results.push(`✗ ${task.title} (slack ${slackRes.status})`)
+      }
+    } catch (err) {
+      results.push(`✗ ${task.title} (fetch error)`)
+    }
+  }
+
+  return NextResponse.json({ sent: results.length, results })
+}

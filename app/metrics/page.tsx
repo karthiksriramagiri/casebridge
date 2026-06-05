@@ -18,6 +18,7 @@ const DATE_PRESETS = [
   { label: 'Last 7 days', value: 'last_7d' },
   { label: 'Last 14 days',value: 'last_14d' },
   { label: 'Last 30 days',value: 'last_30d' },
+  { label: 'Custom…',     value: 'custom' },
 ]
 
 // ─── Stat cards ─────────────────────────────────────────────────────────────
@@ -390,6 +391,10 @@ const BLANK_FIRM = { name: '', slug: '', case_value: '', meta_account_id: 'act_7
 export default function MetricsPage() {
   const router = useRouter()
   const [datePreset, setDatePreset] = useState('today')
+  const today = new Date().toISOString().slice(0, 10)
+  const [customStart, setCustomStart] = useState(today)
+  const [customEnd, setCustomEnd] = useState(today)
+  const [customApplied, setCustomApplied] = useState({ start: today, end: today })
   const [metaData, setMetaData] = useState<any>(null)
   const [attribution, setAttribution] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -412,13 +417,17 @@ export default function MetricsPage() {
   const [firmSaving, setFirmSaving] = useState(false)
   const [firmError, setFirmError] = useState<string | null>(null)
 
+  const dateParams = datePreset === 'custom'
+    ? `start_date=${customApplied.start}&end_date=${customApplied.end}`
+    : `date_preset=${datePreset}`
+
   useEffect(() => {
     setLoading(true); let cancelled = false
-    const p1 = fetch(`/api/metrics?date_preset=${datePreset}`).then(r => r.json()).catch(() => ({})).then(d => { if (!cancelled) setMetaData(d) })
+    const p1 = fetch(`/api/metrics?${dateParams}`).then(r => r.json()).catch(() => ({})).then(d => { if (!cancelled) setMetaData(d) })
     const p2 = fetch('/api/metrics/attribution').then(r => r.json()).catch(() => ({})).then(d => { if (!cancelled) setAttribution(d) })
     Promise.allSettled([p1, p2]).then(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
-  }, [datePreset])
+  }, [datePreset, customApplied])
 
   useEffect(() => {
     let c = false
@@ -433,7 +442,7 @@ export default function MetricsPage() {
   }, [])
 
   useEffect(() => {
-    fetch(`/api/metrics/creative-overview?date_preset=${datePreset}`)
+    fetch(`/api/metrics/creative-overview?${dateParams}`)
       .then(r => r.json())
       .then(d => {
         const data = d.byAdId || {}
@@ -441,7 +450,7 @@ export default function MetricsPage() {
         setPipelineOverview(data)
       })
       .catch(() => {})
-  }, [datePreset])
+  }, [datePreset, customApplied])
 
   async function handleAddWorker(e: React.FormEvent) {
     e.preventDefault()
@@ -530,11 +539,36 @@ export default function MetricsPage() {
             OOS Cases
           </Link>
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <select value={datePreset} onChange={e => setDatePreset(e.target.value)}
             style={{ background: DARK, color: '#FFF', border: 'none', borderRadius: 7, padding: '7px 12px', fontSize: 12, fontWeight: 600, cursor: 'pointer', outline: 'none' }}>
             {DATE_PRESETS.map(p => <option key={p.value} value={p.value}>{p.label}</option>)}
           </select>
+          {datePreset === 'custom' && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <input
+                type="date"
+                value={customStart}
+                max={customEnd}
+                onChange={e => setCustomStart(e.target.value)}
+                style={{ background: '#2A2520', color: '#FFF', border: `1px solid #444`, borderRadius: 7, padding: '6px 8px', fontSize: 12, cursor: 'pointer', outline: 'none' }}
+              />
+              <span style={{ color: MUTED, fontSize: 12 }}>→</span>
+              <input
+                type="date"
+                value={customEnd}
+                min={customStart}
+                onChange={e => setCustomEnd(e.target.value)}
+                style={{ background: '#2A2520', color: '#FFF', border: `1px solid #444`, borderRadius: 7, padding: '6px 8px', fontSize: 12, cursor: 'pointer', outline: 'none' }}
+              />
+              <button
+                onClick={() => setCustomApplied({ start: customStart, end: customEnd })}
+                style={{ background: ACCENT, color: '#FFF', border: 'none', borderRadius: 7, padding: '6px 12px', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}
+              >
+                Apply
+              </button>
+            </div>
+          )}
           <button onClick={logout} style={{ background: 'none', border: 'none', cursor: 'pointer', fontSize: 13, color: MUTED }}>Logout</button>
         </div>
       </div>

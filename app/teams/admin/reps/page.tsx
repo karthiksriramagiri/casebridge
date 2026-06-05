@@ -13,6 +13,10 @@ interface Rep {
   certified: boolean
   passedRequired: number
   totalRequired: number
+  ndaSigned: boolean
+  timeclockEnabled: boolean
+  shift: string | null
+  ghlUserIds: string[]
 }
 
 interface AttemptSummary {
@@ -69,6 +73,12 @@ export default function RepsPage() {
   // Action states
   const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [actionMessage, setActionMessage] = useState('')
+
+  // Call queue settings
+  const [shiftOpen, setShiftOpen] = useState<string | null>(null) // rep id whose shift panel is open
+  const [shiftDraft, setShiftDraft] = useState<Record<string, string>>({}) // repId → shift value
+  const [ghlDraft, setGhlDraft] = useState<Record<string, string>>({}) // repId → comma-separated GHL IDs
+  const [shiftSaving, setShiftSaving] = useState<string | null>(null)
 
   const fetchReps = useCallback(async () => {
     setLoading(true)
@@ -178,6 +188,64 @@ export default function RepsPage() {
     }
   }
 
+  function openShiftPanel(rep: Rep) {
+    setShiftOpen(rep.id)
+    setShiftDraft(d => ({ ...d, [rep.id]: rep.shift || '' }))
+    setGhlDraft(d => ({ ...d, [rep.id]: (rep.ghlUserIds || []).join(', ') }))
+  }
+
+  async function handleSaveShift(repId: string) {
+    setShiftSaving(repId)
+    const shift = shiftDraft[repId] || null
+    const ghlIds = (ghlDraft[repId] || '').split(',').map(s => s.trim()).filter(Boolean)
+
+    await Promise.all([
+      fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_shift', shift }),
+      }),
+      fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_ghl_ids', ghlIds }),
+      }),
+    ])
+
+    setReps(prev => prev.map(r =>
+      r.id === repId ? { ...r, shift: shift, ghlUserIds: ghlIds } : r
+    ))
+    setShiftSaving(null)
+    setShiftOpen(null)
+  }
+
+  async function handleToggleTimeclock(repId: string, currentValue: boolean) {
+    setActionLoading(repId + ':timeclock')
+    setActionMessage('')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_timeclock', value: !currentValue }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to update timeclock access')
+      await fetchReps()
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const SHIFT_LABELS: Record<string, string> = {
+    morning:           'Morning (7AM–12PM PST)',
+    afternoon:         'Afternoon (12PM–3PM PST)',
+    evening:           'Evening (3PM–9PM PST)',
+    morning_afternoon: 'Morning + Afternoon (7AM–3PM PST)',
+    afternoon_evening: 'Afternoon + Evening (12PM–9PM PST)',
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -217,6 +285,10 @@ export default function RepsPage() {
             const isResetLoading = actionLoading === rep.id + ':reset'
             const isDeleteLoading = actionLoading === rep.id + ':delete'
 
+            const isTimeclockLoading = actionLoading === rep.id + ':timeclock'
+
+            const isShiftOpen = shiftOpen === rep.id
+
             return (
               <div key={rep.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
                 <div className="flex items-start justify-between gap-4">
@@ -228,6 +300,9 @@ export default function RepsPage() {
                           ✦ Certified
                         </span>
                       )}
+                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rep.ndaSigned ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
+                        {rep.ndaSigned ? '✓ NDA Signed' : '✗ NDA Pending'}
+                      </span>
                     </div>
                     <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mt-1">
                       <span>{rep.email}</span>
@@ -241,6 +316,32 @@ export default function RepsPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-wrap shrink-0">
+                    {/* Call Queue shift button */}
+                    <button
+                      onClick={() => isShiftOpen ? setShiftOpen(null) : openShiftPanel(rep)}
+                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                        rep.shift
+                          ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      📞 {rep.shift ? SHIFT_LABELS[rep.shift] || rep.shift : 'No Shift'}
+                    </button>
+                    {/* Timeclock toggle */}
+                    <button
+                      onClick={() => handleToggleTimeclock(rep.id, rep.timeclockEnabled)}
+                      disabled={isTimeclockLoading}
+                      className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
+                        rep.timeclockEnabled
+                          ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
+                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
+                      }`}
+                    >
+                      <span className={`w-7 h-4 rounded-full relative transition-colors flex-shrink-0 ${rep.timeclockEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}>
+                        <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
+                      </span>
+                      {isTimeclockLoading ? '...' : rep.timeclockEnabled ? 'Timeclock On' : 'Timeclock Off'}
+                    </button>
                     <button
                       onClick={() => setHistoryRep(rep)}
                       className="text-sm border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium px-3 py-1.5 rounded-lg transition-colors"
@@ -270,6 +371,57 @@ export default function RepsPage() {
                     </button>
                   </div>
                 </div>
+
+                {/* Call Queue Settings panel */}
+                {isShiftOpen && (
+                  <div className="mt-4 pt-4 border-t border-gray-100">
+                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Call Queue Settings</p>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">Shift</label>
+                        <select
+                          value={shiftDraft[rep.id] ?? ''}
+                          onChange={e => setShiftDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">No shift (not in call queue)</option>
+                          <option value="morning">Morning — 7AM–12PM PST</option>
+                          <option value="afternoon">Afternoon — 12PM–3PM PST</option>
+                          <option value="evening">Evening — 3PM–9PM PST</option>
+                          <option value="morning_afternoon">Morning + Afternoon — 7AM–3PM PST</option>
+                          <option value="afternoon_evening">Afternoon + Evening — 12PM–9PM PST</option>
+                        </select>
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-xs font-medium text-gray-600 mb-1">
+                          GHL User IDs <span className="text-gray-400">(comma-separated, for FU/Chase assignment)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={ghlDraft[rep.id] ?? ''}
+                          onChange={e => setGhlDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                          placeholder="e.g. DNj1g2jJWDn, JyJZdMlw3pu"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </div>
+                      <div className="flex gap-2 shrink-0">
+                        <button
+                          onClick={() => setShiftOpen(null)}
+                          className="text-sm border border-gray-300 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          onClick={() => handleSaveShift(rep.id)}
+                          disabled={shiftSaving === rep.id}
+                          className="text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+                        >
+                          {shiftSaving === rep.id ? 'Saving…' : 'Save'}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             )
           })}

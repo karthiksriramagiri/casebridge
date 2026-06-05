@@ -3,10 +3,11 @@
 // Overtime:    > 9h/day @ $6/hr
 // Rounding:    floor each session to nearest 0.05h; ignore sessions < 0.05h
 // Pay period:  2nd and 4th Friday of every month
-// Commission:  $25 per closed case (constant)
+// Commission:  $25 per signed case, $10 per replacement case (constant)
 
 export const OVERTIME_HOURLY = 6
 export const COMMISSION_PER_CLOSED = 25
+export const COMMISSION_PER_REPLACEMENT = 10
 
 /** Returns the 2nd and 4th Fridays of a given month (0-indexed month) */
 function payFridaysInMonth(year: number, month: number): [Date, Date | null] {

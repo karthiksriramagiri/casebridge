@@ -71,6 +71,39 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'toggle_timeclock') {
+    const { value } = body
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ timeclock_enabled: !!value })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'update_shift') {
+    const { shift } = body // one of: null, 'morning', 'afternoon', 'evening', 'morning_afternoon', 'afternoon_evening'
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ shift: shift || null })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'update_ghl_ids') {
+    const { ghlIds } = body // array of GHL user ID strings
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ ghl_user_ids: Array.isArray(ghlIds) ? ghlIds : [] })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'reset_password') {
     // Get the rep's email from auth
     const adminClient = createSupabaseAdmin(
