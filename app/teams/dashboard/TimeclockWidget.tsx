@@ -25,10 +25,9 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
 
   async function load() {
     try {
-      const res = await fetch(`/api/metrics/time-entries?date=${today}`)
+      const res = await fetch(`/api/teams/timeclock?date=${today}`)
       const data = await res.json()
-      const me = (data.workers || []).find((w: any) => w.profileId === profileId)
-      setEntries(me?.entries || [])
+      setEntries(data.entries || [])
     } catch {}
     setLoaded(true)
   }
@@ -53,11 +52,7 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
 
   async function clockIn() {
     setActing(true)
-    await fetch('/api/metrics/time-entries', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ profile_id: profileId, date: today }),
-    })
+    await fetch('/api/teams/timeclock', { method: 'POST' })
     await load()
     setActing(false)
   }
@@ -65,7 +60,7 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
   async function clockOut() {
     if (!openEntry) return
     setActing(true)
-    await fetch('/api/metrics/time-entries', {
+    await fetch('/api/teams/timeclock', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: openEntry.id }),
