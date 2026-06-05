@@ -8,7 +8,9 @@ const admin = createClient(
 )
 
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || ''
-const SLACK_NR_LEADS_CHANNEL = process.env.SLACK_NR_LEADS_CHANNEL || ''
+const SLACK_NR_LEAD_CHANNELS = new Set(
+  (process.env.SLACK_NR_LEADS_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean)
+)
 
 // Verify the request came from Slack
 function verifySlackSignature(body: string, timestamp: string, signature: string): boolean {
@@ -42,7 +44,7 @@ export async function POST(req: NextRequest) {
   // Only track reactions in the NR leads channel
   if (event.type === 'reaction_added') {
     const channel = event.item?.channel
-    if (SLACK_NR_LEADS_CHANNEL && channel !== SLACK_NR_LEADS_CHANNEL) {
+    if (SLACK_NR_LEAD_CHANNELS.size > 0 && !SLACK_NR_LEAD_CHANNELS.has(channel)) {
       return NextResponse.json({ ok: true })
     }
 
