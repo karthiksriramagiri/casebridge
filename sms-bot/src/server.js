@@ -1760,6 +1760,7 @@ const server = http.createServer(async (req, res) => {
         return;
       }
       if (!isNoResponseSignal(payload)) {
+        console.log("[disposition] IGNORED - payload keys:", Object.keys(payload), "tags:", payload.tags, "tag:", payload.tag, "customData:", JSON.stringify(payload.customData));
         send(res, 202, { ok: true, ignored: true, reason: "payload did not include no response disposition or NR tag" });
         return;
       }
