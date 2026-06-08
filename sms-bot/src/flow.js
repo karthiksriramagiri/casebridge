@@ -1973,7 +1973,9 @@ class SmsBot {
         tags: contact.tags
       }
     });
-    await this.store.cancelJobsForContact(contact.id, "inbound buffer replaced", (job) => job.type === "process_inbound_buffer");
+    await this.store.cancelJobsForContact(contact.id, "inbound received — pausing outbound sequence", (job) =>
+      job.type === "process_inbound_buffer" || BOT_SEQUENCE_JOB_TYPES.includes(job.type)
+    );
     await this.store.addJob({
       type: "process_inbound_buffer",
       contactId: contact.id,
