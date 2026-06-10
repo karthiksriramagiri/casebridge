@@ -1389,6 +1389,9 @@ class SmsBot {
       const tagLookupStartedAt = new Date();
       contact = await this.hydrateContactTags(contact, { force: true });
       if (tagLookupFailedAfter(contact, tagLookupStartedAt)) {
+        await this.store.cancelJobsForContact(contact.id, "tag lookup failed — halting sequence", (job) =>
+          BOT_SEQUENCE_JOB_TYPES.includes(job.type) || job.type === "send_message"
+        );
         await this.recordDecision(contact, "skipped", "tag_lookup_failed_no_send", {
           message,
           meta: { error: contact.lastTagLookupError || "GHL contact tag lookup failed" }
@@ -1974,7 +1977,7 @@ class SmsBot {
       }
     });
     await this.store.cancelJobsForContact(contact.id, "inbound received — pausing outbound sequence", (job) =>
-      job.type === "process_inbound_buffer" || BOT_SEQUENCE_JOB_TYPES.includes(job.type)
+      job.type === "process_inbound_buffer" || job.type === "send_message" || BOT_SEQUENCE_JOB_TYPES.includes(job.type)
     );
     await this.store.addJob({
       type: "process_inbound_buffer",
