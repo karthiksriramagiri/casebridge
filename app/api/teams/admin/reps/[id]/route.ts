@@ -71,6 +71,52 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'request_retake') {
+    const { moduleIds, message } = body // moduleIds: { id, title }[]
+    if (!Array.isArray(moduleIds) || moduleIds.length === 0) {
+      return NextResponse.json({ error: 'moduleIds required' }, { status: 400 })
+    }
+
+    const adminSupa = createSupabaseAdmin(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    )
+
+    // Invalidate passing attempts for the selected modules
+    await adminSupa
+      .from('attempts')
+      .update({ is_invalidated: true })
+      .eq('user_id', repId)
+      .eq('passed', true)
+      .eq('is_invalidated', false)
+      .in('module_id', moduleIds.map((m: any) => m.id))
+
+    // Insert retake notifications
+    const { error: notifError } = await adminSupa
+      .from('retake_notifications')
+      .insert(moduleIds.map((m: any) => ({
+        user_id: repId,
+        module_id: m.id,
+        module_title: m.title,
+        message: message?.trim() || null,
+        acknowledged: false,
+      })))
+
+    if (notifError) return NextResponse.json({ error: notifError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'toggle_timer') {
+    const { value } = body
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ timer_disabled: !!value })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'toggle_timeclock') {
     const { value } = body
     const { error: updateError } = await supabase

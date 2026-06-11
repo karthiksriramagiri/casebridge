@@ -16,6 +16,18 @@ async function requireAdmin() {
   return { error: null, supabase, user }
 }
 
+export async function GET() {
+  const { error, supabase } = await requireAdmin()
+  if (error || !supabase) return NextResponse.json({ error }, { status: error === 'Unauthorized' ? 401 : 403 })
+
+  const { data: modules } = await supabase
+    .from('modules')
+    .select('id, title, is_active, is_required')
+    .order('created_at', { ascending: true })
+
+  return NextResponse.json({ modules: modules || [] })
+}
+
 export async function POST(request: NextRequest) {
   const { error, supabase } = await requireAdmin()
   if (error || !supabase) {

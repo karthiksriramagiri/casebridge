@@ -9,6 +9,7 @@ import { sendSlack, LEVEL_LABELS } from '@/lib/slack'
 import BookingScheduler from './BookingScheduler'
 import AutoRefresh from './AutoRefresh'
 import NewModulePopup from './NewModulePopup'
+import RetakeNotificationPopup from './RetakeNotificationPopup'
 
 type AttemptData = {
   completed: boolean
@@ -239,7 +240,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, name, role, created_at, nda_signed, nda_signed_at, timeclock_enabled, nda_overdue_notified, training_expired_notified')
+    .select('id, name, role, created_at, nda_signed, nda_signed_at, timeclock_enabled, nda_overdue_notified, training_expired_notified, timer_disabled')
     .eq('id', user.id)
     .single()
 
@@ -362,8 +363,9 @@ export default async function DashboardPage() {
 
   // Expiry lock: if a timed level's deadline has passed and it's not complete, block the dashboard
   const now = Date.now()
-  const level1Expired = !!level1DeadlineAt && !level1Done && now > new Date(level1DeadlineAt).getTime()
-  const level2Expired = !!level2DeadlineAt && !level2Done && now > new Date(level2DeadlineAt).getTime()
+  const timerDisabled = !!(profile as any).timer_disabled
+  const level1Expired = !timerDisabled && !!level1DeadlineAt && !level1Done && now > new Date(level1DeadlineAt).getTime()
+  const level2Expired = !timerDisabled && !!level2DeadlineAt && !level2Done && now > new Date(level2DeadlineAt).getTime()
   const expiredLevel = level1Expired ? 1 : level2Expired ? 2 : null
 
   // Notify Slack once when timer expires
@@ -440,6 +442,7 @@ export default async function DashboardPage() {
           )}
 
           <NewModulePopup modules={(modules ?? []).map((m) => ({ id: m.id, title: m.title }))} />
+          <RetakeNotificationPopup />
 
           <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
             <div>

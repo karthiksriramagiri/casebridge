@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest) {
   // Fetch all rep profiles
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close')
+    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close, timer_disabled')
     .eq('role', 'rep')
     .order('created_at', { ascending: false })
 
@@ -137,6 +137,7 @@ export async function GET(_request: NextRequest) {
       payrollInfo: (rep as any).payroll_info ?? null,
       hourlyRate: (rep as any).hourly_rate ?? null,
       commissionPerClose: (rep as any).commission_per_close ?? null,
+      timerDisabled: !!(rep as any).timer_disabled,
       currentLevel,
     }
   })

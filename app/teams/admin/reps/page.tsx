@@ -15,6 +15,7 @@ interface Rep {
   totalRequired: number
   ndaSigned: boolean
   timeclockEnabled: boolean
+  timerDisabled: boolean
   shift: string | null
   ghlUserIds: string[]
   payrollMethod: string | null
@@ -35,7 +36,12 @@ interface AttemptSummary {
   contentViewSeconds: number
 }
 
-type SettingsTab = 'callqueue' | 'payroll' | 'danger'
+type SettingsTab = 'callqueue' | 'payroll' | 'retakes' | 'danger'
+
+interface Module {
+  id: string
+  title: string
+}
 
 const LEVEL_LABELS: Record<number, string> = {
   1: 'Level 1 · Intro',
@@ -61,8 +67,14 @@ const PAYROLL_METHODS = ['Payoneer', 'Wise', 'Zelle', 'Venmo', 'PayPal', 'Bank T
 
 export default function RepsPage() {
   const [reps, setReps] = useState<Rep[]>([])
+  const [modules, setModules] = useState<Module[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+
+  // Retake state per rep
+  const [retakeSelected, setRetakeSelected] = useState<Record<string, Set<string>>>({})
+  const [retakeMessage, setRetakeMessage] = useState<Record<string, string>>({})
+  const [retakeSaving, setRetakeSaving] = useState<string | null>(null)
 
   // Expanded settings per rep
   const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
@@ -113,7 +125,13 @@ export default function RepsPage() {
     }
   }, [])
 
-  useEffect(() => { fetchReps() }, [fetchReps])
+  useEffect(() => {
+    fetchReps()
+    fetch('/api/teams/admin/modules')
+      .then(r => r.json())
+      .then(d => setModules((d.modules ?? []).filter((m: any) => m.is_active).map((m: any) => ({ id: m.id, title: m.title }))))
+      .catch(() => {})
+  }, [fetchReps])
 
   function openSettings(rep: Rep) {
     setSettingsOpen(rep.id)
@@ -146,6 +164,47 @@ export default function RepsPage() {
     ])
     setReps(prev => prev.map(r => r.id === repId ? { ...r, shift, ghlUserIds: ghlIds } : r))
     setCallQueueSaving(null)
+  }
+
+  async function handleRequestRetake(repId: string) {
+    const selected = retakeSelected[repId]
+    if (!selected || selected.size === 0) return
+    setRetakeSaving(repId)
+    try {
+      const moduleIds = modules.filter(m => selected.has(m.id)).map(m => ({ id: m.id, title: m.title }))
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'request_retake', moduleIds, message: retakeMessage[repId] || '' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setRetakeSelected(prev => ({ ...prev, [repId]: new Set() }))
+      setRetakeMessage(prev => ({ ...prev, [repId]: '' }))
+      setActionMessage('Retake request sent.')
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setRetakeSaving(null)
+    }
+  }
+
+  async function handleToggleTimer(repId: string, current: boolean) {
+    setActionLoading(repId + ':timer')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_timer', value: !current }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setReps(prev => prev.map(r => r.id === repId ? { ...r, timerDisabled: !current } : r))
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   async function handleToggleTimeclock(repId: string, current: boolean) {
@@ -414,6 +473,7 @@ export default function RepsPage() {
                       {([
                         { key: 'callqueue', label: 'Call Queue' },
                         { key: 'payroll',   label: 'Payroll' },
+                        { key: 'retakes',   label: 'Retakes' },
                         { key: 'danger',    label: 'Danger Zone' },
                       ] as { key: SettingsTab; label: string }[]).map(({ key, label }) => (
                         <button
@@ -449,6 +509,21 @@ export default function RepsPage() {
                               className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timeclockEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}
                             >
                               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                            </button>
+                          </div>
+
+                          {/* Training timer toggle */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Disable Training Timer</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Skip expiry lock on dashboard</p>
+                            </div>
+                            <button
+                              onClick={() => handleToggleTimer(rep.id, rep.timerDisabled)}
+                              disabled={actionLoading === rep.id + ':timer'}
+                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timerDisabled ? 'bg-orange-500' : 'bg-gray-300'}`}
+                            >
+                              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.timerDisabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
                           </div>
 
@@ -593,6 +668,54 @@ export default function RepsPage() {
                               className="text-sm bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg transition-colors"
                             >
                               {payrollSaving === rep.id ? 'Saving…' : 'Save Payroll'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Retakes tab */}
+                      {tab === 'retakes' && (
+                        <div className="space-y-4">
+                          <p className="text-xs text-gray-500">Select modules to invalidate and send a retake notification to this rep.</p>
+                          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+                            {modules.map(m => {
+                              const isChecked = retakeSelected[rep.id]?.has(m.id) ?? false
+                              return (
+                                <label key={m.id} className="flex items-center gap-2.5 cursor-pointer group">
+                                  <input
+                                    type="checkbox"
+                                    checked={isChecked}
+                                    onChange={() => {
+                                      setRetakeSelected(prev => {
+                                        const next = new Set(prev[rep.id] ?? [])
+                                        isChecked ? next.delete(m.id) : next.add(m.id)
+                                        return { ...prev, [rep.id]: next }
+                                      })
+                                    }}
+                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                  />
+                                  <span className="text-sm text-gray-700 group-hover:text-gray-900">{m.title}</span>
+                                </label>
+                              )
+                            })}
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Message to rep <span className="text-gray-400 font-normal">(optional)</span></label>
+                            <textarea
+                              rows={2}
+                              value={retakeMessage[rep.id] ?? ''}
+                              onChange={e => setRetakeMessage(prev => ({ ...prev, [rep.id]: e.target.value }))}
+                              placeholder="e.g. Please review the updated guidelines before retaking."
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                            />
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              onClick={() => handleRequestRetake(rep.id)}
+                              disabled={retakeSaving === rep.id || !(retakeSelected[rep.id]?.size)}
+                              className="text-sm bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-medium px-5 py-2 rounded-lg transition-colors"
+                            >
+                              {retakeSaving === rep.id ? 'Sending…' : `Send Retake Request (${retakeSelected[rep.id]?.size ?? 0} module${(retakeSelected[rep.id]?.size ?? 0) !== 1 ? 's' : ''})`}
                             </button>
                           </div>
                         </div>
