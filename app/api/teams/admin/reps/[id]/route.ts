@@ -117,6 +117,17 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'toggle_levels_lock') {
+    const { value } = body
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ levels_unlocked: !!value })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'toggle_timer') {
     const { value } = body
     const { error: updateError } = await supabase

@@ -16,6 +16,7 @@ interface Rep {
   ndaSigned: boolean
   timeclockEnabled: boolean
   timerDisabled: boolean
+  levelsUnlocked: boolean
   todoMode: string
   shift: string | null
   ghlUserIds: string[]
@@ -199,6 +200,24 @@ export default function RepsPage() {
       setActionMessage(`Error: ${err.message}`)
     } finally {
       setRetakeSaving(null)
+    }
+  }
+
+  async function handleToggleLevelsLock(repId: string, current: boolean) {
+    setActionLoading(repId + ':levels')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_levels_lock', value: !current }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setReps(prev => prev.map(r => r.id === repId ? { ...r, levelsUnlocked: !current } : r))
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
     }
   }
 
@@ -534,6 +553,21 @@ export default function RepsPage() {
                               className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timeclockEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}
                             >
                               <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                            </button>
+                          </div>
+
+                          {/* Level lock override */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Unlock All Levels</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Skip level progression requirements</p>
+                            </div>
+                            <button
+                              onClick={() => handleToggleLevelsLock(rep.id, rep.levelsUnlocked)}
+                              disabled={actionLoading === rep.id + ':levels'}
+                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.levelsUnlocked ? 'bg-green-500' : 'bg-gray-300'}`}
+                            >
+                              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.levelsUnlocked ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
                           </div>
 

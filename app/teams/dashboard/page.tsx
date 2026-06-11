@@ -365,7 +365,7 @@ export default async function DashboardPage() {
   const certified = level1Done && level2Done && level3Done
   // A user is effectively certified if they've completed (or progressed past) all levels,
   // even if new modules were added to earlier levels after they finished.
-  const effectivelyCertified = certified || (level1EffectivelyDone && level2EffectivelyDone && level3Done)
+  const effectivelyCertified = certified || (level1EffectivelyDone && level2EffectivelyDone && level3Done) || levelsUnlocked
 
   // Countdown deadlines
   const level1StartAt = (profile as any).nda_signed_at || profile.created_at
@@ -380,9 +380,10 @@ export default async function DashboardPage() {
   // Expiry lock: if a timed level's deadline has passed and it's not complete, block the dashboard.
   // Use effectively-done so newly-added modules don't falsely trigger expiry for users who've progressed.
   const now = Date.now()
+  const levelsUnlocked = !!(profile as any).levels_unlocked
   const timerDisabled = !!(profile as any).timer_disabled
-  const level1Expired = !timerDisabled && !!level1DeadlineAt && !level1EffectivelyDone && now > new Date(level1DeadlineAt).getTime()
-  const level2Expired = !timerDisabled && !!level2DeadlineAt && !level2EffectivelyDone && now > new Date(level2DeadlineAt).getTime()
+  const level1Expired = !timerDisabled && !levelsUnlocked && !!level1DeadlineAt && !level1EffectivelyDone && now > new Date(level1DeadlineAt).getTime()
+  const level2Expired = !timerDisabled && !levelsUnlocked && !!level2DeadlineAt && !level2EffectivelyDone && now > new Date(level2DeadlineAt).getTime()
   const expiredLevel = level1Expired ? 1 : level2Expired ? 2 : null
 
   // Notify Slack once when timer expires
