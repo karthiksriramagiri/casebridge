@@ -129,7 +129,7 @@ export default function RepsPage() {
     fetchReps()
     fetch('/api/teams/admin/modules')
       .then(r => r.json())
-      .then(d => setModules((d.modules ?? []).filter((m: any) => m.is_active).map((m: any) => ({ id: m.id, title: m.title }))))
+      .then(d => setModules((d.modules ?? []).map((m: any) => ({ id: m.id, title: m.title }))))
       .catch(() => {})
   }, [fetchReps])
 
