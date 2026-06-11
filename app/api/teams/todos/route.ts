@@ -116,14 +116,44 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  // Fetch this worker's profile (shift + GHL IDs)
+  // Fetch this worker's profile (shift + GHL IDs + todo_mode)
   const { data: profile } = await admin
     .from('profiles')
-    .select('name, shift, ghl_user_ids')
+    .select('name, shift, ghl_user_ids, todo_mode')
     .eq('id', user.id)
     .single()
 
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
+
+  // --- Call listener mode ---
+  if ((profile as any).todo_mode === 'call_listener') {
+    const cutoff = new Date()
+    cutoff.setDate(cutoff.getDate() - 60)
+    const [casesRes, notesRes] = await Promise.all([
+      admin.from('ghl_leads')
+        .select('id, contact_name, qualified_at, closed_by_profile_id')
+        .neq('case_status', 'replacement')
+        .gte('qualified_at', cutoff.toISOString())
+        .order('qualified_at', { ascending: false })
+        .limit(100),
+      admin.from('call_listen_notes')
+        .select('case_id, notes, updated_at')
+        .eq('user_id', user.id),
+    ])
+    const notesByCaseId = new Map((notesRes.data || []).map((n: any) => [n.case_id, n]))
+    const cases = (casesRes.data || []).map((c: any) => {
+      const note = notesByCaseId.get(c.id)
+      return {
+        id: c.id,
+        contactName: c.contact_name || 'Unknown',
+        qualifiedAt: c.qualified_at,
+        hasNote: !!note,
+        notes: note?.notes || '',
+      }
+    })
+    return NextResponse.json({ todoMode: 'call_listener', cases })
+  }
+
   if (!profile.shift) return NextResponse.json({ error: 'No shift assigned' }, { status: 403 })
 
   // Determine current EST time

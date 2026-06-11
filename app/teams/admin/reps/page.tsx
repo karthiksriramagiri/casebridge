@@ -16,6 +16,7 @@ interface Rep {
   ndaSigned: boolean
   timeclockEnabled: boolean
   timerDisabled: boolean
+  todoMode: string
   shift: string | null
   ghlUserIds: string[]
   payrollMethod: string | null
@@ -36,7 +37,15 @@ interface AttemptSummary {
   contentViewSeconds: number
 }
 
-type SettingsTab = 'callqueue' | 'payroll' | 'retakes' | 'danger'
+type SettingsTab = 'callqueue' | 'todos' | 'callreviews' | 'payroll' | 'retakes' | 'danger'
+
+interface CallNote {
+  id: string
+  caseId: string
+  contactName: string
+  notes: string
+  updatedAt: string
+}
 
 interface Module {
   id: string
@@ -92,6 +101,10 @@ export default function RepsPage() {
   const [hourlyRateDraft, setHourlyRateDraft] = useState<Record<string, string>>({})
   const [commissionDraft, setCommissionDraft] = useState<Record<string, string>>({})
   const [payrollSaving, setPayrollSaving] = useState<string | null>(null)
+
+  // Call notes per rep
+  const [callNotes, setCallNotes] = useState<Record<string, CallNote[]>>({})
+  const [callNotesLoading, setCallNotesLoading] = useState<string | null>(null)
 
   // Action states
   const [actionLoading, setActionLoading] = useState<string | null>(null)
@@ -471,14 +484,26 @@ export default function RepsPage() {
                     {/* Tab bar */}
                     <div className="flex border-b border-gray-100 bg-gray-50">
                       {([
-                        { key: 'callqueue', label: 'Call Queue' },
-                        { key: 'payroll',   label: 'Payroll' },
-                        { key: 'retakes',   label: 'Retakes' },
-                        { key: 'danger',    label: 'Danger Zone' },
+                        { key: 'callqueue',    label: 'Call Queue' },
+                        { key: 'todos',        label: 'Todos' },
+                        { key: 'callreviews',  label: 'Call Reviews' },
+                        { key: 'payroll',      label: 'Payroll' },
+                        { key: 'retakes',      label: 'Retakes' },
+                        { key: 'danger',       label: 'Danger Zone' },
                       ] as { key: SettingsTab; label: string }[]).map(({ key, label }) => (
                         <button
                           key={key}
-                          onClick={() => setActiveTab(t => ({ ...t, [rep.id]: key }))}
+                          onClick={() => {
+                            setActiveTab(t => ({ ...t, [rep.id]: key }))
+                            if (key === 'callreviews' && !callNotes[rep.id]) {
+                              setCallNotesLoading(rep.id)
+                              fetch(`/api/teams/admin/reps/${rep.id}/notes`)
+                                .then(r => r.json())
+                                .then(d => setCallNotes(prev => ({ ...prev, [rep.id]: d.notes ?? [] })))
+                                .catch(() => setCallNotes(prev => ({ ...prev, [rep.id]: [] })))
+                                .finally(() => setCallNotesLoading(null))
+                            }
+                          }}
                           className={`px-5 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px ${
                             tab === key
                               ? key === 'danger'
@@ -574,6 +599,74 @@ export default function RepsPage() {
                               {callQueueSaving === rep.id ? 'Saving…' : 'Save'}
                             </button>
                           </div>
+                        </div>
+                      )}
+
+                      {/* Todos tab */}
+                      {tab === 'todos' && (
+                        <div className="space-y-4">
+                          <p className="text-xs text-gray-500">Choose what this rep sees in their Todos page.</p>
+                          <div className="flex flex-col gap-3">
+                            {[
+                              { value: 'call_queue', label: 'Call Queue', desc: 'Rep sees No Response, Follow Up, and Chase leads for their shift.' },
+                              { value: 'call_listener', label: 'Call Listener', desc: 'Rep sees signed cases to listen to and write notes on the call flow.' },
+                            ].map(opt => {
+                              const isActive = (rep.todoMode ?? 'call_queue') === opt.value
+                              return (
+                                <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
+                                  isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+                                }`}>
+                                  <input
+                                    type="radio"
+                                    name={`todoMode-${rep.id}`}
+                                    value={opt.value}
+                                    checked={isActive}
+                                    onChange={async () => {
+                                      await fetch(`/api/teams/admin/reps/${rep.id}`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'update_todo_mode', todoMode: opt.value }),
+                                      })
+                                      setReps(prev => prev.map(r => r.id === rep.id ? { ...r, todoMode: opt.value } : r))
+                                    }}
+                                    className="mt-0.5 text-blue-600"
+                                  />
+                                  <div>
+                                    <p className="text-sm font-medium text-gray-800">{opt.label}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                                  </div>
+                                </label>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Call Reviews tab */}
+                      {tab === 'callreviews' && (
+                        <div className="space-y-3">
+                          {callNotesLoading === rep.id ? (
+                            <p className="text-sm text-gray-400 text-center py-6">Loading…</p>
+                          ) : !callNotes[rep.id] || callNotes[rep.id].length === 0 ? (
+                            <p className="text-sm text-gray-400 text-center py-6">No call notes submitted yet.</p>
+                          ) : (
+                            <>
+                              <p className="text-xs text-gray-500">{callNotes[rep.id].length} note{callNotes[rep.id].length !== 1 ? 's' : ''} submitted</p>
+                              <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
+                                {callNotes[rep.id].map(note => (
+                                  <div key={note.id} className="bg-gray-50 rounded-lg border border-gray-100 p-4">
+                                    <div className="flex items-start justify-between gap-3 mb-2">
+                                      <p className="text-sm font-semibold text-gray-900">{note.contactName}</p>
+                                      <p className="text-xs text-gray-400 shrink-0">
+                                        {new Date(note.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                      </p>
+                                    </div>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{note.notes}</p>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
 

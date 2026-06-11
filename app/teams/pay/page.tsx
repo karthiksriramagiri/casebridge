@@ -21,14 +21,12 @@ interface PayData {
   }
   cases: {
     eligibleThisPeriod: CaseEntry[]
-    replacementsThisPeriod: CaseEntry[]
     pending: CaseEntry[]
   }
   pay: {
     hourlyRate: number
     hourlyEarnings: number
     commissionSigned: number
-    commissionReplace: number
     totalEstimated: number
   }
   todayEntries: { id: string; clock_in: string; clock_out: string | null }[]
@@ -84,7 +82,7 @@ export default function PayPage() {
   function fmtTime(iso: string) {
     return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true, timeZone: 'America/New_York' })
   }
-  const totalCommission = pay.commissionSigned + pay.commissionReplace
+  const totalCommission = pay.commissionSigned
   const pendingTotal = cases.pending.length * 25
 
   return (
@@ -129,12 +127,6 @@ export default function PayPage() {
                 <p className="text-sm text-blue-200">
                   <span className="text-white font-semibold">{cases.eligibleThisPeriod.length}</span> signed × $25
                   <span className="text-white font-semibold ml-1">= {fmt$(pay.commissionSigned)}</span>
-                </p>
-              )}
-              {cases.replacementsThisPeriod.length > 0 && (
-                <p className="text-sm text-blue-200">
-                  <span className="text-white font-semibold">{cases.replacementsThisPeriod.length}</span> replacement{cases.replacementsThisPeriod.length !== 1 ? 's' : ''} × $10
-                  <span className="text-white font-semibold ml-1">= {fmt$(pay.commissionReplace)}</span>
                 </p>
               )}
             </div>
@@ -210,7 +202,7 @@ export default function PayPage() {
                 </div>
                 <span className="text-sm font-bold text-green-700">{fmt$(totalCommission)}</span>
               </div>
-              {cases.eligibleThisPeriod.length === 0 && cases.replacementsThisPeriod.length === 0 ? (
+              {cases.eligibleThisPeriod.length === 0 ? (
                 <p className="px-5 py-6 text-center text-sm text-gray-400">No eligible commission this period.</p>
               ) : (
                 <div className="divide-y divide-gray-50">
@@ -223,18 +215,6 @@ export default function PayPage() {
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Signed</span>
                         <span className="text-sm font-bold text-green-700">+$25</span>
-                      </div>
-                    </div>
-                  ))}
-                  {cases.replacementsThisPeriod.map(c => (
-                    <div key={c.id} className="flex items-center justify-between px-5 py-3">
-                      <div>
-                        <p className="text-sm font-semibold text-gray-900">{c.name}</p>
-                        <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Replacement</span>
-                        <span className="text-sm font-bold text-orange-600">+$10</span>
                       </div>
                     </div>
                   ))}

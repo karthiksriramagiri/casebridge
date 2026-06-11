@@ -153,8 +153,7 @@ export async function GET() {
 
   const hourlyEarnings    = Math.round((totalRegular * HOURLY_RATE + totalOvertime * 6) * 100) / 100
   const commissionSigned  = eligibleThisPeriod.length * COMMISSION_PER_CLOSED
-  const commissionReplace = replacementsThisPeriod.length * COMMISSION_PER_REPLACEMENT
-  const totalEstimated    = hourlyEarnings + commissionSigned + commissionReplace
+  const totalEstimated    = hourlyEarnings + commissionSigned
 
   return NextResponse.json({
     period: {
@@ -169,14 +168,12 @@ export async function GET() {
     },
     cases: {
       eligibleThisPeriod,
-      replacementsThisPeriod,
       pending: signedPending,
     },
     pay: {
       hourlyRate: HOURLY_RATE,
       hourlyEarnings,
       commissionSigned,
-      commissionReplace,
       totalEstimated,
     },
     todayEntries: todayRes.data || [],

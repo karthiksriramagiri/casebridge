@@ -27,7 +27,21 @@ interface SlotStat {
   status: 'past' | 'current' | 'upcoming'
 }
 
+interface ListenCase {
+  id: string
+  contactName: string
+  qualifiedAt: string | null
+  hasNote: boolean
+  notes: string
+}
+
+interface ListenerData {
+  todoMode: 'call_listener'
+  cases: ListenCase[]
+}
+
 interface TodosData {
+  todoMode?: 'call_queue'
   workerName: string
   shift: string | null
   slot: 'morning' | 'afternoon' | 'evening' | null
@@ -45,6 +59,8 @@ interface TodosData {
     chase: Lead[]
   }
 }
+
+type ApiData = TodosData | ListenerData
 
 const PIPELINE_LABELS: Record<string, string> = {
   lhp:       'LHP',
@@ -297,11 +313,136 @@ function LeadColumn({
   )
 }
 
+function CallListenerView({ cases }: { cases: ListenCase[] }) {
+  const [noteState, setNoteState] = useState<Record<string, string>>({})
+  const [saving, setSaving] = useState<string | null>(null)
+  const [saved, setSaved] = useState<Set<string>>(new Set())
+
+  const done = cases.filter(c => saved.has(c.id) || c.hasNote)
+  const pending = cases.filter(c => !saved.has(c.id) && !c.hasNote)
+
+  async function handleSave(caseId: string) {
+    const notes = (noteState[caseId] ?? '').trim()
+    if (!notes) return
+    setSaving(caseId)
+    try {
+      await fetch('/api/teams/todos/listen', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ caseId, notes }),
+      })
+      setSaved(prev => new Set([...prev, caseId]))
+    } catch {
+      // ignore
+    } finally {
+      setSaving(null)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Progress */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3.5">
+        <div className="flex items-center justify-between mb-1.5">
+          <span className="text-sm font-medium text-gray-700">
+            {done.length} of {cases.length} reviewed
+          </span>
+          <span className="text-xs text-gray-400">{pending.length} remaining</span>
+        </div>
+        <div className="w-full bg-gray-100 rounded-full h-1.5">
+          <div
+            className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
+            style={{ width: cases.length > 0 ? `${Math.round((done.length / cases.length) * 100)}%` : '0%' }}
+          />
+        </div>
+      </div>
+
+      {/* Pending cases */}
+      {pending.length > 0 && (
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3 px-1">To Review ({pending.length})</h2>
+          <div className="space-y-3">
+            {pending.map(c => (
+              <div key={c.id} className="bg-white rounded-xl border border-gray-200 shadow-sm p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div>
+                    <p className="font-semibold text-gray-900">{c.contactName}</p>
+                    {c.qualifiedAt && (
+                      <p className="text-xs text-gray-400 mt-0.5">
+                        {new Date(c.qualifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                      </p>
+                    )}
+                  </div>
+                  <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 shrink-0">Pending</span>
+                </div>
+                <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                  Your notes
+                  <span className="text-gray-400 font-normal ml-1">— what happened in this call? What was the flow?</span>
+                </label>
+                <textarea
+                  rows={3}
+                  value={noteState[c.id] ?? c.notes}
+                  onChange={e => setNoteState(prev => ({ ...prev, [c.id]: e.target.value }))}
+                  placeholder="e.g. Client was hesitant about timeline. I explained the process clearly and addressed their concern about upfront costs. Closed by emphasizing the contingency-based fee..."
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+                <div className="flex justify-end mt-2">
+                  <button
+                    onClick={() => handleSave(c.id)}
+                    disabled={saving === c.id || !(noteState[c.id] ?? '').trim()}
+                    className="text-sm bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    {saving === c.id ? 'Saving…' : 'Submit Notes'}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Done cases */}
+      {done.length > 0 && (
+        <div>
+          <h2 className="text-xs font-semibold uppercase tracking-wider text-gray-500 mb-3 px-1">Reviewed ({done.length})</h2>
+          <div className="space-y-2">
+            {done.map(c => (
+              <div key={c.id} className="bg-green-50 rounded-xl border border-green-200 px-4 py-3 flex items-center gap-3">
+                <div className="w-5 h-5 rounded-full bg-green-500 flex items-center justify-center shrink-0">
+                  <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium text-gray-700 line-through">{c.contactName}</p>
+                  {c.qualifiedAt && (
+                    <p className="text-xs text-gray-400">
+                      {new Date(c.qualifiedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {cases.length === 0 && (
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-14 text-center">
+          <p className="text-3xl mb-3">📞</p>
+          <p className="text-gray-700 font-medium">No signed cases to review yet</p>
+          <p className="text-sm text-gray-500 mt-1">Check back once cases have been signed</p>
+        </div>
+      )}
+    </div>
+  )
+}
+
 export default function TodosPage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
   const [ready, setReady] = useState(false)
-  const [data, setData] = useState<TodosData | null>(null)
+  const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -332,7 +473,7 @@ export default function TodosPage() {
       const res = await fetch('/api/teams/todos', { cache: 'no-store' })
       if (!res.ok) {
         const err = await res.json()
-        setError(err.error || 'Failed to load call queue')
+        setError(err.error || 'Failed to load todos')
         return
       }
       setData(await res.json())
@@ -348,23 +489,22 @@ export default function TodosPage() {
     if (!ready) return
     fetchTodos()
 
-    // Check every 60s if the slot has changed — if so, refresh immediately
+    // Check every 60s if the slot has changed — if so, refresh immediately (call_queue only)
     const slotCheckInterval = setInterval(() => {
-      const now = new Date()
-      const estHour = parseInt(
-        now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
-      ) % 24
-      const currentSlot =
-        estHour >= 0  && estHour < 10 ? 'overnight' :
-        estHour >= 10 && estHour < 15 ? 'morning' :
-        estHour >= 15 && estHour < 18 ? 'afternoon' :
-        estHour >= 18 && estHour < 24 ? 'evening' : null
-
       setData(prev => {
-        if (prev !== null && prev.slot !== currentSlot) {
-          // Slot changed — trigger a fresh fetch
-          fetchTodos()
-        }
+        if (prev === null || (prev as any).todoMode === 'call_listener') return prev
+        const queueData = prev as TodosData
+        const now = new Date()
+        const estHour = parseInt(
+          now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
+        ) % 24
+        const currentSlot =
+          estHour >= 0  && estHour < 10 ? 'overnight' :
+          estHour >= 10 && estHour < 15 ? 'morning' :
+          estHour >= 15 && estHour < 18 ? 'afternoon' :
+          estHour >= 18 && estHour < 24 ? 'evening' : null
+
+        if (queueData.slot !== currentSlot) fetchTodos()
         return prev
       })
     }, 60 * 1000)
@@ -379,14 +519,15 @@ export default function TodosPage() {
   function handleCheck(lead: Lead, wasChecked: boolean) {
     if (!wasChecked) return // unchecked — lead stays visible
     setData(prev => {
-      if (!prev) return prev
-      const stage = lead.stage as keyof typeof prev.leads
+      if (!prev || (prev as any).todoMode === 'call_listener') return prev
+      const queueData = prev as TodosData
+      const stage = lead.stage as keyof typeof queueData.leads
       return {
-        ...prev,
-        calledCount: prev.calledCount + 1,
+        ...queueData,
+        calledCount: queueData.calledCount + 1,
         leads: {
-          ...prev.leads,
-          [stage]: prev.leads[stage].filter(l => l.contactId !== lead.contactId),
+          ...queueData.leads,
+          [stage]: queueData.leads[stage].filter(l => l.contactId !== lead.contactId),
         },
       }
     })
@@ -394,8 +535,12 @@ export default function TodosPage() {
 
   if (!ready) return null
 
-  const totalRemaining = data
-    ? (data.leads.nr?.length ?? 0) + (data.leads.fu?.length ?? 0) + (data.leads.chase?.length ?? 0)
+  const isListenerMode = data && (data as any).todoMode === 'call_listener'
+  const queueData = isListenerMode ? null : (data as TodosData | null)
+  const listenerData = isListenerMode ? (data as ListenerData) : null
+
+  const totalRemaining = queueData
+    ? (queueData.leads.nr?.length ?? 0) + (queueData.leads.fu?.length ?? 0) + (queueData.leads.chase?.length ?? 0)
     : 0
 
   return (
@@ -411,157 +556,185 @@ export default function TodosPage() {
       <main className="max-w-6xl mx-auto px-4 py-8">
         <UserNav timeclockEnabled={timeclockEnabled} />
 
-        {/* Top Tasks Banner */}
-        <div className="bg-[#0f1e3c] rounded-xl p-4 mb-5">
-          <p className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Top Priorities</p>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className="flex items-start gap-2.5 bg-white/10 rounded-lg px-3 py-2.5">
-              <span className="text-base mt-0.5">⚡</span>
-              <p className="text-xs text-white leading-snug">New leads must be acknowledged and called within <span className="font-semibold text-yellow-300">90 seconds</span> of hitting Slack.</p>
-            </div>
-            <div className="flex items-start gap-2.5 bg-white/10 rounded-lg px-3 py-2.5">
-              <span className="text-base mt-0.5">🔁</span>
-              <p className="text-xs text-white leading-snug">Check back on <span className="font-semibold text-blue-300">Follow Up Required</span> and <span className="font-semibold text-red-300">Chase</span> leads regularly throughout your shift.</p>
-            </div>
-            <div className="flex items-start gap-2.5 bg-white/10 rounded-lg px-3 py-2.5">
-              <span className="text-base mt-0.5">📋</span>
-              <p className="text-xs text-white leading-snug">Call <span className="font-semibold text-yellow-300">all No Response leads</span> within your shift time before it ends.</p>
-            </div>
-          </div>
-        </div>
-
-        <div className="mb-5 flex items-start justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Call Queue</h1>
-            {data && (
-              <p className="text-sm text-gray-500 mt-1">
-                {data.slot ? SLOT_LABELS[data.slot] : 'Outside call hours'} · {data.today}
-              </p>
-            )}
-          </div>
-          <button
-            onClick={fetchTodos}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-lg border border-blue-200 hover:border-blue-400 transition-colors"
-          >
-            Refresh
-          </button>
-        </div>
-
-        {loading && (
-          <div className="flex items-center justify-center py-20">
-            <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full" />
-          </div>
-        )}
-
-        {!loading && error && (
-          <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-4 text-red-700 text-sm">
-            {error}
-          </div>
-        )}
-
-        {!loading && data && !data.onShift && (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-14 text-center">
-            <p className="text-3xl mb-3">🌙</p>
-            <p className="text-gray-700 font-medium">You're off shift</p>
-            {data.nextSlotLabel && (
-              <p className="text-sm text-gray-500 mt-1">Next slot: {data.nextSlotLabel}</p>
-            )}
-          </div>
-        )}
-
-        {!loading && data && data.onShift && (
+        {/* Call listener mode */}
+        {!loading && listenerData && (
           <>
-            {/* Urgent Tasks */}
-            {data.urgentTasks && data.urgentTasks.length > 0 && (
-              <div className="mb-6">
-                <div className="flex items-center gap-2 mb-2 px-1">
-                  <span className="text-base">⚠️</span>
-                  <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-600">Urgent Tasks</h2>
-                  <span className="text-xs text-gray-400 font-medium">{data.urgentTasks.length}</span>
+            <div className="bg-[#0f1e3c] rounded-xl p-4 mb-5">
+              <p className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-2">Training Mode</p>
+              <p className="text-sm text-white">
+                Listen to each signed case call recording and write your notes on what happened and how the conversation flowed.
+              </p>
+            </div>
+            <div className="mb-5 flex items-start justify-between">
+              <h1 className="text-2xl font-bold text-gray-900">Call Reviews</h1>
+              <button onClick={fetchTodos} className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-lg border border-blue-200 hover:border-blue-400 transition-colors">Refresh</button>
+            </div>
+            <CallListenerView cases={listenerData.cases} />
+          </>
+        )}
+
+        {/* Call queue mode */}
+        {!isListenerMode && (
+          <>
+            {/* Top Tasks Banner */}
+            <div className="bg-[#0f1e3c] rounded-xl p-4 mb-5">
+              <p className="text-xs font-semibold text-blue-300 uppercase tracking-wider mb-3">Top Priorities</p>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <div className="flex items-start gap-2.5 bg-white/10 rounded-lg px-3 py-2.5">
+                  <span className="text-base mt-0.5">⚡</span>
+                  <p className="text-xs text-white leading-snug">New leads must be acknowledged and called within <span className="font-semibold text-yellow-300">90 seconds</span> of hitting Slack.</p>
                 </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-                  {data.urgentTasks.map(task => (
-                    <UrgentTaskCard key={task.id} task={task} />
-                  ))}
+                <div className="flex items-start gap-2.5 bg-white/10 rounded-lg px-3 py-2.5">
+                  <span className="text-base mt-0.5">🔁</span>
+                  <p className="text-xs text-white leading-snug">Check back on <span className="font-semibold text-blue-300">Follow Up Required</span> and <span className="font-semibold text-red-300">Chase</span> leads regularly throughout your shift.</p>
                 </div>
+                <div className="flex items-start gap-2.5 bg-white/10 rounded-lg px-3 py-2.5">
+                  <span className="text-base mt-0.5">📋</span>
+                  <p className="text-xs text-white leading-snug">Call <span className="font-semibold text-yellow-300">all No Response leads</span> within your shift time before it ends.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="mb-5 flex items-start justify-between">
+              <div>
+                <h1 className="text-2xl font-bold text-gray-900">Call Queue</h1>
+                {queueData && (
+                  <p className="text-sm text-gray-500 mt-1">
+                    {queueData.slot ? SLOT_LABELS[queueData.slot] : 'Outside call hours'} · {queueData.today}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={fetchTodos}
+                className="text-sm text-blue-600 hover:text-blue-800 font-medium px-3 py-1.5 rounded-lg border border-blue-200 hover:border-blue-400 transition-colors"
+              >
+                Refresh
+              </button>
+            </div>
+
+            {loading && (
+              <div className="flex items-center justify-center py-20">
+                <div className="animate-spin w-6 h-6 border-2 border-blue-600 border-t-transparent rounded-full" />
               </div>
             )}
 
-            {/* Shift performance */}
-            <ShiftPerformance slotStats={data.slotStats} />
+            {!loading && error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-4 text-red-700 text-sm">
+                {error}
+              </div>
+            )}
 
-            {/* Between-slot message */}
-            {!data.slot && (
-              <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center mb-6">
-                <p className="text-2xl mb-2">⏳</p>
-                <p className="text-gray-700 font-medium">Between slots</p>
-                {data.nextSlotLabel && (
-                  <p className="text-sm text-gray-500 mt-1">Next: {data.nextSlotLabel}</p>
+            {!loading && queueData && !queueData.onShift && (
+              <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-14 text-center">
+                <p className="text-3xl mb-3">🌙</p>
+                <p className="text-gray-700 font-medium">You're off shift</p>
+                {queueData.nextSlotLabel && (
+                  <p className="text-sm text-gray-500 mt-1">Next slot: {queueData.nextSlotLabel}</p>
                 )}
               </div>
             )}
 
-            {/* Progress bar */}
-            {data.slot && (
-              <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3.5 mb-5">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-sm font-medium text-gray-700">
-                    {data.calledCount} of {data.totalCount} called
-                  </span>
-                  <span className="text-xs text-gray-400">
-                    {totalRemaining} remaining{data.slotEndLabel ? ` · ends ${data.slotEndLabel}` : ''}
-                  </span>
-                </div>
-                <div className="w-full bg-gray-100 rounded-full h-1.5">
-                  <div
-                    className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: data.totalCount > 0 ? `${Math.min(100, Math.round((data.calledCount / data.totalCount) * 100))}%` : '0%' }}
-                  />
-                </div>
-              </div>
-            )}
+            {!loading && queueData && queueData.onShift && (
+              <>
+                {/* Urgent Tasks */}
+                {queueData.urgentTasks && queueData.urgentTasks.length > 0 && (
+                  <div className="mb-6">
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <span className="text-base">⚠️</span>
+                      <h2 className="text-xs font-semibold uppercase tracking-wider text-amber-600">Urgent Tasks</h2>
+                      <span className="text-xs text-gray-400 font-medium">{queueData.urgentTasks.length}</span>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+                      {queueData.urgentTasks.map(task => (
+                        <UrgentTaskCard key={task.id} task={task} />
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-            {/* All-clear banner */}
-            {data.slot && totalRemaining === 0 && (
-              <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-8 text-center mb-5">
-                <p className="text-3xl mb-2">✅</p>
-                <p className="text-green-700 font-medium">All leads called for this slot!</p>
-              </div>
-            )}
+                {/* Shift performance */}
+                <ShiftPerformance slotStats={queueData.slotStats} />
 
-            {/* 3-column lead grid */}
-            {data.slot && totalRemaining > 0 && (
-              <div className="grid grid-cols-3 gap-4">
-                <LeadColumn
-                  title="No Response"
-                  leads={data.leads.nr || []}
-                  slot={data.slot}
-                  color="text-gray-500"
-                  totalCount={data.totalCount}
-                  calledCount={data.calledCount}
-                  onCheck={handleCheck}
-                />
-                <LeadColumn
-                  title="Chase"
-                  leads={data.leads.chase || []}
-                  slot={data.slot}
-                  color="text-red-500"
-                  totalCount={data.totalCount}
-                  calledCount={data.calledCount}
-                  onCheck={handleCheck}
-                />
-                <LeadColumn
-                  title="Follow Up"
-                  leads={data.leads.fu || []}
-                  slot={data.slot}
-                  color="text-blue-500"
-                  totalCount={data.totalCount}
-                  calledCount={data.calledCount}
-                  onCheck={handleCheck}
-                />
-              </div>
+                {/* Between-slot message */}
+                {!queueData.slot && (
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center mb-6">
+                    <p className="text-2xl mb-2">⏳</p>
+                    <p className="text-gray-700 font-medium">Between slots</p>
+                    {queueData.nextSlotLabel && (
+                      <p className="text-sm text-gray-500 mt-1">Next: {queueData.nextSlotLabel}</p>
+                    )}
+                  </div>
+                )}
+
+                {/* Progress bar */}
+                {queueData.slot && (
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-3.5 mb-5">
+                    <div className="flex items-center justify-between mb-1.5">
+                      <span className="text-sm font-medium text-gray-700">
+                        {queueData.calledCount} of {queueData.totalCount} called
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {totalRemaining} remaining{queueData.slotEndLabel ? ` · ends ${queueData.slotEndLabel}` : ''}
+                      </span>
+                    </div>
+                    <div className="w-full bg-gray-100 rounded-full h-1.5">
+                      <div
+                        className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
+                        style={{ width: queueData.totalCount > 0 ? `${Math.min(100, Math.round((queueData.calledCount / queueData.totalCount) * 100))}%` : '0%' }}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* All-clear banner */}
+                {queueData.slot && totalRemaining === 0 && (
+                  <div className="bg-green-50 border border-green-200 rounded-xl px-6 py-8 text-center mb-5">
+                    <p className="text-3xl mb-2">✅</p>
+                    <p className="text-green-700 font-medium">All leads called for this slot!</p>
+                  </div>
+                )}
+
+                {/* 3-column lead grid */}
+                {queueData.slot && totalRemaining > 0 && (
+                  <div className="grid grid-cols-3 gap-4">
+                    <LeadColumn
+                      title="No Response"
+                      leads={queueData.leads.nr || []}
+                      slot={queueData.slot}
+                      color="text-gray-500"
+                      totalCount={queueData.totalCount}
+                      calledCount={queueData.calledCount}
+                      onCheck={handleCheck}
+                    />
+                    <LeadColumn
+                      title="Chase"
+                      leads={queueData.leads.chase || []}
+                      slot={queueData.slot}
+                      color="text-red-500"
+                      totalCount={queueData.totalCount}
+                      calledCount={queueData.calledCount}
+                      onCheck={handleCheck}
+                    />
+                    <LeadColumn
+                      title="Follow Up"
+                      leads={queueData.leads.fu || []}
+                      slot={queueData.slot}
+                      color="text-blue-500"
+                      totalCount={queueData.totalCount}
+                      calledCount={queueData.calledCount}
+                      onCheck={handleCheck}
+                    />
+                  </div>
+                )}
+              </>
             )}
           </>
+        )}
+
+        {!loading && error && isListenerMode && (
+          <div className="bg-red-50 border border-red-200 rounded-xl px-6 py-4 text-red-700 text-sm">
+            {error}
+          </div>
         )}
       </main>
     </div>

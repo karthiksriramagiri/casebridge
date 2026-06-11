@@ -139,14 +139,13 @@ export async function GET() {
   }
   const hourlyEarnings = Math.round((totalRegular * HOURLY_RATE + totalOvertime * 6) * 100) / 100
 
-  let commissionSigned = 0, commissionReplace = 0
+  let commissionSigned = 0
   for (const c of payCasesRes.data || []) {
     const windowDays = (c.firms as any)?.replacement_window_days ?? 14
     const eligibleAt = new Date(new Date(c.qualified_at).getTime() + windowDays * 24 * 60 * 60 * 1000)
-    if (c.case_status === 'replacement') commissionReplace += COMMISSION_PER_REPLACEMENT
-    else if (eligibleAt <= now) commissionSigned += COMMISSION_PER_CLOSED
+    if (c.case_status !== 'replacement' && eligibleAt <= now) commissionSigned += COMMISSION_PER_CLOSED
   }
-  const paycheckEstimate = hourlyEarnings + commissionSigned + commissionReplace
+  const paycheckEstimate = hourlyEarnings + commissionSigned
 
   return NextResponse.json({
     thisMonthLeaderboard,

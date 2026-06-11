@@ -106,6 +106,17 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'update_todo_mode') {
+    const { todoMode } = body // 'call_queue' | 'call_listener'
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ todo_mode: todoMode === 'call_listener' ? 'call_listener' : 'call_queue' })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'toggle_timer') {
     const { value } = body
     const { error: updateError } = await supabase
