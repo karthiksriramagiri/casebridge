@@ -347,6 +347,8 @@ export default async function DashboardPage() {
   const level2Sections = buildSections(rawByLevel[2], level1Done && level2Started, moduleAttemptData)
   const level2Done = rawByLevel[2].length === 0 || level2Sections.every((s) => s.isDone)
   const level3Sections = buildSections(rawByLevel[3], level2Done, moduleAttemptData)
+  const level3Done = rawByLevel[3].length === 0 || level3Sections.every((s) => s.isDone)
+  const certified = level1Done && level2Done && level3Done
 
   // Countdown deadlines
   const level1StartAt = (profile as any).nda_signed_at || profile.created_at
