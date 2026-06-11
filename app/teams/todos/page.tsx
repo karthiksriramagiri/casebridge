@@ -57,6 +57,7 @@ const SLOT_LABELS: Record<string, string> = {
   morning:   'Morning · 7AM–12PM PST',
   afternoon: 'Afternoon · 12PM–3PM PST',
   evening:   'Evening · 3PM–9PM PST',
+  overnight: 'Overnight · 9PM–7AM PST',
 }
 
 function LeadCard({
@@ -174,16 +175,18 @@ function UrgentTaskCard({ task }: { task: UrgentTask }) {
   )
 }
 
-const SLOT_ORDER = ['morning', 'afternoon', 'evening'] as const
+const SLOT_ORDER = ['morning', 'afternoon', 'evening', 'overnight'] as const
 const SLOT_SHORT: Record<string, string> = {
   morning:   'Morning',
   afternoon: 'Afternoon',
   evening:   'Evening',
+  overnight: 'Overnight',
 }
 const SLOT_TIMES: Record<string, string> = {
   morning:   '7AM–12PM',
   afternoon: '12PM–3PM',
   evening:   '3PM–9PM',
+  overnight: '9PM–7AM',
 }
 
 function ShiftPerformance({ slotStats }: { slotStats: Record<string, SlotStat> }) {
@@ -352,6 +355,7 @@ export default function TodosPage() {
         now.toLocaleString('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false })
       ) % 24
       const currentSlot =
+        estHour >= 0  && estHour < 10 ? 'overnight' :
         estHour >= 10 && estHour < 15 ? 'morning' :
         estHour >= 15 && estHour < 18 ? 'afternoon' :
         estHour >= 18 && estHour < 24 ? 'evening' : null

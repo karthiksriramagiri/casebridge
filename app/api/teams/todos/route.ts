@@ -86,18 +86,19 @@ async function fetchPipelineLeads(pipelineKey: string, pipelineId: string): Prom
   return leads
 }
 
-type Slot = 'morning' | 'afternoon' | 'evening'
+type Slot = 'morning' | 'afternoon' | 'evening' | 'overnight'
 
 // Slot windows mapped from PST → EST (PST + 3h)
-// Morning:   7AM–12PM PST  = 10AM–3PM  EST → workers assigned morning slot
-// Afternoon: 12PM–3PM PST  = 3PM–6PM   EST → workers assigned afternoon slot
-// Evening:   3PM–9PM  PST  = 6PM–12AM  EST → workers assigned evening slot
-// Overnight: 9PM–7AM  PST               → no calls
+// Morning:   7AM–12PM PST  = 10AM–3PM  EST
+// Afternoon: 12PM–3PM PST  = 3PM–6PM   EST
+// Evening:   3PM–9PM  PST  = 6PM–12AM  EST
+// Overnight: 9PM–7AM  PST  = 12AM–10AM EST (spans midnight)
 function getSlot(estHour: number): { slot: Slot | null; slotEndLabel: string; nextSlotLabel: string | null } {
+  if (estHour >= 0  && estHour < 10) return { slot: 'overnight', slotEndLabel: '7:00 AM PST',  nextSlotLabel: 'Morning at 7:00 AM PST' }
   if (estHour >= 10 && estHour < 15) return { slot: 'morning',   slotEndLabel: '12:00 PM PST', nextSlotLabel: 'Afternoon at 12:00 PM PST' }
   if (estHour >= 15 && estHour < 18) return { slot: 'afternoon', slotEndLabel: '3:00 PM PST',  nextSlotLabel: 'Evening at 3:00 PM PST' }
-  if (estHour >= 18 && estHour < 24) return { slot: 'evening',   slotEndLabel: '9:00 PM PST',  nextSlotLabel: null }
-  return { slot: null, slotEndLabel: '', nextSlotLabel: 'Morning at 7:00 AM PST' }
+  if (estHour >= 18 && estHour < 24) return { slot: 'evening',   slotEndLabel: '9:00 PM PST',  nextSlotLabel: 'Overnight at 9:00 PM PST' }
+  return { slot: null, slotEndLabel: '', nextSlotLabel: null }
 }
 
 // Shift → which slots this worker covers
@@ -105,6 +106,7 @@ const SHIFT_SLOTS: Record<string, Slot[]> = {
   morning:           ['morning'],
   afternoon:         ['afternoon'],
   evening:           ['evening'],
+  overnight:         ['overnight'],
   morning_afternoon: ['morning', 'afternoon'],
   afternoon_evening: ['afternoon', 'evening'],
 }

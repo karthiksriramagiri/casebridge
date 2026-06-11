@@ -539,6 +539,7 @@ export default function RepsPage() {
                                 <option value="morning">Morning — 7AM–12PM PST</option>
                                 <option value="afternoon">Afternoon — 12PM–3PM PST</option>
                                 <option value="evening">Evening — 3PM–9PM PST</option>
+                                <option value="overnight">Overnight — 9PM–7AM PST</option>
                                 <option value="morning_afternoon">Morning + Afternoon — 7AM–3PM PST</option>
                                 <option value="afternoon_evening">Afternoon + Evening — 12PM–9PM PST</option>
                               </select>
