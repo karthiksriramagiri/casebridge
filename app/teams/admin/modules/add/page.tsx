@@ -89,7 +89,7 @@ export default function AddModulePage() {
   // Module details
   const [title, setTitle] = useState('')
   const [description, setDescription] = useState('')
-  const [passThreshold, setPassThreshold] = useState(80)
+  const [passThreshold, setPassThreshold] = useState(100)
   const [isRequired, setIsRequired] = useState(true)
   const [quizQuestionCount, setQuizQuestionCount] = useState(0)
 

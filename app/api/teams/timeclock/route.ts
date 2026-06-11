@@ -50,7 +50,21 @@ export async function GET(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ entries: entries || [] })
+  // Also fetch any open entry from a different date (e.g. clocked in before UTC midnight)
+  const hasOpen = (entries || []).some(e => !e.clock_out)
+  let openFromOtherDay: typeof entries = []
+  if (!hasOpen) {
+    const { data: stale } = await admin
+      .from('time_entries')
+      .select('id, clock_in, clock_out')
+      .eq('profile_id', user.id)
+      .is('clock_out', null)
+      .order('clock_in', { ascending: false })
+      .limit(1)
+    openFromOtherDay = stale || []
+  }
+
+  return NextResponse.json({ entries: [...(entries || []), ...openFromOtherDay] })
 }
 
 // POST /api/teams/timeclock — clock in
@@ -91,6 +105,24 @@ export async function POST() {
     const mins = minutesLate % 60
     const lateStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`
     await sendSlack(`⚠️ *${name}* clocked in at ${timeStr} EST — *LATE by ${lateStr}* (shift starts 2:00 PM)`)
+
+    // Auto score event — only once per day
+    const { count } = await admin
+      .from('score_events')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('event_type', 'late_clockin')
+      .eq('date', today)
+    if ((count ?? 0) === 0) {
+      await admin.from('score_events').insert({
+        user_id: user.id,
+        event_type: 'late_clockin',
+        points: -0.5,
+        note: `Clocked in ${lateStr} late`,
+        date: today,
+        auto_generated: true,
+      })
+    }
   } else {
     await sendSlack(`✅ *${name}* clocked in at ${timeStr} EST — on time`)
   }
@@ -108,17 +140,25 @@ export async function PATCH(req: NextRequest) {
 
   const clockOutTime = new Date().toISOString()
 
-  const { data: entry, error } = await admin
+  // First fetch the entry to verify ownership
+  const { data: existing } = await admin
     .from('time_entries')
-    .update({ clock_out: clockOutTime })
+    .select('id, date, clock_in')
     .eq('id', id)
     .eq('profile_id', user.id)
     .is('clock_out', null)
-    .select()
-    .single()
+    .maybeSingle()
+
+  if (!existing) return NextResponse.json({ error: 'No open entry found' }, { status: 404 })
+
+  const { error } = await admin
+    .from('time_entries')
+    .update({ clock_out: clockOutTime })
+    .eq('id', id)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  if (!entry) return NextResponse.json({ error: 'No open entry found' }, { status: 404 })
+
+  const entry = { ...existing, clock_out: clockOutTime }
 
   const { data: profile } = await admin.from('profiles').select('name').eq('id', user.id).single()
   const { data: dayEntries } = await admin

@@ -3,14 +3,8 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-interface AdminNavProps {
-  retakeCount: number
-}
-
 const navItems = [
   { label: 'Overview', href: '/teams/admin', exact: true },
-  { label: 'Completions', href: '/teams/admin/completions', exact: false },
-  { label: 'Retakes', href: '/teams/admin/retakes', exact: false, badge: true },
   { label: 'Reps', href: '/teams/admin/reps', exact: false },
   { label: 'Performance', href: '/teams/admin/performance', exact: false },
   { label: 'Cases', href: '/teams/admin/cases', exact: false },
@@ -20,7 +14,7 @@ const navItems = [
   { label: 'Urgent Tasks', href: '/teams/admin/urgent-tasks', exact: false },
 ]
 
-export default function AdminNav({ retakeCount }: AdminNavProps) {
+export default function AdminNav() {
   const pathname = usePathname()
 
   function isActive(href: string, exact: boolean) {
@@ -51,11 +45,6 @@ export default function AdminNav({ retakeCount }: AdminNavProps) {
                 `}
               >
                 {item.label}
-                {item.badge && retakeCount > 0 && (
-                  <span className="bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5 min-w-[18px] text-center leading-none">
-                    {retakeCount}
-                  </span>
-                )}
               </Link>
             )
           })}

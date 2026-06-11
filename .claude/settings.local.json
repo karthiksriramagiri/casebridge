@@ -159,7 +159,8 @@
       "Bash(gh secret:*)",
       "Bash(wait)",
       "Bash(git rm:*)",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(git reset:*)"
     ]
   }
 }

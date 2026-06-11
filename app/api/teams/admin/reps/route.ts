@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
+import { getProgramLevel } from '@/lib/slack'
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -26,7 +27,7 @@ export async function GET(_request: NextRequest) {
   // Fetch all rep profiles
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids')
+    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close')
     .eq('role', 'rep')
     .order('created_at', { ascending: false })
 
@@ -45,14 +46,25 @@ export async function GET(_request: NextRequest) {
         .order('created_at', { ascending: false })
     : { data: [] }
 
-  // Fetch required modules for certified check
+  // Fetch required modules with program title for level computation
   const { data: requiredModules } = await supabase
     .from('modules')
-    .select('id')
+    .select('id, programs(title)')
     .eq('is_required', true)
     .eq('is_active', true)
 
   const requiredModuleIds = (requiredModules ?? []).map((m) => m.id)
+
+  // Group required module IDs by level
+  const moduleLevel: Record<string, number> = {}
+  for (const m of requiredModules ?? []) {
+    const programTitle = (m as any).programs?.title ?? ''
+    moduleLevel[m.id] = getProgramLevel(programTitle)
+  }
+  const levelModuleIds: Record<number, string[]> = { 1: [], 2: [], 3: [] }
+  for (const [id, lvl] of Object.entries(moduleLevel)) {
+    ;(levelModuleIds[lvl] ??= []).push(id)
+  }
 
   // Fetch emails via admin client
   let emailMap: Record<string, string> = {}
@@ -88,6 +100,15 @@ export async function GET(_request: NextRequest) {
     const passedRequired = requiredModuleIds.filter((id) => passingModuleIds.has(id)).length
     const certified = requiredModuleIds.length > 0 && passedRequired === requiredModuleIds.length
 
+    // Determine current level (lowest level with incomplete required modules)
+    let currentLevel = 1
+    for (const lvl of [1, 2, 3]) {
+      const ids = levelModuleIds[lvl] ?? []
+      const allPassed = ids.length === 0 || ids.every((id) => passingModuleIds.has(id))
+      if (allPassed) { currentLevel = lvl + 1 } else { break }
+    }
+    if (currentLevel > 3) currentLevel = 3
+
     const attemptSummaries = validAttempts.map((a: any) => ({
       id: a.id,
       moduleTitle: (a.modules as any)?.title ?? 'Unknown',
@@ -112,6 +133,11 @@ export async function GET(_request: NextRequest) {
       timeclockEnabled: (rep as any).timeclock_enabled ?? false,
       shift: (rep as any).shift ?? null,
       ghlUserIds: (rep as any).ghl_user_ids ?? [],
+      payrollMethod: (rep as any).payroll_method ?? null,
+      payrollInfo: (rep as any).payroll_info ?? null,
+      hourlyRate: (rep as any).hourly_rate ?? null,
+      commissionPerClose: (rep as any).commission_per_close ?? null,
+      currentLevel,
     }
   })
 

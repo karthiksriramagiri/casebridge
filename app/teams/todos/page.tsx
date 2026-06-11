@@ -62,10 +62,14 @@ const SLOT_LABELS: Record<string, string> = {
 function LeadCard({
   lead,
   slot,
+  totalCount,
+  calledCount,
   onCheck,
 }: {
   lead: Lead
   slot: string
+  totalCount: number
+  calledCount: number
   onCheck: (lead: Lead, checked: boolean) => void
 }) {
   const [checked, setChecked] = useState(false)
@@ -81,7 +85,7 @@ function LeadCard({
         await fetch('/api/teams/todos/check', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ contactId: lead.contactId, contactName: lead.contactName, slot }),
+          body: JSON.stringify({ contactId: lead.contactId, contactName: lead.contactName, slot, totalCount, calledCount }),
         })
         setChecked(true)
         setTimeout(() => setDismissed(true), 500)
@@ -230,7 +234,7 @@ function ShiftPerformance({ slotStats }: { slotStats: Record<string, SlotStat> }
                   <div className="w-full bg-gray-200 rounded-full h-1.5 mt-2 mb-1.5">
                     <div
                       className={`h-1.5 rounded-full transition-all ${isPast && pct === 100 ? 'bg-green-500' : isCurrent ? 'bg-blue-500' : 'bg-green-500'}`}
-                      style={{ width: `${pct}%` }}
+                      style={{ width: `${Math.min(100, pct)}%` }}
                     />
                   </div>
                   <p className="text-xs text-gray-500">
@@ -257,12 +261,16 @@ function LeadColumn({
   leads,
   slot,
   color,
+  totalCount,
+  calledCount,
   onCheck,
 }: {
   title: string
   leads: Lead[]
   slot: string
   color: string
+  totalCount: number
+  calledCount: number
   onCheck: (lead: Lead, checked: boolean) => void
 }) {
   return (
@@ -278,7 +286,7 @@ function LeadColumn({
           </div>
         ) : (
           leads.map(lead => (
-            <LeadCard key={lead.contactId} lead={lead} slot={slot} onCheck={onCheck} />
+            <LeadCard key={lead.contactId} lead={lead} slot={slot} totalCount={totalCount} calledCount={calledCount} onCheck={onCheck} />
           ))
         )}
       </div>
@@ -503,7 +511,7 @@ export default function TodosPage() {
                 <div className="w-full bg-gray-100 rounded-full h-1.5">
                   <div
                     className="bg-green-500 h-1.5 rounded-full transition-all duration-500"
-                    style={{ width: data.totalCount > 0 ? `${Math.round((data.calledCount / data.totalCount) * 100)}%` : '0%' }}
+                    style={{ width: data.totalCount > 0 ? `${Math.min(100, Math.round((data.calledCount / data.totalCount) * 100))}%` : '0%' }}
                   />
                 </div>
               </div>
@@ -525,6 +533,8 @@ export default function TodosPage() {
                   leads={data.leads.nr || []}
                   slot={data.slot}
                   color="text-gray-500"
+                  totalCount={data.totalCount}
+                  calledCount={data.calledCount}
                   onCheck={handleCheck}
                 />
                 <LeadColumn
@@ -532,6 +542,8 @@ export default function TodosPage() {
                   leads={data.leads.chase || []}
                   slot={data.slot}
                   color="text-red-500"
+                  totalCount={data.totalCount}
+                  calledCount={data.calledCount}
                   onCheck={handleCheck}
                 />
                 <LeadColumn
@@ -539,6 +551,8 @@ export default function TodosPage() {
                   leads={data.leads.fu || []}
                   slot={data.slot}
                   color="text-blue-500"
+                  totalCount={data.totalCount}
+                  calledCount={data.calledCount}
                   onCheck={handleCheck}
                 />
               </div>

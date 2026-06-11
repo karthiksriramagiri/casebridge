@@ -14,6 +14,7 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
   const [loaded, setLoaded] = useState(false)
   const [acting, setActing] = useState(false)
   const [, setTick] = useState(0)
+  const [err, setErr] = useState('')
 
   const today = new Date().toISOString().slice(0, 10)
 
@@ -60,11 +61,16 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
   async function clockOut() {
     if (!openEntry) return
     setActing(true)
-    await fetch('/api/teams/timeclock', {
+    setErr('')
+    const res = await fetch('/api/teams/timeclock', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ id: openEntry.id }),
     })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setErr(d.error || 'Clock out failed. Please try again.')
+    }
     await load()
     setActing(false)
   }
@@ -105,6 +111,7 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
           {acting ? '…' : openEntry ? 'Clock Out' : 'Clock In'}
         </button>
       </div>
+      {err && <p className="text-xs text-red-500 mt-2">{err}</p>}
 
       {/* Session history for today */}
       {entries.length > 0 && (

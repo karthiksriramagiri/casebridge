@@ -1,5 +1,77 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { sendSlack, getProgramLevel, LEVEL_LABELS } from '@/lib/slack'
+
+async function notifyLevelCompleteIfNeeded(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  userId: string,
+  moduleId: string,
+  newAttemptId: string,
+  userName: string,
+) {
+  // Only fire if this is the first time passing this module
+  const { count: prevPassed } = await supabase
+    .from('attempts')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('module_id', moduleId)
+    .eq('passed', true)
+    .eq('is_invalidated', false)
+    .neq('id', newAttemptId)
+
+  if ((prevPassed ?? 0) > 0) return // already passed before
+
+  const { data: progLink } = await supabase
+    .from('program_modules')
+    .select('program_id')
+    .eq('module_id', moduleId)
+    .maybeSingle()
+  if (!progLink) return
+
+  const { data: prog } = await supabase
+    .from('programs')
+    .select('name')
+    .eq('id', progLink.program_id)
+    .single()
+  if (!prog) return
+
+  const levelNum = getProgramLevel(prog.name)
+  const levelLabel = LEVEL_LABELS[levelNum]
+
+  const { data: allProgs } = await supabase.from('programs').select('id, name')
+  const levelProgIds = (allProgs ?? [])
+    .filter((p) => getProgramLevel(p.name) === levelNum)
+    .map((p) => p.id)
+
+  const { data: levelLinks } = await supabase
+    .from('program_modules')
+    .select('module_id')
+    .in('program_id', levelProgIds)
+  const levelModIds = (levelLinks ?? []).map((l) => l.module_id)
+  if (levelModIds.length === 0) return
+
+  const { data: passing } = await supabase
+    .from('attempts')
+    .select('module_id')
+    .eq('user_id', userId)
+    .in('module_id', levelModIds)
+    .eq('passed', true)
+    .eq('is_invalidated', false)
+
+  const passedSet = new Set((passing ?? []).map((a) => a.module_id))
+  if (!levelModIds.every((id) => passedSet.has(id))) return
+
+  await sendSlack({
+    text: `✅ ${userName} completed Level ${levelNum}: ${levelLabel}`,
+    blocks: [{
+      type: 'section',
+      text: {
+        type: 'mrkdwn',
+        text: `✅ *${userName}* completed *Level ${levelNum}: ${levelLabel}*\nAll lessons in this phase are now complete.`,
+      },
+    }],
+  })
+}
 
 interface AnswerInput {
   questionId: string
@@ -25,6 +97,13 @@ export async function POST(request: NextRequest) {
   if (!moduleId || !answers || !Array.isArray(answers)) {
     return NextResponse.json({ error: 'moduleId and answers are required.' }, { status: 400 })
   }
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('name')
+    .eq('id', user.id)
+    .single()
+  const userName = profile?.name || 'A rep'
 
   // Fetch module info
   const { data: module, error: moduleError } = await supabase
@@ -84,6 +163,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to save completion.' }, { status: 500 })
     }
 
+    await notifyLevelCompleteIfNeeded(supabase, user.id, moduleId, newAttempt.id, userName)
     return NextResponse.json({ score: 100, passed: true, attemptNumber, breakdown: [] })
   }
 
@@ -180,6 +260,10 @@ export async function POST(request: NextRequest) {
       // Non-fatal: attempt is saved, answers are optional for score calculation
       console.error('Failed to save attempt answers:', answersError.message)
     }
+  }
+
+  if (passed) {
+    await notifyLevelCompleteIfNeeded(supabase, user.id, moduleId, newAttempt.id, userName)
   }
 
   return NextResponse.json({

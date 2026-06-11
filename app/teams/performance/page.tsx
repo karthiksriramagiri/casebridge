@@ -1,25 +1,77 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import { format } from 'date-fns'
+import { format, subDays, startOfWeek } from 'date-fns'
 import UserNav from '../dashboard/UserNav'
 import LogoutButton from '../dashboard/LogoutButton'
 
-interface Score {
+interface ScoreEvent {
   id: string
+  event_type: string
+  points: number
+  note: string | null
   date: string
-  score: number
-  notes: string | null
+  auto_generated: boolean
+  created_at: string
+}
+
+interface DayScore {
+  date: string
+  events: ScoreEvent[]
+  eventTotal: number
+  dayScore: number
+}
+
+const EVENT_LABELS: Record<string, string> = {
+  lead_closed:      'Lead Closed',
+  good_call:        'Good Call Quality',
+  todo_complete:    'To-Do Completed',
+  late_clockin:     'Late Clock-In',
+  minor_violation:  'Minor Rule Violation',
+  bad_call:         'Bad Call Quality',
+  slow_checkmark:   'Slow Lead Checkmark',
+}
+
+const EVENT_ICONS: Record<string, string> = {
+  lead_closed:      '🤝',
+  good_call:        '📞',
+  todo_complete:    '✅',
+  late_clockin:     '⏰',
+  minor_violation:  '⚠️',
+  bad_call:         '📵',
+  slow_checkmark:   '🐢',
+}
+
+type Range = 'week' | '7d' | '30d' | 'all'
+
+function scoreColor(score: number) {
+  if (score >= 4) return 'text-green-600'
+  if (score >= 3) return 'text-gray-900'
+  return 'text-red-500'
+}
+
+function scoreBg(score: number) {
+  if (score >= 4) return 'bg-green-50 border-green-200'
+  if (score >= 3) return 'bg-white border-gray-100'
+  return 'bg-red-50 border-red-100'
+}
+
+function fmtPts(pts: number) {
+  return (pts > 0 ? '+' : '') + pts
 }
 
 export default function PerformancePage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
-  const [scores, setScores] = useState<Score[]>([])
-  const [average, setAverage] = useState<number | null>(null)
+  const [dailyScores, setDailyScores] = useState<DayScore[]>([])
+  const [todayScore, setTodayScore] = useState(3)
+  const [todayEventTotal, setTodayEventTotal] = useState(0)
+  const [rank, setRank] = useState<number | null>(null)
+  const [totalReps, setTotalReps] = useState(0)
   const [loading, setLoading] = useState(true)
+  const [range, setRange] = useState<Range>('week')
 
   useEffect(() => {
     async function load() {
@@ -37,22 +89,34 @@ export default function PerformancePage() {
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
 
-      const res = await fetch('/api/teams/performance')
+      const res = await fetch('/api/teams/score-events')
       if (res.ok) {
         const d = await res.json()
-        setScores(d.scores || [])
-        setAverage(d.average)
+        setDailyScores(d.dailyScores || [])
+        setTodayScore(d.todayScore ?? 3)
+        setTodayEventTotal(d.todayEventTotal ?? 0)
+        setRank(d.rank ?? null)
+        setTotalReps(d.totalReps ?? 0)
       }
       setLoading(false)
     }
     load()
-  }, [])
+  }, [router])
 
-  const bonusEligible = average !== null && average >= 4.5
-  const monthScores = scores.filter(s => s.date.startsWith(new Date().toISOString().slice(0, 7)))
-  const monthAvg = monthScores.length > 0
-    ? monthScores.reduce((sum, s) => sum + Number(s.score), 0) / monthScores.length
-    : null
+  const today = new Date().toISOString().slice(0, 10)
+
+  const filteredDays = useMemo(() => {
+    // Previous days only (not today) for history
+    const prev = dailyScores.filter(d => d.date < today)
+    if (range === 'all') return prev
+    const cutoff =
+      range === 'week' ? startOfWeek(new Date(), { weekStartsOn: 1 }).toISOString().slice(0, 10) :
+      range === '7d'   ? subDays(new Date(), 7).toISOString().slice(0, 10) :
+                         subDays(new Date(), 30).toISOString().slice(0, 10)
+    return prev.filter(d => d.date >= cutoff)
+  }, [dailyScores, range, today])
+
+  const todayEvents = dailyScores.find(d => d.date === today)?.events ?? []
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -64,72 +128,151 @@ export default function PerformancePage() {
         <LogoutButton />
       </header>
 
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <main className="max-w-2xl mx-auto px-6 py-8">
         <UserNav timeclockEnabled={timeclockEnabled} />
 
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Daily Performance</h1>
-          <p className="text-gray-500 mt-1">Your scores are entered daily by your manager.</p>
+          <h1 className="text-2xl font-bold text-gray-900">My Performance</h1>
+          <p className="text-gray-500 mt-1 text-sm">Score resets to 3 each day. Events adjust it up or down.</p>
         </div>
 
         {loading ? (
           <div className="text-center py-12 text-gray-400">Loading...</div>
         ) : (
           <>
-            {/* Summary cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-              <div className={`rounded-xl px-5 py-4 border shadow-sm ${bonusEligible ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'}`}>
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">All-Time Average</p>
-                <p className={`text-3xl font-bold ${bonusEligible ? 'text-green-600' : 'text-gray-900'}`}>
-                  {average !== null ? average.toFixed(2) : '—'}
-                </p>
-                {bonusEligible && (
-                  <span className="inline-block mt-2 bg-green-100 text-green-700 text-xs font-semibold px-2 py-0.5 rounded-full">
-                    ✓ Bonus Eligible!
-                  </span>
-                )}
+            {/* Today's score */}
+            <div className={`rounded-2xl border shadow-sm px-6 py-6 mb-6 ${scoreBg(todayScore)}`}>
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                    Today's Score · {format(new Date(), 'EEE, MMM d')}
+                  </p>
+                  <div className="flex items-end gap-3">
+                    <p className={`text-6xl font-bold ${scoreColor(todayScore)}`}>
+                      {Math.round(todayScore * 100) / 100}
+                    </p>
+                    <div className="mb-1">
+                      <p className="text-sm text-gray-400">= 3 base</p>
+                      {todayEventTotal !== 0 && (
+                        <p className={`text-sm font-semibold ${todayEventTotal > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                          {fmtPts(todayEventTotal)} from events
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+                <div className="text-right">
+                  {rank !== null && (
+                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
+                      <p className="text-xs text-gray-400 font-medium">This week's rank</p>
+                      <p className="text-2xl font-bold text-gray-900">#{rank}</p>
+                      <p className="text-xs text-gray-400">of {totalReps}</p>
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="bg-white rounded-xl px-5 py-4 border border-gray-100 shadow-sm">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">This Month's Average</p>
-                <p className="text-3xl font-bold text-gray-900">
-                  {monthAvg !== null ? monthAvg.toFixed(2) : '—'}
-                </p>
-                <p className="text-xs text-gray-400 mt-2">{monthScores.length} score{monthScores.length !== 1 ? 's' : ''} this month</p>
-              </div>
+              {/* Today's events */}
+              {todayEvents.length > 0 && (
+                <div className="mt-4 pt-4 border-t border-gray-100 space-y-1.5">
+                  {todayEvents.map(e => (
+                    <div key={e.id} className="flex items-center gap-2 text-sm">
+                      <span>{EVENT_ICONS[e.event_type] || '•'}</span>
+                      <span className="text-gray-700 flex-1">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                      {e.note && <span className="text-gray-400 text-xs">{e.note}</span>}
+                      <span className={`font-semibold ${Number(e.points) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        {fmtPts(Number(e.points))}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-              <div className="bg-white rounded-xl px-5 py-4 border border-gray-100 shadow-sm">
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Bonus Threshold</p>
-                <p className="text-3xl font-bold text-gray-900">4.5</p>
-                <p className="text-xs text-gray-400 mt-2">Average score needed for monthly bonus</p>
+            {/* Point rules */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-8">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">How Points Work</p>
+              <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm">
+                {[
+                  ['🤝 Close a lead', '+2'],
+                  ['📞 Good call quality', '+1'],
+                  ['✅ All slot leads called', '+1'],
+                  ['⏰ Late clock-in', '−0.5'],
+                  ['⚠️ Minor rule violation', '−0.25'],
+                  ['📵 Bad call quality', '−1'],
+                  ['🐢 Slow lead checkmark', '−1'],
+                ].map(([label, pts]) => (
+                  <div key={label} className="flex justify-between">
+                    <span className="text-gray-600">{label}</span>
+                    <span className={`font-semibold ${pts.startsWith('+') ? 'text-green-600' : 'text-red-500'}`}>{pts} pt</span>
+                  </div>
+                ))}
               </div>
             </div>
 
-            {/* Score history */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="font-semibold text-gray-900">Score History</h2>
+            {/* Previous days history */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="font-semibold text-gray-900 text-sm">Previous Days</h2>
+                <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                  {([
+                    { key: 'week', label: 'This week' },
+                    { key: '7d',   label: '7 days' },
+                    { key: '30d',  label: '30 days' },
+                    { key: 'all',  label: 'All' },
+                  ] as { key: Range; label: string }[]).map(({ key, label }) => (
+                    <button
+                      key={key}
+                      onClick={() => setRange(key)}
+                      className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${
+                        range === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
-              {scores.length === 0 ? (
-                <div className="px-5 py-12 text-center text-gray-400 text-sm">No scores recorded yet.</div>
+
+              {filteredDays.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-10 text-center text-gray-400 text-sm">
+                  No history for this period.
+                </div>
               ) : (
-                <div className="divide-y divide-gray-50">
-                  {scores.map((s) => (
-                    <div key={s.id} className="flex items-center justify-between px-5 py-3.5">
-                      <div>
-                        <p className="text-sm font-medium text-gray-800">
-                          {format(new Date(s.date + 'T12:00:00'), 'EEEE, MMMM d, yyyy')}
+                <div className="space-y-2">
+                  {filteredDays.map(day => (
+                    <div key={day.date} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50">
+                        <p className="text-sm font-semibold text-gray-800">
+                          {format(new Date(day.date + 'T12:00:00'), 'EEEE, MMMM d')}
                         </p>
-                        {s.notes && <p className="text-xs text-gray-400 mt-0.5">{s.notes}</p>}
+                        <div className="flex items-center gap-2">
+                          {day.eventTotal !== 0 && (
+                            <span className={`text-xs font-medium ${day.eventTotal > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              {fmtPts(day.eventTotal)}
+                            </span>
+                          )}
+                          <span className={`text-lg font-bold ${scoreColor(day.dayScore)}`}>
+                            {Math.round(day.dayScore * 100) / 100}
+                          </span>
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3">
-                        <ScoreBar score={s.score} />
-                        <span className={`text-lg font-bold w-10 text-right ${
-                          s.score >= 4.5 ? 'text-green-600' : s.score >= 3.5 ? 'text-blue-600' : s.score >= 2.5 ? 'text-yellow-600' : 'text-red-500'
-                        }`}>
-                          {s.score}
-                        </span>
-                      </div>
+                      {day.events.length > 0 ? (
+                        <div className="divide-y divide-gray-50">
+                          {day.events.map(e => (
+                            <div key={e.id} className="flex items-center gap-2 px-5 py-2.5 text-sm">
+                              <span className="shrink-0">{EVENT_ICONS[e.event_type] || '•'}</span>
+                              <span className="text-gray-700 flex-1">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                              {e.note && <span className="text-gray-400 text-xs truncate max-w-32">{e.note}</span>}
+                              <span className={`font-semibold shrink-0 ${Number(e.points) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                                {fmtPts(Number(e.points))}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="px-5 py-2.5 text-sm text-gray-400">No events — base score 3</p>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -138,16 +281,6 @@ export default function PerformancePage() {
           </>
         )}
       </main>
-    </div>
-  )
-}
-
-function ScoreBar({ score }: { score: number }) {
-  const pct = (score / 5) * 100
-  const color = score >= 4.5 ? 'bg-green-500' : score >= 3.5 ? 'bg-blue-500' : score >= 2.5 ? 'bg-yellow-400' : 'bg-red-400'
-  return (
-    <div className="w-24 h-2 bg-gray-100 rounded-full overflow-hidden">
-      <div className={`h-2 rounded-full ${color}`} style={{ width: `${pct}%` }} />
     </div>
   )
 }

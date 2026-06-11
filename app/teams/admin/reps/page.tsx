@@ -17,6 +17,11 @@ interface Rep {
   timeclockEnabled: boolean
   shift: string | null
   ghlUserIds: string[]
+  payrollMethod: string | null
+  payrollInfo: string | null
+  hourlyRate: number | null
+  commissionPerClose: number | null
+  currentLevel: number
 }
 
 interface AttemptSummary {
@@ -30,18 +35,219 @@ interface AttemptSummary {
   contentViewSeconds: number
 }
 
+type SettingsTab = 'callqueue' | 'payroll' | 'danger'
+
+const LEVEL_LABELS: Record<number, string> = {
+  1: 'Level 1 · Intro',
+  2: 'Level 2 · Onboarding',
+  3: 'Level 3 · Active',
+}
+
+const LEVEL_COLORS: Record<number, string> = {
+  1: 'bg-sky-100 text-sky-700',
+  2: 'bg-indigo-100 text-indigo-700',
+  3: 'bg-emerald-100 text-emerald-700',
+}
+
+const SHIFT_LABELS: Record<string, string> = {
+  morning:           'Morning (7AM–12PM PST)',
+  afternoon:         'Afternoon (12PM–3PM PST)',
+  evening:           'Evening (3PM–9PM PST)',
+  morning_afternoon: 'Morning + Afternoon (7AM–3PM PST)',
+  afternoon_evening: 'Afternoon + Evening (12PM–9PM PST)',
+}
+
+const PAYROLL_METHODS = ['Payoneer', 'Wise', 'Zelle', 'Venmo', 'PayPal', 'Bank Transfer', 'Other']
+
 export default function RepsPage() {
   const [reps, setReps] = useState<Rep[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
 
+  // Expanded settings per rep
+  const [settingsOpen, setSettingsOpen] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<Record<string, SettingsTab>>({})
+
+  // Call Queue draft state
+  const [shiftDraft, setShiftDraft] = useState<Record<string, string>>({})
+  const [ghlDraft, setGhlDraft] = useState<Record<string, string>>({})
+  const [callQueueSaving, setCallQueueSaving] = useState<string | null>(null)
+
+  // Payroll draft state
+  const [payrollMethodDraft, setPayrollMethodDraft] = useState<Record<string, string>>({})
+  const [payrollInfoDraft, setPayrollInfoDraft] = useState<Record<string, string>>({})
+  const [payStructureDraft, setPayStructureDraft] = useState<Record<string, string>>({}) // 'hourly' | 'per_close' | ''
+  const [hourlyRateDraft, setHourlyRateDraft] = useState<Record<string, string>>({})
+  const [commissionDraft, setCommissionDraft] = useState<Record<string, string>>({})
+  const [payrollSaving, setPayrollSaving] = useState<string | null>(null)
+
+  // Action states
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState('')
+
   // View History dialog
   const [historyRep, setHistoryRep] = useState<Rep | null>(null)
-
-  // Attempt breakdown
   const [breakdownAttemptId, setBreakdownAttemptId] = useState<string | null>(null)
   const [breakdownAnswers, setBreakdownAnswers] = useState<any[]>([])
   const [breakdownLoading, setBreakdownLoading] = useState(false)
+
+  // Add Rep dialog
+  const [showAddDialog, setShowAddDialog] = useState(false)
+  const [addName, setAddName] = useState('')
+  const [addPassword, setAddPassword] = useState('')
+  const [addLoading, setAddLoading] = useState(false)
+  const [addError, setAddError] = useState('')
+
+  const fetchReps = useCallback(async () => {
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch('/api/teams/admin/reps')
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error || 'Failed to fetch reps')
+      setReps(data.reps ?? [])
+    } catch (err: any) {
+      setError(err.message)
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { fetchReps() }, [fetchReps])
+
+  function openSettings(rep: Rep) {
+    setSettingsOpen(rep.id)
+    setActiveTab(t => ({ ...t, [rep.id]: t[rep.id] ?? 'callqueue' }))
+    setShiftDraft(d => ({ ...d, [rep.id]: rep.shift ?? '' }))
+    setGhlDraft(d => ({ ...d, [rep.id]: (rep.ghlUserIds ?? []).join(', ') }))
+    setPayrollMethodDraft(d => ({ ...d, [rep.id]: rep.payrollMethod ?? '' }))
+    setPayrollInfoDraft(d => ({ ...d, [rep.id]: rep.payrollInfo ?? '' }))
+    const structure = rep.hourlyRate != null ? 'hourly' : rep.commissionPerClose != null ? 'per_close' : ''
+    setPayStructureDraft(d => ({ ...d, [rep.id]: structure }))
+    setHourlyRateDraft(d => ({ ...d, [rep.id]: rep.hourlyRate != null ? String(rep.hourlyRate) : '' }))
+    setCommissionDraft(d => ({ ...d, [rep.id]: rep.commissionPerClose != null ? String(rep.commissionPerClose) : '' }))
+  }
+
+  async function handleSaveCallQueue(repId: string) {
+    setCallQueueSaving(repId)
+    const shift = shiftDraft[repId] || null
+    const ghlIds = (ghlDraft[repId] || '').split(',').map(s => s.trim()).filter(Boolean)
+    await Promise.all([
+      fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_shift', shift }),
+      }),
+      fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'update_ghl_ids', ghlIds }),
+      }),
+    ])
+    setReps(prev => prev.map(r => r.id === repId ? { ...r, shift, ghlUserIds: ghlIds } : r))
+    setCallQueueSaving(null)
+  }
+
+  async function handleToggleTimeclock(repId: string, current: boolean) {
+    setActionLoading(repId + ':timeclock')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'toggle_timeclock', value: !current }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setReps(prev => prev.map(r => r.id === repId ? { ...r, timeclockEnabled: !current } : r))
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleSavePayroll(repId: string) {
+    setPayrollSaving(repId)
+    const structure = payStructureDraft[repId]
+    const hourlyRate = structure === 'hourly' ? (parseFloat(hourlyRateDraft[repId]) || null) : null
+    const commissionPerClose = structure === 'per_close' ? (parseFloat(commissionDraft[repId]) || null) : null
+    const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'update_payroll',
+        payrollMethod: payrollMethodDraft[repId] || null,
+        payrollInfo: payrollInfoDraft[repId] || null,
+        hourlyRate,
+        commissionPerClose,
+      }),
+    })
+    const data = await res.json()
+    if (res.ok) {
+      setReps(prev => prev.map(r =>
+        r.id === repId
+          ? { ...r, payrollMethod: payrollMethodDraft[repId] || null, payrollInfo: payrollInfoDraft[repId] || null, hourlyRate, commissionPerClose }
+          : r
+      ))
+    } else {
+      setActionMessage(`Error: ${data.error}`)
+    }
+    setPayrollSaving(null)
+  }
+
+  async function handleForceRetake(repId: string) {
+    if (!confirm('Force retake will invalidate all passing attempts for this rep. Continue?')) return
+    setActionLoading(repId + ':retake')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'force_retake' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setActionMessage('Retake forced.')
+      await fetchReps()
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleResetPassword(repId: string) {
+    setActionLoading(repId + ':reset')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'reset_password' }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setActionMessage('Password reset email sent.')
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  async function handleDeleteRep(repId: string, repName: string) {
+    if (!confirm(`Delete rep "${repName}"? This cannot be undone.`)) return
+    setActionLoading(repId + ':delete')
+    try {
+      const res = await fetch(`/api/teams/admin/reps/${repId}`, { method: 'DELETE' })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error)
+      setSettingsOpen(null)
+      await fetchReps()
+    } catch (err: any) {
+      setActionMessage(`Error: ${err.message}`)
+    } finally {
+      setActionLoading(null)
+    }
+  }
 
   async function openBreakdown(attemptId: string) {
     setBreakdownAttemptId(attemptId)
@@ -62,61 +268,20 @@ export default function RepsPage() {
     setBreakdownLoading(false)
   }
 
-  // Add Rep dialog
-  const [showAddDialog, setShowAddDialog] = useState(false)
-  const [addName, setAddName] = useState('')
-  const [addEmail, setAddEmail] = useState('')
-  const [addPassword, setAddPassword] = useState('')
-  const [addLoading, setAddLoading] = useState(false)
-  const [addError, setAddError] = useState('')
-
-  // Action states
-  const [actionLoading, setActionLoading] = useState<string | null>(null)
-  const [actionMessage, setActionMessage] = useState('')
-
-  // Call queue settings
-  const [shiftOpen, setShiftOpen] = useState<string | null>(null) // rep id whose shift panel is open
-  const [shiftDraft, setShiftDraft] = useState<Record<string, string>>({}) // repId → shift value
-  const [ghlDraft, setGhlDraft] = useState<Record<string, string>>({}) // repId → comma-separated GHL IDs
-  const [shiftSaving, setShiftSaving] = useState<string | null>(null)
-
-  const fetchReps = useCallback(async () => {
-    setLoading(true)
-    setError('')
-
-    try {
-      const res = await fetch('/api/teams/admin/reps')
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to fetch reps')
-      setReps(data.reps ?? [])
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }, [])
-
-  useEffect(() => {
-    fetchReps()
-  }, [fetchReps])
-
   async function handleAddRep(e: React.FormEvent) {
     e.preventDefault()
     setAddLoading(true)
     setAddError('')
-
     try {
       const res = await fetch('/api/teams/admin/reps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: addName, email: addEmail, password: addPassword }),
+        body: JSON.stringify({ name: addName, password: addPassword }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add rep')
-
       setShowAddDialog(false)
       setAddName('')
-      setAddEmail('')
       setAddPassword('')
       await fetchReps()
     } catch (err: any) {
@@ -126,138 +291,19 @@ export default function RepsPage() {
     }
   }
 
-  async function handleForceRetake(repId: string) {
-    if (!confirm('Force retake will invalidate all passing attempts for this rep. Continue?')) return
-    setActionLoading(repId + ':retake')
-    setActionMessage('')
-
-    try {
-      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'force_retake' }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to force retake')
-      setActionMessage(`Retake forced for rep.`)
-      await fetchReps()
-    } catch (err: any) {
-      setActionMessage(`Error: ${err.message}`)
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  async function handleResetPassword(repId: string) {
-    setActionLoading(repId + ':reset')
-    setActionMessage('')
-
-    try {
-      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'reset_password' }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to send reset email')
-      setActionMessage('Password reset email sent.')
-    } catch (err: any) {
-      setActionMessage(`Error: ${err.message}`)
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  async function handleDeleteRep(repId: string, repName: string) {
-    if (!confirm(`Delete rep "${repName}"? This cannot be undone.`)) return
-    setActionLoading(repId + ':delete')
-    setActionMessage('')
-
-    try {
-      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
-        method: 'DELETE',
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to delete rep')
-      setActionMessage('Rep deleted.')
-      await fetchReps()
-    } catch (err: any) {
-      setActionMessage(`Error: ${err.message}`)
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  function openShiftPanel(rep: Rep) {
-    setShiftOpen(rep.id)
-    setShiftDraft(d => ({ ...d, [rep.id]: rep.shift || '' }))
-    setGhlDraft(d => ({ ...d, [rep.id]: (rep.ghlUserIds || []).join(', ') }))
-  }
-
-  async function handleSaveShift(repId: string) {
-    setShiftSaving(repId)
-    const shift = shiftDraft[repId] || null
-    const ghlIds = (ghlDraft[repId] || '').split(',').map(s => s.trim()).filter(Boolean)
-
-    await Promise.all([
-      fetch(`/api/teams/admin/reps/${repId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_shift', shift }),
-      }),
-      fetch(`/api/teams/admin/reps/${repId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'update_ghl_ids', ghlIds }),
-      }),
-    ])
-
-    setReps(prev => prev.map(r =>
-      r.id === repId ? { ...r, shift: shift, ghlUserIds: ghlIds } : r
-    ))
-    setShiftSaving(null)
-    setShiftOpen(null)
-  }
-
-  async function handleToggleTimeclock(repId: string, currentValue: boolean) {
-    setActionLoading(repId + ':timeclock')
-    setActionMessage('')
-    try {
-      const res = await fetch(`/api/teams/admin/reps/${repId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'toggle_timeclock', value: !currentValue }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to update timeclock access')
-      await fetchReps()
-    } catch (err: any) {
-      setActionMessage(`Error: ${err.message}`)
-    } finally {
-      setActionLoading(null)
-    }
-  }
-
-  const SHIFT_LABELS: Record<string, string> = {
-    morning:           'Morning (7AM–12PM PST)',
-    afternoon:         'Afternoon (12PM–3PM PST)',
-    evening:           'Evening (3PM–9PM PST)',
-    morning_afternoon: 'Morning + Afternoon (7AM–3PM PST)',
-    afternoon_evening: 'Afternoon + Evening (12PM–9PM PST)',
-  }
-
   return (
     <div>
+      {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-gray-900">All Reps</h1>
-          <p className="text-sm text-gray-500 mt-1">{reps.length} team member{reps.length !== 1 ? 's' : ''}</p>
+          <p className="text-sm text-gray-500 mt-0.5">{reps.length} team member{reps.length !== 1 ? 's' : ''}</p>
         </div>
         <button
           onClick={() => setShowAddDialog(true)}
           className="bg-[#0f1e3c] hover:bg-[#1a3060] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
         >
-          <span className="text-base">+</span>
+          <span className="text-base leading-none">+</span>
           Add Rep
         </button>
       </div>
@@ -267,158 +313,335 @@ export default function RepsPage() {
           actionMessage.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
         }`}>
           {actionMessage}
+          <button onClick={() => setActionMessage('')} className="ml-2 opacity-50 hover:opacity-100">×</button>
         </div>
       )}
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading reps...</div>
+        <div className="text-center py-16 text-gray-400 text-sm">Loading reps...</div>
       ) : error ? (
         <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
       ) : reps.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-12 text-center">
-          <p className="text-gray-500">No reps yet. Add your first team member!</p>
+        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-16 text-center">
+          <p className="text-gray-500 text-sm">No reps yet. Add your first team member!</p>
         </div>
       ) : (
-        <div className="space-y-3">
+        <div className="space-y-2">
           {reps.map((rep) => {
-            const isForceLoading = actionLoading === rep.id + ':retake'
-            const isResetLoading = actionLoading === rep.id + ':reset'
-            const isDeleteLoading = actionLoading === rep.id + ':delete'
-
-            const isTimeclockLoading = actionLoading === rep.id + ':timeclock'
-
-            const isShiftOpen = shiftOpen === rep.id
+            const isOpen = settingsOpen === rep.id
+            const tab = activeTab[rep.id] ?? 'callqueue'
 
             return (
-              <div key={rep.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-gray-900">{rep.name}</span>
-                      {rep.certified && (
-                        <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full flex items-center gap-1">
-                          ✦ Certified
+              <div key={rep.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                {/* Rep row */}
+                <div className="px-5 py-4">
+                  <div className="flex items-center justify-between gap-4">
+                    {/* Left: identity + stats */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-semibold text-gray-900">{rep.name}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${LEVEL_COLORS[rep.currentLevel] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {LEVEL_LABELS[rep.currentLevel] ?? `Level ${rep.currentLevel}`}
                         </span>
-                      )}
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rep.ndaSigned ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
-                        {rep.ndaSigned ? '✓ NDA Signed' : '✗ NDA Pending'}
-                      </span>
+                        {rep.certified && (
+                          <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                            ✦ Certified
+                          </span>
+                        )}
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rep.ndaSigned ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
+                          {rep.ndaSigned ? '✓ NDA' : '✗ NDA Pending'}
+                        </span>
+                        {rep.timeclockEnabled && (
+                          <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                            Timeclock
+                          </span>
+                        )}
+                        {rep.shift && (
+                          <span className="bg-purple-100 text-purple-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                            {SHIFT_LABELS[rep.shift] ?? rep.shift}
+                          </span>
+                        )}
+                        {rep.payrollMethod && (
+                          <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                            {rep.payrollMethod}
+                            {rep.hourlyRate != null && ` · $${rep.hourlyRate}/hr`}
+                            {rep.commissionPerClose != null && ` · $${rep.commissionPerClose}/close`}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        {rep.email}
+                        <span className="mx-1.5 text-gray-200">·</span>
+                        {rep.passedRequired}/{rep.totalRequired} modules
+                        <span className="mx-1.5 text-gray-200">·</span>
+                        {rep.attempts.length} attempt{rep.attempts.length !== 1 ? 's' : ''}
+                        <span className="mx-1.5 text-gray-200">·</span>
+                        Joined {format(new Date(rep.created_at), 'M/d/yyyy')}
+                      </p>
                     </div>
-                    <div className="flex flex-wrap items-center gap-2 text-sm text-gray-500 mt-1">
-                      <span>{rep.email}</span>
-                      <span className="text-gray-300">·</span>
-                      <span>{rep.passedRequired}/{rep.totalRequired} required modules passed</span>
-                      <span className="text-gray-300">·</span>
-                      <span>{rep.attempts.length} total attempt{rep.attempts.length !== 1 ? 's' : ''}</span>
-                      <span className="text-gray-300">·</span>
-                      <span>Joined {format(new Date(rep.created_at), 'M/d/yyyy')}</span>
-                    </div>
-                  </div>
 
-                  <div className="flex items-center gap-2 flex-wrap shrink-0">
-                    {/* Call Queue shift button */}
-                    <button
-                      onClick={() => isShiftOpen ? setShiftOpen(null) : openShiftPanel(rep)}
-                      className={`flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
-                        rep.shift
-                          ? 'bg-purple-50 border-purple-200 text-purple-700 hover:bg-purple-100'
-                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
-                      }`}
-                    >
-                      📞 {rep.shift ? SHIFT_LABELS[rep.shift] || rep.shift : 'No Shift'}
-                    </button>
-                    {/* Timeclock toggle */}
-                    <button
-                      onClick={() => handleToggleTimeclock(rep.id, rep.timeclockEnabled)}
-                      disabled={isTimeclockLoading}
-                      className={`flex items-center gap-2 text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors disabled:opacity-50 ${
-                        rep.timeclockEnabled
-                          ? 'bg-blue-50 border-blue-200 text-blue-700 hover:bg-blue-100'
-                          : 'bg-gray-50 border-gray-200 text-gray-500 hover:bg-gray-100'
-                      }`}
-                    >
-                      <span className={`w-7 h-4 rounded-full relative transition-colors flex-shrink-0 ${rep.timeclockEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}>
-                        <span className={`absolute top-0.5 w-3 h-3 bg-white rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-3.5' : 'translate-x-0.5'}`} />
-                      </span>
-                      {isTimeclockLoading ? '...' : rep.timeclockEnabled ? 'Timeclock On' : 'Timeclock Off'}
-                    </button>
-                    <button
-                      onClick={() => setHistoryRep(rep)}
-                      className="text-sm border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium px-3 py-1.5 rounded-lg transition-colors"
-                    >
-                      View History
-                    </button>
-                    <button
-                      onClick={() => handleForceRetake(rep.id)}
-                      disabled={isForceLoading}
-                      className="text-sm border border-orange-300 bg-orange-50 hover:bg-orange-100 text-orange-700 font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {isForceLoading ? '...' : 'Force Retake'}
-                    </button>
-                    <button
-                      onClick={() => handleResetPassword(rep.id)}
-                      disabled={isResetLoading}
-                      className="text-sm border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {isResetLoading ? '...' : '🔑 Reset PW'}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteRep(rep.id, rep.name)}
-                      disabled={isDeleteLoading}
-                      className="text-sm border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 font-medium px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
-                    >
-                      {isDeleteLoading ? '...' : 'Delete'}
-                    </button>
+                    {/* Right: actions */}
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        onClick={() => setHistoryRep(rep)}
+                        className="text-xs border border-gray-200 hover:bg-gray-50 text-gray-600 font-medium px-3 py-1.5 rounded-lg transition-colors"
+                      >
+                        History
+                      </button>
+                      <button
+                        onClick={() => isOpen ? setSettingsOpen(null) : openSettings(rep)}
+                        className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
+                          isOpen
+                            ? 'bg-[#0f1e3c] text-white border-[#0f1e3c]'
+                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+                        }`}
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Settings
+                      </button>
+                    </div>
                   </div>
                 </div>
 
-                {/* Call Queue Settings panel */}
-                {isShiftOpen && (
-                  <div className="mt-4 pt-4 border-t border-gray-100">
-                    <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Call Queue Settings</p>
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:gap-4">
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-gray-600 mb-1">Shift</label>
-                        <select
-                          value={shiftDraft[rep.id] ?? ''}
-                          onChange={e => setShiftDraft(d => ({ ...d, [rep.id]: e.target.value }))}
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        >
-                          <option value="">No shift (not in call queue)</option>
-                          <option value="morning">Morning — 7AM–12PM PST</option>
-                          <option value="afternoon">Afternoon — 12PM–3PM PST</option>
-                          <option value="evening">Evening — 3PM–9PM PST</option>
-                          <option value="morning_afternoon">Morning + Afternoon — 7AM–3PM PST</option>
-                          <option value="afternoon_evening">Afternoon + Evening — 12PM–9PM PST</option>
-                        </select>
-                      </div>
-                      <div className="flex-1">
-                        <label className="block text-xs font-medium text-gray-600 mb-1">
-                          GHL User IDs <span className="text-gray-400">(comma-separated, for FU/Chase assignment)</span>
-                        </label>
-                        <input
-                          type="text"
-                          value={ghlDraft[rep.id] ?? ''}
-                          onChange={e => setGhlDraft(d => ({ ...d, [rep.id]: e.target.value }))}
-                          placeholder="e.g. DNj1g2jJWDn, JyJZdMlw3pu"
-                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                        />
-                      </div>
-                      <div className="flex gap-2 shrink-0">
+                {/* Settings panel */}
+                {isOpen && (
+                  <div className="border-t border-gray-100">
+                    {/* Tab bar */}
+                    <div className="flex border-b border-gray-100 bg-gray-50">
+                      {([
+                        { key: 'callqueue', label: 'Call Queue' },
+                        { key: 'payroll',   label: 'Payroll' },
+                        { key: 'danger',    label: 'Danger Zone' },
+                      ] as { key: SettingsTab; label: string }[]).map(({ key, label }) => (
                         <button
-                          onClick={() => setShiftOpen(null)}
-                          className="text-sm border border-gray-300 text-gray-600 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                          key={key}
+                          onClick={() => setActiveTab(t => ({ ...t, [rep.id]: key }))}
+                          className={`px-5 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px ${
+                            tab === key
+                              ? key === 'danger'
+                                ? 'border-red-500 text-red-600 bg-white'
+                                : 'border-[#0f1e3c] text-[#0f1e3c] bg-white'
+                              : 'border-transparent text-gray-500 hover:text-gray-700'
+                          }`}
                         >
-                          Cancel
+                          {label}
                         </button>
-                        <button
-                          onClick={() => handleSaveShift(rep.id)}
-                          disabled={shiftSaving === rep.id}
-                          className="text-sm bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-medium px-4 py-2 rounded-lg transition-colors"
-                        >
-                          {shiftSaving === rep.id ? 'Saving…' : 'Save'}
-                        </button>
-                      </div>
+                      ))}
+                    </div>
+
+                    {/* Tab content */}
+                    <div className="px-5 py-5">
+                      {/* Call Queue tab */}
+                      {tab === 'callqueue' && (
+                        <div className="space-y-4">
+                          {/* Timeclock toggle */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Timeclock Access</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Allow rep to clock in/out</p>
+                            </div>
+                            <button
+                              onClick={() => handleToggleTimeclock(rep.id, rep.timeclockEnabled)}
+                              disabled={actionLoading === rep.id + ':timeclock'}
+                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timeclockEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}
+                            >
+                              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Shift</label>
+                              <select
+                                value={shiftDraft[rep.id] ?? ''}
+                                onChange={e => setShiftDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">No shift (not in call queue)</option>
+                                <option value="morning">Morning — 7AM–12PM PST</option>
+                                <option value="afternoon">Afternoon — 12PM–3PM PST</option>
+                                <option value="evening">Evening — 3PM–9PM PST</option>
+                                <option value="morning_afternoon">Morning + Afternoon — 7AM–3PM PST</option>
+                                <option value="afternoon_evening">Afternoon + Evening — 12PM–9PM PST</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                                GHL User IDs
+                                <span className="text-gray-400 font-normal ml-1">(comma-separated)</span>
+                              </label>
+                              <input
+                                type="text"
+                                value={ghlDraft[rep.id] ?? ''}
+                                onChange={e => setGhlDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                                placeholder="e.g. DNj1g2jJWDn, JyJZdMlw3pu"
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              />
+                            </div>
+                          </div>
+
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              onClick={() => setSettingsOpen(null)}
+                              className="text-sm border border-gray-200 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleSaveCallQueue(rep.id)}
+                              disabled={callQueueSaving === rep.id}
+                              className="text-sm bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg transition-colors"
+                            >
+                              {callQueueSaving === rep.id ? 'Saving…' : 'Save'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Payroll tab */}
+                      {tab === 'payroll' && (
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Payroll Method</label>
+                              <select
+                                value={payrollMethodDraft[rep.id] ?? ''}
+                                onChange={e => setPayrollMethodDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">Select method</option>
+                                {PAYROLL_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Structure</label>
+                              <select
+                                value={payStructureDraft[rep.id] ?? ''}
+                                onChange={e => setPayStructureDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              >
+                                <option value="">Not set</option>
+                                <option value="hourly">Hourly</option>
+                                <option value="per_close">Per Close (Commission)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          {payStructureDraft[rep.id] === 'hourly' && (
+                            <div className="max-w-xs">
+                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Hourly Rate (USD)</label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={hourlyRateDraft[rep.id] ?? ''}
+                                  onChange={e => setHourlyRateDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                                  placeholder="0.00"
+                                  className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          {payStructureDraft[rep.id] === 'per_close' && (
+                            <div className="max-w-xs">
+                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Commission per Close (USD)</label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.01"
+                                  value={commissionDraft[rep.id] ?? ''}
+                                  onChange={e => setCommissionDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                                  placeholder="0.00"
+                                  className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                              </div>
+                            </div>
+                          )}
+
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                              Account / Payment Info
+                              <span className="text-gray-400 font-normal ml-1">(e.g. email, username, or account number)</span>
+                            </label>
+                            <input
+                              type="text"
+                              value={payrollInfoDraft[rep.id] ?? ''}
+                              onChange={e => setPayrollInfoDraft(d => ({ ...d, [rep.id]: e.target.value }))}
+                              placeholder="e.g. john@example.com or @johnsmith"
+                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                          </div>
+
+                          <div className="flex justify-end gap-2 pt-1">
+                            <button
+                              onClick={() => setSettingsOpen(null)}
+                              className="text-sm border border-gray-200 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              onClick={() => handleSavePayroll(rep.id)}
+                              disabled={payrollSaving === rep.id}
+                              className="text-sm bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg transition-colors"
+                            >
+                              {payrollSaving === rep.id ? 'Saving…' : 'Save Payroll'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Danger Zone tab */}
+                      {tab === 'danger' && (
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Force Retake</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Invalidate all passing attempts — rep must redo training</p>
+                            </div>
+                            <button
+                              onClick={() => handleForceRetake(rep.id)}
+                              disabled={actionLoading === rep.id + ':retake'}
+                              className="text-xs font-semibold border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                            >
+                              {actionLoading === rep.id + ':retake' ? 'Working…' : 'Force Retake'}
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Reset Password</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Send a password reset link to their email</p>
+                            </div>
+                            <button
+                              onClick={() => handleResetPassword(rep.id)}
+                              disabled={actionLoading === rep.id + ':reset'}
+                              className="text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                            >
+                              {actionLoading === rep.id + ':reset' ? 'Sending…' : 'Send Reset Email'}
+                            </button>
+                          </div>
+                          <div className="flex items-center justify-between py-3">
+                            <div>
+                              <p className="text-sm font-medium text-red-700">Delete Rep</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Permanently remove this rep and all their data</p>
+                            </div>
+                            <button
+                              onClick={() => handleDeleteRep(rep.id, rep.name)}
+                              disabled={actionLoading === rep.id + ':delete'}
+                              className="text-xs font-semibold border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                            >
+                              {actionLoading === rep.id + ':delete' ? 'Deleting…' : 'Delete Rep'}
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -434,10 +657,10 @@ export default function RepsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">{historyRep.name}'s History</h2>
+                <h2 className="text-base font-semibold text-gray-900">{historyRep.name}</h2>
                 <p className="text-xs text-gray-500 mt-0.5">{historyRep.email}</p>
               </div>
-              <button onClick={() => setHistoryRep(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <button onClick={() => setHistoryRep(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-4">
               {historyRep.attempts.length === 0 ? (
@@ -466,15 +689,15 @@ export default function RepsPage() {
                             </p>
                           </div>
                         </div>
-                        <div className="flex gap-3 mt-2 flex-wrap items-center">
+                        <div className="flex gap-2 mt-2 flex-wrap items-center">
                           {viewTime && (
                             <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded px-2 py-0.5">
-                              Content viewed: {viewTime}
+                              Viewed: {viewTime}
                             </span>
                           )}
                           {attempt.tabLeaveCount > 0 && (
                             <span className="text-xs bg-red-50 text-red-700 border border-red-100 rounded px-2 py-0.5">
-                              Left tab {attempt.tabLeaveCount}× during quiz
+                              Left tab {attempt.tabLeaveCount}×
                             </span>
                           )}
                           <button
@@ -508,13 +731,11 @@ export default function RepsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Add New Rep</h2>
-              <button onClick={() => { setShowAddDialog(false); setAddError('') }} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <button onClick={() => { setShowAddDialog(false); setAddError('') }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <form onSubmit={handleAddRep} className="px-5 py-5 space-y-4">
               {addError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2.5">
-                  {addError}
-                </div>
+                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2.5">{addError}</div>
               )}
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
@@ -542,7 +763,7 @@ export default function RepsPage() {
                 <button
                   type="button"
                   onClick={() => { setShowAddDialog(false); setAddError('') }}
-                  className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                  className="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
                 >
                   Cancel
                 </button>
@@ -565,7 +786,7 @@ export default function RepsPage() {
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
             <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
               <h2 className="text-base font-semibold text-gray-900">Attempt Breakdown</h2>
-              <button onClick={() => setBreakdownAttemptId(null)} className="text-gray-400 hover:text-gray-600 text-xl">×</button>
+              <button onClick={() => setBreakdownAttemptId(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-4">
               {breakdownLoading ? (

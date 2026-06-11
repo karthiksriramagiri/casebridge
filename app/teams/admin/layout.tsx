@@ -20,13 +20,6 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     redirect('/teams/dashboard')
   }
 
-  // Fetch retake count for badge
-  const { count: retakeCount } = await supabase
-    .from('attempts')
-    .select('*', { count: 'exact', head: true })
-    .gt('attempt_number', 1)
-    .eq('is_invalidated', false)
-
   // Format today's date: "Thu, Apr 9"
   const now = new Date()
   const dateStr = now.toLocaleDateString('en-US', {
@@ -50,7 +43,7 @@ export default async function AdminLayout({ children }: { children: ReactNode })
       </header>
 
       {/* Tab Navigation */}
-      <AdminNav retakeCount={retakeCount ?? 0} />
+      <AdminNav />
 
       {/* Page content */}
       <main className="max-w-7xl mx-auto px-6 py-6">

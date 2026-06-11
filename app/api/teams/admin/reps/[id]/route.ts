@@ -104,6 +104,22 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'update_payroll') {
+    const { payrollMethod, payrollInfo, hourlyRate, commissionPerClose } = body
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({
+        payroll_method: payrollMethod || null,
+        payroll_info: payrollInfo || null,
+        hourly_rate: hourlyRate != null ? Number(hourlyRate) : null,
+        commission_per_close: commissionPerClose != null ? Number(commissionPerClose) : null,
+      })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'reset_password') {
     // Get the rep's email from auth
     const adminClient = createSupabaseAdmin(

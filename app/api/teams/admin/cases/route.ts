@@ -46,6 +46,19 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Auto score event for signed cases
+  if ((status || 'signed') === 'signed') {
+    await admin.from('score_events').insert({
+      user_id,
+      event_type: 'lead_closed',
+      points: 2,
+      note: `Closed: ${contact_name.trim()}`,
+      date: closed_at,
+      auto_generated: true,
+    })
+  }
+
   return NextResponse.json({ case: data })
 }
 

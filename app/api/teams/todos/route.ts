@@ -223,9 +223,16 @@ export async function GET() {
 
   const myNr = slot ? getNrForSlot(slot) : []
 
-  const remainingNr    = slot ? removeCalled(myNr, slot)    : []
-  const remainingFu    = slot ? removeCalled(myFu, slot)    : []
-  const remainingChase = slot ? removeCalled(myChase, slot) : []
+  let remainingNr    = slot ? removeCalled(myNr, slot)    : []
+  let remainingFu    = slot ? removeCalled(myFu, slot)    : []
+  let remainingChase = slot ? removeCalled(myChase, slot) : []
+
+  // If all leads have been called, restart from the beginning
+  if (slot && remainingNr.length === 0 && remainingFu.length === 0 && remainingChase.length === 0) {
+    remainingNr    = myNr
+    remainingFu    = myFu
+    remainingChase = myChase
+  }
 
   const calledThisSlot = callLogs.filter((l: any) => l.slot === slot).length
   const totalThisSlot  = myNr.length + myFu.length + myChase.length

@@ -13,7 +13,7 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json()
-  const { contactId, contactName, slot } = body
+  const { contactId, contactName, slot, totalCount, calledCount } = body
 
   if (!contactId || !slot) {
     return NextResponse.json({ error: 'Missing contactId or slot' }, { status: 400 })
@@ -40,7 +40,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Record response time event (fire-and-forget)
+  // Record response time event + auto-score slow checkmarks
   try {
     const { data: sighting } = await admin
       .from('nr_lead_sightings')
@@ -61,6 +61,56 @@ export async function POST(req: NextRequest) {
         responded_at:       new Date().toISOString(),
         response_seconds:   responseSeconds,
       })
+
+      // Auto-score: slow checkmark (>2 min) → -1 pt, once per contact per day
+      if (responseSeconds > 120) {
+        const mins = Math.floor(responseSeconds / 60)
+        const secs = responseSeconds % 60
+        const timeStr = mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
+        const { count: existing } = await admin
+          .from('score_events')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          .eq('event_type', 'slow_checkmark')
+          .eq('date', today)
+          .eq('note', `Late check: ${contactName || contactId}`)
+        if ((existing ?? 0) === 0) {
+          await admin.from('score_events').insert({
+            user_id:        user.id,
+            event_type:     'slow_checkmark',
+            points:         -1,
+            note:           `Late check: ${contactName || contactId} (${timeStr})`,
+            date:           today,
+            auto_generated: true,
+          })
+        }
+      }
+    }
+  } catch {}
+
+  // Auto-score: slot completed → +1 pt (once per slot per day)
+  try {
+    if (typeof totalCount === 'number' && typeof calledCount === 'number' &&
+        totalCount > 0 && (calledCount + 1) >= totalCount) {
+      const slotKey = `${slot}`
+      const { count: existing } = await admin
+        .from('score_events')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('event_type', 'todo_complete')
+        .eq('date', today)
+        .ilike('note', `%${slotKey}%`)
+      if ((existing ?? 0) === 0) {
+        const slotLabel = slot === 'morning' ? 'Morning' : slot === 'afternoon' ? 'Afternoon' : 'Evening'
+        await admin.from('score_events').insert({
+          user_id:        user.id,
+          event_type:     'todo_complete',
+          points:         1,
+          note:           `All ${slotLabel} leads called`,
+          date:           today,
+          auto_generated: true,
+        })
+      }
     }
   } catch {}
 

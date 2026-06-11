@@ -304,6 +304,12 @@ export default function ModulePage() {
         // They left — count it
         tabLeaveCountRef.current += 1
         setTabLeaveCount(tabLeaveCountRef.current)
+        // Notify Slack on every tab leave
+        fetch('/api/teams/tab-cheat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ moduleId, tabLeaveCount: tabLeaveCountRef.current }),
+        }).catch(() => {})
         return
       }
       // They came back — reset the quiz
