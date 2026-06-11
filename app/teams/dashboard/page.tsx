@@ -339,17 +339,33 @@ export default async function DashboardPage() {
   const level1Sections = buildSections(rawByLevel[1], true, moduleAttemptData)
   const level1Done = rawByLevel[1].length === 0 || level1Sections.every((s) => s.isDone)
 
+  // If the user has already completed any Level 2 modules, treat Level 1 as effectively done.
+  // This prevents newly-added Level 1 modules from re-locking Level 2 for users who've progressed.
+  const hasLevel2Progress = rawByLevel[2].some((s) => s.modules.some((m) => moduleAttemptData[m.id]?.completed))
+  const level1EffectivelyDone = level1Done || hasLevel2Progress
+
   // Level 2 unlocks 30 min after the booked call slot (call is assumed complete by then)
   const callCompletedAt = existingBooking?.slot_time
     ? new Date(new Date(existingBooking.slot_time).getTime() + 30 * 60 * 1000)
     : null
   const level2Started = !!callCompletedAt && Date.now() >= callCompletedAt.getTime()
 
-  const level2Sections = buildSections(rawByLevel[2], level1Done && level2Started, moduleAttemptData)
+  // If user already has Level 2 progress, bypass the level2Started gate — they clearly already had access.
+  // This handles cases where the call was rescheduled or new modules were added after they progressed.
+  const level2EffectivelyStarted = level2Started || hasLevel2Progress
+  const level2Sections = buildSections(rawByLevel[2], level1EffectivelyDone && level2EffectivelyStarted, moduleAttemptData)
   const level2Done = rawByLevel[2].length === 0 || level2Sections.every((s) => s.isDone)
-  const level3Sections = buildSections(rawByLevel[3], level2Done, moduleAttemptData)
+
+  // Same pattern: if user has Level 3 progress, treat Level 2 as effectively done
+  const hasLevel3Progress = rawByLevel[3].some((s) => s.modules.some((m) => moduleAttemptData[m.id]?.completed))
+  const level2EffectivelyDone = level2Done || hasLevel3Progress
+
+  const level3Sections = buildSections(rawByLevel[3], level2EffectivelyDone, moduleAttemptData)
   const level3Done = rawByLevel[3].length === 0 || level3Sections.every((s) => s.isDone)
   const certified = level1Done && level2Done && level3Done
+  // A user is effectively certified if they've completed (or progressed past) all levels,
+  // even if new modules were added to earlier levels after they finished.
+  const effectivelyCertified = certified || (level1EffectivelyDone && level2EffectivelyDone && level3Done)
 
   // Countdown deadlines
   const level1StartAt = (profile as any).nda_signed_at || profile.created_at
@@ -361,11 +377,12 @@ export default async function DashboardPage() {
     ? new Date(callCompletedAt.getTime() + 4 * 60 * 60 * 1000).toISOString()
     : null
 
-  // Expiry lock: if a timed level's deadline has passed and it's not complete, block the dashboard
+  // Expiry lock: if a timed level's deadline has passed and it's not complete, block the dashboard.
+  // Use effectively-done so newly-added modules don't falsely trigger expiry for users who've progressed.
   const now = Date.now()
   const timerDisabled = !!(profile as any).timer_disabled
-  const level1Expired = !timerDisabled && !!level1DeadlineAt && !level1Done && now > new Date(level1DeadlineAt).getTime()
-  const level2Expired = !timerDisabled && !!level2DeadlineAt && !level2Done && now > new Date(level2DeadlineAt).getTime()
+  const level1Expired = !timerDisabled && !!level1DeadlineAt && !level1EffectivelyDone && now > new Date(level1DeadlineAt).getTime()
+  const level2Expired = !timerDisabled && !!level2DeadlineAt && !level2EffectivelyDone && now > new Date(level2DeadlineAt).getTime()
   const expiredLevel = level1Expired ? 1 : level2Expired ? 2 : null
 
   // Notify Slack once when timer expires
@@ -506,7 +523,7 @@ export default async function DashboardPage() {
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center">
             <p className="text-gray-500">No training modules available yet.</p>
           </div>
-        ) : certified ? (
+        ) : effectivelyCertified ? (
           /* ── Flat post-certification view ── */
           <div className="space-y-6">
             {flatSections.map((section, idx) => (
@@ -540,16 +557,16 @@ export default async function DashboardPage() {
         ) : (
           <div className="space-y-10">
             {LEVEL_META.map(({ num, label, sublabel, sections, raw }, levelIdx) => {
-              const showBooking = num === 1 && level1Done
+              const showBooking = num === 1 && level1EffectivelyDone
               const prevLevel = LEVEL_META[levelIdx - 1]
               const isLevelUnlocked =
                 num === 1
                   ? true
                   : num === 2
-                  ? level1Done
-                  : level2Done
+                  ? level1EffectivelyDone && level2EffectivelyStarted
+                  : level2EffectivelyDone
               const deadlineAt = num === 1 ? level1DeadlineAt : num === 2 ? level2DeadlineAt : null
-              const callBooked = num === 2 && !!existingBooking && !level2Started
+              const callBooked = num === 2 && !!existingBooking && !level2EffectivelyStarted
               const callCompletedAtIso = callCompletedAt?.toISOString() ?? null
               const levelDoneCount = raw
                 .flatMap((s) => s.modules)
