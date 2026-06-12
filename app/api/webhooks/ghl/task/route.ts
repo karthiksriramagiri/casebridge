@@ -125,6 +125,14 @@ export async function POST(request: NextRequest) {
     ? get9AMInTimezone(dueDate, contactTimezone)
     : null
 
+  // Check if this task already has snippets sent — preserve those flags so
+  // duplicate webhook fires from GHL don't reset them and cause double-sends.
+  const { data: existing } = await supabase
+    .from('ghl_task_reminders')
+    .select('notified, snippet_1_sent, snippet_2_sent, snippet_3_sent')
+    .eq('task_id', taskId)
+    .maybeSingle()
+
   const { error } = await supabase
     .from('ghl_task_reminders')
     .upsert({
@@ -136,13 +144,13 @@ export async function POST(request: NextRequest) {
       body,
       due_date: dueDate.toISOString(),
       notify_at: notifyAt.toISOString(),
-      notified: false,
+      notified: existing?.notified ?? false,
       snippet_1_at: snippet1At.toISOString(),
-      snippet_1_sent: false,
+      snippet_1_sent: existing?.snippet_1_sent ?? false,
       snippet_2_at: snippet2At.toISOString(),
-      snippet_2_sent: false,
+      snippet_2_sent: existing?.snippet_2_sent ?? false,
       snippet_3_at: snippet3At?.toISOString() ?? null,
-      snippet_3_sent: false,
+      snippet_3_sent: existing?.snippet_3_sent ?? false,
     }, { onConflict: 'task_id' })
 
   if (error) {
