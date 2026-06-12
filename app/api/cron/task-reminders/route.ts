@@ -89,8 +89,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // ── Snippet 2: 30 min before ───────────────────────────────────────────────
-  // TODO: add message text for 30-min reminder
+  // ── Snippet 2: 15 min before ───────────────────────────────────────────────
   {
     const { data: s2Tasks } = await supabase
       .from('ghl_task_reminders')
@@ -101,16 +100,17 @@ export async function GET(request: NextRequest) {
 
     for (const task of s2Tasks ?? []) {
       const name = firstName(task.contact_name)
-      const callTime = formatCallTime(task.due_date, task.contact_timezone)
-      // TODO: replace with actual 30-min message text
-      const message = `Hi ${name}, your call is in 30 minutes at ${callTime}. Please keep your phone nearby!`
+      const message =
+        `Hi ${name},\n\n` +
+        `Just a quick note before we reach out shortly. We'll be calling soon to go over your accident and discuss how people in similar situations are able to receive treatment and financial compensation. ` +
+        `If now isn't a good time anymore, just let us know and we can set another time that works better.`
 
       const result = await sendGhlMessage(task.contact_id, message)
       if (result.ok) {
         await supabase.from('ghl_task_reminders').update({ snippet_2_sent: true }).eq('id', task.id)
-        snippetResults.push(`✓ snippet-2 (30min) → ${task.contact_name ?? task.contact_id}`)
+        snippetResults.push(`✓ snippet-2 (15min) → ${task.contact_name ?? task.contact_id}`)
       } else {
-        snippetResults.push(`✗ snippet-2 (30min) → ${task.contact_name ?? task.contact_id} (${result.error})`)
+        snippetResults.push(`✗ snippet-2 (15min) → ${task.contact_name ?? task.contact_id} (${result.error})`)
       }
     }
   }

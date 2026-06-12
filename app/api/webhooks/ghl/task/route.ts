@@ -114,8 +114,8 @@ export async function POST(request: NextRequest) {
   // Snippet 1: 1 hour before the call
   const snippet1At = new Date(dueDate.getTime() - 60 * 60 * 1000)
 
-  // Snippet 2: 30 min before the call
-  const snippet2At = new Date(dueDate.getTime() - 30 * 60 * 1000)
+  // Snippet 2: 15 min before the call
+  const snippet2At = new Date(dueDate.getTime() - 15 * 60 * 1000)
 
   // Snippet 3: 9 AM on the day of the call in the PC's timezone,
   // but only if the call is on a different calendar day than right now.
