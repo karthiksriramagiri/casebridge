@@ -75,6 +75,9 @@ export async function POST(request: NextRequest) {
   }
 
   const notifyAt = new Date(dueDate.getTime() - 5 * 60 * 1000)
+  // Send GHL snippet 20 minutes before the call (configurable via GHL_SNIPPET_MINUTES)
+  const snippetMinutes = parseInt(process.env.GHL_SNIPPET_MINUTES || '20', 10)
+  const snippetAt = new Date(dueDate.getTime() - snippetMinutes * 60 * 1000)
 
   const { error } = await supabase
     .from('ghl_task_reminders')
@@ -87,6 +90,8 @@ export async function POST(request: NextRequest) {
       due_date: dueDate.toISOString(),
       notify_at: notifyAt.toISOString(),
       notified: false,
+      snippet_at: snippetAt.toISOString(),
+      snippet_sent: false,
     }, { onConflict: 'task_id' })
 
   if (error) {
@@ -94,5 +99,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, title, dueDate: dueDate.toISOString(), notifyAt: notifyAt.toISOString() })
+  return NextResponse.json({ success: true, title, dueDate: dueDate.toISOString(), notifyAt: notifyAt.toISOString(), snippetAt: snippetAt.toISOString() })
 }

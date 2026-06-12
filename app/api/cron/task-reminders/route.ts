@@ -7,6 +7,9 @@ const supabase = createClient(
 )
 
 const SLACK_WEBHOOK = process.env.SLACK_TASK_REMINDERS
+const GHL_API_KEY = process.env.GHL_API_KEY
+// Optional: set this to a GHL snippet/template ID to send a template instead of a plain message
+const GHL_SNIPPET_ID = process.env.GHL_CALL_SNIPPET_ID
 
 export async function GET(request: NextRequest) {
   // Verify cron secret via query param or header
@@ -30,7 +33,63 @@ export async function GET(request: NextRequest) {
   // Grace window: allow up to 30 minutes past due (handles late cron runs)
   const graceIso = new Date(now.getTime() - 30 * 60 * 1000).toISOString()
 
-  // Find tasks: notify_at has passed AND due_date is within the last 30 min (not way past due)
+  // ── GHL snippet sends (15-20 min before call) ──────────────────────────────
+  const snippetResults: string[] = []
+
+  if (GHL_API_KEY) {
+    const { data: snippetTasks } = await supabase
+      .from('ghl_task_reminders')
+      .select('*')
+      .eq('snippet_sent', false)
+      .lte('snippet_at', nowIso)
+      .gte('due_date', graceIso)
+
+    for (const task of snippetTasks ?? []) {
+      try {
+        const body: Record<string, string> = {
+          type: 'SMS',
+          contactId: task.contact_id,
+        }
+
+        if (GHL_SNIPPET_ID) {
+          body.templateId = GHL_SNIPPET_ID
+        } else {
+          const dueTime = new Date(task.due_date).toLocaleTimeString('en-US', {
+            hour: 'numeric',
+            minute: '2-digit',
+            hour12: true,
+            timeZone: 'America/Los_Angeles',
+          })
+          body.message = `Reminder: your onboarding call is coming up at ${dueTime} PT. Please be ready!`
+        }
+
+        const ghlRes = await fetch('https://services.leadconnectorhq.com/conversations/messages', {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${GHL_API_KEY}`,
+            Version: '2021-07-28',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        })
+
+        if (ghlRes.ok) {
+          await supabase
+            .from('ghl_task_reminders')
+            .update({ snippet_sent: true })
+            .eq('id', task.id)
+          snippetResults.push(`✓ snippet → ${task.contact_name ?? task.contact_id}`)
+        } else {
+          const errText = await ghlRes.text()
+          snippetResults.push(`✗ snippet → ${task.contact_name ?? task.contact_id} (${ghlRes.status}: ${errText.slice(0, 80)})`)
+        }
+      } catch (err) {
+        snippetResults.push(`✗ snippet → ${task.contact_name ?? task.contact_id} (fetch error)`)
+      }
+    }
+  }
+
+  // ── Slack notifications (5 min before call) ────────────────────────────────
   const { data: tasks, error } = await supabase
     .from('ghl_task_reminders')
     .select('*')
@@ -43,13 +102,9 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  if (!tasks || tasks.length === 0) {
-    return NextResponse.json({ sent: 0 })
-  }
-
   const results: string[] = []
 
-  for (const task of tasks) {
+  for (const task of tasks ?? []) {
     const dueTime = new Date(task.due_date).toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',
@@ -95,12 +150,10 @@ export async function GET(request: NextRequest) {
       })
 
       if (slackRes.ok) {
-        // Mark as notified
         await supabase
           .from('ghl_task_reminders')
           .update({ notified: true })
           .eq('id', task.id)
-
         results.push(`✓ ${task.title}`)
       } else {
         results.push(`✗ ${task.title} (slack ${slackRes.status})`)
@@ -110,5 +163,5 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ sent: results.length, results })
+  return NextResponse.json({ sent: results.length, snippets: snippetResults.length, results, snippetResults })
 }
