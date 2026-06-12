@@ -1,6 +1,10 @@
 {
   "crons": [
     {
+      "path": "/api/cron/task-reminders",
+      "schedule": "*/5 * * * *"
+    },
+    {
       "path": "/api/cron/shift-report",
       "schedule": "5 20 * * *"
     },
