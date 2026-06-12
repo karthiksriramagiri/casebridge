@@ -9,6 +9,25 @@ const supabase = createClient(
 const WEBHOOK_SECRET = process.env.GHL_WEBHOOK_SECRET
 const GHL_API_KEY = process.env.GHL_API_KEY
 
+// Returns the UTC Date that corresponds to 9:00 AM on the same calendar day
+// as `date`, but in the given IANA timezone (e.g. "America/New_York").
+function get9AMInTimezone(date: Date, timezone: string): Date {
+  // Get the calendar date string (YYYY-MM-DD) in the target timezone
+  const localDate = new Intl.DateTimeFormat('en-CA', { timeZone: timezone }).format(date)
+
+  // Walk through UTC hours 0–23 until the local hour in that timezone equals 9
+  for (let h = 0; h <= 23; h++) {
+    const candidate = new Date(`${localDate}T${String(h).padStart(2, '0')}:00:00Z`)
+    const localHour = parseInt(
+      new Intl.DateTimeFormat('en-US', { timeZone: timezone, hour: 'numeric', hour12: false }).format(candidate),
+      10
+    )
+    if (localHour === 9) return candidate
+  }
+  // Fallback: 9 AM UTC
+  return new Date(`${localDate}T09:00:00Z`)
+}
+
 export async function POST(request: NextRequest) {
   if (WEBHOOK_SECRET) {
     const secret = request.nextUrl.searchParams.get('secret')
@@ -26,7 +45,6 @@ export async function POST(request: NextRequest) {
 
   console.log('[task-webhook] payload keys:', Object.keys(payload))
 
-  // GHL sends contact_id reliably — use it to fetch the latest task via API
   const contactId = payload.contact_id || payload.contactId || payload.contact?.id || null
   const contactName = payload.full_name || payload.contact?.name || payload.contactName || null
 
@@ -34,22 +52,39 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'No contact ID in payload', payload }, { status: 400 })
   }
 
-  // Fetch all tasks for this contact from GHL and get the most recently created one
   let taskId: string | null = null
   let title = 'Untitled Task'
   let body: string | null = null
   let dueDate: Date | null = null
+  let contactTimezone = 'America/Los_Angeles' // default
 
   if (GHL_API_KEY) {
-    try {
-      const res = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tasks`, {
+    // Fetch tasks and contact details in parallel
+    const [tasksRes, contactRes] = await Promise.allSettled([
+      fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tasks`, {
         headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
         cache: 'no-store',
-      })
-      if (res.ok) {
-        const data = await res.json()
+      }),
+      fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+        headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
+        cache: 'no-store',
+      }),
+    ])
+
+    // Pull timezone from contact
+    if (contactRes.status === 'fulfilled' && contactRes.value.ok) {
+      try {
+        const contactData = await contactRes.value.json()
+        const tz = contactData.contact?.timezone || contactData.timezone
+        if (tz) contactTimezone = tz
+      } catch { /* keep default */ }
+    }
+
+    // Pull latest incomplete task
+    if (tasksRes.status === 'fulfilled' && tasksRes.value.ok) {
+      try {
+        const data = await tasksRes.value.json()
         const tasks: any[] = data.tasks || []
-        // Get the most recent incomplete task
         const latest = tasks
           .filter((t: any) => !t.completed)
           .sort((a: any, b: any) => new Date(b.createdAt || b.dateAdded || 0).getTime() - new Date(a.createdAt || a.dateAdded || 0).getTime())[0]
@@ -61,23 +96,34 @@ export async function POST(request: NextRequest) {
           const dueDateRaw = latest.dueDate || latest.due_date
           if (dueDateRaw) dueDate = new Date(dueDateRaw)
         }
+      } catch (err) {
+        console.error('[task-webhook] GHL tasks parse error:', err)
       }
-    } catch (err) {
-      console.error('[task-webhook] GHL fetch error:', err)
     }
   }
 
-  // Fallback: use contact ID as task ID if we couldn't fetch
   if (!taskId) taskId = `contact-${contactId}-${Date.now()}`
 
   if (!dueDate || isNaN(dueDate.getTime())) {
     return NextResponse.json({ error: 'No due date found on task', contactId }, { status: 400 })
   }
 
+  // Slack: 5 min before the call
   const notifyAt = new Date(dueDate.getTime() - 5 * 60 * 1000)
-  // Send GHL snippet 20 minutes before the call (configurable via GHL_SNIPPET_MINUTES)
-  const snippetMinutes = parseInt(process.env.GHL_SNIPPET_MINUTES || '20', 10)
-  const snippetAt = new Date(dueDate.getTime() - snippetMinutes * 60 * 1000)
+
+  // Snippet 1: 1 hour before the call
+  const snippet1At = new Date(dueDate.getTime() - 60 * 60 * 1000)
+
+  // Snippet 2: 30 min before the call
+  const snippet2At = new Date(dueDate.getTime() - 30 * 60 * 1000)
+
+  // Snippet 3: 9 AM on the day of the call in the PC's timezone,
+  // but only if the call is on a different calendar day than right now.
+  const nowLocalDate = new Intl.DateTimeFormat('en-CA', { timeZone: contactTimezone }).format(new Date())
+  const dueLocalDate = new Intl.DateTimeFormat('en-CA', { timeZone: contactTimezone }).format(dueDate)
+  const snippet3At = dueLocalDate !== nowLocalDate
+    ? get9AMInTimezone(dueDate, contactTimezone)
+    : null
 
   const { error } = await supabase
     .from('ghl_task_reminders')
@@ -85,13 +131,18 @@ export async function POST(request: NextRequest) {
       task_id: taskId,
       contact_id: contactId,
       contact_name: contactName,
+      contact_timezone: contactTimezone,
       title,
       body,
       due_date: dueDate.toISOString(),
       notify_at: notifyAt.toISOString(),
       notified: false,
-      snippet_at: snippetAt.toISOString(),
-      snippet_sent: false,
+      snippet_1_at: snippet1At.toISOString(),
+      snippet_1_sent: false,
+      snippet_2_at: snippet2At.toISOString(),
+      snippet_2_sent: false,
+      snippet_3_at: snippet3At?.toISOString() ?? null,
+      snippet_3_sent: false,
     }, { onConflict: 'task_id' })
 
   if (error) {
@@ -99,5 +150,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ success: true, title, dueDate: dueDate.toISOString(), notifyAt: notifyAt.toISOString(), snippetAt: snippetAt.toISOString() })
+  return NextResponse.json({
+    success: true,
+    title,
+    dueDate: dueDate.toISOString(),
+    contactTimezone,
+    snippet1At: snippet1At.toISOString(),
+    snippet2At: snippet2At.toISOString(),
+    snippet3At: snippet3At?.toISOString() ?? null,
+  })
 }
