@@ -9,12 +9,20 @@ const supabase = createClient(
 const SLACK_WEBHOOK = process.env.SLACK_TASK_REMINDERS
 const GHL_API_KEY = process.env.GHL_API_KEY
 
-// Snippet template IDs — set these env vars once you have the codes
-const GHL_SNIPPET_1_ID = process.env.GHL_SNIPPET_1_ID // 1 hour before
-const GHL_SNIPPET_2_ID = process.env.GHL_SNIPPET_2_ID // 30 min before
-const GHL_SNIPPET_3_ID = process.env.GHL_SNIPPET_3_ID // 9AM day-of
+function firstName(contactName: string | null): string {
+  return (contactName ?? '').split(' ')[0] || 'there'
+}
 
-async function sendGhlSnippet(contactId: string, templateId: string): Promise<{ ok: boolean; error?: string }> {
+function formatCallTime(dueDateIso: string, timezone: string): string {
+  return new Date(dueDateIso).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+    hour12: true,
+    timeZone: timezone || 'America/Los_Angeles',
+  })
+}
+
+async function sendGhlMessage(contactId: string, message: string): Promise<{ ok: boolean; error?: string }> {
   if (!GHL_API_KEY) return { ok: false, error: 'No GHL API key' }
 
   const res = await fetch('https://services.leadconnectorhq.com/conversations/messages', {
@@ -24,11 +32,7 @@ async function sendGhlSnippet(contactId: string, templateId: string): Promise<{ 
       Version: '2021-07-28',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({
-      type: 'SMS',
-      contactId,
-      templateId,
-    }),
+    body: JSON.stringify({ type: 'SMS', contactId, message }),
   })
 
   if (res.ok) return { ok: true }
@@ -59,62 +63,81 @@ export async function GET(request: NextRequest) {
   const snippetResults: string[] = []
 
   // ── Snippet 1: 1 hour before ───────────────────────────────────────────────
-  if (GHL_SNIPPET_1_ID) {
+  {
     const { data: s1Tasks } = await supabase
       .from('ghl_task_reminders')
-      .select('id, contact_id, contact_name')
+      .select('id, contact_id, contact_name, due_date, contact_timezone')
       .eq('snippet_1_sent', false)
       .lte('snippet_1_at', nowIso)
       .gte('due_date', graceIso)
 
     for (const task of s1Tasks ?? []) {
-      const result = await sendGhlSnippet(task.contact_id, GHL_SNIPPET_1_ID)
+      const name = firstName(task.contact_name)
+      const message =
+        `Hi ${name},\n\n` +
+        `Just a quick heads up that our call is coming up in about an hour. ` +
+        `During the call, we'll review your accident details and see how we can help you move forward with treatment and your case. ` +
+        `Please keep your phone nearby and if you need to reschedule, feel free to let us know!`
+
+      const result = await sendGhlMessage(task.contact_id, message)
       if (result.ok) {
         await supabase.from('ghl_task_reminders').update({ snippet_1_sent: true }).eq('id', task.id)
-        snippetResults.push(`✓ snippet-1 → ${task.contact_name ?? task.contact_id}`)
+        snippetResults.push(`✓ snippet-1 (1hr) → ${task.contact_name ?? task.contact_id}`)
       } else {
-        snippetResults.push(`✗ snippet-1 → ${task.contact_name ?? task.contact_id} (${result.error})`)
+        snippetResults.push(`✗ snippet-1 (1hr) → ${task.contact_name ?? task.contact_id} (${result.error})`)
       }
     }
   }
 
   // ── Snippet 2: 30 min before ───────────────────────────────────────────────
-  if (GHL_SNIPPET_2_ID) {
+  // TODO: add message text for 30-min reminder
+  {
     const { data: s2Tasks } = await supabase
       .from('ghl_task_reminders')
-      .select('id, contact_id, contact_name')
+      .select('id, contact_id, contact_name, due_date, contact_timezone')
       .eq('snippet_2_sent', false)
       .lte('snippet_2_at', nowIso)
       .gte('due_date', graceIso)
 
     for (const task of s2Tasks ?? []) {
-      const result = await sendGhlSnippet(task.contact_id, GHL_SNIPPET_2_ID)
+      const name = firstName(task.contact_name)
+      const callTime = formatCallTime(task.due_date, task.contact_timezone)
+      // TODO: replace with actual 30-min message text
+      const message = `Hi ${name}, your call is in 30 minutes at ${callTime}. Please keep your phone nearby!`
+
+      const result = await sendGhlMessage(task.contact_id, message)
       if (result.ok) {
         await supabase.from('ghl_task_reminders').update({ snippet_2_sent: true }).eq('id', task.id)
-        snippetResults.push(`✓ snippet-2 → ${task.contact_name ?? task.contact_id}`)
+        snippetResults.push(`✓ snippet-2 (30min) → ${task.contact_name ?? task.contact_id}`)
       } else {
-        snippetResults.push(`✗ snippet-2 → ${task.contact_name ?? task.contact_id} (${result.error})`)
+        snippetResults.push(`✗ snippet-2 (30min) → ${task.contact_name ?? task.contact_id} (${result.error})`)
       }
     }
   }
 
   // ── Snippet 3: 9 AM day-of (next-day calls only) ───────────────────────────
-  if (GHL_SNIPPET_3_ID) {
+  // TODO: add message text for day-before reminder
+  {
     const { data: s3Tasks } = await supabase
       .from('ghl_task_reminders')
-      .select('id, contact_id, contact_name')
+      .select('id, contact_id, contact_name, due_date, contact_timezone')
       .eq('snippet_3_sent', false)
       .not('snippet_3_at', 'is', null)
       .lte('snippet_3_at', nowIso)
-      .gte('due_date', nowIso) // call hasn't happened yet
+      .gte('due_date', nowIso)
 
     for (const task of s3Tasks ?? []) {
-      const result = await sendGhlSnippet(task.contact_id, GHL_SNIPPET_3_ID)
+      const name = firstName(task.contact_name)
+      const callTime = formatCallTime(task.due_date, task.contact_timezone)
+      // TODO: replace with actual day-before message text
+      const message = `Hi ${name}, just a reminder that your call is scheduled for tomorrow at ${callTime}. We look forward to speaking with you!`
+
+      const result = await sendGhlMessage(task.contact_id, message)
       if (result.ok) {
         await supabase.from('ghl_task_reminders').update({ snippet_3_sent: true }).eq('id', task.id)
-        snippetResults.push(`✓ snippet-3 → ${task.contact_name ?? task.contact_id}`)
+        snippetResults.push(`✓ snippet-3 (9am) → ${task.contact_name ?? task.contact_id}`)
       } else {
-        snippetResults.push(`✗ snippet-3 → ${task.contact_name ?? task.contact_id} (${result.error})`)
+        snippetResults.push(`✗ snippet-3 (9am) → ${task.contact_name ?? task.contact_id} (${result.error})`)
       }
     }
   }
