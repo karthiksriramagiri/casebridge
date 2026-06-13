@@ -29,6 +29,10 @@ const nextConfig = {
         source: "/backfill",
         destination: "https://sms-bot-production-3b71.up.railway.app/backfill",
       },
+      {
+        source: "/nuances",
+        destination: "/nuances/index.html",
+      },
     ]
   },
 }
