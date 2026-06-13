@@ -2,7 +2,7 @@ import { readFileSync } from 'fs'
 import { join } from 'path'
 
 export async function GET() {
-  const html = readFileSync(join(process.cwd(), 'public', 'nuances', 'index.html'), 'utf-8')
+  const html = readFileSync(join(process.cwd(), 'lib', 'nuances.html'), 'utf-8')
   return new Response(html, {
     headers: { 'Content-Type': 'text/html; charset=utf-8' },
   })

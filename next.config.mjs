@@ -6,6 +6,11 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
+  experimental: {
+    outputFileTracingIncludes: {
+      '/nuances': ['./lib/nuances.html'],
+    },
+  },
   async rewrites() {
     return [
       {
