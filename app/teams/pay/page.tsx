@@ -23,6 +23,8 @@ interface PreviousPeriod {
   total: number
   dailySessions: DaySession[]
   eligibleCases: CaseEntry[]
+  lateEligibleCases: CaseEntry[]
+  stillPendingCases: CaseEntry[]
 }
 
 interface PayData {
@@ -318,10 +320,60 @@ export default function PayPage() {
                             hourlyRate={5}
                             hourlyPay={p.hourlyPay}
                           />
-                          <CommissionBreakdown
-                            eligibleCases={p.eligibleCases}
-                            commission={p.commission}
-                          />
+                          <div className="space-y-3">
+                            <CommissionBreakdown
+                              eligibleCases={p.eligibleCases}
+                              commission={p.commission}
+                            />
+                            {p.lateEligibleCases?.length > 0 && (
+                              <div className="bg-blue-50 rounded-xl border border-blue-200 overflow-hidden">
+                                <div className="px-5 py-3 border-b border-blue-200 flex items-center justify-between">
+                                  <div>
+                                    <h2 className="font-semibold text-blue-900 text-sm">Cleared After Paycheck</h2>
+                                    <p className="text-xs text-blue-600 mt-0.5">Paid in next check</p>
+                                  </div>
+                                  <span className="text-sm font-bold text-blue-800">
+                                    {fmt$(p.lateEligibleCases.reduce((s, c) => s + c.commission, 0))}
+                                  </span>
+                                </div>
+                                <div className="divide-y divide-blue-100">
+                                  {p.lateEligibleCases.map(c => (
+                                    <div key={c.id} className="flex items-center justify-between px-5 py-2.5">
+                                      <div>
+                                        <p className="text-sm font-semibold text-blue-900">{c.name}</p>
+                                        <p className="text-xs text-blue-500">{c.date ? format(parseISO(c.date), 'MMM d') : '—'}</p>
+                                      </div>
+                                      <span className="text-sm font-bold text-blue-700">+{fmt$(c.commission)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                            {p.stillPendingCases?.length > 0 && (
+                              <div className="bg-yellow-50 rounded-xl border border-yellow-200 overflow-hidden">
+                                <div className="px-5 py-3 border-b border-yellow-200 flex items-center justify-between">
+                                  <div>
+                                    <h2 className="font-semibold text-yellow-900 text-sm">Still Pending</h2>
+                                    <p className="text-xs text-yellow-600 mt-0.5">Awaiting replacement window</p>
+                                  </div>
+                                  <span className="text-sm font-bold text-yellow-800">
+                                    {fmt$(p.stillPendingCases.reduce((s, c) => s + c.commission, 0))}
+                                  </span>
+                                </div>
+                                <div className="divide-y divide-yellow-100">
+                                  {p.stillPendingCases.map(c => (
+                                    <div key={c.id} className="flex items-center justify-between px-5 py-2.5">
+                                      <div>
+                                        <p className="text-sm font-semibold text-yellow-900">{c.name}</p>
+                                        <p className="text-xs text-yellow-600">{c.date ? format(parseISO(c.date), 'MMM d') : '—'}</p>
+                                      </div>
+                                      <span className="text-sm font-semibold text-yellow-700">+{fmt$(c.commission)}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}

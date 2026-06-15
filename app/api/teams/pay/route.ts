@@ -166,12 +166,21 @@ export async function GET() {
     const { sessions: periodDailySessions, totalHours: periodHours } = buildDailySessions(periodRows)
     const periodHourlyPay = Math.round(periodHours * HOURLY_RATE * 100) / 100
 
-    // Use paycheck date (end) as eligibility cutoff — not today
+    // Cases eligible by paycheck date — what was actually in that paycheck
     const eligibleInPeriod = allSignedCases.filter(
       c => c.date >= startStr && c.date < endStr && c.eligibleAt <= end
     )
     const periodCommission = eligibleInPeriod.reduce((sum, c) => sum + c.commission, 0)
     const periodTotal = Math.round((periodHourlyPay + periodCommission) * 100) / 100
+
+    // Cases signed this period that cleared AFTER the paycheck (window ended later)
+    const lateEligibleCases = allSignedCases.filter(
+      c => c.date >= startStr && c.date < endStr && c.eligibleAt > end && c.eligibleAt <= now
+    )
+    // Cases signed this period still pending
+    const stillPendingCases = allSignedCases.filter(
+      c => c.date >= startStr && c.date < endStr && c.eligibleAt > now
+    )
 
     return {
       start: startStr,
@@ -184,6 +193,8 @@ export async function GET() {
       total: periodTotal,
       dailySessions: periodDailySessions,
       eligibleCases: eligibleInPeriod.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
+      lateEligibleCases: lateEligibleCases.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
+      stillPendingCases: stillPendingCases.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
     }
   }).reverse() // Most recent first
 
