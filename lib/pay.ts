@@ -1,41 +1,48 @@
 // ─── Pay calculation rules ───────────────────────────────────────────────────
 // Shift:       2:00 PM – 11:00 PM EST (9 regular hours)
-// Overtime:    > 9h/day @ $6/hr
 // Rounding:    floor each session to nearest 0.05h; ignore sessions < 0.05h
-// Pay period:  2nd and 4th Friday of every month
+// Pay period:  bi-weekly (every 14 days), anchored to Fri Jun 12, 2026
 // Commission:  $25 per signed case, $10 per replacement case (constant)
 
 export const OVERTIME_HOURLY = 6
+
+// Legacy rates: cases signed on or before Jun 12, 2026
 export const COMMISSION_PER_CLOSED = 25
 export const COMMISSION_PER_REPLACEMENT = 10
 
-/** Returns the 2nd and 4th Fridays of a given month (0-indexed month) */
-function payFridaysInMonth(year: number, month: number): [Date, Date | null] {
-  const fridays: Date[] = []
-  // Start from day 1, walk until we collect all Fridays in the month
-  const d = new Date(Date.UTC(year, month, 1))
-  while (d.getUTCMonth() === month) {
-    if (d.getUTCDay() === 5) fridays.push(new Date(d))
-    d.setUTCDate(d.getUTCDate() + 1)
+// New rates effective Jun 13, 2026 onward
+export const COMMISSION_CUTOFF = new Date(Date.UTC(2026, 5, 13)) // Jun 13, 2026
+export const COMMISSION_PER_CLOSED_NEW = 30
+export const COMMISSION_PER_REPLACEMENT_NEW = 0  // replacements no longer earn commission
+
+export const DEFAULT_REPLACEMENT_WINDOW_DAYS = 28
+
+// Bi-weekly anchor: confirmed pay date Fri Jun 12, 2026
+const ANCHOR_PAY_DATE = new Date(Date.UTC(2026, 5, 12)) // June 12, 2026 UTC
+const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000
+
+/**
+ * Generates bi-weekly pay dates centered around `now`.
+ * Every pay date is exactly 14 days apart from the previous.
+ */
+function nearbyPayDates(now: Date): Date[] {
+  const cycles = Math.round((now.getTime() - ANCHOR_PAY_DATE.getTime()) / TWO_WEEKS_MS)
+  const dates: Date[] = []
+  for (let i = cycles - 4; i <= cycles + 4; i++) {
+    dates.push(new Date(ANCHOR_PAY_DATE.getTime() + i * TWO_WEEKS_MS))
   }
-  // 2nd Friday = index 1, 4th Friday = index 3
-  return [fridays[1], fridays[3] ?? null]
+  return dates.sort((a, b) => a.getTime() - b.getTime())
 }
 
 /**
- * All pay dates for a window of months around `now`, sorted ascending.
- * We generate prev month + current + next to cover edge cases.
+ * All pay dates from `periodsBack` pay periods ago up to 4 ahead, sorted ascending.
+ * Used to enumerate historical pay periods.
  */
-function nearbyPayDates(now: Date): Date[] {
-  const year = now.getUTCFullYear()
-  const month = now.getUTCMonth()
+export function recentPayDates(now: Date, periodsBack = 8): Date[] {
+  const cycles = Math.round((now.getTime() - ANCHOR_PAY_DATE.getTime()) / TWO_WEEKS_MS)
   const dates: Date[] = []
-  for (let m = month - 1; m <= month + 2; m++) {
-    const y = year + Math.floor(m / 12)
-    const mo = ((m % 12) + 12) % 12
-    const [second, fourth] = payFridaysInMonth(y, mo)
-    dates.push(second)
-    if (fourth) dates.push(fourth)
+  for (let i = cycles - periodsBack; i <= cycles + 4; i++) {
+    dates.push(new Date(ANCHOR_PAY_DATE.getTime() + i * TWO_WEEKS_MS))
   }
   return dates.sort((a, b) => a.getTime() - b.getTime())
 }

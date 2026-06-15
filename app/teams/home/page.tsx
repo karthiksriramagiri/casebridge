@@ -220,7 +220,7 @@ export default function HomePage() {
           <LeaderboardCard
             title={`🏆 ${month} Leaderboard`}
             entries={d?.thisMonthLeaderboard ?? []}
-            emptyText="No closes this month yet."
+            emptyText="No closes yet."
           />
           <LeaderboardCard
             title={`📅 ${lastMonth} Final Standings`}

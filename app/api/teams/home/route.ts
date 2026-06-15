@@ -3,8 +3,9 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as adminClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
-  billableHoursForDay, splitOvertimeHours,
-  COMMISSION_PER_CLOSED, COMMISSION_PER_REPLACEMENT,
+  billableHoursForDay,
+  COMMISSION_PER_CLOSED, COMMISSION_PER_CLOSED_NEW,
+  COMMISSION_CUTOFF, DEFAULT_REPLACEMENT_WINDOW_DAYS,
 } from '@/lib/pay'
 
 const admin = adminClient(
@@ -36,10 +37,16 @@ export async function GET() {
   const periodStartStr = periodStart.toISOString().slice(0, 10)
   const periodEndStr   = periodEnd.toISOString().slice(0, 10)
 
-  // All rep profiles
+  // All rep profiles — build both id→name and name→id maps
   const { data: repProfiles } = await admin.from('profiles').select('id, name').eq('role', 'rep')
-  const profileById: Record<string, string> = {}
-  for (const p of repProfiles || []) { if (p.id && p.name) profileById[p.id] = p.name }
+  const profileById: Record<string, string> = {}   // id → name
+  const profileIdByName: Record<string, string> = {} // name → id
+  for (const p of repProfiles || []) {
+    if (p.id && p.name) {
+      profileById[p.id] = p.name
+      profileIdByName[p.name.trim().toLowerCase()] = p.id
+    }
+  }
 
   const [
     ghlThisMonthRes, ghlLastMonthRes,
@@ -48,19 +55,17 @@ export async function GET() {
     modulesRes, attemptsRes,
     timeRes, payCasesRes,
   ] = await Promise.all([
-    // GHL closes this month
+    // GHL closes this month (include closer text field as fallback for unlinked reps)
     admin.from('ghl_leads')
-      .select('closed_by_profile_id')
+      .select('closed_by_profile_id, closer')
       .gte('qualified_at', thisMonthStart + 'T00:00:00Z')
-      .not('closed_by_profile_id', 'is', null)
       .neq('case_status', 'replacement'),
 
     // GHL closes last month
     admin.from('ghl_leads')
-      .select('closed_by_profile_id')
+      .select('closed_by_profile_id, closer')
       .gte('qualified_at', lastMonthStart + 'T00:00:00Z')
       .lt('qualified_at', lastMonthEnd + 'T00:00:00Z')
-      .not('closed_by_profile_id', 'is', null)
       .neq('case_status', 'replacement'),
 
     // All-time for current user (ghl)
@@ -97,19 +102,24 @@ export async function GET() {
       .lt('qualified_at', periodEndStr + 'T00:00:00Z'),
   ])
 
-  // --- Build leaderboards ---
+  // --- Build leaderboards (include all reps, fall back to closer text field) ---
   function buildLeaderboard(rows: any[]) {
     const counts: Record<string, { name: string; count: number; userId: string }> = {}
+    // Seed every rep at 0
+    for (const [uid, name] of Object.entries(profileById)) {
+      counts[uid] = { name, count: 0, userId: uid }
+    }
     for (const row of rows) {
-      const uid = row.closed_by_profile_id
-      if (!uid) continue
-      const name = profileById[uid]
-      if (!name) continue
-      if (!counts[uid]) counts[uid] = { name, count: 0, userId: uid }
+      // Resolve rep: prefer profile_id link, fall back to closer text
+      let uid = row.closed_by_profile_id as string | null
+      if (!uid && row.closer) {
+        uid = profileIdByName[(row.closer as string).trim().toLowerCase()] ?? null
+      }
+      if (!uid || !counts[uid]) continue
       counts[uid].count++
     }
     return Object.values(counts)
-      .sort((a, b) => b.count - a.count)
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
       .map((e, i) => ({ ...e, rank: i + 1, isMe: e.userId === user.id }))
   }
 
@@ -131,19 +141,21 @@ export async function GET() {
     if (!byDay[e.date]) byDay[e.date] = []
     byDay[e.date].push({ clock_in: e.clock_in, clock_out: e.clock_out })
   }
-  let totalRegular = 0, totalOvertime = 0
+  let totalHours = 0
   for (const entries of Object.values(byDay)) {
-    const { regular, overtime } = splitOvertimeHours(billableHoursForDay(entries))
-    totalRegular += regular
-    totalOvertime += overtime
+    totalHours += billableHoursForDay(entries)
   }
-  const hourlyEarnings = Math.round((totalRegular * HOURLY_RATE + totalOvertime * 6) * 100) / 100
+  const hourlyEarnings = Math.round(totalHours * HOURLY_RATE * 100) / 100
 
   let commissionSigned = 0
   for (const c of payCasesRes.data || []) {
-    const windowDays = (c.firms as any)?.replacement_window_days ?? 14
-    const eligibleAt = new Date(new Date(c.qualified_at).getTime() + windowDays * 24 * 60 * 60 * 1000)
-    if (c.case_status !== 'replacement' && eligibleAt <= now) commissionSigned += COMMISSION_PER_CLOSED
+    if (!c.qualified_at || c.case_status === 'replacement') continue
+    const qualifiedAt = new Date(c.qualified_at)
+    const windowDays = (c.firms as any)?.replacement_window_days ?? DEFAULT_REPLACEMENT_WINDOW_DAYS
+    const eligibleAt = new Date(qualifiedAt.getTime() + windowDays * 24 * 60 * 60 * 1000)
+    if (eligibleAt <= now) {
+      commissionSigned += qualifiedAt < COMMISSION_CUTOFF ? COMMISSION_PER_CLOSED : COMMISSION_PER_CLOSED_NEW
+    }
   }
   const paycheckEstimate = hourlyEarnings + commissionSigned
 

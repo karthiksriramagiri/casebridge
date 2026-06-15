@@ -3,8 +3,10 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as adminClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
-  billableHoursForDay, splitOvertimeHours,
+  billableHoursForDay, recentPayDates,
   COMMISSION_PER_CLOSED, COMMISSION_PER_REPLACEMENT,
+  COMMISSION_PER_CLOSED_NEW,
+  COMMISSION_CUTOFF, DEFAULT_REPLACEMENT_WINDOW_DAYS,
 } from '@/lib/pay'
 
 const admin = adminClient(
@@ -20,14 +22,33 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const now = new Date()
+  const nowMs = now.getTime()
   const todayStr = now.toISOString().slice(0, 10)
   const periodStart = currentPayPeriodStart(now)
   const periodEnd   = nextPaymentDate(now)
   const periodStartStr = periodStart.toISOString().slice(0, 10)
   const periodEndStr   = periodEnd.toISOString().slice(0, 10)
 
-  const [timeRes, casesRes, todayRes] = await Promise.all([
-    // Time entries for this pay period
+  // Build list of previous completed pay periods (last 4)
+  const allPayDates = recentPayDates(now, 4)
+  const pastDates = allPayDates.filter(d => d.getTime() < nowMs)
+  const completedPeriods: { start: Date; end: Date }[] = []
+  for (let i = 0; i < pastDates.length - 1; i++) {
+    if (pastDates[i + 1].getTime() <= periodStart.getTime()) {
+      completedPeriods.push({ start: pastDates[i], end: pastDates[i + 1] })
+    }
+  }
+  const prevPeriods = completedPeriods.slice(-4)
+  const historyStartStr = prevPeriods.length > 0
+    ? prevPeriods[0].start.toISOString().slice(0, 10)
+    : periodStartStr
+
+  // Fetch the rep's display name so we can match closer text field
+  const { data: profile } = await admin.from('profiles').select('name').eq('id', user.id).single()
+  const repName = (profile?.name || '').trim()
+
+  const [timeRes, histTimeRes, casesRes, todayRes] = await Promise.all([
+    // Time entries for current period (with IDs for session detail)
     admin.from('time_entries')
       .select('id, date, clock_in, clock_out')
       .eq('profile_id', user.id)
@@ -36,11 +57,19 @@ export async function GET() {
       .order('date', { ascending: true })
       .order('clock_in', { ascending: true }),
 
-    // All cases ever closed by this rep — we need all, not just this period,
-    // so we can show pending cases from previous periods too
+    // Time entries for historical periods (with IDs for session detail)
+    admin.from('time_entries')
+      .select('id, date, clock_in, clock_out')
+      .eq('profile_id', user.id)
+      .gte('date', historyStartStr)
+      .lt('date', periodStartStr)
+      .order('date', { ascending: true })
+      .order('clock_in', { ascending: true }),
+
+    // All cases closed by this rep — match by profile_id OR closer name
     admin.from('ghl_leads')
       .select('id, contact_name, case_status, qualified_at, firms(replacement_window_days)')
-      .eq('closed_by_profile_id', user.id)
+      .or(`closed_by_profile_id.eq.${user.id}${repName ? `,closer.ilike.${repName}` : ''}`)
       .order('qualified_at', { ascending: false }),
 
     // Today's time entries for the timeclock widget
@@ -51,109 +80,112 @@ export async function GET() {
       .order('clock_in', { ascending: true }),
   ])
 
-  // --- Aggregate hours by day, keep individual sessions ---
+  // --- Current period: aggregate hours by day, keep individual sessions ---
   type SessionEntry = { id: string; clock_in: string; clock_out: string | null; hours: number; pay: number }
-  const byDay: Record<string, { clock_in: string; clock_out: string | null }[]> = {}
-  const byDayWithIds: Record<string, { id: string; clock_in: string; clock_out: string | null }[]> = {}
+  type DayEntry = { date: string; totalHours: number; totalPay: number; sessions: SessionEntry[] }
 
-  for (const e of timeRes.data || []) {
-    if (!byDay[e.date]) byDay[e.date] = []
-    if (!byDayWithIds[e.date]) byDayWithIds[e.date] = []
-    byDay[e.date].push({ clock_in: e.clock_in, clock_out: e.clock_out })
-    byDayWithIds[e.date].push({ id: e.id, clock_in: e.clock_in, clock_out: e.clock_out })
+  function buildDailySessions(
+    rows: { id: string; date: string; clock_in: string; clock_out: string | null }[]
+  ): { sessions: DayEntry[]; totalHours: number } {
+    const byDay: Record<string, typeof rows> = {}
+    for (const e of rows) {
+      if (!byDay[e.date]) byDay[e.date] = []
+      byDay[e.date].push(e)
+    }
+    let totalHours = 0
+    const days: DayEntry[] = []
+    for (const [date, entries] of Object.entries(byDay)) {
+      const billable = billableHoursForDay(entries.map(e => ({ clock_in: e.clock_in, clock_out: e.clock_out })))
+      totalHours += billable
+      const sessionEntries: SessionEntry[] = entries.map(e => {
+        const endMs = e.clock_out ? new Date(e.clock_out).getTime() : nowMs
+        const rawH = Math.max(0, (endMs - new Date(e.clock_in).getTime()) / 3_600_000)
+        const h = Math.round(rawH * 100) / 100
+        return { id: e.id, clock_in: e.clock_in, clock_out: e.clock_out, hours: h, pay: Math.round(h * HOURLY_RATE * 100) / 100 }
+      })
+      days.push({ date, totalHours: billable, totalPay: Math.round(billable * HOURLY_RATE * 100) / 100, sessions: sessionEntries })
+    }
+    days.sort((a, b) => a.date.localeCompare(b.date))
+    return { sessions: days, totalHours: Math.round(totalHours * 100) / 100 }
   }
 
-  let totalRegular = 0
-  let totalOvertime = 0
-  const nowMs = now.getTime()
+  const { sessions: dailySessions, totalHours } = buildDailySessions(timeRes.data || [])
 
-  const dailySessions: {
-    date: string
-    totalHours: number
-    totalPay: number
-    sessions: SessionEntry[]
-  }[] = []
-
-  for (const [date, entries] of Object.entries(byDay)) {
-    const billable = billableHoursForDay(entries)
-    const { regular, overtime } = splitOvertimeHours(billable)
-    totalRegular += regular
-    totalOvertime += overtime
-
-    // Build individual session entries with duration
-    const sessionEntries: SessionEntry[] = byDayWithIds[date].map(e => {
-      const endMs = e.clock_out ? new Date(e.clock_out).getTime() : nowMs
-      const rawHours = Math.max(0, (endMs - new Date(e.clock_in).getTime()) / 3_600_000)
-      const sessionHours = Math.round(rawHours * 100) / 100
-      return {
-        id: e.id,
-        clock_in: e.clock_in,
-        clock_out: e.clock_out,
-        hours: sessionHours,
-        pay: Math.round(sessionHours * HOURLY_RATE * 100) / 100,
-      }
-    })
-
-    dailySessions.push({
-      date,
-      totalHours: regular + overtime,
-      totalPay: Math.round((regular * HOURLY_RATE + overtime * 6) * 100) / 100,
-      sessions: sessionEntries,
-    })
-  }
-
-  // --- Classify cases ---
-  // Signed: eligible if qualified_at + replacement_window_days <= today
-  // Replacement: always eligible for $10
-  const signedEligible: any[] = []
-  const signedPending: any[] = []
-  const replacements: any[] = []
+  // --- Classify cases — rate depends on qualified_at vs cutoff ---
+  type CaseEntry = { id: string; name: string; date: string; eligibleAt: Date; commission: number }
+  const allSignedCases: CaseEntry[] = []
 
   for (const c of casesRes.data || []) {
-    const status = c.case_status || 'e_signed'
-    const windowDays = (c.firms as any)?.replacement_window_days ?? 14
+    if (!c.qualified_at) continue
     const qualifiedAt = new Date(c.qualified_at)
-    const eligibleAt = new Date(qualifiedAt.getTime() + windowDays * 24 * 60 * 60 * 1000)
-    const isEligible = eligibleAt <= now
+    const isLegacy = qualifiedAt < COMMISSION_CUTOFF
+    const isReplacement = (c.case_status || '').toLowerCase() === 'replacement'
 
-    if (status === 'replacement') {
-      replacements.push({ ...c, windowDays, eligibleAt: eligibleAt.toISOString().slice(0, 10) })
+    // Determine commission amount for this case
+    let commissionAmount: number
+    if (isReplacement) {
+      commissionAmount = isLegacy ? COMMISSION_PER_REPLACEMENT : 0
     } else {
-      const entry = {
-        id: c.id,
-        name: c.contact_name || 'Unknown',
-        date: c.qualified_at?.slice(0, 10),
-        eligibleDate: eligibleAt.toISOString().slice(0, 10),
-        windowDays,
-        commission: COMMISSION_PER_CLOSED,
-      }
-      if (isEligible) {
-        signedEligible.push(entry)
-      } else {
-        signedPending.push(entry)
-      }
+      commissionAmount = isLegacy ? COMMISSION_PER_CLOSED : COMMISSION_PER_CLOSED_NEW
     }
+    if (commissionAmount === 0) continue // skip $0-commission cases
+
+    const windowDays = (c.firms as any)?.replacement_window_days ?? DEFAULT_REPLACEMENT_WINDOW_DAYS
+    const eligibleAt = new Date(qualifiedAt.getTime() + windowDays * 24 * 60 * 60 * 1000)
+    allSignedCases.push({
+      id: c.id,
+      name: c.contact_name || 'Unknown',
+      date: c.qualified_at.slice(0, 10),
+      eligibleAt,
+      commission: commissionAmount,
+    })
   }
 
-  const replacementEntries = replacements.map(c => ({
-    id: c.id,
-    name: c.contact_name || 'Unknown',
-    date: c.qualified_at?.slice(0, 10),
-    commission: COMMISSION_PER_REPLACEMENT,
-  }))
-
-  // --- Only count eligible cases toward this period's paycheck ---
-  // Eligible signed cases closed within this pay period
-  const eligibleThisPeriod = signedEligible.filter(
-    c => c.date >= periodStartStr && c.date < periodEndStr
+  // Current period: became eligible after last paycheck (periodStart) and on/before today
+  // This captures cases signed in ANY past period whose 28-day window cleared during this period
+  const eligibleThisPeriod = allSignedCases.filter(
+    c => c.eligibleAt > periodStart && c.eligibleAt <= now
   )
-  const replacementsThisPeriod = replacementEntries.filter(
-    c => c.date >= periodStartStr && c.date < periodEndStr
+  // Pending: not yet eligible (will pay out in a future paycheck)
+  const signedPending = allSignedCases.filter(
+    c => c.eligibleAt > now
   )
 
-  const hourlyEarnings    = Math.round((totalRegular * HOURLY_RATE + totalOvertime * 6) * 100) / 100
-  const commissionSigned  = eligibleThisPeriod.length * COMMISSION_PER_CLOSED
-  const totalEstimated    = hourlyEarnings + commissionSigned
+  const hourlyEarnings   = Math.round(totalHours * HOURLY_RATE * 100) / 100
+  const commissionSigned = eligibleThisPeriod.reduce((sum, c) => sum + c.commission, 0)
+  const totalEstimated   = hourlyEarnings + commissionSigned
+
+  // --- Historical periods: check eligibility against paycheck date (not today) ---
+  const histRows = histTimeRes.data || []
+
+  const previousPeriods = prevPeriods.map(({ start, end }) => {
+    const startStr = start.toISOString().slice(0, 10)
+    const endStr = end.toISOString().slice(0, 10)
+
+    const periodRows = histRows.filter(e => e.date >= startStr && e.date < endStr)
+    const { sessions: periodDailySessions, totalHours: periodHours } = buildDailySessions(periodRows)
+    const periodHourlyPay = Math.round(periodHours * HOURLY_RATE * 100) / 100
+
+    // Use paycheck date (end) as eligibility cutoff — not today
+    const eligibleInPeriod = allSignedCases.filter(
+      c => c.date >= startStr && c.date < endStr && c.eligibleAt <= end
+    )
+    const periodCommission = eligibleInPeriod.reduce((sum, c) => sum + c.commission, 0)
+    const periodTotal = Math.round((periodHourlyPay + periodCommission) * 100) / 100
+
+    return {
+      start: startStr,
+      end: endStr,
+      payDate: fmtPayDate(end),
+      hours: periodHours,
+      hourlyPay: periodHourlyPay,
+      commissionCases: eligibleInPeriod.length,
+      commission: periodCommission,
+      total: periodTotal,
+      dailySessions: periodDailySessions,
+      eligibleCases: eligibleInPeriod.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
+    }
+  }).reverse() // Most recent first
 
   return NextResponse.json({
     period: {
@@ -162,13 +194,12 @@ export async function GET() {
       nextPayDate: fmtPayDate(periodEnd),
     },
     hours: {
-      regular: Math.round(totalRegular * 100) / 100,
-      overtime: Math.round(totalOvertime * 100) / 100,
+      total: totalHours,
       dailySessions,
     },
     cases: {
-      eligibleThisPeriod,
-      pending: signedPending,
+      eligibleThisPeriod: eligibleThisPeriod.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
+      pending: signedPending.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
     },
     pay: {
       hourlyRate: HOURLY_RATE,
@@ -176,6 +207,7 @@ export async function GET() {
       commissionSigned,
       totalEstimated,
     },
+    previousPeriods,
     todayEntries: todayRes.data || [],
   })
 }
