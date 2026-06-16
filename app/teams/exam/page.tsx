@@ -63,6 +63,7 @@ export default function ExamPage() {
   const [submitted, setSubmitted] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [result, setResult] = useState<{ score: number; passed: boolean; attemptNumber: number; breakdown: BreakdownItem[] } | null>(null)
+  const [submitError, setSubmitError] = useState<string | null>(null)
 
   // Tick to detect when exam unlocks
   useEffect(() => {
@@ -102,21 +103,28 @@ export default function ExamPage() {
     }
 
     setSubmitting(true)
+    setSubmitError(null)
     const answerArray = examData.questions.map(q => ({
       questionId: q.id,
       selectedOptionId: answers[q.id] ?? '',
     })).filter(a => a.selectedOptionId)
 
-    const res = await fetch('/api/teams/quiz', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ moduleId: examData.exam.id, answers: answerArray }),
-    })
+    try {
+      const res = await fetch('/api/teams/quiz', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ moduleId: examData.exam.id, answers: answerArray }),
+      })
 
-    if (res.ok) {
       const data = await res.json()
-      setResult(data)
-      setSubmitted(true)
+      if (res.ok) {
+        setResult(data)
+        setSubmitted(true)
+      } else {
+        setSubmitError(data?.error ?? `Submission failed (${res.status}). Please try again.`)
+      }
+    } catch {
+      setSubmitError('Network error. Please check your connection and try again.')
     }
     setSubmitting(false)
   }
@@ -310,6 +318,11 @@ export default function ExamPage() {
               ))}
             </div>
 
+            {submitError && (
+              <div className="bg-red-50 border border-red-200 rounded-xl px-5 py-3">
+                <p className="text-sm font-semibold text-red-700">{submitError}</p>
+              </div>
+            )}
             <button
               onClick={handleSubmit}
               disabled={submitting}

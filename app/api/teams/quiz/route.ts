@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as adminClient } from '@supabase/supabase-js'
 import { sendSlack, getProgramLevel, LEVEL_LABELS } from '@/lib/slack'
+
+const admin = adminClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 async function notifyLevelCompleteIfNeeded(
   supabase: Awaited<ReturnType<typeof createClient>>,
@@ -105,8 +111,8 @@ export async function POST(request: NextRequest) {
     .single()
   const userName = profile?.name || 'A rep'
 
-  // Fetch module info
-  const { data: module, error: moduleError } = await supabase
+  // Fetch module info using admin client so exam modules (not linked to programs) are visible
+  const { data: module, error: moduleError } = await admin
     .from('modules')
     .select('id, title, pass_threshold, is_active')
     .eq('id', moduleId)
@@ -120,8 +126,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'This module is not active.' }, { status: 400 })
   }
 
-  // Fetch questions with correct options for this module
-  const { data: questions, error: questionsError } = await supabase
+  // Fetch questions with correct options using admin client
+  const { data: questions, error: questionsError } = await admin
     .from('questions')
     .select(`
       id,
