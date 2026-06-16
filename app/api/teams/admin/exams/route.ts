@@ -28,15 +28,27 @@ export async function GET() {
   const activeExamId = activeExamRes.data?.value ?? null
   const examStartTime = startTimeRes.data?.value ?? null
 
-  // Filter attempts to only those for the active exam
+  // Fetch attempts + questions for the active exam
   let examAttempts: any[] = []
+  let questions: any[] = []
   if (activeExamId) {
-    const { data } = await admin
-      .from('attempts')
-      .select('id, user_id, score, passed, attempt_number, created_at, profiles(name)')
-      .eq('module_id', activeExamId)
-      .order('created_at', { ascending: false })
-    examAttempts = data ?? []
+    const [attRes, qRes] = await Promise.all([
+      admin
+        .from('attempts')
+        .select('id, user_id, score, passed, attempt_number, created_at, profiles(name)')
+        .eq('module_id', activeExamId)
+        .order('created_at', { ascending: false }),
+      admin
+        .from('questions')
+        .select('id, question_text, position, options(id, option_text, is_correct, position)')
+        .eq('module_id', activeExamId)
+        .order('position', { ascending: true }),
+    ])
+    examAttempts = attRes.data ?? []
+    questions = (qRes.data ?? []).map(q => ({
+      ...q,
+      options: ((q.options as any[]) ?? []).sort((a: any, b: any) => a.position - b.position),
+    }))
   }
 
   return NextResponse.json({
@@ -44,6 +56,7 @@ export async function GET() {
     examStartTime,
     modules: modulesRes.data ?? [],
     examAttempts,
+    questions,
   })
 }
 

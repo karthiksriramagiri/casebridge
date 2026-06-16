@@ -6,6 +6,8 @@ import { useRouter } from 'next/navigation'
 import AdminNav from '../AdminNav'
 
 interface Module { id: string; title: string; pass_threshold: number }
+interface Option { id: string; option_text: string; is_correct: boolean; position: number }
+interface Question { id: string; question_text: string; position: number; options: Option[] }
 interface ExamAttempt {
   id: string
   user_id: string
@@ -20,6 +22,7 @@ interface ExamConfig {
   examStartTime: string | null
   modules: Module[]
   examAttempts: ExamAttempt[]
+  questions: Question[]
 }
 
 function fmt(iso: string) {
@@ -38,6 +41,8 @@ export default function AdminExamsPage() {
   const [seeding, setSeeding] = useState(false)
   const [seedMsg, setSeedMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
   const [saveMsg, setSaveMsg] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+  const [expandedQ, setExpandedQ] = useState<string | null>(null)
+  const [showQuestions, setShowQuestions] = useState(false)
 
   const [selectedExamId, setSelectedExamId] = useState<string>('')
   const [startTime, setStartTime] = useState<string>('')
@@ -229,6 +234,81 @@ export default function AdminExamsPage() {
             )}
           </div>
         </div>
+
+        {/* Question preview */}
+        {config.questions.length > 0 && (
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+            <button
+              onClick={() => setShowQuestions(v => !v)}
+              className="w-full px-6 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <h2 className="font-semibold text-gray-900">Preview Exam Questions</h2>
+                <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                  {config.questions.length} questions
+                </span>
+              </div>
+              <svg
+                className={`w-4 h-4 text-gray-400 transition-transform ${showQuestions ? 'rotate-180' : ''}`}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+              </svg>
+            </button>
+
+            {showQuestions && (
+              <div className="border-t border-gray-100 divide-y divide-gray-50">
+                {config.questions.map(q => {
+                  const isOpen = expandedQ === q.id
+                  const correctOpt = q.options.find(o => o.is_correct)
+                  return (
+                    <div key={q.id}>
+                      <button
+                        onClick={() => setExpandedQ(isOpen ? null : q.id)}
+                        className="w-full text-left px-6 py-3 flex items-start gap-3 hover:bg-gray-50 transition-colors"
+                      >
+                        <span className="flex-shrink-0 text-xs font-bold text-gray-400 w-6 pt-0.5">
+                          {q.position}.
+                        </span>
+                        <span className="text-sm text-gray-800 flex-1">{q.question_text}</span>
+                        <svg
+                          className={`flex-shrink-0 w-4 h-4 text-gray-300 mt-0.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </button>
+                      {isOpen && (
+                        <div className="px-6 pb-4 pl-14 space-y-1.5">
+                          {q.options.map(opt => (
+                            <div
+                              key={opt.id}
+                              className={`flex items-start gap-2 text-sm rounded-lg px-3 py-2 ${
+                                opt.is_correct
+                                  ? 'bg-green-50 border border-green-200 text-green-800'
+                                  : 'text-gray-500 bg-gray-50'
+                              }`}
+                            >
+                              {opt.is_correct && (
+                                <span className="flex-shrink-0 text-green-600 font-bold mt-0.5">✓</span>
+                              )}
+                              <span>{opt.option_text}</span>
+                            </div>
+                          ))}
+                          {correctOpt && (
+                            <p className="text-xs text-green-700 font-semibold mt-2 pl-1">
+                              Correct: {correctOpt.option_text}
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Results */}
         <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
