@@ -12,13 +12,13 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const [activeExamRes, startTimeRes] = await Promise.all([
-    admin.from('site_config').select('value').eq('key', 'active_exam_id').maybeSingle(),
-    admin.from('site_config').select('value').eq('key', 'exam_start_time').maybeSingle(),
+  const [activeExamRows, startTimeRows] = await Promise.all([
+    admin.from('site_config').select('value').eq('key', 'active_exam_id').limit(1),
+    admin.from('site_config').select('value').eq('key', 'exam_start_time').limit(1),
   ])
 
-  const activeExamId = activeExamRes.data?.value || null
-  const examStartTime = startTimeRes.data?.value || null
+  const activeExamId = (activeExamRows.data?.[0]?.value as string | undefined) || null
+  const examStartTime = (startTimeRows.data?.[0]?.value as string | undefined) || null
 
   if (!activeExamId) {
     return NextResponse.json({ exam: null, examStartTime: null, questions: [], myAttempts: [] })

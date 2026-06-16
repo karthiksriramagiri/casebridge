@@ -19,14 +19,15 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const moduleIdParam = url.searchParams.get('moduleId')
 
-  const [activeExamRes, startTimeRes, modulesRes] = await Promise.all([
-    admin.from('site_config').select('value').eq('key', 'active_exam_id').maybeSingle(),
-    admin.from('site_config').select('value').eq('key', 'exam_start_time').maybeSingle(),
+  // Use limit(1) to be safe against duplicate keys
+  const [activeExamRows, startTimeRows, modulesRes] = await Promise.all([
+    admin.from('site_config').select('value').eq('key', 'active_exam_id').limit(1),
+    admin.from('site_config').select('value').eq('key', 'exam_start_time').limit(1),
     admin.from('modules').select('id, title, pass_threshold').eq('is_active', true).order('created_at', { ascending: false }),
   ])
 
-  const activeExamId = activeExamRes.data?.value ?? null
-  const examStartTime = startTimeRes.data?.value ?? null
+  const activeExamId = (activeExamRows.data?.[0]?.value as string | undefined) || null
+  const examStartTime = (startTimeRows.data?.[0]?.value as string | undefined) || null
 
   // Fetch questions for whichever module is requested (param takes precedence over active)
   const questionModuleId = moduleIdParam || activeExamId
@@ -76,21 +77,23 @@ export async function POST(request: NextRequest) {
   const body = await request.json()
   const { activeExamId, examStartTime } = body as { activeExamId?: string | null; examStartTime?: string | null }
 
-  const upserts = []
-
-  if (activeExamId !== undefined) {
-    upserts.push(
-      admin.from('site_config').upsert({ key: 'active_exam_id', value: activeExamId ?? '' }, { onConflict: 'key' })
-    )
+  async function setConfig(key: string, value: string | null) {
+    // Delete all existing rows for this key, then insert fresh — avoids unique constraint issues
+    await admin.from('site_config').delete().eq('key', key)
+    if (value) {
+      const { error } = await admin.from('site_config').insert({ key, value })
+      if (error) throw new Error(`Failed to set ${key}: ${error.message}`)
+    }
   }
 
-  if (examStartTime !== undefined) {
-    upserts.push(
-      admin.from('site_config').upsert({ key: 'exam_start_time', value: examStartTime ?? '' }, { onConflict: 'key' })
-    )
+  try {
+    const ops: Promise<void>[] = []
+    if (activeExamId !== undefined) ops.push(setConfig('active_exam_id', activeExamId))
+    if (examStartTime !== undefined) ops.push(setConfig('exam_start_time', examStartTime))
+    await Promise.all(ops)
+  } catch (err: any) {
+    return NextResponse.json({ error: err.message }, { status: 500 })
   }
-
-  await Promise.all(upserts)
 
   return NextResponse.json({ success: true })
 }
