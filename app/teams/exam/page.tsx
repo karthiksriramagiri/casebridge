@@ -217,7 +217,7 @@ export default function ExamPage() {
                               <p key={opt.id} className={`text-xs mb-0.5 ${cls}`}>
                                 {isSelected && !isCorrect && '✗ '}
                                 {isCorrect && '✓ '}
-                                {opt.option_text.split(' — ')[0]}
+                                {opt.option_text}
                               </p>
                             )
                           })}

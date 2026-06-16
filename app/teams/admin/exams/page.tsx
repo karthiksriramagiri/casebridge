@@ -72,13 +72,14 @@ export default function AdminExamsPage() {
       .catch(() => setLoadingQ(false))
   }, [selectedExamId])
 
-  async function handleSeed() {
+  async function handleSeed(force = false) {
     setSeeding(true)
     setSeedMsg(null)
-    const res = await fetch('/api/teams/admin/exams/seed', { method: 'POST' })
+    const url = force ? '/api/teams/admin/exams/seed?force=true' : '/api/teams/admin/exams/seed'
+    const res = await fetch(url, { method: 'POST' })
     const json = await res.json()
     if (res.ok) {
-      setSeedMsg({ type: 'ok', text: `Exam created! Select it from the dropdown and save.` })
+      setSeedMsg({ type: 'ok', text: force ? 'Exam recreated with updated questions! Select it from the dropdown and save.' : 'Exam created! Select it from the dropdown and save.' })
       await loadConfig()
       setSelectedExamId(json.moduleId)
     } else if (res.status === 409) {
@@ -136,15 +137,28 @@ export default function AdminExamsPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
         <h2 className="font-semibold text-gray-900 mb-1">Create Nuance Book Exam</h2>
         <p className="text-sm text-gray-500 mb-4">
-          Seeds the 50-question Nuance Book exam. Run once — if it already exists, select it from the dropdown.
+          Seeds the 50-question Nuance Book exam. If the exam already exists, use <strong>Recreate</strong> to replace all questions with the latest version.
         </p>
-        <button
-          onClick={handleSeed}
-          disabled={seeding}
-          className="px-4 py-2 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] disabled:opacity-50 transition-colors"
-        >
-          {seeding ? 'Creating...' : 'Create Nuance Book Exam'}
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => handleSeed(false)}
+            disabled={seeding}
+            className="px-4 py-2 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] disabled:opacity-50 transition-colors"
+          >
+            {seeding ? 'Working...' : 'Create Nuance Book Exam'}
+          </button>
+          <button
+            onClick={() => {
+              if (confirm('This will delete the existing Nuance Book Exam and recreate it with the latest questions. Any attempt history will also be deleted. Continue?')) {
+                handleSeed(true)
+              }
+            }}
+            disabled={seeding}
+            className="px-4 py-2 bg-amber-600 text-white text-sm font-semibold rounded-lg hover:bg-amber-700 disabled:opacity-50 transition-colors"
+          >
+            Recreate Exam
+          </button>
+        </div>
         {seedMsg && (
           <p className={`mt-3 text-sm font-medium ${seedMsg.type === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
             {seedMsg.text}
