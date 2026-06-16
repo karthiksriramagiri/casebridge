@@ -217,7 +217,7 @@ export default function ExamPage() {
                               <p key={opt.id} className={`text-xs mb-0.5 ${cls}`}>
                                 {isSelected && !isCorrect && '✗ '}
                                 {isCorrect && '✓ '}
-                                {opt.option_text}
+                                {opt.option_text.split(' — ')[0]}
                               </p>
                             )
                           })}
@@ -300,7 +300,7 @@ export default function ExamPage() {
                             {selected && <span className="w-1.5 h-1.5 rounded-full bg-white" />}
                           </span>
                           <span className={`text-sm ${selected ? 'text-blue-900 font-medium' : 'text-gray-700'}`}>
-                            {opt.option_text}
+                            {opt.option_text.split(' — ')[0]}
                           </span>
                         </button>
                       )
