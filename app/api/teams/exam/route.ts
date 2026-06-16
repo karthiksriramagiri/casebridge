@@ -13,8 +13,8 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const [activeExamRows, startTimeRows] = await Promise.all([
-    admin.from('site_config').select('value').eq('key', 'active_exam_id').limit(1),
-    admin.from('site_config').select('value').eq('key', 'exam_start_time').limit(1),
+    admin.from('exam_config').select('value').eq('key', 'active_exam_id').limit(1),
+    admin.from('exam_config').select('value').eq('key', 'exam_start_time').limit(1),
   ])
 
   const activeExamId = (activeExamRows.data?.[0]?.value as string | undefined) || null

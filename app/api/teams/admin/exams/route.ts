@@ -19,10 +19,9 @@ export async function GET(request: NextRequest) {
   const url = new URL(request.url)
   const moduleIdParam = url.searchParams.get('moduleId')
 
-  // Use limit(1) to be safe against duplicate keys
   const [activeExamRows, startTimeRows, modulesRes] = await Promise.all([
-    admin.from('site_config').select('value').eq('key', 'active_exam_id').limit(1),
-    admin.from('site_config').select('value').eq('key', 'exam_start_time').limit(1),
+    admin.from('exam_config').select('value').eq('key', 'active_exam_id').limit(1),
+    admin.from('exam_config').select('value').eq('key', 'exam_start_time').limit(1),
     admin.from('modules').select('id, title, pass_threshold').eq('is_active', true).order('created_at', { ascending: false }),
   ])
 
@@ -78,11 +77,13 @@ export async function POST(request: NextRequest) {
   const { activeExamId, examStartTime } = body as { activeExamId?: string | null; examStartTime?: string | null }
 
   async function setConfig(key: string, value: string | null) {
-    // Delete all existing rows for this key, then insert fresh — avoids unique constraint issues
-    await admin.from('site_config').delete().eq('key', key)
     if (value) {
-      const { error } = await admin.from('site_config').insert({ key, value })
+      const { error } = await admin
+        .from('exam_config')
+        .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' })
       if (error) throw new Error(`Failed to set ${key}: ${error.message}`)
+    } else {
+      await admin.from('exam_config').delete().eq('key', key)
     }
   }
 
