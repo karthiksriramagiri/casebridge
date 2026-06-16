@@ -41,6 +41,7 @@ export default function AdminExamsPage() {
   const [expandedQ, setExpandedQ] = useState<string | null>(null)
   const [showQuestions, setShowQuestions] = useState(false)
   const [questions, setQuestions] = useState<Question[]>([])
+  const [examAttempts, setExamAttempts] = useState<ExamAttempt[]>([])
   const [loadingQ, setLoadingQ] = useState(false)
 
   async function loadConfig() {
@@ -51,6 +52,7 @@ export default function AdminExamsPage() {
       const savedId = data.activeExamId ?? ''
       setSelectedExamId(savedId)
       setQuestions(data.questions ?? [])
+      setExamAttempts(data.examAttempts ?? [])
       if (data.examStartTime) {
         const d = new Date(data.examStartTime)
         const pad = (n: number) => String(n).padStart(2, '0')
@@ -62,13 +64,17 @@ export default function AdminExamsPage() {
 
   useEffect(() => { loadConfig() }, [])
 
-  // Fetch questions whenever selected exam changes
+  // Refresh questions AND attempts whenever selected exam changes
   useEffect(() => {
-    if (!selectedExamId) { setQuestions([]); return }
+    if (!selectedExamId) { setQuestions([]); setExamAttempts([]); return }
     setLoadingQ(true)
     fetch(`/api/teams/admin/exams?moduleId=${selectedExamId}`)
       .then(r => r.json())
-      .then(data => { setQuestions(data.questions ?? []); setLoadingQ(false) })
+      .then(data => {
+        setQuestions(data.questions ?? [])
+        setExamAttempts(data.examAttempts ?? [])
+        setLoadingQ(false)
+      })
       .catch(() => setLoadingQ(false))
   }, [selectedExamId])
 
@@ -119,11 +125,11 @@ export default function AdminExamsPage() {
     )
   }
 
-  const passRate = config.examAttempts.length > 0
-    ? Math.round((config.examAttempts.filter(a => a.passed).length / config.examAttempts.length) * 100)
+  const passRate = examAttempts.length > 0
+    ? Math.round((examAttempts.filter(a => a.passed).length / examAttempts.length) * 100)
     : null
-  const avgScore = config.examAttempts.length > 0
-    ? Math.round(config.examAttempts.reduce((s, a) => s + a.score, 0) / config.examAttempts.length)
+  const avgScore = examAttempts.length > 0
+    ? Math.round(examAttempts.reduce((s, a) => s + a.score, 0) / examAttempts.length)
     : null
 
   return (
@@ -298,20 +304,20 @@ export default function AdminExamsPage() {
       <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
           <h2 className="font-semibold text-gray-900">Exam Results</h2>
-          {config.examAttempts.length > 0 && (
+          {examAttempts.length > 0 && (
             <div className="flex items-center gap-4 text-sm text-gray-500">
               {avgScore !== null && <span>Avg score: <span className="font-bold text-gray-900">{avgScore}%</span></span>}
               {passRate !== null && <span>Pass rate: <span className={`font-bold ${passRate >= 70 ? 'text-green-600' : 'text-red-600'}`}>{passRate}%</span></span>}
             </div>
           )}
         </div>
-        {config.examAttempts.length === 0 ? (
+        {examAttempts.length === 0 ? (
           <p className="px-6 py-10 text-center text-sm text-gray-400">
-            {config.activeExamId ? 'No attempts yet.' : 'No active exam configured.'}
+            {selectedExamId ? 'No attempts yet.' : 'No exam selected.'}
           </p>
         ) : (
           <div className="divide-y divide-gray-50">
-            {config.examAttempts.map(a => (
+            {examAttempts.map(a => (
               <div key={a.id} className="flex items-center justify-between px-6 py-3">
                 <div>
                   <p className="text-sm font-semibold text-gray-900">
@@ -325,7 +331,7 @@ export default function AdminExamsPage() {
                       Attempt #{a.attempt_number}
                     </span>
                   )}
-                  <span className={`text-sm font-bold ${a.score >= 80 ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`text-sm font-bold ${a.score >= (config.modules.find(m => m.id === selectedExamId)?.pass_threshold ?? 80) ? 'text-green-600' : 'text-red-600'}`}>
                     {a.score}%
                   </span>
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${

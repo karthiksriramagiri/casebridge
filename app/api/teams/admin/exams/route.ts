@@ -41,11 +41,12 @@ export async function GET(request: NextRequest) {
         .order('position', { ascending: true })
     : Promise.resolve({ data: [] })
 
-  const attPromise = activeExamId
+  // Load attempts for whichever module is currently selected (param or active config)
+  const attPromise = questionModuleId
     ? admin
         .from('attempts')
         .select('id, user_id, score, passed, attempt_number, created_at, profiles(name)')
-        .eq('module_id', activeExamId)
+        .eq('module_id', questionModuleId)
         .order('created_at', { ascending: false })
     : Promise.resolve({ data: [] })
 
