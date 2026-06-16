@@ -42,6 +42,9 @@ export default function UserNav({ timeclockEnabled }: Props) {
       >
         Nuances
       </a>
+      <Link href="/teams/exam" className={tabClass(pathname.startsWith('/teams/exam'))}>
+        Exams
+      </Link>
       {tabs.slice(2).map((tab) => (
         <Link key={tab.href} href={tab.href} className={tabClass(pathname.startsWith(tab.href))}>
           {tab.label}

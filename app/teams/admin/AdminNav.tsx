@@ -12,6 +12,7 @@ const navItems = [
   { label: 'Programs', href: '/teams/admin/programs', exact: false },
   { label: 'Modules', href: '/teams/admin/modules', exact: false },
   { label: 'Urgent Tasks', href: '/teams/admin/urgent-tasks', exact: false },
+  { label: 'Exams', href: '/teams/admin/exams', exact: false },
 ]
 
 export default function AdminNav() {
