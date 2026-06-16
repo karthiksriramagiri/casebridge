@@ -173,10 +173,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ score: 100, passed: true, attemptNumber, breakdown: [] })
   }
 
+  // Escalate and Conditional are treated as equivalent dispositions
+  function getLabel(optionText: string) {
+    return optionText.split(' — ')[0].trim().toLowerCase()
+  }
+
+  function isEscalateOrConditional(label: string) {
+    return label === 'escalate' || label === 'conditional'
+  }
+
   // Build a map: questionId -> { correctOptionId, questionText, allOptions }
   const questionMap: Record<string, {
     questionText: string
     correctOptionId: string | null
+    correctLabel: string
     options: Array<{ id: string; option_text: string; is_correct: boolean }>
   }> = {}
 
@@ -185,6 +195,7 @@ export async function POST(request: NextRequest) {
     questionMap[q.id] = {
       questionText: q.question_text,
       correctOptionId: correctOption?.id ?? null,
+      correctLabel: correctOption ? getLabel(correctOption.option_text) : '',
       options: q.options as any[],
     }
   }
@@ -203,7 +214,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const isCorrect = questionData.correctOptionId === answer.selectedOptionId
+    const selectedOption = questionData.options.find(o => o.id === answer.selectedOptionId)
+    const selectedLabel = selectedOption ? getLabel(selectedOption.option_text) : ''
+
+    // Escalate and Conditional count as the same answer
+    const isCorrect = questionData.correctOptionId === answer.selectedOptionId ||
+      (isEscalateOrConditional(questionData.correctLabel) && isEscalateOrConditional(selectedLabel))
     if (isCorrect) correctCount++
 
     return {
