@@ -267,7 +267,7 @@ export default function AdminExamsPage() {
                             }`}
                           >
                             {opt.is_correct && <span className="flex-shrink-0 text-green-600 font-bold">✓</span>}
-                            <span>{opt.option_text}</span>
+                            <span>{opt.option_text.split(' — ')[0]}</span>
                           </div>
                         ))}
                       </div>
