@@ -7,7 +7,7 @@ const admin = adminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -15,41 +15,46 @@ export async function GET() {
   const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (prof?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const [activeExamRes, startTimeRes, modulesRes, attemptsRes] = await Promise.all([
+  // ?moduleId= overrides the active exam for question preview
+  const url = new URL(request.url)
+  const moduleIdParam = url.searchParams.get('moduleId')
+
+  const [activeExamRes, startTimeRes, modulesRes] = await Promise.all([
     admin.from('site_config').select('value').eq('key', 'active_exam_id').maybeSingle(),
     admin.from('site_config').select('value').eq('key', 'exam_start_time').maybeSingle(),
     admin.from('modules').select('id, title, pass_threshold').eq('is_active', true).order('created_at', { ascending: false }),
-    admin.from('attempts')
-      .select('id, user_id, score, passed, attempt_number, created_at, profiles(name)')
-      .order('created_at', { ascending: false })
-      .limit(100),
   ])
 
   const activeExamId = activeExamRes.data?.value ?? null
   const examStartTime = startTimeRes.data?.value ?? null
 
-  // Fetch attempts + questions for the active exam
+  // Fetch questions for whichever module is requested (param takes precedence over active)
+  const questionModuleId = moduleIdParam || activeExamId
   let examAttempts: any[] = []
   let questions: any[] = []
-  if (activeExamId) {
-    const [attRes, qRes] = await Promise.all([
-      admin
+
+  const qPromise = questionModuleId
+    ? admin
+        .from('questions')
+        .select('id, question_text, position, options(id, option_text, is_correct, position)')
+        .eq('module_id', questionModuleId)
+        .order('position', { ascending: true })
+    : Promise.resolve({ data: [] })
+
+  const attPromise = activeExamId
+    ? admin
         .from('attempts')
         .select('id, user_id, score, passed, attempt_number, created_at, profiles(name)')
         .eq('module_id', activeExamId)
-        .order('created_at', { ascending: false }),
-      admin
-        .from('questions')
-        .select('id, question_text, position, options(id, option_text, is_correct, position)')
-        .eq('module_id', activeExamId)
-        .order('position', { ascending: true }),
-    ])
-    examAttempts = attRes.data ?? []
-    questions = (qRes.data ?? []).map(q => ({
-      ...q,
-      options: ((q.options as any[]) ?? []).sort((a: any, b: any) => a.position - b.position),
-    }))
-  }
+        .order('created_at', { ascending: false })
+    : Promise.resolve({ data: [] })
+
+  const [qRes, attRes] = await Promise.all([qPromise, attPromise])
+  examAttempts = (attRes as any).data ?? []
+  questions = ((qRes as any).data ?? []).map((q: any) => ({
+    ...q,
+    options: ((q.options as any[]) ?? []).sort((a: any, b: any) => a.position - b.position),
+  }))
 
   return NextResponse.json({
     activeExamId,
