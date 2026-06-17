@@ -15,6 +15,8 @@ const PIPELINES: Record<string, string> = {
   eisenberg: 'Yk4w3ML56ECc10PFzjpK',
   thl:       'DYtmw8WEUtGePFbEDAIZ',
   mca:       '6Ku9EwTtMFk51o7Re9x0',
+  levine:    'Jj4DCdu5duYDgI87ERbx',
+  fears:     'JPyMNjGGAIxUv0FWW7Cg',
 }
 
 // Known stage IDs → label
