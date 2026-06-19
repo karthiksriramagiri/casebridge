@@ -15,8 +15,8 @@ const PIPELINES: Record<string, string> = {
   eisenberg: 'Yk4w3ML56ECc10PFzjpK',
   thl:       'DYtmw8WEUtGePFbEDAIZ',
   mca:       '6Ku9EwTtMFk51o7Re9x0',
-  levine:    'Jj4DCdu5duYDgI87ERbx',
-  fears:     'JPyMNjGGAIxUv0FWW7Cg',
+  fears:     'Jj4DCdu5duYDgI87ERbx',
+  levine:    'JPyMNjGGAIxUv0FWW7Cg',
 }
 
 // Known stage IDs → label
@@ -30,6 +30,12 @@ const STAGE_MAP: Record<string, 'nr' | 'fu' | 'chase'> = {
   '866213c6-c43e-47a2-a1d9-20a740f0dd0b': 'fu',   // THL FU
   '87d0a194-8841-4062-b6a3-bfedd9186070': 'nr',   // MCA NR
   'bda11191-0a4a-40da-b368-cd925ec884dc': 'fu',   // MCA FU
+  '91ced34f-cb7b-4a03-a47d-f4ffd25fd108': 'nr',   // Fears NR
+  '1d6faa32-dd4b-4258-8595-93fdd6d0c8c5': 'fu',   // Fears FU
+  '8e00bca9-3318-442a-8f71-f358762878da': 'chase', // Fears Chase
+  '620b4cfc-fc0c-4c2c-a490-44a6bb36a3d1': 'nr',   // Levine NR
+  '0ce872eb-1757-4267-949b-cebf521b3466': 'fu',   // Levine FU
+  '47301b0f-3f04-4ab7-869f-55407e63c72d': 'chase', // Levine Chase
 }
 
 export interface PipelineLead {
