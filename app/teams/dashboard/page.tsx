@@ -78,13 +78,14 @@ function buildSections(
 }
 
 function ModuleCard({
-  mod, data, qCount, isLocked, position,
+  mod, data, qCount, isLocked, position, prevModTitle,
 }: {
   mod: ModuleRow
   data: AttemptData
   qCount: number
   isLocked: boolean
   position: number
+  prevModTitle?: string
 }) {
   if (isLocked) {
     return (
@@ -97,7 +98,9 @@ function ModuleCard({
         </div>
         <div className="flex-1 min-w-0">
           <span className="font-semibold text-gray-400">{position + 1}. {mod.title}</span>
-          <p className="text-xs text-gray-300 mt-0.5">Complete the previous lesson to unlock</p>
+          <p className="text-xs text-gray-300 mt-0.5">
+            {prevModTitle ? <>Complete <strong className="text-gray-400">{prevModTitle}</strong> first to unlock</> : 'Complete the previous lesson to unlock'}
+          </p>
         </div>
         <span className="text-xs text-gray-300 shrink-0">Locked</span>
       </div>
@@ -224,6 +227,7 @@ function SectionBlock({
               qCount={questionCounts[mod.id] ?? 0}
               isLocked={!isUnlocked}
               position={position}
+              prevModTitle={position > 0 ? section.modules[position - 1].mod.title : undefined}
             />
           ))}
         </div>
