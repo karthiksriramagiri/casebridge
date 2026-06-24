@@ -20,7 +20,6 @@ export default function InvoiceSectionLayout({ children }: { children: React.Rea
   const base = `/metrics/firms/${slug}/invoice/${invSeg}`
   const isPcs = pathname.endsWith('/pcs')
   const isMarketing = pathname.endsWith('/marketing')
-  const isHr = pathname.endsWith('/hr')
   const isFinances = pathname.endsWith('/finances')
 
   const [firmName, setFirmName] = useState<string>(slug)
@@ -85,10 +84,9 @@ export default function InvoiceSectionLayout({ children }: { children: React.Rea
       {/* Tab nav */}
       <div className="px-6 flex gap-0" style={{ background: CARD, borderBottom: `1px solid ${BORDER}` }}>
         {[
-          { label: 'Dashboard', href: base, active: !isPcs && !isMarketing && !isHr && !isFinances },
+          { label: 'Dashboard', href: base, active: !isPcs && !isMarketing && !isFinances },
           { label: 'Signed PCs', href: `${base}/pcs`, active: isPcs },
           { label: 'Marketing', href: `${base}/marketing`, active: isMarketing },
-          { label: 'HR', href: `${base}/hr`, active: isHr },
           { label: 'Finances', href: `${base}/finances`, active: isFinances },
         ].map(tab => (
           <Link key={tab.label} href={tab.href}

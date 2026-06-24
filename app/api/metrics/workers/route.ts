@@ -79,9 +79,11 @@ export async function GET() {
     if (isClosed) byWorker[key].byFirm[firmId].closedCases += 1
   }
 
-  // Include registered reps with 0 cases
-  const { data: reps } = await supabase.from('profiles').select('id, name, role').eq('role', 'rep')
+  // Include registered reps with 0 cases (exclude hidden profiles)
+  const { data: reps } = await supabase.from('profiles').select('id, name, role, hide_from_hr').eq('role', 'rep')
+  const hiddenProfileIds = new Set((reps || []).filter((r: any) => r.hide_from_hr).map((r: any) => r.id))
   for (const rep of reps || []) {
+    if (rep.hide_from_hr) continue
     const name = (rep.name || '').trim()
     if (!name) continue
     if (!byWorker[name]) byWorker[name] = { profileId: rep.id, signedCases: 0, closedCases: 0, closedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
@@ -167,7 +169,8 @@ export async function GET() {
       nextPaymentDate: nextPayLabel,
       closedByFirm: Object.values(stats.byFirm).sort((a, b) => b.closedCases - a.closedCases),
     }
-  }).sort((a, b) => b.signedCases - a.signedCases)
+  }).filter(w => !w.profileId || !hiddenProfileIds.has(w.profileId))
+    .sort((a, b) => b.signedCases - a.signedCases)
 
   return NextResponse.json({ workers, commissionPerClosed: COMMISSION_PER_CLOSED, commissionPerReplacement: COMMISSION_PER_REPLACEMENT, nextPaymentDate: nextPayLabel, periodStart: periodStartStr, periodEnd: periodEndStr })
 }

@@ -413,11 +413,11 @@ export default function AnglesPage() {
             <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, fontSize: 16, color: ACCENT, marginLeft: 5 }}>Metrics</span>
           </div>
           {[
-            { label: 'Overview',   href: '/metrics?tab=overview'   },
             { label: 'Marketing',  href: '/metrics?tab=marketing'  },
             { label: 'HR',         href: '/metrics?tab=hr'         },
             { label: 'Firms',      href: '/metrics?tab=firms'      },
             { label: 'Angles',     href: '/metrics/angles'         },
+            { label: 'OOS Cases',  href: '/metrics/oos-cases'      },
           ].map(({ label, href }) => (
             <Link key={label} href={href}
               style={{

@@ -107,7 +107,6 @@ export default function OOSCasesPage() {
             <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, fontSize: 16, color: ACCENT, marginLeft: 5 }}>Metrics</span>
           </div>
           {[
-            { label: 'Overview',   href: '/metrics?tab=overview'  },
             { label: 'Marketing',  href: '/metrics?tab=marketing' },
             { label: 'HR',         href: '/metrics?tab=hr'        },
             { label: 'Firms',      href: '/metrics?tab=firms'     },

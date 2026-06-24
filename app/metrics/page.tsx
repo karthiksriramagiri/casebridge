@@ -119,10 +119,13 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
       {/* Campaign header — dark */}
       <div style={{ background: DARK, padding: '11px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <span style={{ background: phase.bg, color: phase.color, fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 4, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-            {phase.label}
-          </span>
-          <span style={{ color: '#E5E7EB', fontWeight: 600, fontSize: 13 }}>{name}</span>
+          {ads[0]?.firmSlug && ads[0]?.latestInvoice ? (
+            <Link href={`/metrics/firms/${ads[0].firmSlug}/invoice/${ads[0].latestInvoice}/marketing`} style={{ color: '#E5E7EB', fontWeight: 600, fontSize: 13, textDecoration: 'none' }}>
+              {name}
+            </Link>
+          ) : (
+            <span style={{ color: '#E5E7EB', fontWeight: 600, fontSize: 13 }}>{name}</span>
+          )}
         </div>
         <div style={{ display: 'flex', gap: 18, fontSize: 11, color: '#9CA3AF', flexShrink: 0 }}>
           <span><span style={{ color: '#FFF', fontWeight: 700 }}>{fmt$(totalSpend)}</span> spend</span>
@@ -154,7 +157,6 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
               <TH>Chase</TH>
               <TH>Signed</TH>
               <TH>CPQ</TH>
-              <TH>Phase</TH>
             </tr>
           </thead>
           <tbody>
@@ -175,16 +177,9 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
 
                   {/* Creative */}
                   <td style={{ padding: '8px 10px', maxWidth: 200 }}>
-                    {ad.firmSlug && ad.latestInvoice ? (
-                      <Link href={`/metrics/firms/${ad.firmSlug}/invoice/${ad.latestInvoice}/marketing`} style={{ color: ACCENT, textDecoration: 'none', display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
-                        {ad.name || ad.adName || '—'}
-                      </Link>
-                    ) : (
-                      <span style={{ color: DARK, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
-                        {ad.name || ad.adName || '—'}
-                      </span>
-                    )}
-                    {ad.firmName && <span style={{ fontSize: 10, color: MUTED, display: 'block' }}>{ad.firmName}</span>}
+                    <span style={{ color: DARK, display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={ad.name || ad.adName}>
+                      {ad.name || ad.adName || '—'}
+                    </span>
                     {ad.id && <span style={{ fontSize: 9, color: '#B5AFA8', display: 'block', fontFamily: 'monospace' }}>{ad.id}</span>}
                   </td>
 
@@ -266,8 +261,6 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
                     {cpqVal != null ? fmt$(cpqVal) : '—'}
                   </td>
 
-                  {/* Phase */}
-                  <td style={{ padding: '8px 10px' }}><AlertPill level={level} /></td>
                 </tr>
               )
             })}
@@ -315,10 +308,11 @@ function CreativeLeadsModal({ ad, filterStage, onClose }: {
 
   // Data is pre-loaded from the same GHL pipeline fetch as the firm page
   const all: any[] = [
-    ...(ad.nrLeads    || []).map((l: any) => ({ ...l, stage: 'nr' })),
-    ...(ad.nqLeads    || []).map((l: any) => ({ ...l, stage: 'nq' })),
-    ...(ad.fuLeads    || []).map((l: any) => ({ ...l, stage: 'fu' })),
-    ...(ad.chaseLeads || []).map((l: any) => ({ ...l, stage: 'chase' })),
+    ...(ad.signedLeads || []).map((l: any) => ({ ...l, stage: 'signed' })),
+    ...(ad.nrLeads     || []).map((l: any) => ({ ...l, stage: 'nr' })),
+    ...(ad.nqLeads     || []).map((l: any) => ({ ...l, stage: 'nq' })),
+    ...(ad.fuLeads     || []).map((l: any) => ({ ...l, stage: 'fu' })),
+    ...(ad.chaseLeads  || []).map((l: any) => ({ ...l, stage: 'chase' })),
   ]
   const displayed = filterStage ? all.filter(l => l.stage === filterStage) : all
   const metaLeads = ad.metaLeads ?? ad.leads ?? 0
@@ -653,11 +647,10 @@ export default function MetricsPage() {
                 </p>
 
                 {workersWithHours.length > 0 && (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 10, marginBottom: 20 }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginBottom: 20 }}>
                     <LightCard label="Total Workers"    value={workersWithHours.length} />
                     <LightCard label="Clocked In Now"   value={workersWithHours.filter((w: any) => w.clockedIn).length} />
                     <LightCard label="Period Hours"     value={`${workersWithHours.reduce((s: number, w: any) => s + (w.regularHours || 0) + (w.overtimeHours || 0), 0).toFixed(1)}h`} sub={`${workers[0]?.payPeriodStart || ''} – ${workers[0]?.payPeriodEnd || ''}`} />
-                    <LightCard label="Closed Cases"     value={workersWithHours.reduce((s: number, w: any) => s + w.closedCases, 0)} />
                     <DarkCard  label={`Next Payment · ${workers[0]?.nextPaymentDate || ''}`} value={'$' + workersWithHours.reduce((s: number, w: any) => s + (w.nextPayment || 0), 0).toLocaleString()} terracotta />
                   </div>
                 )}
@@ -677,7 +670,7 @@ export default function MetricsPage() {
                       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                         <thead>
                           <tr style={{ borderBottom: `1px solid ${BORDER}`, background: '#F5F1EB' }}>
-                            {['Worker', 'Rate', 'Hours Today', 'Period Hrs', 'OT Hrs', 'Signed', 'Closed', `Next Payment`, 'Closed by Firm'].map(h => (
+                            {['Worker', 'Rate', 'Hours Today', 'Period Hrs', 'Signed', `Next Payment`, 'Closed by Firm'].map(h => (
                               <th key={h} style={{ textAlign: 'left', padding: '10px 16px', fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.07em', color: MUTED, whiteSpace: 'nowrap' }}>{h}</th>
                             ))}
                           </tr>
@@ -701,11 +694,7 @@ export default function MetricsPage() {
                                 <td style={{ padding: '10px 16px', color: DARK, fontWeight: 600 }}>
                                   {w.regularHours > 0 ? `${w.regularHours.toFixed(2)}h` : '—'}
                                 </td>
-                                <td style={{ padding: '10px 16px', color: w.overtimeHours > 0 ? ACCENT : '#C4BAB0', fontWeight: w.overtimeHours > 0 ? 700 : 400 }}>
-                                  {w.overtimeHours > 0 ? `${w.overtimeHours.toFixed(2)}h` : '—'}
-                                </td>
                                 <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>{w.signedCases}</td>
-                                <td style={{ padding: '10px 16px', fontWeight: 700, color: '#15803D' }}>{w.closedCases}</td>
                                 <td style={{ padding: '10px 16px', fontWeight: 700, color: w.nextPayment > 0 ? DARK : '#C4BAB0' }}>
                                   {w.nextPayment > 0 ? (
                                     <span title={`Base $${w.basePay?.toFixed(2)} + Commission $${w.commissionInPeriod}`}>
@@ -721,7 +710,7 @@ export default function MetricsPage() {
                               </tr>
                               {expandedWorker === w.name && w.closedByFirm?.length > 0 && (
                                 <tr key={w.name + '-firms'} style={{ borderBottom: `1px solid ${BORDER}`, background: '#F5F1EB' }}>
-                                  <td colSpan={9} style={{ padding: '8px 16px 12px 32px' }}>
+                                  <td colSpan={7} style={{ padding: '8px 16px 12px 32px' }}>
                                     <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                                       {w.closedByFirm.map((f: any) => (
                                         <div key={f.firmId} style={{ background: CARD, border: `1px solid ${BORDER}`, borderRadius: 8, padding: '6px 14px', fontSize: 12 }}>
@@ -745,11 +734,7 @@ export default function MetricsPage() {
                             <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>
                               {workersWithHours.reduce((s: number, w: any) => s + (w.regularHours || 0), 0).toFixed(1)}h
                             </td>
-                            <td style={{ padding: '10px 16px', fontWeight: 700, color: ACCENT }}>
-                              {workersWithHours.reduce((s: number, w: any) => s + (w.overtimeHours || 0), 0).toFixed(1)}h
-                            </td>
                             <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>{workersWithHours.reduce((s: number, w: any) => s + w.signedCases, 0)}</td>
-                            <td style={{ padding: '10px 16px', fontWeight: 700, color: '#15803D' }}>{workersWithHours.reduce((s: number, w: any) => s + w.closedCases, 0)}</td>
                             <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>${workersWithHours.reduce((s: number, w: any) => s + (w.nextPayment || 0), 0).toLocaleString()}</td>
                             <td></td>
                           </tr>
@@ -821,8 +806,7 @@ export default function MetricsPage() {
                     {firms.map((firm: any) => (
                       <Link key={firm.id} href={`/metrics/firms/${firm.slug}`} style={{ display: 'block', background: CARD, border: `1px solid ${BORDER}`, borderRadius: 10, padding: 20, textDecoration: 'none', transition: 'border-color 0.15s' }}>
                         <p style={{ fontWeight: 700, fontSize: 15, color: DARK, marginBottom: 4 }}>{firm.name}</p>
-                        <p style={{ fontSize: 12, color: MUTED, marginBottom: 12 }}>Case value: ${firm.case_value?.toLocaleString()} · {firm.meta_account_id ? 'Meta connected' : 'No Meta'}</p>
-                        <p style={{ fontSize: 11, color: '#B5AFA8' }}>Initial ≤${firm.phase_initial_max_weekly_spend?.toLocaleString()}/wk · Scale ≤${firm.phase_scale_max_weekly_spend?.toLocaleString()}/wk</p>
+                        <p style={{ fontSize: 12, color: MUTED }}>Case value: ${firm.case_value?.toLocaleString()} · {firm.meta_account_id ? 'Meta connected' : 'No Meta'}</p>
                       </Link>
                     ))}
                   </div>

@@ -6,6 +6,8 @@
 <title>The Full Call Book — Every Scenario, Full Intake Narratives</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Bitter:wght@600;700;800&family=IBM+Plex+Sans:ital,wght@0,400;0,500;0,600;1,400&family=IBM+Plex+Mono:wght@500;600&display=swap" rel="stylesheet">
+<script>function googleTranslateElementInit(){new google.translate.TranslateElement({pageLanguage:'en',includedLanguages:'en,es,tl',autoDisplay:false},'gte');}</script>
+<script src="//translate.google.com/translate_a/element.js?cb=googleTranslateElementInit" async></script>
 <style>
 :root{
   --ink:#15202b; --ink-soft:#43525f; --paper:#f3f5f7; --card:#ffffff;
@@ -125,6 +127,19 @@ table.qf{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
 
 .no-results{display:none;text-align:center;padding:60px 20px;color:var(--ink-soft);font-family:var(--mono);font-size:13px}
 .hidden{display:none!important}
+/* ---------- language selector ---------- */
+#gte{display:none}
+.lang-wrap{display:flex;align-items:center;gap:7px;flex:none}
+.lang-label{font-family:var(--mono);font-size:10px;font-weight:600;letter-spacing:.14em;text-transform:uppercase;color:#9fb4cc}
+.lang-select{font-family:var(--mono);font-size:12px;font-weight:600;letter-spacing:.04em;padding:6px 30px 6px 10px;border-radius:6px;border:1.5px solid rgba(255,255,255,.22);background:rgba(255,255,255,.07) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%239fb4cc' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' fill='none'/%3E%3C/svg%3E") no-repeat right 9px center;color:#fff;cursor:pointer;-webkit-appearance:none;appearance:none;transition:border-color .15s}
+.lang-select:hover{border-color:rgba(255,255,255,.45)}
+.lang-select:focus{outline:2px solid rgba(255,255,255,.35);outline-offset:2px}
+.lang-select option{background:#1d3a5f;color:#fff}
+/* suppress Google Translate banner/iframe artifacts */
+.goog-te-banner-frame,.skiptranslate{display:none!important}
+body{top:0!important}
+#goog-gt-tt,.goog-tooltip,.goog-tooltip:hover{display:none!important}
+.VIpgJd-ZVi9od-ORHb-OEVmcd{display:none!important}
 :focus-visible{outline:2.5px solid var(--navy);outline-offset:2px}
 
 @media(max-width:920px){
@@ -159,13 +174,21 @@ table.qf{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
   <div class="mast-inner">
     <div class="mast-title">
       <h1>The Full Call Book</h1>
-      <div class="sub">Every Scenario as a Complete Intake Narrative &middot; 130 Scenarios &middot; 20 Parts</div>
+      <div class="sub">Every Scenario as a Complete Intake Narrative &middot; 135 Scenarios &middot; 21 Parts</div>
     </div>
     <div class="mast-key">
       <span class="keychip k-q"><b></b>QUALIFIED</span>
       <span class="keychip k-nq"><b></b>NOT QUALIFIED</span>
       <span class="keychip k-esc"><b></b>ESCALATE</span>
       <span class="keychip k-cond"><b></b>CONDITIONAL</span>
+    </div>
+    <div class="lang-wrap">
+      <span class="lang-label">Language</span>
+      <select class="lang-select" id="langselect" aria-label="Select language">
+        <option value="en">English</option>
+        <option value="es">Español</option>
+        <option value="tl">Filipino</option>
+      </select>
     </div>
   </div>
 </header>
@@ -187,6 +210,7 @@ table.qf{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
     <span class="result-count" id="rcount"></span>
   </div>
 </div>
+<div id="gte"></div>
 
 <div class="layout">
   <nav class="sidenav" aria-label="Parts">
@@ -209,8 +233,9 @@ table.qf{width:100%;border-collapse:collapse;font-size:13.5px;min-width:640px}
 <a class="navlink" href="#p16"><span class="navnum">16</span>Premise Liability<span class="navcount">8</span></a>
 <a class="navlink" href="#p17"><span class="navnum">17</span>Dog Bites &amp; Non-Bite Dog Injuries<span class="navcount">7</span></a>
 <a class="navlink" href="#p18"><span class="navnum">18</span>Minors (By State)<span class="navcount">4</span></a>
-<a class="navlink" href="#p19"><span class="navnum">19</span>Procedural &amp; Status<span class="navcount">7</span></a>
-<a class="navlink" href="#p20"><span class="navnum">20</span>The Master Principles Behind Every Call<span class="navcount">1</span></a>
+<a class="navlink" href="#p19"><span class="navnum">19</span>Natural Occurrences<span class="navcount">5</span></a>
+<a class="navlink" href="#p20"><span class="navnum">20</span>Procedural &amp; Status<span class="navcount">7</span></a>
+<a class="navlink" href="#p21"><span class="navnum">21</span>The Master Principles Behind Every Call<span class="navcount">1</span></a>
   </nav>
   <main>
     <div class="howto">
@@ -840,11 +865,11 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
 </section>
 <section class="book-section" id="p7">
   <div class="sec-head"><span class="sec-eyebrow">Part 7</span><h2>Federal Cases</h2><span class="sec-count">3 scenarios</span></div>
-  <div class="cards"><article class="card card-nq" id="n7-1" data-disp="nq">
+  <div class="cards"><article class="card card-esc" id="n7-1" data-disp="esc">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">7.1</span>
-    <h3>USPS Mail Truck (Federal — Not Accepted)</h3>
-    <span class="head-stamp stamp stamp-nq">NOT QUALIFIED</span>
+    <h3>USPS Mail Truck (Federal — Escalate, Not a Solo Rep Reject)</h3>
+    <span class="head-stamp stamp stamp-esc">ESCALATE</span>
   </header>
   <div class="card-body">
     <div class="frow frow-story"><span class="flabel">Scenario</span><p>The caller is Linda Park, the driver — right person. The accident happened 7 days ago around 1 PM. Linda was stopped at a red light on a residential street. A large white truck rear-ended her — Linda initially describes it only as &quot;a mail truck.&quot; When the rep asks for more detail, Linda confirms it was a standard USPS postal delivery truck, driver in USPS uniform, mid-route delivering mail. A police report documents the collision and notes the truck was &quot;a U.S. Postal Service vehicle, on duty.&quot; Linda has neck and shoulder pain; went to urgent care the next day and has been attending PT twice weekly since, no gaps. Rear bumper crumpled, trunk jammed shut. Linda got the supervisor&#x27;s contact info. Linda&#x27;s own insurance is active.</p></div>
@@ -853,9 +878,9 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
 <marker id="arrC" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#D85A30" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
 <marker id="arrG" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#888780" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
 <marker id="arrR" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M2 1L8 5L2 9" fill="none" stroke="#E24B4A" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></marker>
-</defs><rect x="0" y="100" width="680" height="120" fill="#E8EBEE"/><line x1="0" y1="160" x2="680" y2="160" stroke="#C8CCD1" stroke-width="1" stroke-dasharray="8 8"/><g><rect x="420" y="120" width="130" height="60" rx="6" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/><text x="485.0" y="150.0" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#0C447C">PC</text></g><g><rect x="150" y="120" width="130" height="60" rx="6" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/><text x="215.0" y="150.0" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#993C1D">Defendant</text></g><line x1="280" y1="150" x2="410" y2="150" stroke="#D85A30" stroke-width="2" marker-end="url(#arrC)"/><g stroke="#E24B4A" stroke-width="2" stroke-linecap="round"><line x1="402" y1="140" x2="422" y2="160"/><line x1="422" y1="140" x2="402" y2="160"/><line x1="412" y1="135" x2="412" y2="165"/><line x1="397" y1="150" x2="427" y2="150"/></g><rect x="40" y="280" width="16" height="16" rx="3" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/><text x="64" y="288" text-anchor="start" dominant-baseline="central" font-size="12" font-weight="400" fill="#43525f">PC — stopped/slowing, hit from behind (not at fault)</text><rect x="40" y="304" width="16" height="16" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/><text x="64" y="312" text-anchor="start" dominant-baseline="central" font-size="12" font-weight="400" fill="#43525f">Defendant — rear-ended PC (at fault)</text><text x="640" y="30" text-anchor="end" dominant-baseline="central" font-size="12" font-weight="500" fill="#a36a00">USPS vehicle — federal defendant, not accepted</text></svg></div></div>
-    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>Every other element of this case is excellent — clear liability (rear-ended while stopped), prompt and consistent treatment, real property damage, a police report, and an identified responsible party with a supervisor&#x27;s contact. The single disqualifying fact is WHO the defendant works for: USPS is a federal entity, and the criteria does not accept federal cases under any circumstances — this is the named example in the criteria.</p></div>
-    <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> NOT QUALIFIED. The defendant was driving a USPS vehicle while working for the U.S. Postal Service — a federal entity. The criteria states federal cases are not accepted, period, regardless of liability, injury, or treatment strength. Linda should be advised to seek a firm handling federal tort claims.</span></div>
+</defs><rect x="0" y="100" width="680" height="120" fill="#E8EBEE"/><line x1="0" y1="160" x2="680" y2="160" stroke="#C8CCD1" stroke-width="1" stroke-dasharray="8 8"/><g><rect x="420" y="120" width="130" height="60" rx="6" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/><text x="485.0" y="150.0" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#0C447C">PC</text></g><g><rect x="150" y="120" width="130" height="60" rx="6" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/><text x="215.0" y="150.0" text-anchor="middle" dominant-baseline="central" font-size="12.5" font-weight="500" fill="#993C1D">Defendant</text></g><line x1="280" y1="150" x2="410" y2="150" stroke="#D85A30" stroke-width="2" marker-end="url(#arrC)"/><g stroke="#E24B4A" stroke-width="2" stroke-linecap="round"><line x1="402" y1="140" x2="422" y2="160"/><line x1="422" y1="140" x2="402" y2="160"/><line x1="412" y1="135" x2="412" y2="165"/><line x1="397" y1="150" x2="427" y2="150"/></g><rect x="40" y="280" width="16" height="16" rx="3" fill="#E6F1FB" stroke="#378ADD" stroke-width="1"/><text x="64" y="288" text-anchor="start" dominant-baseline="central" font-size="12" font-weight="400" fill="#43525f">PC — stopped/slowing, hit from behind (not at fault)</text><rect x="40" y="304" width="16" height="16" rx="3" fill="#FAECE7" stroke="#D85A30" stroke-width="1"/><text x="64" y="312" text-anchor="start" dominant-baseline="central" font-size="12" font-weight="400" fill="#43525f">Defendant — rear-ended PC (at fault)</text><text x="640" y="30" text-anchor="end" dominant-baseline="central" font-size="12" font-weight="500" fill="#a36a00">USPS vehicle — federal defendant, escalate to manager</text></svg></div></div>
+    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>Every other element of this case is excellent — clear liability (rear-ended while stopped), prompt and consistent treatment, real property damage, a police report, and an identified responsible party with a supervisor&#x27;s contact. The defendant being a USPS driver raises a federal defendant flag, and federal cases fall outside standard intake criteria. However, this determination is not a rep-level reject — the question of whether a federal tort claim can or should be pursued, referred out, or rejected entirely requires manager or attorney review. A rep who NQs this on their own and dismisses the caller is making a decision above their authority.</p></div>
+    <div class="dispo dispo-esc"><span class="stamp stamp-esc">ESCALATE</span><span class="dispo-text"><span class="reason-label">The Reason:</span> ESCALATE. The defendant is a USPS driver — a federal entity — which is outside standard intake criteria. Do not NQ solo. Escalate to a manager or attorney to determine whether this should be referred to a firm handling federal tort claims (FTCA), rejected, or handled another way. The rep&apos;s job is to gather the facts and escalate, not to make the final call on federal cases.</span></div>
   </div>
 </article><article class="card card-q" id="n7-2" data-disp="q">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
@@ -2382,8 +2407,67 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
 </article></div>
 </section>
 <section class="book-section" id="p19">
-  <div class="sec-head"><span class="sec-eyebrow">Part 19</span><h2>Procedural &amp; Status</h2><span class="sec-count">7 scenarios</span></div>
-  <div class="cards"><article class="card card-q" id="n19-1" data-disp="q">
+  <div class="sec-head"><span class="sec-eyebrow">Part 19</span><h2>Natural Occurrences</h2><span class="sec-count">5 scenarios</span></div>
+  <div class="cards"><article class="card card-nq" id="n19-1" data-disp="nq">
+  <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
+    <span class="card-num">19.1</span>
+    <h3>Driver Hits a Deer</h3>
+    <span class="head-stamp stamp stamp-nq">NOT QUALIFIED</span>
+  </header>
+  <div class="card-body">
+    <div class="frow frow-story"><span class="flabel">Scenario</span><p>The caller is Marcus Webb, the driver — right person. The accident happened 4 days ago on a two-lane rural highway in California at around 10 p.m. A deer ran out of the treeline directly in front of his car with no warning. Marcus hit it at highway speed — the airbags deployed, the hood buckled, the car was towed. He went to the ER that night with neck pain and a bruised sternum from the seatbelt. He has full coverage on his own vehicle including liability, collision, and uninsured motorist. When the rep asks who the other party is, Marcus says: "There wasn't one. It was a deer. It just... ran out."</p></div>
+    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>A personal injury case requires a liable third party — a person or entity whose negligence caused the injury. An animal in the road is not a liable party. There is no defendant, no insurance to pursue on a third-party basis, and no negligence claim to make. The caller's own collision coverage handles the vehicle; the injury itself is not a case we can take. This is true regardless of injury severity, treatment timing, or the caller's own insurance status.</p></div>
+    <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> NOT QUALIFIED. A deer is not a motorist, a driver, or a liable party of any kind. There is no defendant to pursue, no third-party insurance to claim against, and no negligence to assert. The fact that the caller is injured and treated does not change the analysis — without a liable party, there is no case.</span></div>
+  </div>
+</article><article class="card card-nq" id="n19-2" data-disp="nq">
+  <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
+    <span class="card-num">19.2</span>
+    <h3>Passenger in Vehicle That Hits a Deer</h3>
+    <span class="head-stamp stamp stamp-nq">NOT QUALIFIED</span>
+  </header>
+  <div class="card-body">
+    <div class="frow frow-story"><span class="flabel">Scenario</span><p>The caller is Sandra Okafor — not the driver. She was a passenger in her coworker's car. The accident happened 8 days ago: the coworker was driving on a highway at night, a deer leapt across the road, the car struck it, and Sandra was thrown forward into the dashboard despite wearing her seatbelt. She has neck and shoulder injuries, has been to urgent care twice. Sandra's position: "I wasn't driving. My coworker hit the deer. So can I make a claim against her?"</p></div>
+    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>A passenger's instinct — correct in most situations — is to look at the driver as the potential defendant when they're not at fault. But here, the driver didn't cause the accident through any negligence. A deer appearing suddenly on a highway at night is not something a reasonable driver could have prevented. The cause of Sandra's injury was the animal, not the driver's negligence. Without negligence by the driver, there is no liability claim against the driver, and without any other liable party, there is no case.</p></div>
+    <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> NOT QUALIFIED. Being a passenger does not change the fundamental requirement: there must be a negligent third party to pursue. The driver of the vehicle was not negligent — the deer was the cause. No liable party exists. Sandra's position as a passenger does not create a claim where none otherwise exists.</span></div>
+  </div>
+</article><article class="card card-nq" id="n19-3" data-disp="nq">
+  <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
+    <span class="card-num">19.3</span>
+    <h3>Has Uninsured Motorist Coverage, Hits a Deer</h3>
+    <span class="head-stamp stamp stamp-nq">NOT QUALIFIED</span>
+  </header>
+  <div class="card-body">
+    <div class="frow frow-story"><span class="flabel">Scenario</span><p>The caller is James Holbrook, the driver — right person. He hit a deer 6 days ago on an interstate in Nevada. He has neck and back injuries; he went to the ER the same night and has a follow-up scheduled. He opens the call with: "I know I have a case because I have uninsured motorist coverage, and the deer ran off without stopping." He has confirmed UM/UIM on his own policy and is emphatic that UM should apply here. The rep hears "UM" and pauses.</p></div>
+    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>Uninsured Motorist coverage exists to protect you when a human driver with no insurance causes your accident. The word "motorist" is not figurative — it means a person operating a motor vehicle. A deer is not a motorist. UM does not apply to animals, road debris, or natural occurrences — only to uninsured human drivers. The caller's confident framing ("the deer ran off without stopping") is a misunderstanding of what UM covers, not evidence of eligibility. This is a common misconception; correct it clearly and compassionately.</p></div>
+    <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> NOT QUALIFIED. Uninsured Motorist coverage applies to uninsured human drivers — not animals. A deer is not a "motorist" under any insurance policy. Having UM coverage does not create a personal injury case where no liable human party exists.</span></div>
+  </div>
+</article><article class="card card-nq" id="n19-4" data-disp="nq">
+  <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
+    <span class="card-num">19.4</span>
+    <h3>Swerves to Avoid Deer, Hits Guardrail — Single-Car Incident</h3>
+    <span class="head-stamp stamp stamp-nq">NOT QUALIFIED</span>
+  </header>
+  <div class="card-body">
+    <div class="frow frow-story"><span class="flabel">Scenario</span><p>The caller is Priya Chandrasekaran, the driver — right person. The accident happened 5 days ago on a mountain highway in California. A deer stepped onto the road; Priya swerved hard left to avoid it, lost control, struck the center guardrail, and came to rest against the shoulder barrier. No other cars were involved. She did not hit the deer. She has back injuries and a laceration on her forearm from the airbag; ER same day, orthopedic follow-up scheduled. Her argument: "I didn't hit the deer — I avoided it. The deer caused me to crash. Someone should be responsible."</p></div>
+    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>The caller's instinct — that the deer "caused" the accident — is understandable, but it does not create legal liability. A deer on a road is a natural occurrence. Swerving to avoid a natural occurrence and losing control is a single-car incident regardless of what prompted the swerve. There is no liable third party: the deer cannot be sued, the road itself is not at issue (no known defect, no maintenance claim), and no human action caused the chain of events. Not hitting the deer is irrelevant to the analysis.</p></div>
+    <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> NOT QUALIFIED. A single-car incident caused by swerving to avoid an animal is a natural occurrence with no liable third party. Whether the caller made contact with the deer or not does not change the analysis — the cause of the crash was the animal, and animals are not defendants.</span></div>
+  </div>
+</article><article class="card card-nq" id="n19-5" data-disp="nq">
+  <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
+    <span class="card-num">19.5</span>
+    <h3>Other Animal in Road — Same Rule Applies</h3>
+    <span class="head-stamp stamp stamp-nq">NOT QUALIFIED</span>
+  </header>
+  <div class="card-body">
+    <div class="frow frow-story"><span class="flabel">Scenario</span><p>The caller is Tomás Guerrero, the driver — right person. The accident happened 3 days ago in Nevada. A large dog ran into the road from a neighborhood sidewalk; Tomás couldn't stop in time and struck it. The airbags deployed on impact, and Tomás has a concussion and wrist fracture from bracing against the steering wheel. He went to the ER immediately and has already had imaging done. He mentions that a neighbor later told him the dog belonged to a family on the street and was frequently let out unleashed. His question: "If I can prove the dog had an owner and they were being negligent, is that a case?"</p></div>
+    <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>This scenario introduces a wrinkle: a domestic animal with a potentially identifiable negligent owner (unleashed dog, known to roam). In theory, negligent pet owners can bear liability — but this is not a motor vehicle personal injury case as we define it. The incident is still a single-car accident caused by an animal entering the roadway. The caller's injury and treatment timing otherwise look fine, but without a liable motorist, this does not qualify as an auto case. If it proceeds at all, it is a premises or negligence matter handled differently — not a standard auto intake.</p></div>
+    <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> NOT QUALIFIED as an auto personal injury case. Hitting any animal — deer, dog, or otherwise — in the road is a natural occurrence with no liable motorist. The potential existence of a negligent pet owner does not convert this into a standard auto intake. Do not qualify; if the caller wants to explore a negligence claim against the dog's owner separately, that is a different matter outside this call's scope.</span></div>
+  </div>
+</article></div>
+</section>
+<section class="book-section" id="p20">
+  <div class="sec-head"><span class="sec-eyebrow">Part 20</span><h2>Procedural &amp; Status</h2><span class="sec-count">7 scenarios</span></div>
+  <div class="cards"><article class="card card-q" id="n20-1" data-disp="q">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.1</span>
     <h3>Currently Represented by Another Firm</h3>
@@ -2395,7 +2479,7 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
     <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>The underlying accident facts are excellent — this would be a clean QUALIFIED case on liability, injury, treatment, and insurance alone. Cassandra is currently signed with another firm, but clients are free to terminate their attorney and switch firms, and persistent non-responsiveness (four unreturned voicemails, a case that feels stalled) is a legitimate, common reason to do so — this isn&#x27;t a case of &quot;I just want a better deal,&quot; it&#x27;s a breakdown in communication.</p></div>
     <div class="dispo dispo-q"><span class="stamp stamp-q">QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> QUALIFIED, contingent on Cassandra formally terminating her relationship with the current firm. Help her understand the termination process (typically a short letter notifying the firm she is ending the representation) so the switch is done properly. Once that&#x27;s done, the underlying case — clean liability, active insurance, consistent treatment — is straightforwardly qualified.</span></div>
   </div>
-</article><article class="card card-esc" id="n19-2" data-disp="esc">
+</article><article class="card card-esc" id="n20-2" data-disp="esc">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.2</span>
     <h3>Consulted a Firm That Declined, No Retainer Signed</h3>
@@ -2407,7 +2491,7 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
     <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>A consultation without a signed retainer is not a &quot;prior attorney&quot; in the sense that would disqualify the case — Phillip never became their client. But the decline reason matters: firms generally don&#x27;t pass on clean rear-ends with active insurance for no reason — something in the file likely gave them pause, even if Phillip can&#x27;t articulate what it was. &quot;They didn&#x27;t really explain much&quot; doesn&#x27;t mean nothing is there; it may just mean Phillip wasn&#x27;t told, or wasn&#x27;t listening for, the actual reason.</p></div>
     <div class="dispo dispo-esc"><span class="stamp stamp-esc">ESCALATE</span><span class="dispo-text"><span class="reason-label">The Reason:</span> ESCALATE. The facts as told (cited rear-end, active insurance, consistent treatment, no gaps) look qualified — but a firm declining a case it consulted on is itself a data point, and there&#x27;s usually a reason behind it even when the PC can&#x27;t repeat it back. Flag this for the manager before signing, and if possible find out which firm it was and what they were told, so the same issue doesn&#x27;t surface later as a surprise.</span></div>
   </div>
-</article><article class="card card-nq" id="n19-3" data-disp="nq">
+</article><article class="card card-nq" id="n20-3" data-disp="nq">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.3</span>
     <h3>Possible Settlement Signed, Catastrophic Injuries, Unconfirmed</h3>
@@ -2419,7 +2503,7 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
     <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>A signed settlement plus a cashed/deposited check usually ends a claim. But &quot;I told them I&#x27;d take it... signed some paperwork online... I think it was already deposited&quot; — without Michelle being able to say definitively whether what she signed was a full settlement of all claims — paired with catastrophic-level injuries (fractured back, pelvic fractures, head laceration) is an attorney question, not a rep rejection and absolutely not a rep sales pitch promising more money.</p></div>
     <div class="dispo dispo-nq"><span class="stamp stamp-nq">NOT QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> Likely NOT QUALIFIED if a full settlement was signed and funds accepted — but URGENT ESCALATION regardless, because the settlement status is unconfirmed and the injuries are catastrophic. The rep&#x27;s only job is gathering whatever documents/emails Michelle has and being honest that this needs attorney review, without promising the settlement can be reopened or that more money is coming.</span></div>
   </div>
-</article><article class="card card-q" id="n19-4" data-disp="q">
+</article><article class="card card-q" id="n20-4" data-disp="q">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.4</span>
     <h3>PD Check Already Cashed, BI Claim Untouched</h3>
@@ -2431,7 +2515,7 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
     <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>&quot;I already got a check from the insurance company and cashed it&quot; is the phrase that makes reps assume a case is dead. But the criteria treats property damage and bodily injury as separate claims. Tom&#x27;s description is unambiguous: the $3,400 was specifically for vehicle repairs, no release was signed, and the insurer never discussed — let alone settled — his injury claim. His chiropractic treatment, started within the 30-day window and ongoing, is an entirely separate, still-open matter.</p></div>
     <div class="dispo dispo-q"><span class="stamp stamp-q">QUALIFIED</span><span class="dispo-text"><span class="reason-label">The Reason:</span> QUALIFIED. The prior payment covered property damage only — Tom did not sign a release of his bodily injury claim, and the insurer never addressed his injuries. His BI claim remains fully open: clear liability (cited defendant, accepted by insurer), injury, and treatment within 30 days with no gaps. The attorney should still verify the scope of whatever paperwork Tom signed for the PD payment.</span></div>
   </div>
-</article><article class="card card-screen" id="n19-5" data-disp="screen">
+</article><article class="card card-screen" id="n20-5" data-disp="screen">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.5</span>
     <h3>Recorded Statement Already Given to Defendant&#x27;s Insurer</h3>
@@ -2443,7 +2527,7 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
     <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>A recorded statement is not a listed disqualifier under the criteria — it&#x27;s a fact to document, not a death sentence. The rep should neither dismiss Bridget&#x27;s concern entirely nor catastrophize it; the right response is calm, factual, and focused on capturing what was actually said.</p></div>
     <div class="dispo dispo-screen"><span class="stamp stamp-screen">SCREEN</span><span class="dispo-text"><span class="reason-label">The Reason:</span> Screen normally — the case otherwise QUALIFIES (cited rear-end, active insurance, injury/treatment within 30 days). Note that a recorded statement was given and ask Bridget what she recalls saying about fault and injuries, so it can be documented for the file. This affects strategy, not intake eligibility.</span></div>
   </div>
-</article><article class="card card-screen" id="n19-6" data-disp="screen">
+</article><article class="card card-screen" id="n20-6" data-disp="screen">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.6</span>
     <h3>The Suspiciously Fluent Caller</h3>
@@ -2455,7 +2539,7 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
     <div class="frow"><span class="flabel flabel-nuance">The Nuance</span><p>Every checklist item was recited in criteria language almost before being asked — PCs rejected elsewhere sometimes learn the script. The mismatch between the confident keyword recitation and the vague, detail-free open-ended retelling (no provider names, no specific sequence of events) is the actual signal here.</p></div>
     <div class="dispo dispo-screen"><span class="stamp stamp-screen">SCREEN</span><span class="dispo-text"><span class="reason-label">The Reason:</span> Screen on VERIFIED facts, not recited keywords. Do not disposition based on the opening recitation alone. Continue with open-ended, detail-seeking questions (exact dates, provider names, the sequence of events in the caller&#x27;s own words) and base the disposition on what those answers — and any documents the caller can actually produce — support.</span></div>
   </div>
-</article><article class="card card-nq" id="n19-7" data-disp="nq">
+</article><article class="card card-nq" id="n20-7" data-disp="nq">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">19.7</span>
     <h3>Multiple Disqualifiers Stacked in One Call</h3>
@@ -2469,9 +2553,9 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
   </div>
 </article></div>
 </section>
-<section class="book-section" id="p20">
-  <div class="sec-head"><span class="sec-eyebrow">Part 20</span><h2>The Master Principles Behind Every Call</h2><span class="sec-count">1 scenario</span></div>
-  <div class="cards"><article class="card card-q" id="n20-1" data-disp="q">
+<section class="book-section" id="p21">
+  <div class="sec-head"><span class="sec-eyebrow">Part 21</span><h2>The Master Principles Behind Every Call</h2><span class="sec-count">1 scenario</span></div>
+  <div class="cards"><article class="card card-q" id="n21-1" data-disp="q">
   <header class="card-head" onclick="this.parentElement.classList.toggle('revealed')">
     <span class="card-num">20.1</span>
     <h3>The Four Checks That Decide Every Case</h3>
@@ -2532,6 +2616,36 @@ independent evidence</text><g></g><rect x="40" y="320" width="16" height="16" rx
   document.getElementById('quizmode').addEventListener('change', function(e){
     document.body.classList.toggle('quiz', e.target.checked);
     if(!e.target.checked) cards.forEach(function(c){c.classList.remove('revealed')});
+  });
+  // Language selector
+  var langSel = document.getElementById('langselect');
+  function getLangCookie(){
+    var m = document.cookie.match(/googtrans=\/en\/([^;]+)/);
+    return m ? m[1] : 'en';
+  }
+  function setLangCookie(lang){
+    var d = location.hostname;
+    document.cookie = 'googtrans=/en/'+lang+'; path=/';
+    document.cookie = 'googtrans=/en/'+lang+'; path=/; domain='+d;
+  }
+  function clearLangCookie(){
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/';
+    document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain='+location.hostname;
+  }
+  // Set dropdown to current language on load
+  langSel.value = getLangCookie();
+  langSel.addEventListener('change', function(){
+    var lang = this.value;
+    if(lang === 'en'){
+      clearLangCookie();
+      window.location.reload();
+    } else {
+      setLangCookie(lang);
+      var combo = document.querySelector('.goog-te-combo');
+      if(!combo){ setTimeout(function(){ combo = document.querySelector('.goog-te-combo'); if(combo){combo.value=lang;combo.dispatchEvent(new Event('change'));} }, 500); return; }
+      combo.value = lang;
+      combo.dispatchEvent(new Event('change'));
+    }
   });
   apply();
 })();

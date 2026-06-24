@@ -123,27 +123,22 @@ function SVGLineChart({ data, metric }: { data: TrendPoint[]; metric: string }) 
   const xPos = (i: number) => data.length > 1 ? (i / (data.length - 1)) * chartW : chartW / 2
   const yPos = (v: number) => chartH - (v / maxV) * chartH
 
+  // Treat null as 0 so the line stays continuous
+  const continuousValues = values.map(v => v ?? 0)
+
   let pathD = ''
-  let penDown = false
-  values.forEach((v, i) => {
-    if (v == null) { penDown = false; return }
+  continuousValues.forEach((v, i) => {
     const x = xPos(i), y = yPos(v)
-    pathD += penDown ? `L ${x} ${y} ` : `M ${x} ${y} `
-    penDown = true
+    pathD += i === 0 ? `M ${x} ${y} ` : `L ${x} ${y} `
   })
 
   // Area fill under line
   let areaD = ''
-  let started = false
-  let lastX = 0
-  values.forEach((v, i) => {
-    if (v == null) { started = false; return }
-    const x = xPos(i), y = yPos(v)
-    if (!started) { areaD += `M ${x} ${chartH} L ${x} ${y} `; started = true }
-    else areaD += `L ${x} ${y} `
-    lastX = x
-  })
-  if (started) areaD += `L ${lastX} ${chartH} Z`
+  if (continuousValues.length > 0) {
+    areaD = `M ${xPos(0)} ${chartH} L ${xPos(0)} ${yPos(continuousValues[0])} `
+    continuousValues.forEach((v, i) => { if (i > 0) areaD += `L ${xPos(i)} ${yPos(v)} ` })
+    areaD += `L ${xPos(continuousValues.length - 1)} ${chartH} Z`
+  }
 
   // Y ticks (4 lines)
   const yTicks = [0, 0.33, 0.67, 1].map(t => ({ v: maxV * t, y: chartH - t * chartH }))
@@ -155,7 +150,7 @@ function SVGLineChart({ data, metric }: { data: TrendPoint[]; metric: string }) 
     return acc
   }, [])
 
-  const hoverV = hoverIdx != null ? values[hoverIdx] : null
+  const hoverV = hoverIdx != null ? continuousValues[hoverIdx] : null
   const hoverX = hoverIdx != null ? xPos(hoverIdx) : 0
   const hoverY = hoverV != null ? yPos(hoverV) : null
 
@@ -198,10 +193,10 @@ function SVGLineChart({ data, metric }: { data: TrendPoint[]; metric: string }) 
         {/* Line */}
         <path d={pathD} fill="none" stroke={cfg.color} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
         {/* Dots */}
-        {values.map((v, i) => v != null ? (
+        {continuousValues.map((v, i) => (
           <circle key={i} cx={xPos(i)} cy={yPos(v)} r={hoverIdx === i ? 4.5 : 2.5}
             fill={cfg.color} stroke={hoverIdx === i ? '#111827' : 'none'} strokeWidth={1.5} />
-        ) : null)}
+        ))}
         {/* Hover zones */}
         {data.map((_, i) => {
           const zoneW = chartW / Math.max(data.length, 1)
@@ -313,10 +308,11 @@ function CreativeTrendModal({ ad, initialMetric, timeframe, invoiceCode, slug, o
                 <div key={s.key}
                   onClick={() => setMetric(s.key)} role="button" tabIndex={0}
                   onKeyDown={e => e.key === 'Enter' && setMetric(s.key)}
-                  className={`rounded-lg p-3 cursor-pointer transition ${metric === s.key ? 'bg-gray-800 ring-1 ring-gray-600' : 'bg-gray-900/50 hover:bg-gray-800/60'}`}>
-                  <p className="text-[10px] text-gray-500 mb-1">{s.cfg.label}</p>
+                  className={`rounded-lg p-3 cursor-pointer transition ${metric === s.key ? 'ring-1' : 'bg-gray-800 hover:bg-gray-700/80'}`}
+                  style={metric === s.key ? { backgroundColor: s.cfg.color + '22', ringColor: s.cfg.color + '66' } : {}}>
+                  <p className="text-[10px] text-gray-400 mb-1">{s.cfg.label}</p>
                   <p className="text-sm font-semibold" style={{ color: s.cfg.color }}>{s.cfg.fmt(s.avg)}</p>
-                  <p className="text-[10px] text-gray-600 mt-0.5">avg · last {s.cfg.fmt(s.last)}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">avg · last {s.cfg.fmt(s.last)}</p>
                 </div>
               ))}
             </div>
@@ -330,10 +326,10 @@ function CreativeTrendModal({ ad, initialMetric, timeframe, invoiceCode, slug, o
 // ─────────────────────────────────────────────────────────────────────────────
 // MetricBar (clickable)
 // ─────────────────────────────────────────────────────────────────────────────
-function MetricBar({ label, value, max, killBelow, killAbove, warnBelow, warnAbove, fmt, onClick }: {
+function MetricBar({ label, value, max, killBelow, killAbove, warnBelow, warnAbove, fmt, color, onClick }: {
   label: string; value: number | null; max: number
   killBelow?: number; killAbove?: number; warnBelow?: number; warnAbove?: number
-  fmt: (v: number) => string; onClick?: () => void
+  fmt: (v: number) => string; color?: string; onClick?: () => void
 }) {
   if (value == null || max === 0) {
     return (
@@ -346,17 +342,19 @@ function MetricBar({ label, value, max, killBelow, killAbove, warnBelow, warnAbo
   const pctFill = Math.min(100, (value / max) * 100)
   const isKill = (killBelow != null && value < killBelow) || (killAbove != null && value > killAbove)
   const isWarn = !isKill && ((warnBelow != null && value < warnBelow) || (warnAbove != null && value > warnAbove))
-  const barColor = isKill ? 'bg-red-500' : isWarn ? 'bg-yellow-500' : 'bg-blue-500'
-  const textColor = isKill ? 'text-red-400' : isWarn ? 'text-yellow-400' : 'text-gray-300'
+  const barStyle = isKill ? undefined : isWarn ? undefined : (color ? { backgroundColor: color } : undefined)
+  const barClass = isKill ? 'bg-red-500' : isWarn ? 'bg-yellow-500' : (color ? '' : 'bg-blue-500')
+  const textStyle = isKill ? undefined : isWarn ? undefined : (color ? { color } : undefined)
+  const textClass = isKill ? 'text-red-400' : isWarn ? 'text-yellow-400' : (color ? '' : 'text-gray-300')
 
   return (
     <div className={`flex items-center gap-2 rounded px-1 -mx-1 py-0.5 transition ${onClick ? 'cursor-pointer hover:bg-gray-800/60 group' : ''}`}
       onClick={onClick}>
       <p className="text-[10px] text-gray-500 w-16 shrink-0 group-hover:text-gray-400 transition">{label}</p>
       <div className="flex-1 h-1.5 bg-gray-800 rounded-full overflow-hidden">
-        <div className={`h-full rounded-full ${barColor} transition-all`} style={{ width: `${pctFill}%` }} />
+        <div className={`h-full rounded-full ${barClass} transition-all`} style={{ width: `${pctFill}%`, ...barStyle }} />
       </div>
-      <span className={`text-xs w-14 text-right tabular-nums ${textColor}`}>{fmt(value)}</span>
+      <span className={`text-xs w-14 text-right tabular-nums ${textClass}`} style={textStyle}>{fmt(value)}</span>
     </div>
   )
 }
@@ -429,13 +427,13 @@ function CreativeChartCard({ ad, maxes, isActive, onClickMetric, onClickCases, o
 
       {/* Metric bars — each clickable to open trend */}
       <div className="space-y-1.5">
-        <MetricBar label="Spend" value={ad.spend} max={maxes.spend} fmt={fmt$} onClick={() => onClickMetric('spend')} />
-        <MetricBar label="CPL" value={ad.cpl} max={maxes.cpl} warnAbove={220} killAbove={300} fmt={fmt$} onClick={() => onClickMetric('cpl')} />
-        <MetricBar label="CPQ" value={ad.cpq} max={Math.max(maxes.cpq, 1200)} warnAbove={1200} killAbove={2000} fmt={fmt$} />
-        <MetricBar label="CPC" value={ad.cpc || null} max={maxes.cpc} fmt={fmt$} onClick={() => onClickMetric('cpc')} />
-        <MetricBar label="CTR" value={ad.ctr || null} max={maxes.ctr} warnAbove={10} fmt={v => v.toFixed(2) + '%'} onClick={() => onClickMetric('ctr')} />
-        <MetricBar label="Click→Lead" value={ad.clickToLeadPct} max={Math.max(maxes.clickToLeadPct, 5)} killBelow={0.5} fmt={v => v.toFixed(2) + '%'} onClick={() => onClickMetric('clickToLeadPct')} />
-        <MetricBar label="LPV→Lead" value={ad.lpvToLeadPct} max={Math.max(maxes.lpvToLeadPct, 5)} fmt={v => v.toFixed(2) + '%'} onClick={() => onClickMetric('lpvToLeadPct')} />
+        <MetricBar label="Spend" value={ad.spend} max={maxes.spend} fmt={fmt$} color={METRIC_CFG.spend.color} onClick={() => onClickMetric('spend')} />
+        <MetricBar label="CPL" value={ad.cpl} max={maxes.cpl} warnAbove={220} killAbove={300} fmt={fmt$} color={METRIC_CFG.cpl.color} onClick={() => onClickMetric('cpl')} />
+        <MetricBar label="CPQ" value={ad.cpq} max={Math.max(maxes.cpq, 1200)} warnAbove={1200} killAbove={2000} fmt={fmt$} color={METRIC_CFG.cpq.color} />
+        <MetricBar label="CPC" value={ad.cpc || null} max={maxes.cpc} fmt={fmt$} color={METRIC_CFG.cpc.color} onClick={() => onClickMetric('cpc')} />
+        <MetricBar label="CTR" value={ad.ctr || null} max={maxes.ctr} warnAbove={10} fmt={v => v.toFixed(2) + '%'} color={METRIC_CFG.ctr.color} onClick={() => onClickMetric('ctr')} />
+        <MetricBar label="Click→Lead" value={ad.clickToLeadPct} max={Math.max(maxes.clickToLeadPct, 5)} killBelow={0.5} fmt={v => v.toFixed(2) + '%'} color={METRIC_CFG.clickToLeadPct.color} onClick={() => onClickMetric('clickToLeadPct')} />
+        <MetricBar label="LPV→Lead" value={ad.lpvToLeadPct} max={Math.max(maxes.lpvToLeadPct, 5)} fmt={v => v.toFixed(2) + '%'} color={METRIC_CFG.lpvToLeadPct.color} onClick={() => onClickMetric('lpvToLeadPct')} />
       </div>
 
       {/* Pipeline breakdown */}
@@ -933,16 +931,6 @@ export default function MarketingPage() {
         </div>
       )}
 
-      {/* Alert banner */}
-      {(killCount > 0 || watchCount > 0 || scaleCount > 0 || readDecideCount > 0) && (
-        <div className="rounded-xl border border-gray-700/40 bg-gray-900 px-4 py-3 text-sm flex items-center gap-3 flex-wrap">
-          {killCount > 0 && <span className="text-red-400 font-semibold">{killCount} kill</span>}
-          {watchCount > 0 && <span className="text-yellow-400">{watchCount} watch</span>}
-          {readDecideCount > 0 && <span className="text-orange-400">{readDecideCount} read & decide</span>}
-          {scaleCount > 0 && <span className="text-green-400 font-semibold">{scaleCount} ready to scale ↑</span>}
-          <span className="text-gray-600 text-xs ml-auto">Phase logic</span>
-        </div>
-      )}
 
       {/* Summary */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -1025,7 +1013,7 @@ export default function MarketingPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'NR', 'NQ', 'F/U', 'Chase', 'Signed', 'CPQ', 'Phase'].map(c => (
+                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'NR', 'NQ', 'F/U', 'Chase', 'Signed', 'CPQ'].map(c => (
                         <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
                       ))}
                     </tr>
@@ -1035,7 +1023,7 @@ export default function MarketingPage() {
                       const level = alertLevel(a)
                       const isActive = resolvedActiveIds.has(a.adId)
                       return (
-                        <tr key={i} className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${!isActive ? 'opacity-60' : ''} ${level === 'kill' ? 'bg-red-950/10' : level === 'watch' ? 'bg-yellow-950/10' : level === 'scale' ? 'bg-green-950/10' : ''}`}>
+                        <tr key={i} className={`border-b border-gray-800/50 hover:bg-gray-800/20 ${!isActive ? 'opacity-60' : ''}`}>
                           <td className="py-3 px-3 w-6">
                             {isActive && <span className="block w-1.5 h-1.5 rounded-full bg-blue-400" title="Active today" />}
                           </td>
@@ -1045,9 +1033,12 @@ export default function MarketingPage() {
                           </td>
                           <td className="py-3 px-4 text-gray-200 whitespace-nowrap">{fmt$(a.spend)}</td>
                           <td className="py-3 px-4">
-                            {(a.metaLeads ?? 0) > 0
-                              ? <button onClick={() => setLeadsModal(a)} className="text-gray-300 hover:text-white hover:underline underline-offset-2 transition">{a.metaLeads}</button>
-                              : <span className="text-gray-600">0</span>}
+                            {(() => {
+                              const total = (a.nrCount ?? 0) + (a.nqCount ?? 0) + (a.fuCount ?? 0) + (a.chaseCount ?? 0) + (a.newLeadCount ?? 0)
+                              return total > 0
+                                ? <button onClick={() => setLeadsModal(a)} className="text-gray-300 hover:text-white hover:underline underline-offset-2 transition">{total}</button>
+                                : <span className="text-gray-600">0</span>
+                            })()}
                           </td>
                           <td className="py-3 px-4 cursor-pointer hover:underline underline-offset-2" onClick={() => setTrendState({ ad: a, metric: 'cpl' })}>
                             <span className={a.cpl == null ? 'text-gray-600' : a.cpl > 300 ? 'text-red-400 font-semibold' : a.cpl > 220 ? 'text-yellow-400' : 'text-gray-300'}>
@@ -1098,7 +1089,6 @@ export default function MarketingPage() {
                               ? <span className={a.cpq <= 1200 ? 'text-green-400 font-semibold' : a.cpq > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(a.cpq)}</span>
                               : <span className="text-gray-600">—</span>}
                           </td>
-                          <td className="py-3 px-4"><AlertBadge level={level} /></td>
                         </tr>
                       )
                     })}

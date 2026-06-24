@@ -43,13 +43,14 @@ const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
 }
 
 type PipelineContact = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
-type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[]; chase: PipelineContact[] }
+type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[]; chase: PipelineContact[]; new_lead: PipelineContact[] }
 
-const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
+const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu' | 'chase' | 'new_lead'> = {
   no_response:   'nr',
   not_qualified: 'nq',
   follow_up:     'fu',
   chase:         'chase',
+  new_lead:      'new_lead',
 }
 
 // Fetch all opportunities for a pipeline and return per-ad NR/NQ/FU contact lists
@@ -77,12 +78,13 @@ async function fetchGHLPipelineBreakdown(
 
     for (const opp of (data.opportunities || [])) {
       const stageName = (opp.pipelineStage?.name || '').toLowerCase()
-      const label: 'nr' | 'nq' | 'fu' | 'chase' | undefined =
+      const label: 'nr' | 'nq' | 'fu' | 'chase' | 'new_lead' | undefined =
         GHL_STAGE_LABEL[opp.pipelineStageId] ||
         (stageName.includes('chase') ? 'chase' :
          stageName.includes('no response') || stageName.includes('no_response') ? 'nr' :
          stageName.includes('not qualified') || stageName.includes('not_qualified') ? 'nq' :
          stageName.includes('follow up') || stageName.includes('follow_up') ? 'fu' :
+         stageName.includes('new lead') || stageName.includes('new_lead') ? 'new_lead' :
          undefined)
       if (!label) continue
 
@@ -95,7 +97,7 @@ async function fetchGHLPipelineBreakdown(
       const adId = attr?.utmAdId || attr?.utmContent || null
       if (!adId) continue
 
-      if (!breakdown[adId]) breakdown[adId] = { nr: [], nq: [], fu: [], chase: [] }
+      if (!breakdown[adId]) breakdown[adId] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
       breakdown[adId][label].push({
         name:      opp.contact?.name || opp.name || null,
         phone:     opp.contact?.phone || null,
@@ -194,7 +196,15 @@ function getLandingPageViews(actions: any[] = []) {
   )
 }
 
-function getPhase(weeklySpend: number, firm: any): { label: string; color: string } {
+function getPhase(weeklySpend: number, firm: any, caseCount?: number | null): { label: string; color: string } {
+  // If an invoice has a case_count, use it to determine phase tier
+  if (caseCount != null) {
+    if (caseCount <= 10) return { label: 'Initial', color: 'gray' }
+    if (caseCount <= 20) return { label: 'Scale', color: 'blue' }
+    if (caseCount <= 30) return { label: 'Pre-Max', color: 'green' }
+    return { label: 'Max', color: 'purple' }
+  }
+  // Fallback: spend-based (non-invoice views)
   if (weeklySpend <= firm.phase_initial_max_weekly_spend) {
     return { label: 'Initial', color: 'gray' }
   }
@@ -260,12 +270,12 @@ export async function GET(request: NextRequest) {
   let end: string
   let days: number
   let metaDateParam: Record<string, string>
-  let invoiceContext: { code: string; title: string | null; period_start: string; period_end: string; payment_received?: number | null; payment_interest_rate?: number | null } | null = null
+  let invoiceContext: { code: string; title: string | null; period_start: string; period_end: string; payment_received?: number | null; payment_interest_rate?: number | null; case_count?: number | null } | null = null
 
   if (invoiceParam) {
     const { data: inv, error: invErr } = await supabase
       .from('firm_invoices')
-      .select('code, title, period_start, period_end, payment_received, payment_interest_rate')
+      .select('code, title, period_start, period_end, payment_received, payment_interest_rate, case_count')
       .eq('firm_id', firm.id)
       .eq('code', invoiceParam)
       .single()
@@ -431,10 +441,10 @@ export async function GET(request: NextRequest) {
     }
     const hasRealAdId = row.ad_id && !row.ad_id.includes('{{')
     if (hasRealAdId) {
-      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { nr: [], nq: [], fu: [], chase: [] }
+      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
       ghlPipelineBreakdown[row.ad_id][label].push(contact)
     } else if (row.ad_name) {
-      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [], chase: [] }
+      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
       ghlPipelineByName[row.ad_name][label].push(contact)
     } else if (row.contact_id) {
       // No ad attribution in this record — will try to inherit from signed record below
@@ -470,10 +480,10 @@ export async function GET(request: NextRequest) {
         }
         const hasRealAdId = attrib.ad_id && !attrib.ad_id.includes('{{')
         if (hasRealAdId) {
-          if (!ghlPipelineBreakdown[attrib.ad_id!]) ghlPipelineBreakdown[attrib.ad_id!] = { nr: [], nq: [], fu: [], chase: [] }
+          if (!ghlPipelineBreakdown[attrib.ad_id!]) ghlPipelineBreakdown[attrib.ad_id!] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
           ghlPipelineBreakdown[attrib.ad_id!][label].push(contact)
         } else if (attrib.ad_name) {
-          if (!ghlPipelineByName[attrib.ad_name]) ghlPipelineByName[attrib.ad_name] = { nr: [], nq: [], fu: [], chase: [] }
+          if (!ghlPipelineByName[attrib.ad_name]) ghlPipelineByName[attrib.ad_name] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
           ghlPipelineByName[attrib.ad_name][label].push(contact)
         }
       }
@@ -504,7 +514,7 @@ export async function GET(request: NextRequest) {
   const weeklyCpl = weeklyMetaLeads > 0 ? weeklySpend / weeklyMetaLeads : null
   const dailySpendAvg = days > 0 ? totalSpend / days : 0
   const dailyLeadsAvg = days > 0 ? totalMetaLeads / days : 0
-  const phase = getPhase(weeklySpend, firm)
+  const phase = getPhase(weeklySpend, firm, invoiceContext?.case_count)
 
   // Helpers for per-case overrides stored in form_data JSONB
   function caseValue(lead: any): number {
@@ -529,6 +539,21 @@ export async function GET(request: NextRequest) {
   if (allFirmLeadsRes.error) {
     console.error('ghl_leads firm list error:', allFirmLeadsRes.error.message)
     allFirmLeads = []
+  }
+
+  // Build signed cases breakdown per ad_id for the leads modal
+  const signedLeadsBreakdown: Record<string, { name: string | null; phone: string | null; email: string | null; createdAt: string | null }[]> = {}
+  const signedLeadsByName: Record<string, { name: string | null; phone: string | null; email: string | null; createdAt: string | null }[]> = {}
+  for (const row of allFirmLeads) {
+    const contact = { name: row.contact_name, phone: row.contact_phone, email: row.contact_email, createdAt: row.qualified_at }
+    const hasRealAdId = row.ad_id && !(row.ad_id as string).includes('{{')
+    if (hasRealAdId) {
+      if (!signedLeadsBreakdown[row.ad_id]) signedLeadsBreakdown[row.ad_id] = []
+      signedLeadsBreakdown[row.ad_id].push(contact)
+    } else if (row.ad_name) {
+      if (!signedLeadsByName[row.ad_name]) signedLeadsByName[row.ad_name] = []
+      signedLeadsByName[row.ad_name].push(contact)
+    }
   }
 
   // Build ad_id → ad_name lookup from Meta insights to fill gaps in ghl_leads
@@ -706,7 +731,7 @@ export async function GET(request: NextRequest) {
     const adVictims = adMatchedLeads.reduce((s: number, l: any) => s + (l.victim_count || 1), 0)
 
     // Pipeline stage counts — from Supabase ghl_leads, matched by ad_id then ad_name
-    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { nr: [], nq: [], fu: [], chase: [] }
+    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
 
     return {
       adId: a.ad_id,
@@ -729,14 +754,17 @@ export async function GET(request: NextRequest) {
       ctr: parseFloat(a.ctr || 0),
       impressions: parseInt(a.impressions || 0),
       // Pipeline breakdown — live from GHL (contacts + counts)
-      nrLeads:    pipeline.nr,
-      nqLeads:    pipeline.nq,
-      fuLeads:    pipeline.fu,
-      chaseLeads: pipeline.chase,
-      nrCount:    pipeline.nr.length,
-      nqCount:    pipeline.nq.length,
-      fuCount:    pipeline.fu.length,
-      chaseCount: pipeline.chase.length,
+      nrLeads:      pipeline.nr,
+      nqLeads:      pipeline.nq,
+      fuLeads:      pipeline.fu,
+      chaseLeads:   pipeline.chase,
+      newLeadLeads: pipeline.new_lead,
+      signedLeads:  signedLeadsBreakdown[a.ad_id] || signedLeadsByName[a.ad_name] || [],
+      nrCount:      pipeline.nr.length,
+      nqCount:      pipeline.nq.length,
+      fuCount:      pipeline.fu.length,
+      chaseCount:   pipeline.chase.length,
+      newLeadCount: pipeline.new_lead.length,
     }
   }).sort((a: any, b: any) => {
     // Sort: ads with signed cases first (by CPQ asc), then by spend desc
@@ -746,15 +774,17 @@ export async function GET(request: NextRequest) {
     return b.spend - a.spend
   })
 
-  // KPI targets — phase-aware (Initial / Scale / Max)
-  const phaseKey = phase.label.toLowerCase() as 'initial' | 'scale' | 'max'
+  // KPI targets — phase-aware (Initial / Scale / Pre-Max / Max)
+  const phaseKey = phase.label.toLowerCase().replace('-', '_') as 'initial' | 'scale' | 'pre_max' | 'max'
   const targetDailySpend: number =
-    phaseKey === 'initial' ? (firm.target_initial_daily_spend ?? firm.target_daily_spend ?? 800)
-    : phaseKey === 'scale' ? (firm.target_scale_daily_spend ?? firm.target_daily_spend ?? 800)
+    phaseKey === 'initial'  ? (firm.target_initial_daily_spend  ?? firm.target_daily_spend ?? 800)
+    : phaseKey === 'scale'  ? (firm.target_scale_daily_spend    ?? firm.target_daily_spend ?? 800)
+    : phaseKey === 'pre_max'? (firm.target_pre_max_daily_spend  ?? firm.target_max_daily_spend ?? firm.target_daily_spend ?? 800)
     : (firm.target_max_daily_spend ?? firm.target_daily_spend ?? 800)
   const targetDailyLeads: number =
-    phaseKey === 'initial' ? (firm.target_initial_daily_leads ?? firm.target_daily_leads ?? 5)
-    : phaseKey === 'scale' ? (firm.target_scale_daily_leads ?? firm.target_daily_leads ?? 5)
+    phaseKey === 'initial'  ? (firm.target_initial_daily_leads  ?? firm.target_daily_leads ?? 5)
+    : phaseKey === 'scale'  ? (firm.target_scale_daily_leads    ?? firm.target_daily_leads ?? 5)
+    : phaseKey === 'pre_max'? (firm.target_pre_max_daily_leads  ?? firm.target_max_daily_leads ?? firm.target_daily_leads ?? 5)
     : (firm.target_max_daily_leads ?? firm.target_daily_leads ?? 5)
   const targetCpq = firm.target_cpq ?? (firm.case_value > 0 ? firm.case_value * 0.4 : 800)
   const targetGrossMargin = firm.target_gross_margin ?? 60
