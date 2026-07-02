@@ -485,6 +485,34 @@ export default async function DashboardPage() {
             </div>
           )}
 
+          {/* ── Creative team: flat module list, no levels/booking/timers ── */}
+          {teamType === 'creative' && (
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 mb-6">
+                Welcome back, {profile.name || 'there'}!
+              </h1>
+              {modules.length === 0 ? (
+                <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center">
+                  <p className="text-gray-500">No training modules available yet.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {modules.map((mod, idx) => (
+                    <ModuleCard
+                      key={mod.id}
+                      mod={mod}
+                      data={moduleAttemptData[mod.id]}
+                      qCount={questionCounts[mod.id] ?? 0}
+                      isLocked={false}
+                      position={idx}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {teamType !== 'creative' && <>
           <NewModulePopup modules={(modules ?? []).map((m) => ({ id: m.id, title: m.title }))} />
           <RetakeNotificationPopup />
 
@@ -732,6 +760,7 @@ export default async function DashboardPage() {
             )}
           </div>
         )}
+          </>}
           </>
         )}
       </main>
