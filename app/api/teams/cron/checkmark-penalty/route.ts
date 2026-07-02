@@ -81,19 +81,31 @@ async function syncRecentNRSightings(maxAgeSec: number) {
           NR_STAGE_IDS.has(opp.pipelineStageId) ||
           (opp.pipelineStage?.name || '').toLowerCase().includes('no response')
         if (!isNR) return false
-        const created = opp.createdAt ? new Date(opp.createdAt) : null
-        return created && created >= cutoff
+        // Check createdAt OR lastStageChangeAt OR updatedAt — covers both new leads
+        // and existing contacts moved into NR stage
+        const timestamps = [
+          opp.createdAt,
+          opp.lastStageChangeAt,
+          opp.updatedAt,
+          opp.dateAdded,
+          opp.dateUpdated,
+        ].filter(Boolean).map((t: string) => new Date(t).getTime())
+        const mostRecent = Math.max(...timestamps)
+        return mostRecent >= cutoff.getTime()
       })
 
       if (recentNR.length === 0) continue
 
       await admin.from('nr_lead_sightings').upsert(
-        recentNR.map((opp: any) => ({
-          contact_id:    opp.contact?.id,
-          contact_name:  opp.contact?.name || opp.name || null,
-          first_seen_at: opp.createdAt,
-          opp_created_at: opp.createdAt,
-        })).filter((r: any) => r.contact_id),
+        recentNR.map((opp: any) => {
+          const stageAt = opp.lastStageChangeAt || opp.updatedAt || opp.createdAt || opp.dateAdded || new Date().toISOString()
+          return {
+            contact_id:     opp.contact?.id,
+            contact_name:   opp.contact?.name || opp.name || null,
+            first_seen_at:  stageAt,
+            opp_created_at: stageAt,
+          }
+        }).filter((r: any) => r.contact_id),
         { onConflict: 'contact_id', ignoreDuplicates: true }
       )
     } catch {
