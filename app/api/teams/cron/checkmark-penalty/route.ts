@@ -11,6 +11,25 @@ const PERF_WEBHOOK = process.env.SLACK_PERFORMANCE_WEBHOOK
 const GHL_API_KEY = process.env.GHL_API_KEY!
 const GHL_LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 
+// All NR pipeline stage IDs (from todos route)
+const NR_STAGE_IDS = new Set([
+  '1175a360-9914-4ce5-906d-d89adb27c732', // LHP NR
+  'c63f684a-f2eb-48f8-84f1-7ab35a1ba25b', // Eisenberg NR
+  '121ae7a9-35c9-4204-a7d4-8fb19f297758', // THL NR
+  '87d0a194-8841-4062-b6a3-bfedd9186070', // MCA NR
+  '91ced34f-cb7b-4a03-a47d-f4ffd25fd108', // Fears NR
+  '620b4cfc-fc0c-4c2c-a490-44a6bb36a3d1', // Levine NR
+])
+
+const PIPELINE_IDS = [
+  'yMqNixSnChC5lcGQXA1g', // lhp
+  'Yk4w3ML56ECc10PFzjpK', // eisenberg
+  'DYtmw8WEUtGePFbEDAIZ', // thl
+  '6Ku9EwTtMFk51o7Re9x0', // mca
+  'Jj4DCdu5duYDgI87ERbx', // fears
+  'JPyMNjGGAIxUv0FWW7Cg', // levine
+]
+
 async function notifySlack(text: string) {
   if (!PERF_WEBHOOK) return
   await fetch(PERF_WEBHOOK, {
@@ -44,6 +63,45 @@ async function fetchGHLCalls(contactId: string): Promise<{ userId: string; dateA
   }
 }
 
+// Fetch NR leads from GHL created in the last `maxAgeSec` seconds and upsert into nr_lead_sightings
+async function syncRecentNRSightings(maxAgeSec: number) {
+  const cutoff = new Date(Date.now() - maxAgeSec * 1000)
+
+  for (const pipelineId of PIPELINE_IDS) {
+    try {
+      const res = await fetch(
+        `https://services.leadconnectorhq.com/opportunities/search?location_id=${GHL_LOCATION_ID}&pipeline_id=${pipelineId}&limit=50`,
+        { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
+      )
+      if (!res.ok) continue
+      const data = await res.json()
+
+      const recentNR = (data.opportunities || []).filter((opp: any) => {
+        const isNR =
+          NR_STAGE_IDS.has(opp.pipelineStageId) ||
+          (opp.pipelineStage?.name || '').toLowerCase().includes('no response')
+        if (!isNR) return false
+        const created = opp.createdAt ? new Date(opp.createdAt) : null
+        return created && created >= cutoff
+      })
+
+      if (recentNR.length === 0) continue
+
+      await admin.from('nr_lead_sightings').upsert(
+        recentNR.map((opp: any) => ({
+          contact_id:    opp.contact?.id,
+          contact_name:  opp.contact?.name || opp.name || null,
+          first_seen_at: opp.createdAt,
+          opp_created_at: opp.createdAt,
+        })).filter((r: any) => r.contact_id),
+        { onConflict: 'contact_id', ignoreDuplicates: true }
+      )
+    } catch {
+      // continue to next pipeline
+    }
+  }
+}
+
 export async function GET(req: NextRequest) {
   const secret = req.nextUrl.searchParams.get('secret')
   const authHeader = req.headers.get('authorization')
@@ -53,6 +111,10 @@ export async function GET(req: NextRequest) {
 
   const now = new Date()
   const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+
+  // ── SYNC: Pull recent NR leads from GHL into nr_lead_sightings ─────────────
+  // This ensures sightings exist even if no rep has loaded the todos page yet
+  await syncRecentNRSightings(420)
 
   // ── CHECK 1: Missed checkmark (-1pt all reps) ──────────────────────────────
   // Leads that appeared 61–300s ago with no checkmark within 60s
