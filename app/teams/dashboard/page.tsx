@@ -260,22 +260,41 @@ export default async function DashboardPage() {
     .limit(1)
     .maybeSingle()
 
-  const { data: modules } = await supabase
+  const teamType = (profile as any).team_type ?? 'intake'
+
+  // Fetch programs for this team type only
+  const programsRes = await supabase
+    .from('programs')
+    .select('id, name, position, team_type')
+    .or(`team_type.eq.${teamType},team_type.is.null`)
+    .order('position', { ascending: true })
+  const programs = programsRes.error
+    ? (await supabase.from('programs').select('id, name, team_type').or(`team_type.eq.${teamType},team_type.is.null`).order('created_at', { ascending: true })).data
+    : programsRes.data
+
+  const { data: programModuleLinks } = await supabase
+    .from('program_modules')
+    .select('program_id, module_id, position')
+    .order('position', { ascending: true })
+
+  // Only load modules that belong to this team's programs
+  const teamProgramIds = new Set((programs ?? []).map((p) => p.id))
+  const teamModuleIds = new Set(
+    (programModuleLinks ?? [])
+      .filter((l) => teamProgramIds.has(l.program_id))
+      .map((l) => l.module_id)
+  )
+
+  const { data: allModules } = await supabase
     .from('modules')
     .select('id, title, description, pass_threshold, is_required, is_active, created_at')
     .eq('is_active', true)
     .order('created_at', { ascending: true })
 
-  const teamType = (profile as any).team_type ?? 'intake'
-  const [programsRes, { data: programModuleLinks }] = await Promise.all([
-    supabase.from('programs').select('id, name, position').or(`team_type.eq.${teamType},team_type.is.null`).order('position', { ascending: true }),
-    supabase.from('program_modules').select('program_id, module_id, position').order('position', { ascending: true }),
-  ])
-  const programs = programsRes.error
-    ? (await supabase.from('programs').select('id, name').or(`team_type.eq.${teamType},team_type.is.null`).order('created_at', { ascending: true })).data
-    : programsRes.data
+  // Filter modules to only those in this team's programs
+  const modules = (allModules ?? []).filter((m) => teamModuleIds.has(m.id))
 
-  const moduleIds = (modules ?? []).map((m) => m.id)
+  const moduleIds = modules.map((m) => m.id)
   const questionCounts: Record<string, number> = {}
   if (moduleIds.length > 0) {
     const { data: questions } = await supabase
