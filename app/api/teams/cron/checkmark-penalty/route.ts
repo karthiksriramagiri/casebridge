@@ -124,10 +124,6 @@ export async function GET(req: NextRequest) {
   const now = new Date()
   const today = now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 
-  // ── SYNC: Pull recent NR leads from GHL into nr_lead_sightings ─────────────
-  // This ensures sightings exist even if no rep has loaded the todos page yet
-  await syncRecentNRSightings(420)
-
   // ── CHECK 1: Missed checkmark (-1pt all reps) ──────────────────────────────
   // Leads that appeared 61–300s ago with no checkmark within 60s
   const missedWindowStart = new Date(now.getTime() - 300 * 1000).toISOString()

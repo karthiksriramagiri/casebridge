@@ -45,6 +45,30 @@ export async function POST(req: NextRequest) {
   const event = payload.event
   if (!event) return NextResponse.json({ ok: true })
 
+  // Capture Lead Bot messages as new lead sightings
+  if (event.type === 'message' && !event.subtype && event.bot_profile) {
+    const botName = (event.bot_profile?.name || event.username || '').toLowerCase()
+    if (botName.includes('lead') && event.channel && event.ts) {
+      const channel = event.channel
+      if (SLACK_NR_LEAD_CHANNELS.size === 0 || SLACK_NR_LEAD_CHANNELS.has(channel)) {
+        const postedAt = new Date(parseFloat(event.ts) * 1000).toISOString()
+        // Extract contact name from message text if possible
+        const nameMatch = (event.text || '').match(/Name\s*:\s*([^\n]+)/i)
+        const contactName = nameMatch ? nameMatch[1].trim() : null
+        await admin.from('nr_lead_sightings').upsert(
+          {
+            contact_id:     event.ts, // Slack message ts as unique ID
+            contact_name:   contactName,
+            first_seen_at:  postedAt,
+            opp_created_at: postedAt,
+          },
+          { onConflict: 'contact_id', ignoreDuplicates: true }
+        )
+      }
+    }
+    return NextResponse.json({ ok: true })
+  }
+
   // Only track reactions in the NR leads channel
   if (event.type === 'reaction_added') {
     const channel = event.item?.channel
