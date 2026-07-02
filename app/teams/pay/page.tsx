@@ -149,6 +149,7 @@ export default function PayPage() {
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
+      if (prof.team_type === 'creative') { router.push('/teams/dashboard'); return }
 
       setProfileId(prof.id)
       setTimeclockEnabled(!!prof.timeclock_enabled)

@@ -461,6 +461,7 @@ export default function TodosPage() {
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
+      if (prof.team_type === 'creative') { window.location.href = 'https://app.notion.com/p/ogeo/Creative-Workspace-34f895255ae980c3a4b6fcb5128f2519?source=copy_link'; return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
       setTeamType(prof.team_type ?? 'intake')
       setReady(true)

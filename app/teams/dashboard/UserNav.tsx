@@ -13,11 +13,7 @@ export default function UserNav({ timeclockEnabled, teamType }: Props) {
   const isCreative = teamType === 'creative'
 
   const tabs = isCreative
-    ? [
-        { label: 'Training', href: '/teams/dashboard' },
-        { label: 'Pay', href: '/teams/pay' },
-        { label: 'Todos', href: '/teams/todos' },
-      ]
+    ? []
     : [
         { label: 'Home', href: '/teams/home' },
         { label: 'Training', href: '/teams/dashboard' },
@@ -39,11 +35,19 @@ export default function UserNav({ timeclockEnabled, teamType }: Props) {
   return (
     <div className="flex gap-0 border-b border-gray-200 mb-6 overflow-x-auto">
       {isCreative ? (
-        tabs.map((tab) => (
-          <Link key={tab.href} href={tab.href} className={tabClass(pathname.startsWith(tab.href))}>
-            {tab.label}
+        <>
+          <Link href="/teams/dashboard" className={tabClass(pathname === '/teams/dashboard')}>
+            Training
           </Link>
-        ))
+          <a
+            href="https://app.notion.com/p/ogeo/Creative-Workspace-34f895255ae980c3a4b6fcb5128f2519?source=copy_link"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={tabClass(false)}
+          >
+            Todos
+          </a>
+        </>
       ) : (
         <>
           {tabs.slice(0, 2).map((tab) => (

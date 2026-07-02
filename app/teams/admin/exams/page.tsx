@@ -30,6 +30,7 @@ function fmt(iso: string) {
 }
 
 export default function AdminExamsPage() {
+  const [team, setTeam] = useState<'intake' | 'creative'>('intake')
   const [config, setConfig] = useState<ExamConfig | null>(null)
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
@@ -45,7 +46,7 @@ export default function AdminExamsPage() {
   const [loadingQ, setLoadingQ] = useState(false)
 
   async function loadConfig() {
-    const res = await fetch('/api/teams/admin/exams')
+    const res = await fetch(`/api/teams/admin/exams?team=${team}`)
     if (res.ok) {
       const data: ExamConfig = await res.json()
       setConfig(data)
@@ -53,6 +54,7 @@ export default function AdminExamsPage() {
       setSelectedExamId(savedId)
       setQuestions(data.questions ?? [])
       setExamAttempts(data.examAttempts ?? [])
+      setStartTime('')
       if (data.examStartTime) {
         const d = new Date(data.examStartTime)
         const pad = (n: number) => String(n).padStart(2, '0')
@@ -62,13 +64,13 @@ export default function AdminExamsPage() {
     setLoading(false)
   }
 
-  useEffect(() => { loadConfig() }, [])
+  useEffect(() => { loadConfig() }, [team]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Refresh questions AND attempts whenever selected exam changes
   useEffect(() => {
     if (!selectedExamId) { setQuestions([]); setExamAttempts([]); return }
     setLoadingQ(true)
-    fetch(`/api/teams/admin/exams?moduleId=${selectedExamId}`)
+    fetch(`/api/teams/admin/exams?team=${team}&moduleId=${selectedExamId}`)
       .then(r => r.json())
       .then(data => {
         setQuestions(data.questions ?? [])
@@ -100,8 +102,11 @@ export default function AdminExamsPage() {
   async function handleSave() {
     setSaving(true)
     setSaveMsg(null)
-    const body: Record<string, string | null> = { activeExamId: selectedExamId || null }
-    body.examStartTime = startTime ? new Date(startTime).toISOString() : null
+    const body: Record<string, string | null> = {
+      activeExamId: selectedExamId || null,
+      examStartTime: startTime ? new Date(startTime).toISOString() : null,
+      team,
+    }
     const res = await fetch('/api/teams/admin/exams', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -134,9 +139,29 @@ export default function AdminExamsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900">Exams</h1>
-        <p className="text-gray-500 mt-1 text-sm">Configure the active exam and start time for reps.</p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Exams</h1>
+          <p className="text-gray-500 mt-1 text-sm">Configure the active exam and start time for reps.</p>
+        </div>
+        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+          <button
+            onClick={() => setTeam('intake')}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+              team === 'intake' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Intake
+          </button>
+          <button
+            onClick={() => setTeam('creative')}
+            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
+              team === 'creative' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+            }`}
+          >
+            Creative
+          </button>
+        </div>
       </div>
 
       {/* Seed card */}

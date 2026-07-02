@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useRouter, usePathname } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface OptionForm {
@@ -84,10 +84,9 @@ function parseBulkQuestions(raw: string): { questions: QuestionForm[]; errors: s
 
 export default function AddModulePage() {
   const router = useRouter()
-  const pathname = usePathname()
-  const isCreative = pathname.includes('creative-modules')
-  const teamType = isCreative ? 'creative' : 'intake'
-  const backHref = isCreative ? '/teams/admin/creative-modules' : '/teams/admin/modules'
+  const searchParams = useSearchParams()
+  const teamType = searchParams.get('team') === 'creative' ? 'creative' : 'intake'
+  const backHref = `/teams/admin/modules?team=${teamType}`
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Module details
@@ -275,7 +274,14 @@ export default function AddModulePage() {
   return (
     <div className="max-w-2xl">
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Add New Module</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold text-gray-900">Add New Module</h1>
+          <span className={`text-xs font-bold uppercase tracking-wide px-2.5 py-1 rounded-full ${
+            teamType === 'creative' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'
+          }`}>
+            {teamType === 'creative' ? 'Creative' : 'Intake'}
+          </span>
+        </div>
         <p className="text-sm text-gray-500 mt-1">Build a question bank — reps get a random subset each attempt.</p>
       </div>
 
