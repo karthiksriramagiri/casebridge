@@ -1,5 +1,7 @@
 'use client'
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
+import { createClient } from '@/lib/supabase/client'
 import UserNav from '@/app/teams/dashboard/UserNav'
 
 const notifications = [
@@ -217,7 +219,21 @@ const tagColors: Record<string, string> = {
 }
 
 export default function NotificationsPage() {
+  const router = useRouter()
   const [expanded, setExpanded] = useState<string | null>('certification')
+  const [checking, setChecking] = useState(true)
+
+  useEffect(() => {
+    const supabase = createClient()
+    supabase.auth.getUser().then(async ({ data: { user } }) => {
+      if (!user) { router.push('/teams/login'); return }
+      const { data: prof } = await supabase.from('profiles').select('team_type').eq('id', user.id).single()
+      if (prof?.team_type === 'creative') { router.push('/teams/dashboard'); return }
+      setChecking(false)
+    })
+  }, [router])
+
+  if (checking) return null
 
   return (
     <div className="min-h-screen bg-gray-50">

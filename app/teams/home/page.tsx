@@ -95,6 +95,7 @@ export default function HomePage() {
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
+      if (prof.team_type === 'creative') { router.push('/teams/dashboard'); return }
 
       setProfile({ name: prof.name, timeclock_enabled: !!prof.timeclock_enabled, team_type: prof.team_type ?? 'intake' })
 

@@ -14,6 +14,7 @@ interface Program {
   name: string
   description: string
   position: number
+  team_type: string
   modules: Module[]
 }
 
@@ -36,11 +37,13 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
   // Form state — ordered list of module IDs
   const [formName, setFormName] = useState('')
   const [formDescription, setFormDescription] = useState('')
+  const [formTeamType, setFormTeamType] = useState<'intake' | 'creative'>('intake')
   const [formModuleOrder, setFormModuleOrder] = useState<string[]>([])
 
   function openCreate() {
     setFormName('')
     setFormDescription('')
+    setFormTeamType('intake')
     setFormModuleOrder([])
     setError('')
     setShowCreateDialog(true)
@@ -50,6 +53,7 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
   function openEdit(program: Program) {
     setFormName(program.name)
     setFormDescription(program.description)
+    setFormTeamType((program.team_type as 'intake' | 'creative') ?? 'intake')
     setFormModuleOrder(program.modules.map((m) => m.id))
     setError('')
     setEditProgram(program)
@@ -125,7 +129,7 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
       if (editProgram) {
         const { error: updateError } = await supabase
           .from('programs')
-          .update({ name: formName.trim(), description: formDescription.trim() })
+          .update({ name: formName.trim(), description: formDescription.trim(), team_type: formTeamType })
           .eq('id', editProgram.id)
         if (updateError) throw updateError
 
@@ -146,7 +150,7 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
         setPrograms((prev) =>
           prev.map((p) =>
             p.id === editProgram.id
-              ? { ...p, name: formName.trim(), description: formDescription.trim(), modules: orderedModules }
+              ? { ...p, name: formName.trim(), description: formDescription.trim(), team_type: formTeamType, modules: orderedModules }
               : p
           )
         )
@@ -155,7 +159,7 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
         const nextPosition = programs.length
         const { data: newProgram, error: createError } = await supabase
           .from('programs')
-          .insert({ name: formName.trim(), description: formDescription.trim(), position: nextPosition })
+          .insert({ name: formName.trim(), description: formDescription.trim(), position: nextPosition, team_type: formTeamType })
           .select()
           .single()
         if (createError) throw createError
@@ -173,7 +177,7 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
         const orderedModules = formModuleOrder
           .map((id) => allModules.find((m) => m.id === id))
           .filter(Boolean) as Module[]
-        setPrograms((prev) => [...prev, { ...newProgram, modules: orderedModules }])
+        setPrograms((prev) => [...prev, { ...newProgram, team_type: formTeamType, modules: orderedModules }])
         setMessage('Program created.')
       }
 
@@ -258,6 +262,13 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
                     <div className="flex items-center gap-2">
                       <span className="text-xs font-bold text-gray-300">#{idx + 1}</span>
                       <h3 className="font-bold text-gray-900 text-base">{program.name}</h3>
+                      <span className={`text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${
+                        program.team_type === 'creative'
+                          ? 'bg-purple-100 text-purple-700'
+                          : 'bg-blue-100 text-blue-700'
+                      }`}>
+                        {program.team_type === 'creative' ? 'Creative' : 'Intake'}
+                      </span>
                     </div>
                     {program.description && (
                       <p className="text-sm text-gray-500 mt-1">{program.description}</p>
@@ -350,6 +361,26 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Optional description..."
                 />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">Team</label>
+                <div className="flex gap-2">
+                  {(['intake', 'creative'] as const).map((t) => (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => setFormTeamType(t)}
+                      className={`px-4 py-2 rounded-lg text-sm font-medium border transition-colors ${
+                        formTeamType === t
+                          ? t === 'creative' ? 'bg-purple-600 text-white border-purple-600' : 'bg-blue-600 text-white border-blue-600'
+                          : 'bg-white text-gray-600 border-gray-300 hover:border-gray-400'
+                      }`}
+                    >
+                      {t === 'intake' ? 'Intake Team' : 'Creative Team'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
               {/* Ordered module list */}

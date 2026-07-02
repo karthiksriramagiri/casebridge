@@ -215,14 +215,16 @@ export async function POST(request: NextRequest) {
       .maybeSingle()
     if (repProfile?.id) {
       const closeDate = new Date().toISOString().slice(0, 10)
-      await supabase.from('score_events').insert({
-        user_id:        repProfile.id,
-        event_type:     'lead_closed',
-        points:         2,
-        note:           `Closed: ${contactName || 'Unknown'}`,
-        date:           closeDate,
-        auto_generated: true,
-      }).catch(() => {})
+      try {
+        await supabase.from('score_events').insert({
+          user_id:        repProfile.id,
+          event_type:     'lead_closed',
+          points:         2,
+          note:           `Closed: ${contactName || 'Unknown'}`,
+          date:           closeDate,
+          auto_generated: true,
+        })
+      } catch {}
     }
   }
 

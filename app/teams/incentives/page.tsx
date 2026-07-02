@@ -16,6 +16,7 @@ export default function IncentivesPage() {
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.push('/teams/login'); return }
       const { data: prof } = await supabase.from('profiles').select('timeclock_enabled, team_type').eq('id', user.id).single()
+      if (prof?.team_type === 'creative') { router.push('/teams/dashboard'); return }
       setTimeclockEnabled(!!prof?.timeclock_enabled)
       setTeamType(prof?.team_type ?? 'intake')
       setChecking(false)

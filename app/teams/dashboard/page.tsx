@@ -266,12 +266,13 @@ export default async function DashboardPage() {
     .eq('is_active', true)
     .order('created_at', { ascending: true })
 
+  const teamType = (profile as any).team_type ?? 'intake'
   const [programsRes, { data: programModuleLinks }] = await Promise.all([
-    supabase.from('programs').select('id, name, position').order('position', { ascending: true }),
+    supabase.from('programs').select('id, name, position').or(`team_type.eq.${teamType},team_type.is.null`).order('position', { ascending: true }),
     supabase.from('program_modules').select('program_id, module_id, position').order('position', { ascending: true }),
   ])
   const programs = programsRes.error
-    ? (await supabase.from('programs').select('id, name').order('created_at', { ascending: true })).data
+    ? (await supabase.from('programs').select('id, name').or(`team_type.eq.${teamType},team_type.is.null`).order('created_at', { ascending: true })).data
     : programsRes.data
 
   const moduleIds = (modules ?? []).map((m) => m.id)

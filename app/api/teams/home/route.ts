@@ -37,11 +37,12 @@ export async function GET() {
   const periodStartStr = periodStart.toISOString().slice(0, 10)
   const periodEndStr   = periodEnd.toISOString().slice(0, 10)
 
-  // All rep closers — exclude hidden/demo profiles but always include Karthik
+  // All rep closers — exclude hidden/demo profiles, creative team, but always include Karthik
   const { data: repProfiles } = await admin
     .from('profiles')
     .select('id, name')
     .eq('role', 'rep')
+    .or('team_type.is.null,team_type.eq.intake,name.eq.Karthik')
     .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik')
   const profileById: Record<string, string> = {}   // id → name
   const profileIdByName: Record<string, string> = {} // name → id

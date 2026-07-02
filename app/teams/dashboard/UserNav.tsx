@@ -14,7 +14,6 @@ export default function UserNav({ timeclockEnabled, teamType }: Props) {
 
   const tabs = isCreative
     ? [
-        { label: 'Home', href: '/teams/home' },
         { label: 'Training', href: '/teams/dashboard' },
         { label: 'Pay', href: '/teams/pay' },
         { label: 'Todos', href: '/teams/todos' },
@@ -39,13 +38,19 @@ export default function UserNav({ timeclockEnabled, teamType }: Props) {
 
   return (
     <div className="flex gap-0 border-b border-gray-200 mb-6 overflow-x-auto">
-      {tabs.slice(0, 2).map((tab) => (
-        <Link key={tab.href} href={tab.href} className={tabClass(pathname === tab.href)}>
-          {tab.label}
-        </Link>
-      ))}
-      {!isCreative && (
+      {isCreative ? (
+        tabs.map((tab) => (
+          <Link key={tab.href} href={tab.href} className={tabClass(pathname.startsWith(tab.href))}>
+            {tab.label}
+          </Link>
+        ))
+      ) : (
         <>
+          {tabs.slice(0, 2).map((tab) => (
+            <Link key={tab.href} href={tab.href} className={tabClass(pathname === tab.href)}>
+              {tab.label}
+            </Link>
+          ))}
           <a
             href="https://case-bridge.com/nuances"
             target="_blank"
@@ -57,13 +62,13 @@ export default function UserNav({ timeclockEnabled, teamType }: Props) {
           <Link href="/teams/exam" className={tabClass(pathname.startsWith('/teams/exam'))}>
             Exams
           </Link>
+          {tabs.slice(2).map((tab) => (
+            <Link key={tab.href} href={tab.href} className={tabClass(pathname.startsWith(tab.href))}>
+              {tab.label}
+            </Link>
+          ))}
         </>
       )}
-      {tabs.slice(2).map((tab) => (
-        <Link key={tab.href} href={tab.href} className={tabClass(pathname.startsWith(tab.href))}>
-          {tab.label}
-        </Link>
-      ))}
     </div>
   )
 }
