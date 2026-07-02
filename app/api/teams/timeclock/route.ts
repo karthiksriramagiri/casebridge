@@ -8,9 +8,7 @@ const admin = adminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const SLACK_WEBHOOK =
-  process.env.SLACK_TIMECLOCK_WEBHOOK ||
-  process.env.SLACK_TASK_REMINDERS
+const SLACK_WEBHOOK = process.env.SLACK_TIMECLOCK_WEBHOOK
 
 async function sendSlack(text: string) {
   if (!SLACK_WEBHOOK) return
@@ -117,11 +115,19 @@ export async function POST() {
       await admin.from('score_events').insert({
         user_id: user.id,
         event_type: 'late_clockin',
-        points: -0.5,
+        points: -1,
         note: `Clocked in ${lateStr} late`,
         date: today,
         auto_generated: true,
       })
+      const perfWebhook = process.env.SLACK_PERFORMANCE_WEBHOOK
+      if (perfWebhook) {
+        fetch(perfWebhook, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: `⏰ *Late Clock-In — ${name}*\n*Penalty:* -1 pt\n*Clocked in:* ${timeStr} EST (${lateStr} late)\n*Rule:* Must clock in within 10 min of shift start` }),
+        }).catch(() => {})
+      }
     }
   } else {
     await sendSlack(`✅ *${name}* clocked in at ${timeStr} EST — on time`)

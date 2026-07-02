@@ -156,6 +156,24 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(invRows) && invRows.length > 0) invoiceCode = invRows[0].code
   }
 
+  // Upsert nr_lead_sightings for no_response leads so the checkmark-penalty cron can detect them
+  // This must happen at webhook time, not when a rep opens the todos page
+  if (stageParam === 'no_response' && contactId) {
+    const oppCreatedAt =
+      payload.date_added || payload.dateAdded ||
+      payload.opportunity?.created_at || payload.opportunity?.dateAdded ||
+      new Date().toISOString()
+    await supabase.from('nr_lead_sightings').upsert(
+      {
+        contact_id:    contactId,
+        contact_name:  contactName,
+        first_seen_at: new Date().toISOString(),
+        opp_created_at: oppCreatedAt,
+      },
+      { onConflict: 'contact_id', ignoreDuplicates: true }
+    )
+  }
+
   // If this contact already has a signed case record, just update its pipeline_stage
   // (handles the case where a signed contact later goes NR)
   if (contactId) {

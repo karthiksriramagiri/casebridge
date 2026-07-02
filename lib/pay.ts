@@ -2,7 +2,7 @@
 // Shift:       2:00 PM – 11:00 PM EST (9 regular hours)
 // Rounding:    floor each session to nearest 0.05h; ignore sessions < 0.05h
 // Pay period:  bi-weekly (every 14 days), anchored to Fri Jun 12, 2026
-// Commission:  $25 per signed case, $10 per replacement case (constant)
+// Commission:  $25 per signed case, $0 per replacement case (as of Jun 13, 2026)
 
 export const OVERTIME_HOURLY = 6
 

@@ -7,7 +7,7 @@ const admin = adminClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-export const BASE_SCORE = 3
+export const BASE_SCORE = 2
 
 // GET /api/teams/score-events — rep's own events, daily scores, today's score, rank
 export async function GET() {
@@ -63,6 +63,7 @@ export async function GET() {
     .from('profiles')
     .select('id')
     .eq('role', 'rep')
+    .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik')
 
   const allRepIds = (allReps || []).map(r => r.id)
   const totalReps = allRepIds.length

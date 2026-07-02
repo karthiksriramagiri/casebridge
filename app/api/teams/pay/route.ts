@@ -4,9 +4,8 @@ import { createClient as adminClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
   billableHoursForDay, recentPayDates,
-  COMMISSION_PER_CLOSED, COMMISSION_PER_REPLACEMENT,
   COMMISSION_PER_CLOSED_NEW,
-  COMMISSION_CUTOFF, DEFAULT_REPLACEMENT_WINDOW_DAYS,
+  DEFAULT_REPLACEMENT_WINDOW_DAYS,
 } from '@/lib/pay'
 
 const admin = adminClient(
@@ -118,17 +117,10 @@ export async function GET() {
   for (const c of casesRes.data || []) {
     if (!c.qualified_at) continue
     const qualifiedAt = new Date(c.qualified_at)
-    const isLegacy = qualifiedAt < COMMISSION_CUTOFF
     const isReplacement = (c.case_status || '').toLowerCase() === 'replacement'
 
-    // Determine commission amount for this case
-    let commissionAmount: number
-    if (isReplacement) {
-      commissionAmount = isLegacy ? COMMISSION_PER_REPLACEMENT : 0
-    } else {
-      commissionAmount = isLegacy ? COMMISSION_PER_CLOSED : COMMISSION_PER_CLOSED_NEW
-    }
-    if (commissionAmount === 0) continue // skip $0-commission cases
+    if (isReplacement) continue // replacements earn $0 — skip entirely
+    const commissionAmount = COMMISSION_PER_CLOSED_NEW // $30 for all signed cases
 
     const windowDays = (c.firms as any)?.replacement_window_days ?? DEFAULT_REPLACEMENT_WINDOW_DAYS
     const eligibleAt = new Date(qualifiedAt.getTime() + windowDays * 24 * 60 * 60 * 1000)

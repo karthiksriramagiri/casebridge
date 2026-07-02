@@ -83,6 +83,14 @@ export async function POST(req: NextRequest) {
             date:           today,
             auto_generated: true,
           })
+          const perfWebhook = process.env.SLACK_PERFORMANCE_WEBHOOK
+          if (perfWebhook) {
+            fetch(perfWebhook, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: `📵 *No Call After Checkmark — ${prof?.name || 'Rep'}*\n*Penalty:* -1 pt\n*Lead:* ${contactName || contactId}\n*Response time:* ${timeStr}\n*Rule:* Must call within 60s of checkmarking` }),
+            }).catch(() => {})
+          }
         }
       }
     }

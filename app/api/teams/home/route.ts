@@ -37,8 +37,12 @@ export async function GET() {
   const periodStartStr = periodStart.toISOString().slice(0, 10)
   const periodEndStr   = periodEnd.toISOString().slice(0, 10)
 
-  // All rep profiles — build both id→name and name→id maps
-  const { data: repProfiles } = await admin.from('profiles').select('id, name').eq('role', 'rep')
+  // All rep closers — exclude hidden/demo profiles but always include Karthik
+  const { data: repProfiles } = await admin
+    .from('profiles')
+    .select('id, name')
+    .eq('role', 'rep')
+    .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik')
   const profileById: Record<string, string> = {}   // id → name
   const profileIdByName: Record<string, string> = {} // name → id
   for (const p of repProfiles || []) {
@@ -59,14 +63,14 @@ export async function GET() {
     admin.from('ghl_leads')
       .select('closed_by_profile_id, closer')
       .gte('qualified_at', thisMonthStart + 'T00:00:00Z')
-      .neq('case_status', 'replacement'),
+      .not('case_status', 'in', '("replacement","cancelled")'),
 
     // GHL closes last month
     admin.from('ghl_leads')
       .select('closed_by_profile_id, closer')
       .gte('qualified_at', lastMonthStart + 'T00:00:00Z')
       .lt('qualified_at', lastMonthEnd + 'T00:00:00Z')
-      .neq('case_status', 'replacement'),
+      .not('case_status', 'in', '("replacement","cancelled")'),
 
     // All-time for current user (ghl)
     admin.from('ghl_leads').select('id').eq('closed_by_profile_id', user.id).neq('case_status', 'replacement'),

@@ -56,7 +56,7 @@ export default function CasesPage() {
 
   const signed = cases.filter(c => c.status === 'signed').length
   const replacements = cases.filter(c => c.status === 'replacement').length
-  const commission = signed * 25 + replacements * 10
+  const commission = signed * 30
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -73,7 +73,7 @@ export default function CasesPage() {
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">My Cases</h1>
-          <p className="text-gray-500 mt-1">All cases you've closed. $25 per signed · $10 per replacement.</p>
+          <p className="text-gray-500 mt-1">All cases you've closed. $30 per signed · $0 per replacement.</p>
         </div>
 
         {loading ? (
@@ -118,7 +118,7 @@ export default function CasesPage() {
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         <span className="text-sm font-semibold text-gray-500">
-                          {c.status === 'replacement' ? '+$10' : c.status === 'signed' ? '+$25' : ''}
+                          {c.status === 'replacement' ? '+$0' : c.status === 'signed' ? '+$30' : ''}
                         </span>
                         <span className={`text-xs font-semibold px-2.5 py-1 rounded-full capitalize ${STATUS_STYLES[c.status] || 'bg-gray-100 text-gray-600'}`}>
                           {c.status}

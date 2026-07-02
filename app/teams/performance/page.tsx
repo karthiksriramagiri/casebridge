@@ -25,36 +25,44 @@ interface DayScore {
 }
 
 const EVENT_LABELS: Record<string, string> = {
-  lead_closed:      'Lead Closed',
-  good_call:        'Good Call Quality',
-  todo_complete:    'To-Do Completed',
-  late_clockin:     'Late Clock-In',
-  minor_violation:  'Minor Rule Violation',
-  bad_call:         'Bad Call Quality',
-  slow_checkmark:   'Slow Lead Checkmark',
+  lead_closed:              'Lead Closed',
+  perfect_day:              'Perfect Day Bonus',
+  good_call:                'Good Call Quality',
+  todo_complete:            'To-Do Completed',
+  missed_checkmark:         'Lead Not Checkmarked in Time',
+  no_call_after_checkmark:  'No Call After Checkmark',
+  missed_followup_call:     'Missed Follow-Up / Chase Call',
+  late_clockin:             'Late Clock-In (>10 min)',
+  minor_violation:          'Minor Rule Violation',
+  bad_call:                 'Bad Call Quality',
+  slow_checkmark:           'Slow Lead Checkmark',
 }
 
 const EVENT_ICONS: Record<string, string> = {
-  lead_closed:      '🤝',
-  good_call:        '📞',
-  todo_complete:    '✅',
-  late_clockin:     '⏰',
-  minor_violation:  '⚠️',
-  bad_call:         '📵',
-  slow_checkmark:   '🐢',
+  lead_closed:              '🤝',
+  perfect_day:              '✨',
+  good_call:                '📞',
+  todo_complete:            '✅',
+  missed_checkmark:         '❌',
+  no_call_after_checkmark:  '📵',
+  missed_followup_call:     '📋',
+  late_clockin:             '⏰',
+  minor_violation:          '⚠️',
+  bad_call:                 '🚫',
+  slow_checkmark:           '🐢',
 }
 
 type Range = 'week' | '7d' | '30d' | 'all'
 
 function scoreColor(score: number) {
-  if (score >= 4) return 'text-green-600'
-  if (score >= 3) return 'text-gray-900'
+  if (score > 2) return 'text-green-600'
+  if (score >= 2) return 'text-gray-900'
   return 'text-red-500'
 }
 
 function scoreBg(score: number) {
-  if (score >= 4) return 'bg-green-50 border-green-200'
-  if (score >= 3) return 'bg-white border-gray-100'
+  if (score > 2) return 'bg-green-50 border-green-200'
+  if (score >= 2) return 'bg-white border-gray-100'
   return 'bg-red-50 border-red-100'
 }
 
@@ -66,7 +74,7 @@ export default function PerformancePage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
   const [dailyScores, setDailyScores] = useState<DayScore[]>([])
-  const [todayScore, setTodayScore] = useState(3)
+  const [todayScore, setTodayScore] = useState(2)
   const [todayEventTotal, setTodayEventTotal] = useState(0)
   const [rank, setRank] = useState<number | null>(null)
   const [totalReps, setTotalReps] = useState(0)
@@ -133,7 +141,7 @@ export default function PerformancePage() {
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">My Performance</h1>
-          <p className="text-gray-500 mt-1 text-sm">Score resets to 3 each day. Events adjust it up or down.</p>
+          <p className="text-gray-500 mt-1 text-sm">You start at 2 pts each day. Events adjust it up or down.</p>
         </div>
 
         {loading ? (
@@ -152,7 +160,7 @@ export default function PerformancePage() {
                       {Math.round(todayScore * 100) / 100}
                     </p>
                     <div className="mb-1">
-                      <p className="text-sm text-gray-400">= 3 base</p>
+                      <p className="text-sm text-gray-400">= 2 base</p>
                       {todayEventTotal !== 0 && (
                         <p className={`text-sm font-semibold ${todayEventTotal > 0 ? 'text-green-600' : 'text-red-500'}`}>
                           {fmtPts(todayEventTotal)} from events
@@ -191,22 +199,36 @@ export default function PerformancePage() {
 
             {/* Point rules */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-8">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">How Points Work</p>
-              <div className="grid grid-cols-2 gap-x-8 gap-y-1.5 text-sm">
-                {[
-                  ['🤝 Close a lead', '+2'],
-                  ['📞 Good call quality', '+1'],
-                  ['✅ All slot leads called', '+1'],
-                  ['⏰ Late clock-in', '−0.5'],
-                  ['⚠️ Minor rule violation', '−0.25'],
-                  ['📵 Bad call quality', '−1'],
-                  ['🐢 Slow lead checkmark', '−1'],
-                ].map(([label, pts]) => (
-                  <div key={label} className="flex justify-between">
-                    <span className="text-gray-600">{label}</span>
-                    <span className={`font-semibold ${pts.startsWith('+') ? 'text-green-600' : 'text-red-500'}`}>{pts} pt</span>
-                  </div>
-                ))}
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">How Points Work · Start at 2 each day</p>
+              <div className="mb-3">
+                <p className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-1.5">You gain</p>
+                <div className="space-y-1 text-sm">
+                  {[
+                    ['🤝 Close a lead', '+2'],
+                    ['✨ No negative points today', '+1'],
+                  ].map(([label, pts]) => (
+                    <div key={label} className="flex justify-between">
+                      <span className="text-gray-600">{label}</span>
+                      <span className="font-semibold text-green-600">{pts} pt</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="border-t border-gray-100 pt-3">
+                <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1.5">You lose</p>
+                <div className="space-y-1 text-sm">
+                  {[
+                    ['❌ Lead not checkmarked in 60s (7am–9pm PST)', '−1'],
+                    ['📵 Checkmarked but no call in 60s', '−3'],
+                    ['📋 Missed Follow-Up / Chase call', '−2'],
+                    ['⏰ Late clock-in (>10 min)', '−1'],
+                  ].map(([label, pts]) => (
+                    <div key={label} className="flex justify-between gap-4">
+                      <span className="text-gray-600">{label}</span>
+                      <span className="font-semibold text-red-500 shrink-0">{pts} pt</span>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -271,7 +293,7 @@ export default function PerformancePage() {
                           ))}
                         </div>
                       ) : (
-                        <p className="px-5 py-2.5 text-sm text-gray-400">No events — base score 3</p>
+                        <p className="px-5 py-2.5 text-sm text-gray-400">No events — base score 2</p>
                       )}
                     </div>
                   ))}

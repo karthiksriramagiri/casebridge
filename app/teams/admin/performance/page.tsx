@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
+import Link from 'next/link'
 
 interface Rep { id: string; name: string }
 interface ScoreEvent {
@@ -20,6 +21,7 @@ interface ScoreboardEntry {
   name: string
   todayScore: number
   todayEventTotal: number
+  closes: number
 }
 interface WorkerResponseStats {
   workerName: string
@@ -34,25 +36,44 @@ interface CallVerificationWorker {
 }
 
 const EVENT_LABELS: Record<string, string> = {
-  lead_closed:      'Lead Closed',
-  good_call:        'Good Call Quality',
-  todo_complete:    'To-Do Completed',
-  late_clockin:     'Late Clock-In',
-  minor_violation:  'Minor Rule Violation',
-  bad_call:         'Bad Call Quality',
-  slow_checkmark:   'Slow Lead Checkmark',
+  lead_closed:              'Lead Closed',
+  perfect_day:              'Perfect Day Bonus',
+  good_call:                'Good Call Quality',
+  todo_complete:            'To-Do Completed',
+  missed_checkmark:         'Lead Not Checkmarked in Time',
+  no_call_after_checkmark:  'No Call After Checkmark',
+  missed_followup_call:     'Missed Follow-Up / Chase Call',
+  late_clockin:             'Late Clock-In (>10 min)',
+  minor_violation:          'Minor Rule Violation',
+  bad_call:                 'Bad Call Quality',
+  slow_checkmark:           'Slow Lead Checkmark',
 }
 
-const MANUAL_EVENTS = ['good_call', 'bad_call', 'minor_violation', 'todo_complete']
+const MANUAL_EVENTS = [
+  'lead_closed',
+  'perfect_day',
+  'good_call',
+  'todo_complete',
+  'missed_checkmark',
+  'no_call_after_checkmark',
+  'missed_followup_call',
+  'late_clockin',
+  'bad_call',
+  'minor_violation',
+]
 
 const POINT_LABELS: Record<string, string> = {
-  lead_closed:      '+2 pt',
-  good_call:        '+1 pt',
-  todo_complete:    '+1 pt',
-  late_clockin:     '−0.5 pt',
-  minor_violation:  '−0.25 pt',
-  bad_call:         '−1 pt',
-  slow_checkmark:   '−1 pt',
+  lead_closed:              '+2 pt',
+  perfect_day:              '+1 pt',
+  good_call:                '+1 pt',
+  todo_complete:            '+1 pt',
+  missed_checkmark:         '−1 pt',
+  no_call_after_checkmark:  '−3 pt',
+  missed_followup_call:     '−2 pt',
+  late_clockin:             '−1 pt',
+  minor_violation:          '−0.25 pt',
+  bad_call:                 '−1 pt',
+  slow_checkmark:           '−1 pt',
 }
 
 function pointsColor(pts: number) {
@@ -145,15 +166,7 @@ export default function AdminPerformancePage() {
 
   const today = new Date().toISOString().slice(0, 10)
 
-  // Today's event breakdown per rep for scoreboard detail
-  const todayBreakdown: Record<string, Record<string, number>> = {}
-  for (const e of events) {
-    if (e.date !== today) continue
-    if (!todayBreakdown[e.user_id]) todayBreakdown[e.user_id] = {}
-    todayBreakdown[e.user_id][e.event_type] = (todayBreakdown[e.user_id][e.event_type] ?? 0) + 1
-  }
-
-  const rankedBoard = scoreboard.map((rep, idx) => ({ ...rep, rank: idx + 1, breakdown: todayBreakdown[rep.id] ?? {} }))
+  const rankedBoard = scoreboard.map((rep, idx) => ({ ...rep, rank: idx + 1 }))
 
   // Events grouped by rep for history section
   const eventsByRep: Record<string, ScoreEvent[]> = {}
@@ -180,7 +193,7 @@ export default function AdminPerformancePage() {
       <div>
         <div className="flex items-center justify-between mb-3">
           <h2 className="text-base font-bold text-gray-900">Today's Scoreboard</h2>
-          <span className="text-xs text-gray-400">Base score: 3 · {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
+          <span className="text-xs text-gray-400">Base score: 2 · {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</span>
         </div>
         {rankedBoard.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center text-gray-400 text-sm">
@@ -189,51 +202,41 @@ export default function AdminPerformancePage() {
         ) : (
           <div className="space-y-2">
             {rankedBoard.map((rep) => {
-              const maxScore = rankedBoard[0].todayScore || 3
+              const maxScore = rankedBoard[0].todayScore || 2
               return (
-                <div key={rep.id} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
-                  <div className="flex items-center gap-4">
-                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                      rep.rank === 1 ? 'bg-yellow-100 text-yellow-700' :
-                      rep.rank === 2 ? 'bg-gray-100 text-gray-600' :
-                      rep.rank === 3 ? 'bg-orange-100 text-orange-600' :
-                      'bg-gray-50 text-gray-400'
-                    }`}>
-                      {rep.rank === 1 ? '🥇' : rep.rank === 2 ? '🥈' : rep.rank === 3 ? '🥉' : `#${rep.rank}`}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm">{rep.name}</p>
-                      <div className="flex flex-wrap gap-2 mt-0.5">
-                        {Object.entries(rep.breakdown).map(([type, count]) => (
-                          <span key={type} className="text-xs text-gray-400">
-                            {EVENT_LABELS[type] || type}: {count as number}×
-                          </span>
-                        ))}
-                        {Object.keys(rep.breakdown).length === 0 && (
-                          <span className="text-xs text-gray-300">No events today</span>
-                        )}
+                <Link key={rep.id} href={`/teams/admin/performance/${rep.id}`}>
+                  <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 cursor-pointer hover:border-blue-200 hover:shadow-md transition-all">
+                    <div className="flex items-center gap-4">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                        rep.rank === 1 ? 'bg-yellow-100 text-yellow-700' :
+                        rep.rank === 2 ? 'bg-gray-100 text-gray-600' :
+                        rep.rank === 3 ? 'bg-orange-100 text-orange-600' :
+                        'bg-gray-50 text-gray-400'
+                      }`}>
+                        {rep.rank === 1 ? '🥇' : rep.rank === 2 ? '🥈' : rep.rank === 3 ? '🥉' : `#${rep.rank}`}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold text-gray-900 text-sm">{rep.name}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {rep.todayEventTotal > 0 ? `+${rep.todayEventTotal} pts from events` : rep.todayEventTotal < 0 ? `${rep.todayEventTotal} pts from events` : 'No events today'}
+                        </p>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-2xl font-bold ${rep.todayScore > 2 ? 'text-green-600' : rep.todayScore >= 2 ? 'text-gray-900' : 'text-red-500'}`}>
+                          {Math.round(rep.todayScore * 100) / 100}
+                        </p>
                       </div>
                     </div>
-                    <div className="text-right shrink-0">
-                      <p className={`text-2xl font-bold ${rep.todayScore >= 4 ? 'text-green-600' : rep.todayScore >= 3 ? 'text-gray-900' : 'text-red-500'}`}>
-                        {Math.round(rep.todayScore * 100) / 100}
-                      </p>
-                      {rep.todayEventTotal !== 0 && (
-                        <p className={`text-xs font-medium ${rep.todayEventTotal > 0 ? 'text-green-500' : 'text-red-400'}`}>
-                          {rep.todayEventTotal > 0 ? '+' : ''}{rep.todayEventTotal} today
-                        </p>
-                      )}
+                    <div className="mt-3 ml-12">
+                      <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                        <div
+                          className={`h-1.5 rounded-full ${rep.todayScore > 2 ? 'bg-green-400' : rep.todayScore >= 2 ? 'bg-blue-400' : 'bg-red-400'}`}
+                          style={{ width: `${Math.max(4, Math.min(100, (rep.todayScore / Math.max(maxScore, 4)) * 100))}%` }}
+                        />
+                      </div>
                     </div>
                   </div>
-                  <div className="mt-3 ml-12">
-                    <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-1.5 rounded-full ${rep.todayScore >= 4 ? 'bg-green-400' : rep.todayScore >= 3 ? 'bg-blue-400' : 'bg-red-400'}`}
-                        style={{ width: `${Math.max(4, Math.min(100, (rep.todayScore / Math.max(maxScore, 5)) * 100))}%` }}
-                      />
-                    </div>
-                  </div>
-                </div>
+                </Link>
               )
             })}
           </div>

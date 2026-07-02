@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
   billableHoursForDay, splitOvertimeHours, grossPay,
-  COMMISSION_PER_CLOSED, COMMISSION_PER_REPLACEMENT,
+  COMMISSION_PER_CLOSED_NEW_NEW, COMMISSION_PER_REPLACEMENT_NEW,
 } from '@/lib/pay'
 
 const supabase = createClient(
@@ -145,8 +145,8 @@ export async function GET() {
     const rate = pid ? (hourlyRateMap[pid] ?? 5) : 5
     const { regularHours = 0, overtimeHours = 0, basePay = 0 } = pid ? (hoursAndPay[pid] || {}) : {}
     const commissionInPeriod =
-      stats.closedInPeriod * COMMISSION_PER_CLOSED +
-      stats.replacementsInPeriod * COMMISSION_PER_REPLACEMENT
+      stats.closedInPeriod * COMMISSION_PER_CLOSED_NEW +
+      stats.replacementsInPeriod * COMMISSION_PER_REPLACEMENT_NEW
     const totalPayment = Math.round((basePay + commissionInPeriod) * 100) / 100
 
     return {
@@ -154,7 +154,7 @@ export async function GET() {
       profileId: pid,
       signedCases: stats.signedCases,
       closedCases: stats.closedCases,
-      commission: stats.closedCases * COMMISSION_PER_CLOSED,
+      commission: stats.closedCases * COMMISSION_PER_CLOSED_NEW,
       hourlyRate: rate,
       // Pay period
       payPeriodStart: periodStartStr,
@@ -172,5 +172,5 @@ export async function GET() {
   }).filter(w => !w.profileId || !hiddenProfileIds.has(w.profileId))
     .sort((a, b) => b.signedCases - a.signedCases)
 
-  return NextResponse.json({ workers, commissionPerClosed: COMMISSION_PER_CLOSED, commissionPerReplacement: COMMISSION_PER_REPLACEMENT, nextPaymentDate: nextPayLabel, periodStart: periodStartStr, periodEnd: periodEndStr })
+  return NextResponse.json({ workers, commissionPerClosed: COMMISSION_PER_CLOSED_NEW, commissionPerReplacement: COMMISSION_PER_REPLACEMENT_NEW, nextPaymentDate: nextPayLabel, periodStart: periodStartStr, periodEnd: periodEndStr })
 }

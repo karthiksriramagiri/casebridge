@@ -17,16 +17,22 @@ async function requireAdmin() {
 }
 
 export const POINT_VALUES: Record<string, number> = {
-  lead_closed:      2,
-  good_call:        1,
-  todo_complete:    1,
-  late_clockin:    -0.5,
-  minor_violation: -0.25,
-  bad_call:        -1,
-  slow_checkmark:  -1,
+  // Positives
+  lead_closed:              2,
+  perfect_day:              1,
+  good_call:                1,
+  todo_complete:            1,
+  // Negatives
+  missed_checkmark:        -1,
+  no_call_after_checkmark: -3,
+  missed_followup_call:    -2,
+  late_clockin:            -1,
+  minor_violation:         -0.25,
+  bad_call:                -1,
+  slow_checkmark:          -1,
 }
 
-const BASE_SCORE = 3
+const BASE_SCORE = 2
 
 // GET /api/teams/admin/score-events — full scoreboard + today's scores
 export async function GET() {
@@ -35,16 +41,29 @@ export async function GET() {
 
   const today = new Date().toISOString().slice(0, 10)
 
-  const [eventsRes, repsRes] = await Promise.all([
+  const [eventsRes, repsRes, leadsRes] = await Promise.all([
     admin
       .from('score_events')
       .select('id, user_id, event_type, points, note, date, auto_generated, created_at, profiles!score_events_user_id_fkey(name)')
       .order('created_at', { ascending: false }),
-    admin.from('profiles').select('id, name').eq('role', 'rep'),
+    admin.from('profiles').select('id, name').eq('role', 'rep').or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik'),
+    admin
+      .from('ghl_leads')
+      .select('closed_by_profile_id, case_status')
+      .not('closed_by_profile_id', 'is', null),
   ])
 
   const events = eventsRes.data || []
   const reps = repsRes.data || []
+
+  // Count closes per rep from ghl_leads (anything that's not a replacement or cancelled)
+  const closesByRep: Record<string, number> = {}
+  for (const lead of leadsRes.data || []) {
+    const status = (lead.case_status || '').toLowerCase()
+    if (status === 'replacement' || status === 'cancelled') continue
+    const pid = lead.closed_by_profile_id
+    if (pid) closesByRep[pid] = (closesByRep[pid] ?? 0) + 1
+  }
 
   // Today's score per rep = BASE_SCORE + today's events sum
   const todayByRep: Record<string, number> = {}
@@ -60,6 +79,7 @@ export async function GET() {
       name: r.name,
       todayScore: BASE_SCORE + (todayByRep[r.id] ?? 0),
       todayEventTotal: todayByRep[r.id] ?? 0,
+      closes: closesByRep[r.id] ?? 0,
     }))
     .sort((a, b) => b.todayScore - a.todayScore)
 
@@ -98,6 +118,32 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Notify Slack for negative events
+  if (points < 0) {
+    const perfWebhook = process.env.SLACK_PERFORMANCE_WEBHOOK
+    if (perfWebhook) {
+      const { data: repProfile } = await admin.from('profiles').select('name').eq('id', user_id).single()
+      const repName = repProfile?.name || user_id
+      const EVENT_NAMES: Record<string, string> = {
+        missed_checkmark:        'Lead Not Checkmarked in Time',
+        no_call_after_checkmark: 'No Call After Checkmark',
+        missed_followup_call:    'Missed Follow-Up / Chase Call',
+        late_clockin:            'Late Clock-In',
+        minor_violation:         'Minor Rule Violation',
+        bad_call:                'Bad Call Quality',
+        slow_checkmark:          'Slow Lead Checkmark',
+      }
+      const label = EVENT_NAMES[event_type] || event_type
+      const noteStr = note ? `\n*Note:* ${note}` : ''
+      fetch(perfWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `⚠️ *${label} — ${repName}*\n*Penalty:* ${points} pt (manual)${noteStr}` }),
+      }).catch(() => {})
+    }
+  }
+
   return NextResponse.json({ event: data })
 }
 

@@ -8,9 +8,7 @@ const supabase = createClient(
 )
 
 // Use dedicated timeclock webhook if set, otherwise fall back to the task reminders webhook
-const SLACK_WEBHOOK =
-  process.env.SLACK_TIMECLOCK_WEBHOOK ||
-  process.env.SLACK_TASK_REMINDERS
+const SLACK_WEBHOOK = process.env.SLACK_TIMECLOCK_WEBHOOK
 
 async function sendSlack(text: string) {
   if (!SLACK_WEBHOOK) return
