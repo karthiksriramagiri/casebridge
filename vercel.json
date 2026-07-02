@@ -8,9 +8,5 @@
       "path": "/api/cron/verify-calls",
       "schedule": "0 2 * * *"
     },
-    {
-      "path": "/api/teams/cron/checkmark-penalty",
-      "schedule": "* * * * *"
-    }
   ]
 }
