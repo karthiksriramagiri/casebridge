@@ -15,14 +15,18 @@ export async function GET(request: NextRequest) {
   const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (prof?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  // ?moduleId= overrides the active exam for question preview
+  // ?moduleId= overrides the active exam for question preview; ?team=creative switches to creative config
   const url = new URL(request.url)
   const moduleIdParam = url.searchParams.get('moduleId')
+  const teamParam = url.searchParams.get('team') === 'creative' ? 'creative' : 'intake'
+  const examIdKey = teamParam === 'creative' ? 'active_exam_id_creative' : 'active_exam_id'
+  const examTimeKey = teamParam === 'creative' ? 'exam_start_time_creative' : 'exam_start_time'
+  const moduleTeamFilter = teamParam === 'creative' ? 'creative' : 'intake'
 
   const [activeExamRows, startTimeRows, modulesRes] = await Promise.all([
-    admin.from('exam_config').select('value').eq('key', 'active_exam_id').limit(1),
-    admin.from('exam_config').select('value').eq('key', 'exam_start_time').limit(1),
-    admin.from('modules').select('id, title, pass_threshold').eq('is_active', true).order('created_at', { ascending: false }),
+    admin.from('exam_config').select('value').eq('key', examIdKey).limit(1),
+    admin.from('exam_config').select('value').eq('key', examTimeKey).limit(1),
+    admin.from('modules').select('id, title, pass_threshold').eq('is_active', true).or(`team_type.eq.${moduleTeamFilter},team_type.is.null`).order('created_at', { ascending: false }),
   ])
 
   const activeExamId = (activeExamRows.data?.[0]?.value as string | undefined) || null
@@ -75,7 +79,10 @@ export async function POST(request: NextRequest) {
   if (prof?.role !== 'admin') return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
   const body = await request.json()
-  const { activeExamId, examStartTime } = body as { activeExamId?: string | null; examStartTime?: string | null }
+  const { activeExamId, examStartTime, team } = body as { activeExamId?: string | null; examStartTime?: string | null; team?: string }
+  const postTeam = team === 'creative' ? 'creative' : 'intake'
+  const postExamIdKey = postTeam === 'creative' ? 'active_exam_id_creative' : 'active_exam_id'
+  const postExamTimeKey = postTeam === 'creative' ? 'exam_start_time_creative' : 'exam_start_time'
 
   async function setConfig(key: string, value: string | null) {
     if (value) {
@@ -90,8 +97,8 @@ export async function POST(request: NextRequest) {
 
   try {
     const ops: Promise<void>[] = []
-    if (activeExamId !== undefined) ops.push(setConfig('active_exam_id', activeExamId))
-    if (examStartTime !== undefined) ops.push(setConfig('exam_start_time', examStartTime))
+    if (activeExamId !== undefined) ops.push(setConfig(postExamIdKey, activeExamId))
+    if (examStartTime !== undefined) ops.push(setConfig(postExamTimeKey, examStartTime))
     await Promise.all(ops)
   } catch (err: any) {
     return NextResponse.json({ error: err.message }, { status: 500 })

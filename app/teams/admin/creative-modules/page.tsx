@@ -1,19 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
-import { format } from 'date-fns'
-import ModuleList from './ModuleList'
+import ModuleList from '../modules/ModuleList'
 
-export default async function ModulesPage() {
+export default async function CreativeModulesPage() {
   const supabase = await createClient()
 
   const { data: modules } = await supabase
     .from('modules')
     .select('*')
-    .or('team_type.eq.intake,team_type.is.null')
+    .eq('team_type', 'creative')
     .order('created_at', { ascending: false })
 
-  // Fetch question counts per module
   const moduleIds = (modules ?? []).map((m) => m.id)
-  let questionCounts: Record<string, number> = {}
+  const questionCounts: Record<string, number> = {}
 
   if (moduleIds.length > 0) {
     const { data: questions } = await supabase
@@ -26,7 +24,6 @@ export default async function ModulesPage() {
     }
   }
 
-  // Fetch all questions with options for expansion
   const { data: allQuestions } = await supabase
     .from('questions')
     .select(`
@@ -60,9 +57,9 @@ export default async function ModulesPage() {
   return (
     <div>
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900">Intake Modules</h1>
+        <h1 className="text-xl font-bold text-gray-900">Creative Modules</h1>
         <p className="text-sm text-gray-500 mt-1">
-          Click a module to expand, edit details, or manage its questions.
+          Training modules for the creative team. Click to expand, edit, or manage questions.
         </p>
       </div>
       <ModuleList modules={enrichedModules} />

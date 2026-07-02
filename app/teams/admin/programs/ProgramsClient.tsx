@@ -21,9 +21,10 @@ interface Program {
 interface Props {
   programs: Program[]
   allModules: Module[]
+  defaultTeamType?: 'intake' | 'creative'
 }
 
-export default function ProgramsClient({ programs: initialPrograms, allModules }: Props) {
+export default function ProgramsClient({ programs: initialPrograms, allModules, defaultTeamType = 'intake' }: Props) {
   const [programs, setPrograms] = useState(
     [...initialPrograms].sort((a, b) => a.position - b.position)
   )
@@ -37,13 +38,13 @@ export default function ProgramsClient({ programs: initialPrograms, allModules }
   // Form state — ordered list of module IDs
   const [formName, setFormName] = useState('')
   const [formDescription, setFormDescription] = useState('')
-  const [formTeamType, setFormTeamType] = useState<'intake' | 'creative'>('intake')
+  const [formTeamType, setFormTeamType] = useState<'intake' | 'creative'>(defaultTeamType)
   const [formModuleOrder, setFormModuleOrder] = useState<string[]>([])
 
   function openCreate() {
     setFormName('')
     setFormDescription('')
-    setFormTeamType('intake')
+    setFormTeamType(defaultTeamType)
     setFormModuleOrder([])
     setError('')
     setShowCreateDialog(true)

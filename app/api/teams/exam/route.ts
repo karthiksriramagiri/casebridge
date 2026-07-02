@@ -12,9 +12,14 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const { data: prof } = await admin.from('profiles').select('team_type').eq('id', user.id).single()
+  const isCreative = prof?.team_type === 'creative'
+  const examIdKey = isCreative ? 'active_exam_id_creative' : 'active_exam_id'
+  const examTimeKey = isCreative ? 'exam_start_time_creative' : 'exam_start_time'
+
   const [activeExamRows, startTimeRows] = await Promise.all([
-    admin.from('exam_config').select('value').eq('key', 'active_exam_id').limit(1),
-    admin.from('exam_config').select('value').eq('key', 'exam_start_time').limit(1),
+    admin.from('exam_config').select('value').eq('key', examIdKey).limit(1),
+    admin.from('exam_config').select('value').eq('key', examTimeKey).limit(1),
   ])
 
   const activeExamId = (activeExamRows.data?.[0]?.value as string | undefined) || null

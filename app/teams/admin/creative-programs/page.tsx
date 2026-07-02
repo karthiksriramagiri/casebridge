@@ -1,18 +1,17 @@
 import { createClient } from '@/lib/supabase/server'
-import ProgramsClient from './ProgramsClient'
+import ProgramsClient from '../programs/ProgramsClient'
 
-export default async function ProgramsPage() {
+export default async function CreativeProgramsPage() {
   const supabase = await createClient()
 
   const programsRes = await supabase
     .from('programs')
     .select('*')
-    .or('team_type.eq.intake,team_type.is.null')
+    .eq('team_type', 'creative')
     .order('position', { ascending: true })
 
-  // Fall back to created_at if position column doesn't exist yet
   const { data: programs } = programsRes.error
-    ? await supabase.from('programs').select('*').or('team_type.eq.intake,team_type.is.null').order('created_at', { ascending: true })
+    ? await supabase.from('programs').select('*').eq('team_type', 'creative').order('created_at', { ascending: true })
     : programsRes
 
   const { data: programModules } = await supabase
@@ -28,9 +27,9 @@ export default async function ProgramsPage() {
   const { data: allModules } = await supabase
     .from('modules')
     .select('id, title, is_active')
+    .eq('team_type', 'creative')
     .order('title', { ascending: true })
 
-  // Group modules by program, preserving position order
   const modulesByProgram: Record<string, any[]> = {}
   for (const pm of programModules ?? []) {
     if (!modulesByProgram[pm.program_id]) modulesByProgram[pm.program_id] = []
@@ -45,10 +44,10 @@ export default async function ProgramsPage() {
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Intake Programs</h1>
-        <p className="text-sm text-gray-500 mt-1">Organize intake modules into structured training programs.</p>
+        <h1 className="text-xl font-bold text-gray-900">Creative Programs</h1>
+        <p className="text-sm text-gray-500 mt-1">Organize creative modules into training programs for the creative team.</p>
       </div>
-      <ProgramsClient programs={enrichedPrograms} allModules={allModules ?? []} />
+      <ProgramsClient programs={enrichedPrograms} allModules={allModules ?? []} defaultTeamType="creative" />
     </div>
   )
 }

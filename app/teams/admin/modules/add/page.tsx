@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 
 interface OptionForm {
@@ -84,6 +84,10 @@ function parseBulkQuestions(raw: string): { questions: QuestionForm[]; errors: s
 
 export default function AddModulePage() {
   const router = useRouter()
+  const pathname = usePathname()
+  const isCreative = pathname.includes('creative-modules')
+  const teamType = isCreative ? 'creative' : 'intake'
+  const backHref = isCreative ? '/teams/admin/creative-modules' : '/teams/admin/modules'
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   // Module details
@@ -247,6 +251,7 @@ export default function AddModulePage() {
           content_type: contentType, video_url: videoUrl.trim(),
           video_transcript: videoTranscript.trim(), content_body: contentBody.trim(),
           file_url: fileUrl, file_name: fileName,
+          team_type: teamType,
           questions: validQuestions.map((q) => ({
             question_text: q.question_text.trim(),
             explanation: q.explanation.trim(),
@@ -257,7 +262,7 @@ export default function AddModulePage() {
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to create module')
-      router.push('/teams/admin/modules')
+      router.push(backHref)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -604,7 +609,7 @@ Explanation: The firm does not handle workers comp.`}</pre>
 
       {/* ── Save ── */}
       <div className="flex gap-3">
-        <button onClick={() => router.push('/teams/admin/modules')}
+        <button onClick={() => router.push(backHref)}
           className="flex-1 sm:flex-none border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-6 py-3 rounded-lg transition-colors">
           Cancel
         </button>

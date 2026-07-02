@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { title, description, pass_threshold, is_required, content_type, video_url, video_transcript, content_body, file_url, file_name, questions, quiz_question_count } = body
+  const { title, description, pass_threshold, is_required, content_type, video_url, video_transcript, content_body, file_url, file_name, questions, quiz_question_count, team_type } = body
 
   if (!title || typeof title !== 'string' || !title.trim()) {
     return NextResponse.json({ error: 'Module title is required.' }, { status: 400 })
@@ -61,6 +61,7 @@ export async function POST(request: NextRequest) {
       file_url: file_url?.trim() ?? '',
       file_name: file_name?.trim() ?? '',
       quiz_question_count: quiz_question_count ?? 0,
+      team_type: team_type === 'creative' ? 'creative' : 'intake',
     })
     .select()
     .single()
