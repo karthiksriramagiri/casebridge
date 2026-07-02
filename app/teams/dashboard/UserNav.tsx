@@ -14,6 +14,7 @@ export default function UserNav({ timeclockEnabled }: Props) {
     { label: 'Home', href: '/teams/home' },
     { label: 'Training', href: '/teams/dashboard' },
     { label: 'Performance', href: '/teams/performance' },
+    { label: 'Incentives', href: '/teams/incentives' },
     { label: 'My Cases', href: '/teams/cases' },
     { label: 'Pay', href: '/teams/pay' },
     { label: 'Todos', href: '/teams/todos' },

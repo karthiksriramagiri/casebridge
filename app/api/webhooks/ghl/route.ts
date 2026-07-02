@@ -206,6 +206,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Auto score event: +2pt for the rep who closed this lead
+  if (closer) {
+    const { data: repProfile } = await supabase
+      .from('profiles')
+      .select('id')
+      .ilike('name', closer.trim())
+      .maybeSingle()
+    if (repProfile?.id) {
+      const closeDate = new Date().toISOString().slice(0, 10)
+      await supabase.from('score_events').insert({
+        user_id:        repProfile.id,
+        event_type:     'lead_closed',
+        points:         2,
+        note:           `Closed: ${contactName || 'Unknown'}`,
+        date:           closeDate,
+        auto_generated: true,
+      }).catch(() => {})
+    }
+  }
+
   // Write to Google Sheet (fire-and-forget — don't fail the webhook if Sheets is down)
   const incidentDate =
     payload.incident_date || payload['Date of Accident*'] || payload['Date of Accident'] ||
