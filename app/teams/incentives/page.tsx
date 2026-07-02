@@ -90,12 +90,6 @@ export default function IncentivesPage() {
           </div>
         </div>
 
-        {/* Callout */}
-        <div className="mt-6 border-l-4 border-orange-400 bg-orange-50 rounded-r-xl px-5 py-4">
-          <p className="text-sm text-orange-800 font-mono leading-relaxed">
-            LET'S MAKE a Group Slack Channel with all the reps and share scores publicly — including winning prizes, base increases, and commission increases.
-          </p>
-        </div>
       </div>
     </div>
   )
