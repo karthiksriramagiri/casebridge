@@ -9,13 +9,15 @@ export default function IncentivesPage() {
   const router = useRouter()
   const [checking, setChecking] = useState(true)
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
+  const [teamType, setTeamType] = useState('intake')
 
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(async ({ data: { user } }) => {
       if (!user) { router.push('/teams/login'); return }
-      const { data: prof } = await supabase.from('profiles').select('timeclock_enabled').eq('id', user.id).single()
+      const { data: prof } = await supabase.from('profiles').select('timeclock_enabled, team_type').eq('id', user.id).single()
       setTimeclockEnabled(!!prof?.timeclock_enabled)
+      setTeamType(prof?.team_type ?? 'intake')
       setChecking(false)
     })
   }, [router])
@@ -25,7 +27,7 @@ export default function IncentivesPage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="max-w-2xl mx-auto px-4 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} />
+        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
 
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Incentives</h1>
 

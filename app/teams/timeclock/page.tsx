@@ -12,7 +12,7 @@ export default async function TimeclockPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, name, role, nda_signed, timeclock_enabled')
+    .select('id, name, role, nda_signed, timeclock_enabled, team_type')
     .eq('id', user.id)
     .single()
 
@@ -32,7 +32,7 @@ export default async function TimeclockPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={true} />
+        <UserNav timeclockEnabled={true} teamType={profile.team_type ?? 'intake'} />
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Timeclock</h1>

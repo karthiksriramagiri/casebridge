@@ -160,7 +160,18 @@
       "Bash(wait)",
       "Bash(git rm:*)",
       "Bash(npx next:*)",
-      "Bash(git reset:*)"
+      "Bash(git reset:*)",
+      "Bash(npm run:*)",
+      "Bash(git -C sms-bot status)",
+      "Bash(gh api:*)",
+      "Bash(sed -i '' 's/<section class=\"\"book-section\"\" id=\"\"p20\"\">/<section class=\"\"book-section\"\" id=\"\"p21\"\">/g; s/<section class=\"\"book-section\"\" id=\"\"p19\"\">/<section class=\"\"book-section\"\" id=\"\"p20\"\">/g' lib/nuances.html)",
+      "Bash(sed -i '' 's|<span class=\"\"sec-eyebrow\"\">Part 20<\\\\/span><h2>The Master Principles|<span class=\"\"sec-eyebrow\"\">Part 21<\\\\/span><h2>The Master Principles|g; s|<span class=\"\"sec-eyebrow\"\">Part 19<\\\\/span><h2>Procedural|<span class=\"\"sec-eyebrow\"\">Part 20<\\\\/span><h2>Procedural|g' lib/nuances.html)",
+      "Bash(head -20 grep -rn \"paycheck\\\\|pay_date\\\\|Jun.*12\\\\|June.*12\" /Users/karthik/Documents/CaseBridge/app/)",
+      "Bash(source /Users/karthik/Documents/CaseBridge/.env.local)",
+      "Bash(find /Users/karthik/Documents/CaseBridge/src -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
+      "Bash(curl -s -X PATCH \"$NEXT_PUBLIC_SUPABASE_URL/rest/v1/ghl_leads?id=eq.42888979-a0eb-45c8-a2bf-2b24c5442a40\" -H \"apikey: $SUPABASE_SERVICE_ROLE_KEY\" -H \"Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY\" -H \"Content-Type: application/json\" -H \"Prefer: return=representation\" -d '{\"\"\"\"case_status\"\"\"\": \"\"\"\"e_signed\"\"\"\"}')",
+      "Bash(curl -s -X PATCH \"$NEXT_PUBLIC_SUPABASE_URL/rest/v1/ghl_leads?id=in.\\(844c2fb1-ed3e-410c-8a35-385b053c1713,b5a2b348-74ad-4e29-a3af-5240f28599cd,8f59b352-10ba-47fc-a513-b10d3ecb41e9\\)\" -H \"apikey: $SUPABASE_SERVICE_ROLE_KEY\" -H \"Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY\" -H \"Content-Type: application/json\" -H \"Prefer: return=representation\" -d '{\"\"\"\"invoice_code\"\"\"\": \"\"\"\"INV-4\"\"\"\"}')",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''count:'''', d.get\\(''''meta'''',{}\\).get\\(''''total'''',0\\), ''''| error:'''', d.get\\(''''message'''',''''none''''\\)\\)\")"
     ]
   }
 }

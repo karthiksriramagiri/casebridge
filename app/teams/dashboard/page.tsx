@@ -244,7 +244,7 @@ export default async function DashboardPage() {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('id, name, role, created_at, nda_signed, nda_signed_at, timeclock_enabled, nda_overdue_notified, training_expired_notified, timer_disabled')
+    .select('id, name, role, created_at, nda_signed, nda_signed_at, timeclock_enabled, nda_overdue_notified, training_expired_notified, timer_disabled, team_type')
     .eq('id', user.id)
     .single()
 
@@ -439,7 +439,7 @@ export default async function DashboardPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={!!profile.timeclock_enabled} />
+        <UserNav timeclockEnabled={!!profile.timeclock_enabled} teamType={(profile as any).team_type ?? 'intake'} />
 
         {expiredLevel !== null && (
           <div className="mt-8 bg-white rounded-2xl border border-red-200 shadow-sm px-8 py-12 text-center">

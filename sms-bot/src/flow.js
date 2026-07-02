@@ -1506,16 +1506,23 @@ class SmsBot {
       const data = await ghl.getContact(this.config, contact.ghlContactId || contact.id);
       const fetched = data?.contact || data;
       if (Object.prototype.hasOwnProperty.call(fetched || {}, "tags")) {
-        const withTags = { ...contact, tags: fetched.tags, lastTagLookupFailedAt: "", lastTagLookupError: "" };
+        // Only write the fields we're actually updating. upsertContact merges { ...dbState, ...arg },
+        // so passing a full stale contact object would overwrite concurrent writes (e.g. automationPaused
+        // set by handleInboundSms during the GHL API call). Passing only the tag-specific fields lets
+        // the fresh DB state win for everything else.
+        const withTags = { ...contact, tags: fetched.tags };
         return this.store.upsertContact({
-          ...withTags,
+          id: contact.id,
+          tags: fetched.tags,
+          lastTagLookupFailedAt: "",
+          lastTagLookupError: "",
           timezone: resolveContactTimezone(withTags, this.config),
-          language: isSpanishContact(withTags) ? "es" : withTags.language || ""
+          language: isSpanishContact(withTags) ? "es" : contact.language || ""
         });
       }
     } catch (error) {
       const failed = await this.store.upsertContact({
-        ...contact,
+        id: contact.id,
         lastTagLookupFailedAt: new Date().toISOString(),
         lastTagLookupError: error.message
       });
@@ -3788,6 +3795,10 @@ class SmsBot {
     if (contact && outboundJobTypes.includes(job.type)) {
       tagLookupStartedAt = new Date();
       contact = await this.hydrateContactTags(contact, { force: true });
+      // Re-fetch after tag hydration to pick up any concurrent state changes (e.g. automationPaused
+      // set by handleInboundSms while the GHL API call was in-flight). This is the authoritative
+      // state check before we do anything that sends a message.
+      contact = (await this.store.getContact(job.contactId)) || contact;
       if (tagLookupFailedAfter(contact, tagLookupStartedAt)) {
         await this.store.updateJob(job.id, {
           status: "pending",

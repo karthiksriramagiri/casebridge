@@ -18,6 +18,7 @@ interface Rep {
   timerDisabled: boolean
   levelsUnlocked: boolean
   todoMode: string
+  teamType: string
   shift: string | null
   ghlUserIds: string[]
   payrollMethod: string | null
@@ -121,6 +122,7 @@ export default function RepsPage() {
   const [showAddDialog, setShowAddDialog] = useState(false)
   const [addName, setAddName] = useState('')
   const [addPassword, setAddPassword] = useState('')
+  const [addTeamType, setAddTeamType] = useState('intake')
   const [addLoading, setAddLoading] = useState(false)
   const [addError, setAddError] = useState('')
 
@@ -367,13 +369,14 @@ export default function RepsPage() {
       const res = await fetch('/api/teams/admin/reps', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: addName, password: addPassword }),
+        body: JSON.stringify({ name: addName, password: addPassword, teamType: addTeamType }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Failed to add rep')
       setShowAddDialog(false)
       setAddName('')
       setAddPassword('')
+      setAddTeamType('intake')
       await fetchReps()
     } catch (err: any) {
       setAddError(err.message)
@@ -452,6 +455,9 @@ export default function RepsPage() {
                             {SHIFT_LABELS[rep.shift] ?? rep.shift}
                           </span>
                         )}
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rep.teamType === 'creative' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                          {rep.teamType === 'creative' ? 'Creative Team' : 'Intake Team'}
+                        </span>
                         {rep.payrollMethod && (
                           <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
                             {rep.payrollMethod}
@@ -541,6 +547,36 @@ export default function RepsPage() {
                       {/* Call Queue tab */}
                       {tab === 'callqueue' && (
                         <div className="space-y-4">
+                          {/* Team Type */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Team</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Which team this rep belongs to</p>
+                            </div>
+                            <div className="flex gap-2">
+                              {(['intake', 'creative'] as const).map(t => (
+                                <button
+                                  key={t}
+                                  onClick={async () => {
+                                    await fetch(`/api/teams/admin/reps/${rep.id}`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'update_team_type', teamType: t }),
+                                    })
+                                    setReps(prev => prev.map(r => r.id === rep.id ? { ...r, teamType: t } : r))
+                                  }}
+                                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
+                                    rep.teamType === t
+                                      ? t === 'creative' ? 'bg-purple-600 text-white border-purple-600' : 'bg-blue-600 text-white border-blue-600'
+                                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                                  }`}
+                                >
+                                  {t === 'intake' ? 'Intake' : 'Creative'}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
                           {/* Timeclock toggle */}
                           <div className="flex items-center justify-between">
                             <div>
@@ -1009,6 +1045,17 @@ export default function RepsPage() {
                   className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
                   placeholder="Minimum 8 characters"
                 />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                <div className="flex gap-3">
+                  {(['intake', 'creative'] as const).map(t => (
+                    <label key={t} className={`flex-1 flex items-center gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${addTeamType === t ? (t === 'creative' ? 'border-purple-300 bg-purple-50' : 'border-blue-300 bg-blue-50') : 'border-gray-200'}`}>
+                      <input type="radio" name="addTeamType" value={t} checked={addTeamType === t} onChange={() => setAddTeamType(t)} className="text-blue-600" />
+                      <span className="text-sm font-medium text-gray-800">{t === 'intake' ? 'Intake Team' : 'Creative Team'}</span>
+                    </label>
+                  ))}
+                </div>
               </div>
               <div className="flex gap-3 pt-1">
                 <button

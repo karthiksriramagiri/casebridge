@@ -77,7 +77,7 @@ function ScoreStars({ score }: { score: number }) {
 
 export default function HomePage() {
   const router = useRouter()
-  const [profile, setProfile] = useState<{ name: string; timeclock_enabled: boolean } | null>(null)
+  const [profile, setProfile] = useState<{ name: string; timeclock_enabled: boolean; team_type: string } | null>(null)
   const [data, setData] = useState<HomeData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -89,14 +89,14 @@ export default function HomePage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('name, role, nda_signed, timeclock_enabled')
+        .select('name, role, nda_signed, timeclock_enabled, team_type')
         .eq('id', user.id)
         .single()
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
 
-      setProfile({ name: prof.name, timeclock_enabled: !!prof.timeclock_enabled })
+      setProfile({ name: prof.name, timeclock_enabled: !!prof.timeclock_enabled, team_type: prof.team_type ?? 'intake' })
 
       const res = await fetch('/api/teams/home')
       if (res.ok) setData(await res.json())
@@ -134,7 +134,7 @@ export default function HomePage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-        <UserNav timeclockEnabled={profile.timeclock_enabled} />
+        <UserNav timeclockEnabled={profile.timeclock_enabled} teamType={profile.team_type} />
 
         {/* Welcome */}
         <div>

@@ -73,6 +73,7 @@ function fmtPts(pts: number) {
 export default function PerformancePage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
+  const [teamType, setTeamType] = useState('intake')
   const [dailyScores, setDailyScores] = useState<DayScore[]>([])
   const [todayScore, setTodayScore] = useState(2)
   const [todayEventTotal, setTodayEventTotal] = useState(0)
@@ -89,13 +90,14 @@ export default function PerformancePage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('role, nda_signed, timeclock_enabled')
+        .select('role, nda_signed, timeclock_enabled, team_type')
         .eq('id', user.id)
         .single()
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
+      setTeamType(prof.team_type ?? 'intake')
 
       const res = await fetch('/api/teams/score-events')
       if (res.ok) {
@@ -137,7 +139,7 @@ export default function PerformancePage() {
       </header>
 
       <main className="max-w-2xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} />
+        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">My Performance</h1>

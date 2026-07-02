@@ -106,6 +106,17 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'update_team_type') {
+    const { teamType } = body
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ team_type: teamType === 'creative' ? 'creative' : 'intake' })
+      .eq('id', repId)
+
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'update_todo_mode') {
     const { todoMode } = body // 'call_queue' | 'call_listener'
     const { error: updateError } = await supabase

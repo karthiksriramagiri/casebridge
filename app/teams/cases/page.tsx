@@ -25,6 +25,7 @@ const STATUS_STYLES: Record<string, string> = {
 export default function CasesPage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
+  const [teamType, setTeamType] = useState('intake')
   const [cases, setCases] = useState<Case[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -36,13 +37,14 @@ export default function CasesPage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('role, nda_signed, timeclock_enabled')
+        .select('role, nda_signed, timeclock_enabled, team_type')
         .eq('id', user.id)
         .single()
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
+      setTeamType(prof.team_type ?? 'intake')
 
       const res = await fetch('/api/teams/cases')
       if (res.ok) {
@@ -69,7 +71,7 @@ export default function CasesPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} />
+        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">My Cases</h1>

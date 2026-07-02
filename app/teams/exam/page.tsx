@@ -54,6 +54,7 @@ function fmtDate(iso: string) {
 export default function ExamPage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
+  const [teamType, setTeamType] = useState('intake')
   const [examData, setExamData] = useState<ExamData | null>(null)
   const [loading, setLoading] = useState(true)
   const [now, setNow] = useState(Date.now())
@@ -78,7 +79,7 @@ export default function ExamPage() {
 
     const { data: prof } = await supabase
       .from('profiles')
-      .select('role, nda_signed, timeclock_enabled')
+      .select('role, nda_signed, timeclock_enabled, team_type')
       .eq('id', user.id)
       .single()
 
@@ -86,6 +87,7 @@ export default function ExamPage() {
     if (prof.role === 'admin') { router.push('/teams/admin'); return }
 
     setTimeclockEnabled(!!prof.timeclock_enabled)
+      setTeamType(prof.team_type ?? 'intake')
 
     const res = await fetch('/api/teams/exam')
     if (res.ok) setExamData(await res.json())
@@ -155,7 +157,7 @@ export default function ExamPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} />
+        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
 
         {/* No exam configured */}
         {!exam && (

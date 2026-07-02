@@ -441,6 +441,7 @@ function CallListenerView({ cases }: { cases: ListenCase[] }) {
 export default function TodosPage() {
   const router = useRouter()
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
+  const [teamType, setTeamType] = useState('intake')
   const [ready, setReady] = useState(false)
   const [data, setData] = useState<ApiData | null>(null)
   const [loading, setLoading] = useState(true)
@@ -454,13 +455,14 @@ export default function TodosPage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('role, nda_signed, timeclock_enabled')
+        .select('role, nda_signed, timeclock_enabled, team_type')
         .eq('id', user.id)
         .single()
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
+      setTeamType(prof.team_type ?? 'intake')
       setReady(true)
     }
     load()
@@ -554,7 +556,7 @@ export default function TodosPage() {
       </header>
 
       <main className="max-w-6xl mx-auto px-4 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} />
+        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
 
         {/* Call listener mode */}
         {!loading && listenerData && (

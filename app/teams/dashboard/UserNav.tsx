@@ -5,21 +5,30 @@ import { usePathname } from 'next/navigation'
 
 interface Props {
   timeclockEnabled: boolean
+  teamType?: string
 }
 
-export default function UserNav({ timeclockEnabled }: Props) {
+export default function UserNav({ timeclockEnabled, teamType }: Props) {
   const pathname = usePathname()
+  const isCreative = teamType === 'creative'
 
-  const tabs = [
-    { label: 'Home', href: '/teams/home' },
-    { label: 'Training', href: '/teams/dashboard' },
-    { label: 'Performance', href: '/teams/performance' },
-    { label: 'Incentives', href: '/teams/incentives' },
-    { label: 'My Cases', href: '/teams/cases' },
-    { label: 'Pay', href: '/teams/pay' },
-    { label: 'Todos', href: '/teams/todos' },
-    { label: '🔔 Notifications', href: '/teams/notifications' },
-  ]
+  const tabs = isCreative
+    ? [
+        { label: 'Home', href: '/teams/home' },
+        { label: 'Training', href: '/teams/dashboard' },
+        { label: 'Pay', href: '/teams/pay' },
+        { label: 'Todos', href: '/teams/todos' },
+      ]
+    : [
+        { label: 'Home', href: '/teams/home' },
+        { label: 'Training', href: '/teams/dashboard' },
+        { label: 'Performance', href: '/teams/performance' },
+        { label: 'Incentives', href: '/teams/incentives' },
+        { label: 'My Cases', href: '/teams/cases' },
+        { label: 'Pay', href: '/teams/pay' },
+        { label: 'Todos', href: '/teams/todos' },
+        { label: '🔔 Notifications', href: '/teams/notifications' },
+      ]
 
   const tabClass = (active: boolean) =>
     `px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors -mb-px whitespace-nowrap ${
@@ -35,17 +44,21 @@ export default function UserNav({ timeclockEnabled }: Props) {
           {tab.label}
         </Link>
       ))}
-      <a
-        href="https://case-bridge.com/nuances"
-        target="_blank"
-        rel="noopener noreferrer"
-        className={tabClass(false)}
-      >
-        Nuances
-      </a>
-      <Link href="/teams/exam" className={tabClass(pathname.startsWith('/teams/exam'))}>
-        Exams
-      </Link>
+      {!isCreative && (
+        <>
+          <a
+            href="https://case-bridge.com/nuances"
+            target="_blank"
+            rel="noopener noreferrer"
+            className={tabClass(false)}
+          >
+            Nuances
+          </a>
+          <Link href="/teams/exam" className={tabClass(pathname.startsWith('/teams/exam'))}>
+            Exams
+          </Link>
+        </>
+      )}
       {tabs.slice(2).map((tab) => (
         <Link key={tab.href} href={tab.href} className={tabClass(pathname.startsWith(tab.href))}>
           {tab.label}

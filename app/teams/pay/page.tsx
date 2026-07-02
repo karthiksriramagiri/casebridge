@@ -130,6 +130,7 @@ export default function PayPage() {
   const router = useRouter()
   const [profileId, setProfileId] = useState<string | null>(null)
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
+  const [teamType, setTeamType] = useState('intake')
   const [data, setData] = useState<PayData | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null)
@@ -142,7 +143,7 @@ export default function PayPage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('id, role, nda_signed, timeclock_enabled')
+        .select('id, role, nda_signed, timeclock_enabled, team_type')
         .eq('id', user.id)
         .single()
 
@@ -151,6 +152,7 @@ export default function PayPage() {
 
       setProfileId(prof.id)
       setTimeclockEnabled(!!prof.timeclock_enabled)
+      setTeamType(prof.team_type ?? 'intake')
 
       const res = await fetch('/api/teams/pay')
       if (res.ok) setData(await res.json())
@@ -183,7 +185,7 @@ export default function PayPage() {
       </header>
 
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} />
+        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Pay</h1>

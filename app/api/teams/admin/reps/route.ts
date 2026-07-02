@@ -27,7 +27,7 @@ export async function GET(_request: NextRequest) {
   // Fetch all rep profiles
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close, timer_disabled, levels_unlocked, todo_mode')
+    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close, timer_disabled, levels_unlocked, todo_mode, team_type')
     .eq('role', 'rep')
     .order('created_at', { ascending: false })
 
@@ -140,6 +140,7 @@ export async function GET(_request: NextRequest) {
       timerDisabled: !!(rep as any).timer_disabled,
       levelsUnlocked: !!(rep as any).levels_unlocked,
       todoMode: (rep as any).todo_mode ?? 'call_queue',
+      teamType: (rep as any).team_type ?? 'intake',
       currentLevel,
     }
   })
@@ -154,7 +155,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json()
-  const { name, password } = body
+  const { name, password, teamType } = body
 
   if (!name || !password) {
     return NextResponse.json({ error: 'Name and password are required.' }, { status: 400 })
@@ -187,6 +188,7 @@ export async function POST(request: NextRequest) {
       id: newUser.user.id,
       name,
       role: 'rep',
+      team_type: teamType === 'creative' ? 'creative' : 'intake',
     })
 
   if (profileError) {
