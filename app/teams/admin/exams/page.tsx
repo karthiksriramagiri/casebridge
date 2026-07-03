@@ -30,6 +30,35 @@ function newQuestion(): QuestionForm {
   return { id: generateId(), question_text: '', options: [newOption(), newOption(), newOption(), newOption()] }
 }
 
+// Bulk paste parser — same format as module builder
+// Q: Question text
+// *A) Correct option  (asterisk marks correct)
+// B) Other option
+function parseBulkQuestions(raw: string): { questions: QuestionForm[]; errors: string[] } {
+  const questions: QuestionForm[] = []
+  const errors: string[] = []
+  const blocks = raw.split(/(?=^Q:)/m).map(b => b.trim()).filter(Boolean)
+
+  for (let bi = 0; bi < blocks.length; bi++) {
+    const lines = blocks[bi].split('\n').map(l => l.trim()).filter(Boolean)
+    if (!lines.length) continue
+    const question_text = lines[0].replace(/^Q:\s*/i, '').trim()
+    if (!question_text) { errors.push(`Block ${bi + 1}: missing question text`); continue }
+
+    const options: OptionForm[] = []
+    for (let li = 1; li < lines.length; li++) {
+      if (/^Explanation:/i.test(lines[li])) continue
+      const m = lines[li].match(/^(\*?)([A-Za-z])[).]\s*(.+)$/)
+      if (m) options.push({ id: generateId(), option_text: m[3].trim(), is_correct: m[1] === '*' })
+    }
+
+    if (options.length < 2) { errors.push(`Q${bi + 1}: need at least 2 options`); continue }
+    if (!options.some(o => o.is_correct)) { errors.push(`Q${bi + 1}: no correct answer marked (use * before the letter)`); continue }
+    questions.push({ id: generateId(), question_text, options })
+  }
+  return { questions, errors }
+}
+
 function fmt(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -62,12 +91,22 @@ export default function AdminExamsPage() {
   const [newQuestions, setNewQuestions] = useState<QuestionForm[]>([newQuestion()])
   const [creating, setCreating] = useState(false)
   const [createErr, setCreateErr] = useState('')
+  // Bulk import for create panel
+  const [createTab, setCreateTab] = useState<'builder' | 'bulk'>('builder')
+  const [bulkText, setBulkText] = useState('')
+  const [bulkErrors, setBulkErrors] = useState<string[]>([])
+  const [bulkMode, setBulkMode] = useState<'replace' | 'append'>('replace')
 
   // Add question panel (for existing exam)
   const [showAddQ, setShowAddQ] = useState(false)
   const [addQForm, setAddQForm] = useState<QuestionForm>(newQuestion())
   const [addingQ, setAddingQ] = useState(false)
   const [addQErr, setAddQErr] = useState('')
+  // Bulk import for add-question panel
+  const [addQTab, setAddQTab] = useState<'builder' | 'bulk'>('builder')
+  const [addBulkText, setAddBulkText] = useState('')
+  const [addBulkErrors, setAddBulkErrors] = useState<string[]>([])
+  const [addingBulk, setAddingBulk] = useState(false)
 
   async function loadConfig() {
     setLoading(true)
@@ -190,6 +229,54 @@ export default function AdminExamsPage() {
     } else {
       const json = await res.json()
       alert(json.error ?? 'Failed to delete question')
+    }
+  }
+
+  function handleBulkImport() {
+    setBulkErrors([])
+    const { questions: parsed, errors } = parseBulkQuestions(bulkText)
+    if (errors.length) { setBulkErrors(errors); return }
+    if (!parsed.length) { setBulkErrors(['No valid questions found. Check the format guide below.']); return }
+    setNewQuestions(bulkMode === 'append' ? [...newQuestions, ...parsed] : parsed)
+    setBulkText('')
+    setCreateTab('builder')
+  }
+
+  async function handleAddBulkQuestions() {
+    setAddBulkErrors([])
+    const { questions: parsed, errors } = parseBulkQuestions(addBulkText)
+    if (errors.length) { setAddBulkErrors(errors); return }
+    if (!parsed.length) { setAddBulkErrors(['No valid questions found.']); return }
+
+    setAddingBulk(true)
+    let added = 0
+    for (let i = 0; i < parsed.length; i++) {
+      const q = parsed[i]
+      const res = await fetch(`/api/teams/admin/exams/questions?moduleId=${selectedExamId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          question_text: q.question_text,
+          position: questions.length + i + 1,
+          options: q.options.filter(o => o.option_text.trim()).map(o => ({
+            option_text: o.option_text.trim(),
+            is_correct: o.is_correct,
+          })),
+        }),
+      })
+      if (res.ok) added++
+    }
+    setAddBulkText('')
+    setAddQTab('builder')
+    setAddingBulk(false)
+    // Reload questions
+    const r = await fetch(`/api/teams/admin/exams?team=${team}&moduleId=${selectedExamId}`)
+    const d = await r.json()
+    setQuestions(d.questions ?? [])
+    if (added < parsed.length) {
+      setAddBulkErrors([`${parsed.length - added} question(s) failed to save`])
+    } else {
+      setShowAddQ(false)
     }
   }
 
@@ -343,27 +430,84 @@ export default function AdminExamsPage() {
                 </span>
               </h3>
             </div>
-            <div className="space-y-3">
-              {newQuestions.map((q, qi) => (
-                <QuestionBuilder
-                  key={q.id}
-                  question={q}
-                  index={qi}
-                  canRemove={newQuestions.length > 1}
-                  onUpdateText={val => updateNewQ(newQuestions, setNewQuestions, q.id, 'question_text', val)}
-                  onUpdateOpt={(oid, field, val) => updateNewOpt(newQuestions, setNewQuestions, q.id, oid, field, val)}
-                  onAddOpt={() => setNewQuestions(prev => prev.map(x => x.id === q.id ? { ...x, options: [...x.options, newOption()] } : x))}
-                  onRemoveOpt={oid => setNewQuestions(prev => prev.map(x => x.id === q.id ? { ...x, options: x.options.filter(o => o.id !== oid) } : x))}
-                  onRemove={() => setNewQuestions(prev => prev.filter(x => x.id !== q.id))}
-                />
-              ))}
+
+            {/* Tab switcher */}
+            <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
               <button
-                onClick={() => setNewQuestions(prev => [...prev, newQuestion()])}
-                className="w-full border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-xl py-3 text-sm font-medium transition-all"
+                onClick={() => setCreateTab('builder')}
+                className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${createTab === 'builder' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                + Add Question
+                Question Builder
+              </button>
+              <button
+                onClick={() => setCreateTab('bulk')}
+                className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${createTab === 'bulk' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+              >
+                Bulk Import
               </button>
             </div>
+
+            {createTab === 'builder' && (
+              <div className="space-y-3">
+                {newQuestions.map((q, qi) => (
+                  <QuestionBuilder
+                    key={q.id}
+                    question={q}
+                    index={qi}
+                    canRemove={newQuestions.length > 1}
+                    onUpdateText={val => updateNewQ(newQuestions, setNewQuestions, q.id, 'question_text', val)}
+                    onUpdateOpt={(oid, field, val) => updateNewOpt(newQuestions, setNewQuestions, q.id, oid, field, val)}
+                    onAddOpt={() => setNewQuestions(prev => prev.map(x => x.id === q.id ? { ...x, options: [...x.options, newOption()] } : x))}
+                    onRemoveOpt={oid => setNewQuestions(prev => prev.map(x => x.id === q.id ? { ...x, options: x.options.filter(o => o.id !== oid) } : x))}
+                    onRemove={() => setNewQuestions(prev => prev.filter(x => x.id !== q.id))}
+                  />
+                ))}
+                <button
+                  onClick={() => setNewQuestions(prev => [...prev, newQuestion()])}
+                  className="w-full border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-xl py-3 text-sm font-medium transition-all"
+                >
+                  + Add Question
+                </button>
+              </div>
+            )}
+
+            {createTab === 'bulk' && (
+              <div className="space-y-3">
+                <BulkFormatGuide />
+                {bulkErrors.length > 0 && (
+                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                    <p className="text-sm font-semibold text-red-700 mb-1">Fix these errors:</p>
+                    <ul className="list-disc list-inside space-y-0.5">
+                      {bulkErrors.map((e, i) => <li key={i} className="text-xs text-red-600">{e}</li>)}
+                    </ul>
+                  </div>
+                )}
+                <textarea
+                  value={bulkText}
+                  onChange={e => { setBulkText(e.target.value); setBulkErrors([]) }}
+                  rows={12}
+                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="Paste your questions here..."
+                />
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex gap-3">
+                    {(['replace', 'append'] as const).map(m => (
+                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-600">
+                        <input type="radio" name="bulkMode" checked={bulkMode === m} onChange={() => setBulkMode(m)} className="w-3.5 h-3.5 text-blue-600" />
+                        {m === 'replace' ? 'Replace all' : `Append to existing (${newQuestions.filter(q => q.question_text.trim()).length})`}
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    onClick={handleBulkImport}
+                    disabled={!bulkText.trim()}
+                    className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                  >
+                    Import Questions
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
@@ -497,37 +641,85 @@ export default function AdminExamsPage() {
 
           {/* Add Question Form */}
           {showAddQ && (
-            <div className="p-6 border-b border-gray-100 bg-blue-50">
-              <h3 className="text-sm font-semibold text-gray-800 mb-3">New Question</h3>
-              {addQErr && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2 mb-3">{addQErr}</div>
-              )}
-              <QuestionBuilder
-                question={addQForm}
-                index={0}
-                canRemove={false}
-                onUpdateText={val => setAddQForm(q => ({ ...q, question_text: val }))}
-                onUpdateOpt={(oid, field, val) => setAddQForm(q => ({
-                  ...q,
-                  options: q.options.map(o => {
-                    if (field === 'is_correct') return { ...o, is_correct: o.id === oid ? (val as boolean) : false }
-                    return o.id === oid ? { ...o, option_text: val as string } : o
-                  }),
-                }))}
-                onAddOpt={() => setAddQForm(q => ({ ...q, options: [...q.options, newOption()] }))}
-                onRemoveOpt={oid => setAddQForm(q => ({ ...q, options: q.options.filter(o => o.id !== oid) }))}
-                onRemove={() => {}}
-                hideNumber
-              />
-              <div className="mt-3 flex items-center gap-3">
+            <div className="p-6 border-b border-gray-100 bg-gray-50">
+              {/* Tab switcher */}
+              <div className="flex gap-1 bg-gray-200 rounded-lg p-1 mb-4">
                 <button
-                  onClick={handleAddQuestion}
-                  disabled={addingQ}
-                  className="px-5 py-2 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] disabled:opacity-50 transition-colors"
+                  onClick={() => setAddQTab('builder')}
+                  className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${addQTab === 'builder' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
                 >
-                  {addingQ ? 'Saving...' : 'Save Question'}
+                  Question Builder
+                </button>
+                <button
+                  onClick={() => setAddQTab('bulk')}
+                  className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${addQTab === 'bulk' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                >
+                  Bulk Import
                 </button>
               </div>
+
+              {addQTab === 'builder' && (
+                <>
+                  {addQErr && (
+                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2 mb-3">{addQErr}</div>
+                  )}
+                  <QuestionBuilder
+                    question={addQForm}
+                    index={0}
+                    canRemove={false}
+                    onUpdateText={val => setAddQForm(q => ({ ...q, question_text: val }))}
+                    onUpdateOpt={(oid, field, val) => setAddQForm(q => ({
+                      ...q,
+                      options: q.options.map(o => {
+                        if (field === 'is_correct') return { ...o, is_correct: o.id === oid ? (val as boolean) : false }
+                        return o.id === oid ? { ...o, option_text: val as string } : o
+                      }),
+                    }))}
+                    onAddOpt={() => setAddQForm(q => ({ ...q, options: [...q.options, newOption()] }))}
+                    onRemoveOpt={oid => setAddQForm(q => ({ ...q, options: q.options.filter(o => o.id !== oid) }))}
+                    onRemove={() => {}}
+                    hideNumber
+                  />
+                  <div className="mt-3">
+                    <button
+                      onClick={handleAddQuestion}
+                      disabled={addingQ}
+                      className="px-5 py-2 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] disabled:opacity-50 transition-colors"
+                    >
+                      {addingQ ? 'Saving...' : 'Save Question'}
+                    </button>
+                  </div>
+                </>
+              )}
+
+              {addQTab === 'bulk' && (
+                <div className="space-y-3">
+                  <BulkFormatGuide />
+                  {addBulkErrors.length > 0 && (
+                    <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                      <ul className="list-disc list-inside space-y-0.5">
+                        {addBulkErrors.map((e, i) => <li key={i} className="text-xs text-red-600">{e}</li>)}
+                      </ul>
+                    </div>
+                  )}
+                  <textarea
+                    value={addBulkText}
+                    onChange={e => { setAddBulkText(e.target.value); setAddBulkErrors([]) }}
+                    rows={12}
+                    className="w-full border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="Paste your questions here..."
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleAddBulkQuestions}
+                      disabled={!addBulkText.trim() || addingBulk}
+                      className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                    >
+                      {addingBulk ? 'Importing...' : 'Import Questions'}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
 
@@ -626,6 +818,28 @@ export default function AdminExamsPage() {
           </div>
         )}
       </div>
+    </div>
+  )
+}
+
+// ── Bulk format guide ─────────────────────────────────────────────────────────
+function BulkFormatGuide() {
+  return (
+    <div className="bg-white border border-gray-200 rounded-xl p-4">
+      <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">Format Guide</p>
+      <pre className="text-xs text-gray-600 leading-relaxed font-mono whitespace-pre-wrap">{`Q: What is the first step when receiving a new lead?
+A) Check the CRM for duplicates
+*B) Verify the case type meets firm criteria
+C) Call the potential client immediately
+D) Send intake paperwork
+
+Q: Which of the following is NOT accepted?
+*A) Workers compensation
+B) Motor vehicle accidents
+C) Slip and fall`}</pre>
+      <p className="text-xs text-gray-400 mt-2">
+        Start each question with <code className="bg-gray-100 px-1 rounded">Q:</code> · Mark the correct answer with <code className="bg-gray-100 px-1 rounded">*</code> before the letter
+      </p>
     </div>
   )
 }
