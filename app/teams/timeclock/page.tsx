@@ -1,7 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import LogoutButton from '../dashboard/LogoutButton'
-import UserNav from '../dashboard/UserNav'
+import TeamsShell from '../dashboard/TeamsShell'
 import TimeclockWidget from '../dashboard/TimeclockWidget'
 
 export default async function TimeclockPage() {
@@ -23,16 +22,8 @@ export default async function TimeclockPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#0f1e3c] px-6 py-4 flex items-center justify-between">
-        <div>
-          <span className="text-white font-bold text-lg tracking-tight">CaseBridge Teams</span>
-          <span className="text-blue-300 text-sm font-normal ml-2">· Training Portal</span>
-        </div>
-        <LogoutButton />
-      </header>
-
+      <TeamsShell timeclockEnabled={true} teamType={profile.team_type ?? 'intake'}>
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={true} teamType={profile.team_type ?? 'intake'} />
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Timeclock</h1>
@@ -41,6 +32,7 @@ export default async function TimeclockPage() {
 
         <TimeclockWidget profileId={profile.id} />
       </main>
+      </TeamsShell>
     </div>
   )
 }

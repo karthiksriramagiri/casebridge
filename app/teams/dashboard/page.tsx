@@ -2,8 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { format } from 'date-fns'
-import LogoutButton from './LogoutButton'
-import UserNav from './UserNav'
+import TeamsShell from './TeamsShell'
 import LevelTimer from './LevelTimer'
 import { sendSlack, LEVEL_LABELS } from '@/lib/slack'
 import BookingScheduler from './BookingScheduler'
@@ -450,16 +449,8 @@ export default async function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#0f1e3c] px-6 py-4 flex items-center justify-between">
-        <div>
-          <span className="text-white font-bold text-lg tracking-tight">CaseBridge Teams</span>
-          <span className="text-blue-300 text-sm font-normal ml-2">· Training Portal</span>
-        </div>
-        <LogoutButton />
-      </header>
-
+      <TeamsShell timeclockEnabled={!!profile.timeclock_enabled} teamType={(profile as any).team_type ?? 'intake'}>
       <main className="max-w-4xl mx-auto px-6 py-8">
-        <UserNav timeclockEnabled={!!profile.timeclock_enabled} teamType={(profile as any).team_type ?? 'intake'} />
 
         {expiredLevel !== null && (
           <div className="mt-8 bg-white rounded-2xl border border-red-200 shadow-sm px-8 py-12 text-center">
@@ -764,6 +755,7 @@ export default async function DashboardPage() {
           </>
         )}
       </main>
+      </TeamsShell>
     </div>
   )
 }

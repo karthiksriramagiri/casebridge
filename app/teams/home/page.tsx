@@ -4,8 +4,7 @@ import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import UserNav from '../dashboard/UserNav'
-import LogoutButton from '../dashboard/LogoutButton'
+import TeamsShell from '../dashboard/TeamsShell'
 
 interface LeaderboardEntry { name: string; count: number; rank: number; isMe: boolean; userId: string }
 
@@ -126,16 +125,8 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#0f1e3c] px-6 py-4 flex items-center justify-between">
-        <div>
-          <span className="text-white font-bold text-lg tracking-tight">CaseBridge Teams</span>
-          <span className="text-blue-300 text-sm font-normal ml-2">· Training Portal</span>
-        </div>
-        <LogoutButton />
-      </header>
-
+      <TeamsShell timeclockEnabled={profile.timeclock_enabled} teamType={profile.team_type}>
       <main className="max-w-4xl mx-auto px-6 py-8 space-y-6">
-        <UserNav timeclockEnabled={profile.timeclock_enabled} teamType={profile.team_type} />
 
         {/* Welcome */}
         <div>
@@ -288,6 +279,7 @@ export default function HomePage() {
 
         </div>
       </main>
+      </TeamsShell>
     </div>
   )
 }

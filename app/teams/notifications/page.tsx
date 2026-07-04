@@ -2,7 +2,7 @@
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import UserNav from '@/app/teams/dashboard/UserNav'
+import TeamsShell from '@/app/teams/dashboard/TeamsShell'
 
 const notifications = [
   {
@@ -237,8 +237,8 @@ export default function NotificationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-6">
-        <UserNav timeclockEnabled={false} />
+      <TeamsShell timeclockEnabled={false} teamType="intake">
+      <main className="max-w-4xl mx-auto px-6 py-8">
 
         <div className="mb-6">
           <h1 className="text-xl font-bold text-gray-900">Notifications</h1>
@@ -284,7 +284,8 @@ export default function NotificationsPage() {
             </div>
           ))}
         </div>
-      </div>
+      </main>
+      </TeamsShell>
     </div>
   )
 }

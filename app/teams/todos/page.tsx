@@ -3,8 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
-import UserNav from '../dashboard/UserNav'
-import LogoutButton from '../dashboard/LogoutButton'
+import TeamsShell from '../dashboard/TeamsShell'
 
 interface Lead {
   contactId: string
@@ -548,16 +547,8 @@ export default function TodosPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-[#0f1e3c] px-6 py-4 flex items-center justify-between">
-        <div>
-          <span className="text-white font-bold text-lg tracking-tight">CaseBridge Teams</span>
-          <span className="text-blue-300 text-sm font-normal ml-2">· Training Portal</span>
-        </div>
-        <LogoutButton />
-      </header>
-
-      <main className="max-w-6xl mx-auto px-4 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
+      <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
+      <main className="max-w-4xl mx-auto px-6 py-8">
 
         {/* Call listener mode */}
         {!loading && listenerData && (
@@ -740,6 +731,7 @@ export default function TodosPage() {
           </div>
         )}
       </main>
+      </TeamsShell>
     </div>
   )
 }

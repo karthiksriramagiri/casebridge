@@ -33,7 +33,7 @@ export default function UserNav({ timeclockEnabled, teamType }: Props) {
     }`
 
   return (
-    <div className="flex gap-0 border-b border-gray-200 mb-6 overflow-x-auto">
+    <div className="flex gap-0 overflow-x-auto">
       {isCreative ? (
         <>
           <Link href="/teams/dashboard" className={tabClass(pathname === '/teams/dashboard')}>

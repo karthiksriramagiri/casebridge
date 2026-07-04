@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import UserNav from '../dashboard/UserNav'
+import TeamsShell from '../dashboard/TeamsShell'
 
 export default function IncentivesPage() {
   const router = useRouter()
@@ -27,8 +27,8 @@ export default function IncentivesPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <div className="max-w-2xl mx-auto px-4 py-8">
-        <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} />
+      <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
+      <main className="max-w-4xl mx-auto px-6 py-8">
 
         <h1 className="text-2xl font-bold text-gray-900 mb-6">Incentives</h1>
 
@@ -93,7 +93,8 @@ export default function IncentivesPage() {
           </div>
         </div>
 
-      </div>
+      </main>
+      </TeamsShell>
     </div>
   )
 }
