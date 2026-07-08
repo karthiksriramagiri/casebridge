@@ -106,13 +106,14 @@ export default function ModulePage() {
       // Onboarding gate
       const { data: onboardingProfile } = await supabase
         .from('profiles')
-        .select('nda_signed')
+        .select('nda_signed, team_type')
         .eq('id', user.id)
         .single()
       if (!onboardingProfile?.nda_signed) {
         window.location.href = '/teams/onboarding'
         return
       }
+      const userTeamType: string = onboardingProfile?.team_type ?? 'intake'
 
       const { data: mod, error: modError } = await supabase
         .from('modules')
@@ -171,6 +172,7 @@ export default function ModulePage() {
                 .from('programs')
                 .select('id')
                 .lt('position', thisProgram.position)
+                .eq('team_type', userTeamType)
 
               if (prevPrograms && prevPrograms.length > 0) {
                 const { data: prevLinks } = await supabase
