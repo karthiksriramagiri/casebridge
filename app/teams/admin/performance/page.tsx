@@ -39,7 +39,6 @@ const EVENT_LABELS: Record<string, string> = {
   lead_closed:              'Lead Closed',
   perfect_day:              'Perfect Day Bonus',
   good_call:                'Good Call Quality',
-  todo_complete:            'To-Do Completed',
   missed_checkmark:         'Lead Not Checkmarked in Time',
   no_call_after_checkmark:  'No Call After Checkmark',
   missed_followup_call:     'Missed Follow-Up / Chase Call',
@@ -53,7 +52,6 @@ const MANUAL_EVENTS = [
   'lead_closed',
   'perfect_day',
   'good_call',
-  'todo_complete',
   'missed_checkmark',
   'no_call_after_checkmark',
   'missed_followup_call',
@@ -66,7 +64,6 @@ const POINT_LABELS: Record<string, string> = {
   lead_closed:              '+2 pt',
   perfect_day:              '+1 pt',
   good_call:                '+1 pt',
-  todo_complete:            '+1 pt',
   missed_checkmark:         '−1 pt',
   no_call_after_checkmark:  '−3 pt',
   missed_followup_call:     '−2 pt',
@@ -109,7 +106,8 @@ export default function AdminPerformancePage() {
   const [cvLoading, setCvLoading] = useState(true)
 
   const fetchEvents = useCallback(async () => {
-    const res = await fetch('/api/teams/admin/score-events')
+    const localDate = new Date().toLocaleDateString('en-CA') // YYYY-MM-DD in local timezone
+    const res = await fetch(`/api/teams/admin/score-events?date=${localDate}`)
     if (res.ok) {
       const d = await res.json()
       setEvents(d.events || [])
@@ -120,7 +118,7 @@ export default function AdminPerformancePage() {
 
   useEffect(() => {
     fetch('/api/teams/admin/reps').then(r => r.json()).then(d => {
-      setReps((d.reps || []).map((r: any) => ({ id: r.id, name: r.name })))
+      setReps((d.reps || []).filter((r: any) => (r.teamType ?? 'intake') === 'intake').map((r: any) => ({ id: r.id, name: r.name })))
     })
     fetchEvents()
   }, [fetchEvents])
@@ -164,9 +162,10 @@ export default function AdminPerformancePage() {
     await fetchEvents()
   }
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toLocaleDateString('en-CA')
 
   const rankedBoard = scoreboard.map((rep, idx) => ({ ...rep, rank: idx + 1 }))
+
 
   // Events grouped by rep for history section
   const eventsByRep: Record<string, ScoreEvent[]> = {}

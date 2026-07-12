@@ -3,7 +3,8 @@ import { createClient } from '@/lib/supabase/server'
 
 async function requireAdmin() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return { error: 'Unauthorized', supabase: null, user: null }
 
   const { data: profile } = await supabase

@@ -454,12 +454,13 @@ export default function TodosPage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('role, nda_signed, timeclock_enabled, team_type')
+        .select('role, nda_signed, timeclock_enabled, team_type, rep_phase')
         .eq('id', user.id)
         .single()
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
+      if ((prof.rep_phase ?? 1) < 3) { router.push('/teams/home'); return }
       if (prof.team_type === 'creative') { window.location.href = 'https://app.notion.com/p/ogeo/Creative-Workspace-34f895255ae980c3a4b6fcb5128f2519?source=copy_link'; return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
       setTeamType(prof.team_type ?? 'intake')

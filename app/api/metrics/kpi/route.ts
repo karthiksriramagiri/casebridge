@@ -490,12 +490,24 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Apply campaign filter if set (filters ad rows by campaign/adset/ad name)
+  // Apply campaign/firm filter to ad rows
   function matchesCampaignFilter(a: any) {
+    // Fears Law (fl): "FL" must appear as a discrete pipe-delimited segment in the ad creative name
+    if (firmSlug === 'fl') {
+      const parts = (a.ad_name || '').split('|').map((p: string) => p.trim().toUpperCase())
+      return parts.includes('FL')
+    }
+    // Levine Law (jll): "JLL" appears anywhere in campaign, adset, or ad name
+    if (firmSlug === 'jll') {
+      const combined = `${a.campaign_name || ''} ${a.adset_name || ''} ${a.ad_name || ''}`.toUpperCase()
+      return combined.includes('JLL')
+    }
+    // Generic campaign filter (other firms with meta_campaign_filter set)
     if (!campaignFilter) return true
     return (
       (a.campaign_name || '').toLowerCase().includes(campaignFilter) ||
-      (a.adset_name || '').toLowerCase().includes(campaignFilter)
+      (a.adset_name    || '').toLowerCase().includes(campaignFilter) ||
+      (a.ad_name       || '').toLowerCase().includes(campaignFilter)
     )
   }
 
@@ -517,8 +529,10 @@ export async function GET(request: NextRequest) {
   const phase = getPhase(weeklySpend, firm, invoiceContext?.case_count)
 
   // Helpers for per-case overrides stored in form_data JSONB
+  const feePct = parseFloat(firm.fee_percentage || 0) / 100
   function caseValue(lead: any): number {
-    return lead.form_data?.custom_case_value ?? firm.case_value
+    if (lead.form_data?.custom_case_value != null) return lead.form_data.custom_case_value
+    return firm.case_value * (1 - feePct)
   }
   function isExcludedFromPayment(lead: any): boolean {
     return lead.form_data?.excluded_from_payment === true
@@ -629,7 +643,7 @@ export async function GET(request: NextRequest) {
       originalCases: v.originals,
       replacementCases: v.replacements,
       totalVictims: v.victims,
-      grossRevenue: v.cases * parseFloat(firm.case_value || 0),
+      grossRevenue: v.cases * parseFloat(firm.case_value || 0) * (1 - feePct),
     }))
     .sort((a, b) => a.invoiceCode.localeCompare(b.invoiceCode))
 
@@ -911,7 +925,7 @@ export async function GET(request: NextRequest) {
       totalVictims,
       cpq,
       adjustedCpq,
-      caseValue: firm.case_value,
+      caseValue: firm.case_value * (1 - feePct),
       grossRevenue,
       grossProfit,
       grossMargin,

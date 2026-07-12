@@ -13,7 +13,9 @@ const BASE         = 'https://graph.facebook.com/v25.0'
 const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY!
 
 // ─── Angle lookup tables ─────────────────────────────────────────────────────
+// BR-AD angle (A = visual, B = verbal)
 const VISUAL_HOOKS: Record<string, string> = {
+  // BR-AD visual hooks
   A1:  'Skeleton',
   A2:  'Animated Surgery',
   A3:  'Accident',
@@ -24,9 +26,28 @@ const VISUAL_HOOKS: Record<string, string> = {
   A8:  'Check & Talking Head (Bold Guy)',
   A9:  'Check & Talking Head (Working Woman)',
   A10: 'Animal',
+  A11: 'Attention Hook',
+  A12: 'Animated Bone',
+  A13: 'Simulation Crash',
+  // HYB-AD visual hooks
+  C1:  'Black 30ish Lady Talking Head',
+  C2:  'Bold Old Guy',
+  C3:  'White Man',
+  // AIUGC-AD visual hooks
+  E1:  'In the Car',
+  E2:  'Gas Station',
+  E3:  'Gym',
+  E4:  'Black AI Avatar',
+  E5:  'Latino AI Avatar',
+  // BNR-AD visual hooks
+  G1:  'Accident',
+  G2:  'Car Driving',
+  // ANM-AD visual hooks (placeholder)
+  // IMG-AD visual hooks (placeholder)
 }
 
 const VERBAL_HOOKS: Record<string, string> = {
+  // BR-AD verbal hooks
   B1:  'Insurance Company',
   B2:  "They don't want you to know",
   B3:  'Never Sue',
@@ -44,26 +65,76 @@ const VERBAL_HOOKS: Record<string, string> = {
   B15: 'Eligible for a bigger payout',
   B16: 'Do Not Call Attorney',
   B17: 'Been in car accident and did not go to the hospital',
-  B18: 'Life after getting $100k (Banner)',
-  B19: "Didn't Go To ER",
+  B18: "Didn't Go To ER",
+  B19: "Insurance Company doesn't care you go to ER",
+  B20: 'This is Viral Hack',
+  B21: "Don't Accept first check from insurance",
+  B22: 'Think you are fine after car accident no ER no AMB',
+  B23: 'Never do this 3 things',
+  B24: 'Never call insurance yourself',
+  B25: 'Just Now feeling the pain',
+  B26: 'Old lady crushed and said I ran green light',
+  B27: 'Car looks like this Body feels like this',
+  // HYB-AD verbal hooks
+  D1:  'Settlement Comparison',
+  D2:  'You will regret suing the person who hit you in a car accident',
+  D3:  'If you skipped ER after your car accident',
+  // AIUGC-AD verbal hooks
+  F1:  'I need to tell you something (Whisper)',
+  F2:  'How much did you get for the little accident',
+  F3:  'First day back at gym after my accident',
+  F4:  'Settlement Amount Comparison',
+  // BNR-AD verbal hooks
+  H1:  "Didn't go to the ER",
+  H2:  'Never Sue the person who hit you',
+  H3:  'I almost let insurance settle my accident for',
+  H4:  "I didn't know there were two checks you could get",
+  H5:  'Drink Driver hit my car (BNR)',
+  H6:  'Biggest Mistake',
 }
 
-// ─── Parse A and B codes from a creative ad name ─────────────────────────────
+// Which angle type each letter prefix belongs to
+const ANGLE_TYPE_BY_PREFIX: Record<string, string> = {
+  A: 'BR-AD', B: 'BR-AD',
+  C: 'HYB-AD', D: 'HYB-AD',
+  E: 'AIUGC-AD', F: 'AIUGC-AD',
+  G: 'BNR-AD', H: 'BNR-AD',
+  I: 'ANM-AD', J: 'ANM-AD',
+  K: 'IMG-AD', L: 'IMG-AD',
+}
+
+// ─── Parse angle codes from a creative ad name ────────────────────────────────
 // Format: B0003_V1 | LHP | BR | RIP | A2 | B2 | GA-WIN
+// Visual codes: A, C, E, G, I, K  |  Verbal codes: B, D, F, H, J, L
 function parseAngleCodes(adName: string): { visualCode: string | null; verbalCode: string | null } {
   const parts = adName.split('|').map(p => p.trim())
   let visualCode: string | null = null
   let verbalCode: string | null = null
   for (const part of parts) {
-    if (/^A\d+$/.test(part)) visualCode = part
-    if (/^B\d+$/.test(part)) {
-      // Only capture as verbal if it looks like a hook code (B1-B19)
-      // and not a creative code at the start (like B0003)
+    // Visual hook codes: A, C, E, G, I, K — limit to 1-50 to avoid batch ID false positives
+    if (/^[ACEGIK]\d+$/.test(part)) {
       const num = parseInt(part.slice(1))
-      if (num >= 1 && num <= 19) verbalCode = part
+      if (num >= 1 && num <= 50) visualCode = part
+    }
+    // Verbal hook codes: B, D, F, H, J, L — limit to 1-50 to avoid batch ID false positives
+    if (/^[BDFHJL]\d+$/.test(part)) {
+      const num = parseInt(part.slice(1))
+      if (num >= 1 && num <= 50) verbalCode = part
     }
   }
   return { visualCode, verbalCode }
+}
+
+// ─── Parse firm from ad/campaign/adset naming ─────────────────────────────────
+// Fears Law:  ad creative name contains "FL" as a pipe-delimited segment
+// Levine Law: campaign, adset, or ad name contains "JLL"
+function parseFirm(adName: string, campaignName: string, adsetName: string): 'FL' | 'JLL' | 'other' {
+  const combined = `${campaignName} ${adsetName} ${adName}`.toUpperCase()
+  if (combined.includes('JLL')) return 'JLL'
+  // FL check: must be a discrete segment in pipe-delimited ad name to avoid false positives
+  const parts = adName.split('|').map(p => p.trim().toUpperCase())
+  if (parts.includes('FL')) return 'FL'
+  return 'other'
 }
 
 // ─── Meta API helper ─────────────────────────────────────────────────────────
@@ -117,6 +188,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const datePreset = searchParams.get('date_preset') || 'maximum'
   const analyze    = searchParams.get('analyze') === 'true'
+  const firmFilter = searchParams.get('firm') || 'all' // 'all' | 'FL' | 'JLL'
 
   // 1. Meta ad-level insights (all ads in account)
   const metaRes = await fetchMeta(`/${AD_ACCOUNT}/insights`, {
@@ -234,7 +306,14 @@ export async function GET(req: NextRequest) {
   let unparsedAds   = 0
 
   for (const ad of metaAds) {
-    const adName = ad.ad_name || byAdId[ad.ad_id]?.adName || ''
+    const adName       = ad.ad_name        || byAdId[ad.ad_id]?.adName || ''
+    const campaignName = ad.campaign_name  || ''
+    const adsetName    = ad.adset_name     || ''
+
+    // Firm filter
+    const firm = parseFirm(adName, campaignName, adsetName)
+    if (firmFilter !== 'all' && firm !== firmFilter) continue
+
     const { visualCode, verbalCode } = parseAngleCodes(adName)
 
     const spend       = parseFloat(ad.spend || '0')
@@ -323,12 +402,20 @@ export async function GET(req: NextRequest) {
 
     const prompt = `You are an expert digital advertising analyst for a personal injury law firm lead generation business. Analyze the following Facebook/Meta ad performance data segmented by "angle codes" — the creative hooks used in each ad.
 
+ANGLE TYPE REFERENCE:
+- BR-AD (Branded): Visual A codes + Verbal B codes
+- HYB-AD (Hybrid): Visual C codes + Verbal D codes
+- AIUGC-AD (AI UGC): Visual E codes + Verbal F codes
+- BNR-AD (Banner): Visual G codes + Verbal H codes
+- ANM-AD (Animated): Visual I codes + Verbal J codes
+- IMG-AD (Image): Visual K codes + Verbal L codes
+
 ANGLE CODE REFERENCE:
 Visual Hooks (the opening visual of the ad):
-${Object.entries(VISUAL_HOOKS).map(([k, v]) => `  ${k}: ${v}`).join('\n')}
+${Object.entries(VISUAL_HOOKS).map(([k, v]) => `  ${k} [${ANGLE_TYPE_BY_PREFIX[k[0]]}]: ${v}`).join('\n')}
 
 Verbal Hooks (the spoken/text message in the ad):
-${Object.entries(VERBAL_HOOKS).map(([k, v]) => `  ${k}: ${v}`).join('\n')}
+${Object.entries(VERBAL_HOOKS).map(([k, v]) => `  ${k} [${ANGLE_TYPE_BY_PREFIX[k[0]]}]: ${v}`).join('\n')}
 
 KEY METRICS:
 - CPL = Cost Per Lead (lower is better, target <$150)
@@ -376,6 +463,7 @@ Be direct, data-driven, and actionable. Use specific dollar amounts and percenta
 
   return NextResponse.json({
     datePreset,
+    firm:        firmFilter,
     visual:      visualStats,
     verbal:      verbalStats,
     combos:      comboStats.slice(0, 30),

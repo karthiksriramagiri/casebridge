@@ -9,7 +9,8 @@ const admin = adminClient(
 
 async function requireAdmin() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return { error: 'Unauthorized' as const }
 
   const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()

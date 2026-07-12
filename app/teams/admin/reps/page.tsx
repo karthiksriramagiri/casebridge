@@ -26,6 +26,8 @@ interface Rep {
   hourlyRate: number | null
   commissionPerClose: number | null
   currentLevel: number
+  repPhase: number
+  creativeSlug: string | null
 }
 
 interface AttemptSummary {
@@ -103,6 +105,10 @@ export default function RepsPage() {
   const [hourlyRateDraft, setHourlyRateDraft] = useState<Record<string, string>>({})
   const [commissionDraft, setCommissionDraft] = useState<Record<string, string>>({})
   const [payrollSaving, setPayrollSaving] = useState<string | null>(null)
+
+  // Creative slug draft state
+  const [slugDraft, setSlugDraft] = useState<Record<string, string>>({})
+  const [slugSaving, setSlugSaving] = useState<string | null>(null)
 
   // Call notes per rep
   const [callNotes, setCallNotes] = useState<Record<string, CallNote[]>>({})
@@ -434,8 +440,8 @@ export default function RepsPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-semibold text-gray-900">{rep.name}</span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${LEVEL_COLORS[rep.currentLevel] ?? 'bg-gray-100 text-gray-600'}`}>
-                          {LEVEL_LABELS[rep.currentLevel] ?? `Level ${rep.currentLevel}`}
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${LEVEL_COLORS[rep.repPhase ?? 1] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {LEVEL_LABELS[rep.repPhase ?? 1] ?? `Phase ${rep.repPhase}`}
                         </span>
                         {rep.certified && (
                           <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">
@@ -574,6 +580,78 @@ export default function RepsPage() {
                                   {t === 'intake' ? 'Intake' : 'Creative'}
                                 </button>
                               ))}
+                            </div>
+                          </div>
+
+                          {/* Creative Slug — only for creative reps */}
+                          {rep.teamType === 'creative' && (
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-sm font-medium text-gray-800">Creative Slug</p>
+                                <p className="text-xs text-gray-500 mt-0.5">Used to attribute cases (e.g. OGF for Faisal)</p>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="text"
+                                  value={slugDraft[rep.id] ?? (rep.creativeSlug || '')}
+                                  onChange={e => setSlugDraft(d => ({ ...d, [rep.id]: e.target.value.toUpperCase() }))}
+                                  placeholder="e.g. OGF"
+                                  className="w-24 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-center font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                />
+                                <button
+                                  onClick={async () => {
+                                    setSlugSaving(rep.id)
+                                    const slug = slugDraft[rep.id] ?? rep.creativeSlug ?? ''
+                                    await fetch(`/api/teams/admin/reps/${rep.id}`, {
+                                      method: 'POST',
+                                      headers: { 'Content-Type': 'application/json' },
+                                      body: JSON.stringify({ action: 'update_creative_slug', creativeSlug: slug || null }),
+                                    })
+                                    setReps(prev => prev.map(r => r.id === rep.id ? { ...r, creativeSlug: slug.toUpperCase() || null } : r))
+                                    setSlugSaving(null)
+                                  }}
+                                  disabled={slugSaving === rep.id}
+                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {slugSaving === rep.id ? 'Saving…' : 'Save'}
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Phase */}
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-gray-800">Phase</p>
+                              <p className="text-xs text-gray-500 mt-0.5">Controls which pages this rep can access</p>
+                            </div>
+                            <div className="flex gap-1.5">
+                              {([
+                                { value: 1, label: 'Intro', color: 'sky' },
+                                { value: 2, label: 'Onboarding', color: 'indigo' },
+                                { value: 3, label: 'Active', color: 'emerald' },
+                              ] as const).map(({ value, label, color }) => {
+                                const isActive = (rep.repPhase ?? 1) === value
+                                const activeClass = color === 'sky' ? 'bg-sky-600 text-white border-sky-600' : color === 'indigo' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-emerald-600 text-white border-emerald-600'
+                                return (
+                                  <button
+                                    key={value}
+                                    onClick={async () => {
+                                      const res = await fetch(`/api/teams/admin/reps/${rep.id}`, {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({ action: 'update_phase', phase: value }),
+                                      })
+                                      const json = await res.json()
+                                      if (!res.ok) { alert(`Failed to update phase: ${json.error ?? res.status}`); return }
+                                      setReps(prev => prev.map(r => r.id === rep.id ? { ...r, repPhase: value } : r))
+                                    }}
+                                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${isActive ? activeClass : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                  >
+                                    {label}
+                                  </button>
+                                )
+                              })}
                             </div>
                           </div>
 

@@ -4,7 +4,8 @@ import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 
 async function requireAdmin() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return { error: 'Unauthorized', supabase: null, user: null }
 
   const { data: profile } = await supabase
@@ -106,6 +107,18 @@ export async function POST(
     return NextResponse.json({ success: true })
   }
 
+  if (action === 'update_phase') {
+    const { phase } = body
+    const phaseNum = parseInt(phase, 10)
+    if (![1, 2, 3].includes(phaseNum)) return NextResponse.json({ error: 'Invalid phase' }, { status: 400 })
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ rep_phase: phaseNum })
+      .eq('id', repId)
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
   if (action === 'update_team_type') {
     const { teamType } = body
     const { error: updateError } = await supabase
@@ -113,6 +126,16 @@ export async function POST(
       .update({ team_type: teamType === 'creative' ? 'creative' : 'intake' })
       .eq('id', repId)
 
+    if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  }
+
+  if (action === 'update_creative_slug') {
+    const { creativeSlug } = body
+    const { error: updateError } = await supabase
+      .from('profiles')
+      .update({ creative_slug: creativeSlug ? String(creativeSlug).toUpperCase().trim() : null })
+      .eq('id', repId)
     if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 })
     return NextResponse.json({ success: true })
   }

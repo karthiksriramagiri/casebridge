@@ -9,7 +9,8 @@ const admin = adminClient(
 
 export async function GET(request: NextRequest) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()
@@ -72,7 +73,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { data: prof } = await supabase.from('profiles').select('role').eq('id', user.id).single()

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 
 // GHL pipeline stage ID → powerdialer.ai webhook URL
 const STAGE_MAP: Record<string, string> = {
-  '1175a360-9914-4ce5-906d-d89adb27c732': 'https://power-dialer-backend-343035658909.us-central1.run.app/api/webhook/public/900b61c1-c7dc-41f9-a348-e415f911143c',  // No Response
+  '1175a360-9914-4ce5-906d-d89adb27c732': 'https://power-dialer-backend-343035658909.us-central1.run.app/api/webhook/public/76663bf8-bcf8-41b5-b82c-7df7192607d9',  // No Response
   '87759fbc-6d3e-46b1-aa47-9ae42ff88393': 'https://power-dialer-backend-343035658909.us-central1.run.app/api/webhook/public/f158d817-f2df-4dcf-b2c8-63ea979a35c3',  // Follow Up Required
   '1a4eed62-09ea-4108-ab64-2e16930350d6': 'https://power-dialer-backend-343035658909.us-central1.run.app/api/webhook/public/c6bd3cec-a01b-4c76-919e-63a1f7c0fdd7',  // Chase
 }

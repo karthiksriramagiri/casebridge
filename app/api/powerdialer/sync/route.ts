@@ -1,15 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
+
+const admin = createSupabaseAdmin(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+)
 
 const GHL_API_BASE = 'https://services.leadconnectorhq.com'
 const GHL_API_KEY = process.env.GHL_API_KEY!
-const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID!
+const GHL_LOCATION_ID = process.env.GHL_LOCATION_ID || 'AGAoUCwWTwc4Bqslwt9r'
 const LHP_PIPELINE_ID = 'yMqNixSnChC5lcGQXA1g'
 
 // GHL stage ID → powerdialer.ai webhook URL
 const STAGE_MAP: Record<string, { name: string; webhookUrl: string }> = {
   '1175a360-9914-4ce5-906d-d89adb27c732': {
     name: 'No Response',
-    webhookUrl: 'https://power-dialer-backend-343035658909.us-central1.run.app/api/webhook/public/900b61c1-c7dc-41f9-a348-e415f911143c',
+    webhookUrl: 'https://power-dialer-backend-343035658909.us-central1.run.app/api/webhook/public/76663bf8-bcf8-41b5-b82c-7df7192607d9',
   },
   '87759fbc-6d3e-46b1-aa47-9ae42ff88393': {
     name: 'Follow Up Required',
@@ -108,29 +114,53 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unknown stage ID' }, { status: 400 })
   }
 
-  const results: Record<string, { name: string; total: number; sent: number; errors: number }> = {}
+  const results: Record<string, { name: string; total: number; sent: number; skipped: number; errors: number }> = {}
 
   for (const [stageId, { name, webhookUrl }] of Object.entries(stagesToSync)) {
-    let sent = 0, errors = 0, total = 0
+    let sent = 0, errors = 0, skipped = 0, total = 0
     try {
       const opps = await fetchAllOpportunitiesForStage(stageId)
       total = opps.length
-      for (const opp of opps) {
+
+      // Fetch already-sent contact IDs for this stage
+      const { data: alreadySentRows } = await admin
+        .from('powerdialer_sent')
+        .select('contact_id')
+        .eq('stage_id', stageId)
+      const alreadySent = new Set((alreadySentRows || []).map((r: any) => r.contact_id))
+
+      const newOpps = opps.filter(opp => {
+        const contactId = opp.contact?.id || opp.contactId || ''
+        return contactId && !alreadySent.has(contactId)
+      })
+      skipped = total - newOpps.length
+
+      for (const opp of newOpps) {
+        const contactId = opp.contact?.id || opp.contactId || ''
         try {
           const r = await sendToPowerDialer(webhookUrl, opp)
-          if (r.ok) sent++
-          else errors++
+          if (r.ok) {
+            sent++
+            await admin.from('powerdialer_sent').upsert(
+              { contact_id: contactId, stage_id: stageId },
+              { onConflict: 'contact_id,stage_id' }
+            )
+          } else {
+            errors++
+          }
         } catch {
           errors++
         }
+        // Avoid rate limiting — 300ms between sends
+        await new Promise(r => setTimeout(r, 300))
       }
     } catch (err: any) {
       console.error(`[powerdialer-sync] stage ${stageId} error:`, err.message)
       results[stageId] = { name, total: 0, sent: 0, errors: -1 }
       continue
     }
-    results[stageId] = { name, total, sent, errors }
-    console.log(`[powerdialer-sync] ${name}: total=${total} sent=${sent} errors=${errors}`)
+    results[stageId] = { name, total, sent, skipped, errors }
+    console.log(`[powerdialer-sync] ${name}: total=${total} skipped=${skipped} sent=${sent} errors=${errors}`)
   }
 
   return NextResponse.json({ ok: true, results })

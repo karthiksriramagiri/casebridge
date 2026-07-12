@@ -32,7 +32,34 @@ export async function POST(req: NextRequest) {
       state:            state?.trim() || null,
       cost_per_case:    Number(cost_per_case),
       replacement_days: replacement_days ? Number(replacement_days) : null,
+      replaced:         false,
+      payment_cleared:  false,
     })
+    .select()
+    .single()
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ case: data })
+}
+
+export async function PATCH(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  let body: any
+  try { body = await req.json() } catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }) }
+
+  const updates: Record<string, any> = {}
+  if ('replaced' in body) {
+    updates.replaced = Boolean(body.replaced)
+    if (updates.replaced) updates.cost_per_case = 0
+  }
+  if ('payment_cleared' in body) updates.payment_cleared = Boolean(body.payment_cleared)
+
+  const { data, error } = await supabase
+    .from('oos_cases')
+    .update(updates)
+    .eq('id', id)
     .select()
     .single()
 

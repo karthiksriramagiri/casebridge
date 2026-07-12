@@ -34,7 +34,6 @@ const EVENT_LABELS: Record<string, string> = {
   lead_closed:              'Lead Closed',
   perfect_day:              'Perfect Day Bonus',
   good_call:                'Good Call Quality',
-  todo_complete:            'To-Do Completed',
   missed_checkmark:         'Lead Not Checkmarked in Time',
   no_call_after_checkmark:  'No Call After Checkmark',
   missed_followup_call:     'Missed Follow-Up / Chase Call',
@@ -57,9 +56,11 @@ export default function RepPerformancePage({ params }: { params: { repId: string
   const [data, setData] = useState<RepData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [expandedDay, setExpandedDay] = useState<string | null>(null)
 
   useEffect(() => {
-    fetch(`/api/teams/admin/rep-performance?repId=${repId}`)
+    const localDate = new Date().toLocaleDateString('en-CA')
+    fetch(`/api/teams/admin/rep-performance?repId=${repId}&date=${localDate}`)
       .then(r => r.json())
       .then(d => {
         if (d.error) setError(d.error)
@@ -163,16 +164,23 @@ export default function RepPerformancePage({ params }: { params: { repId: string
 
       {/* Score History */}
       <div>
-        <h2 className="text-base font-bold text-gray-900 mb-3">Score History (Last 30 Days)</h2>
+        <h2 className="text-base font-bold text-gray-900 mb-3">Score History</h2>
         {data.dailyScores.length === 0 ? (
           <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-8 text-center text-gray-400 text-sm">
-            No history yet.
+            No events logged yet.
           </div>
-        ) : (
-          <div className="space-y-2">
-            {data.dailyScores.map(day => (
+        ) : null}
+        <div className="space-y-2">
+          {data.dailyScores.map(day => {
+            const isExpanded = expandedDay === day.date
+            const hasEvents = day.events.length > 0
+            return (
               <div key={day.date} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50 bg-gray-50">
+                {/* Day header — clickable if events exist */}
+                <div
+                  onClick={() => hasEvents && setExpandedDay(isExpanded ? null : day.date)}
+                  className={`flex items-center justify-between px-5 py-3 ${hasEvents ? 'cursor-pointer hover:bg-gray-50' : ''} ${isExpanded ? 'border-b border-gray-100 bg-gray-50' : ''}`}
+                >
                   <div className="flex items-center gap-2">
                     <span className="font-semibold text-gray-900 text-sm">
                       {format(new Date(day.date + 'T12:00:00'), 'EEE, MMM d')}
@@ -180,32 +188,39 @@ export default function RepPerformancePage({ params }: { params: { repId: string
                     {day.date === today && (
                       <span className="text-xs bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-full font-medium">Today</span>
                     )}
+                    {hasEvents && (
+                      <span className="text-xs text-gray-400">{day.events.length} event{day.events.length !== 1 ? 's' : ''}</span>
+                    )}
                   </div>
                   <div className="flex items-center gap-3">
                     {day.eventTotal !== 0 && (
                       <span className={`text-xs font-medium ${day.eventTotal > 0 ? 'text-green-500' : 'text-red-400'}`}>
-                        {day.eventTotal > 0 ? '+' : ''}{day.eventTotal} from events
+                        {day.eventTotal > 0 ? '+' : ''}{Math.round(day.eventTotal * 100) / 100} pts
                       </span>
                     )}
                     <span className={`text-base font-bold ${day.dayScore > 2 ? 'text-green-600' : day.dayScore >= 2 ? 'text-gray-900' : 'text-red-500'}`}>
                       {Math.round(day.dayScore * 100) / 100}
                     </span>
+                    {hasEvents && (
+                      <span className="text-gray-400 text-sm">{isExpanded ? '▲' : '▼'}</span>
+                    )}
                   </div>
                 </div>
-                {day.events.length > 0 && (
+                {/* Events breakdown — shown on click */}
+                {isExpanded && hasEvents && (
                   <div className="divide-y divide-gray-50">
                     {day.events.map(e => (
-                      <div key={e.id} className="flex items-center justify-between px-5 py-2">
+                      <div key={e.id} className="flex items-center justify-between px-5 py-2.5">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-gray-700">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                            <span className="text-sm text-gray-800 font-medium">{EVENT_LABELS[e.event_type] || e.event_type}</span>
                             {e.auto_generated && (
-                              <span className="text-xs bg-gray-100 text-gray-400 px-1 py-0.5 rounded">auto</span>
+                              <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">auto</span>
                             )}
                           </div>
                           {e.note && <p className="text-xs text-gray-400 mt-0.5">{e.note}</p>}
                         </div>
-                        <span className={`text-xs font-bold shrink-0 ml-4 ${pointsColor(Number(e.points))}`}>
+                        <span className={`text-sm font-bold shrink-0 ml-4 ${pointsColor(Number(e.points))}`}>
                           {fmtPts(Number(e.points))}
                         </span>
                       </div>
@@ -213,9 +228,9 @@ export default function RepPerformancePage({ params }: { params: { repId: string
                   </div>
                 )}
               </div>
-            ))}
-          </div>
-        )}
+            )
+          })}
+        </div>
       </div>
     </div>
   )

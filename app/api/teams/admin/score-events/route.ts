@@ -9,7 +9,8 @@ const admin = adminClient(
 
 async function requireAdmin() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return null
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (!profile || profile.role !== 'admin') return null
@@ -21,7 +22,6 @@ export const POINT_VALUES: Record<string, number> = {
   lead_closed:              2,
   perfect_day:              1,
   good_call:                1,
-  todo_complete:            1,
   // Negatives
   missed_checkmark:        -1,
   no_call_after_checkmark: -3,
@@ -35,18 +35,25 @@ export const POINT_VALUES: Record<string, number> = {
 const BASE_SCORE = 2
 
 // GET /api/teams/admin/score-events — full scoreboard + today's scores
-export async function GET() {
+export async function GET(req: NextRequest) {
   const user = await requireAdmin()
   if (!user) return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
 
-  const today = new Date().toISOString().slice(0, 10)
+  // Accept client-supplied date to avoid UTC/local timezone mismatch
+  const clientDate = req.nextUrl.searchParams.get('date')
+  const today = clientDate || new Date().toISOString().slice(0, 10)
 
   const [eventsRes, repsRes, leadsRes] = await Promise.all([
     admin
       .from('score_events')
       .select('id, user_id, event_type, points, note, date, auto_generated, created_at, profiles!score_events_user_id_fkey(name)')
       .order('created_at', { ascending: false }),
-    admin.from('profiles').select('id, name').eq('role', 'rep').or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik'),
+    admin
+      .from('profiles')
+      .select('id, name')
+      .eq('role', 'rep')
+      .eq('team_type', 'intake')
+      .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik'),
     admin
       .from('ghl_leads')
       .select('closed_by_profile_id, case_status')

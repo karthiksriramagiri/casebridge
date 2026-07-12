@@ -171,7 +171,15 @@
       "Bash(find /Users/karthik/Documents/CaseBridge/src -type f \\\\\\(-name *.ts -o -name *.tsx -o -name *.js -o -name *.jsx \\\\\\))",
       "Bash(curl -s -X PATCH \"$NEXT_PUBLIC_SUPABASE_URL/rest/v1/ghl_leads?id=eq.42888979-a0eb-45c8-a2bf-2b24c5442a40\" -H \"apikey: $SUPABASE_SERVICE_ROLE_KEY\" -H \"Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY\" -H \"Content-Type: application/json\" -H \"Prefer: return=representation\" -d '{\"\"\"\"case_status\"\"\"\": \"\"\"\"e_signed\"\"\"\"}')",
       "Bash(curl -s -X PATCH \"$NEXT_PUBLIC_SUPABASE_URL/rest/v1/ghl_leads?id=in.\\(844c2fb1-ed3e-410c-8a35-385b053c1713,b5a2b348-74ad-4e29-a3af-5240f28599cd,8f59b352-10ba-47fc-a513-b10d3ecb41e9\\)\" -H \"apikey: $SUPABASE_SERVICE_ROLE_KEY\" -H \"Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY\" -H \"Content-Type: application/json\" -H \"Prefer: return=representation\" -d '{\"\"\"\"invoice_code\"\"\"\": \"\"\"\"INV-4\"\"\"\"}')",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''count:'''', d.get\\(''''meta'''',{}\\).get\\(''''total'''',0\\), ''''| error:'''', d.get\\(''''message'''',''''none''''\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''count:'''', d.get\\(''''meta'''',{}\\).get\\(''''total'''',0\\), ''''| error:'''', d.get\\(''''message'''',''''none''''\\)\\)\")",
+      "Bash(cat /Users/karthik/Documents/CaseBridge/supabase/migration_*.sql)",
+      "Bash(head -15 echo \"---\" grep -A 10 \"<header\" /Users/karthik/Documents/CaseBridge/app/teams/home/page.tsx)",
+      "Bash(head -15 echo \"---\" grep -A 10 \"<header\" /Users/karthik/Documents/CaseBridge/app/teams/performance/page.tsx)",
+      "Bash(head -15 echo \"---\" grep -A 10 \"<header\" /Users/karthik/Documents/CaseBridge/app/teams/exam/page.tsx)",
+      "Bash(head -20 grep -n \"select\\\\|rep_phase\\\\|nda_signed\\\\|router.push\\\\|redirect\" /Users/karthik/Documents/CaseBridge/app/teams/todos/page.tsx)",
+      "Bash(sed -n '120,135p' /Users/karthik/Documents/CaseBridge/app/api/teams/home/route.ts)",
+      "Bash(sed -n '240,255p' /Users/karthik/Documents/CaseBridge/app/api/teams/todos/route.ts)",
+      "Bash(head -15 grep -n \"getUser\\\\|getSession\\\\|const user\" /Users/karthik/Documents/CaseBridge/app/api/teams/todos/route.ts)"
     ]
   }
 }

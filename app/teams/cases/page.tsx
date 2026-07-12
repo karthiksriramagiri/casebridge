@@ -36,13 +36,14 @@ export default function CasesPage() {
 
       const { data: prof } = await supabase
         .from('profiles')
-        .select('role, nda_signed, timeclock_enabled, team_type')
+        .select('role, nda_signed, timeclock_enabled, team_type, rep_phase')
         .eq('id', user.id)
         .single()
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       if (prof.team_type === 'creative') { router.push('/teams/dashboard'); return }
+      if ((prof.rep_phase ?? 1) < 3) { router.push('/teams/home'); return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
       setTeamType(prof.team_type ?? 'intake')
 

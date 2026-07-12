@@ -5,7 +5,8 @@ import { getProgramLevel } from '@/lib/slack'
 
 async function requireAdmin() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return { error: 'Unauthorized', supabase: null, user: null }
 
   const { data: profile } = await supabase
@@ -27,7 +28,7 @@ export async function GET(_request: NextRequest) {
   // Fetch all rep profiles
   const { data: profiles, error: profilesError } = await supabase
     .from('profiles')
-    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close, timer_disabled, levels_unlocked, todo_mode, team_type')
+    .select('id, name, created_at, nda_signed, timeclock_enabled, shift, ghl_user_ids, payroll_method, payroll_info, hourly_rate, commission_per_close, timer_disabled, levels_unlocked, todo_mode, team_type, rep_phase, creative_slug')
     .eq('role', 'rep')
     .order('created_at', { ascending: false })
 
@@ -141,6 +142,8 @@ export async function GET(_request: NextRequest) {
       levelsUnlocked: !!(rep as any).levels_unlocked,
       todoMode: (rep as any).todo_mode ?? 'call_queue',
       teamType: (rep as any).team_type ?? 'intake',
+      repPhase: (rep as any).rep_phase ?? 1,
+      creativeSlug: (rep as any).creative_slug ?? null,
       currentLevel,
     }
   })

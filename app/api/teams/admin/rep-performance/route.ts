@@ -11,7 +11,8 @@ const BASE_SCORE = 2
 
 async function requireAdmin() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const { data: { session } } = await supabase.auth.getSession()
+  const user = session?.user ?? null
   if (!user) return null
   const { data: profile } = await supabase.from('profiles').select('role').eq('id', user.id).single()
   if (!profile || profile.role !== 'admin') return null
@@ -25,8 +26,9 @@ export async function GET(req: NextRequest) {
   const repId = req.nextUrl.searchParams.get('repId')
   if (!repId) return NextResponse.json({ error: 'repId required' }, { status: 400 })
 
-  const today = new Date().toISOString().slice(0, 10)
-  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const clientDate = req.nextUrl.searchParams.get('date')
+  const today = clientDate || new Date().toISOString().slice(0, 10)
+  const thirtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const [profileRes, eventsRes, closesRes] = await Promise.all([
     admin.from('profiles').select('id, name').eq('id', repId).single(),
@@ -46,21 +48,20 @@ export async function GET(req: NextRequest) {
   const events = eventsRes.data || []
   const closes = closesRes.data?.length ?? 0
 
-  // Group events by date → compute daily scores
+  // Group events by date
   const byDate: Record<string, typeof events> = {}
   for (const e of events) {
     if (!byDate[e.date]) byDate[e.date] = []
     byDate[e.date].push(e)
   }
 
+  // Only show days that have events, sorted newest first
   const dailyScores = Object.entries(byDate)
     .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, dayEvents]) => ({
-      date,
-      events: dayEvents,
-      eventTotal: dayEvents.reduce((s, e) => s + Number(e.points), 0),
-      dayScore: BASE_SCORE + dayEvents.reduce((s, e) => s + Number(e.points), 0),
-    }))
+    .map(([date, dayEvents]) => {
+      const eventTotal = dayEvents.reduce((s, e) => s + Number(e.points), 0)
+      return { date, events: dayEvents, eventTotal, dayScore: BASE_SCORE + eventTotal }
+    })
 
   const todayEvents = byDate[today] ?? []
   const todayScore = BASE_SCORE + todayEvents.reduce((s, e) => s + Number(e.points), 0)

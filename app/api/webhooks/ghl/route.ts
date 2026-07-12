@@ -206,6 +206,33 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Creative commission Slack alert — fire if ad_name or adset contains a creative slug
+  if (adName) {
+    const { data: creativeReps } = await supabase
+      .from('profiles')
+      .select('name, creative_slug')
+      .eq('team_type', 'creative')
+      .not('creative_slug', 'is', null)
+
+    const adNameUpper = adName.toUpperCase()
+    for (const rep of creativeReps ?? []) {
+      const slug = (rep.creative_slug as string).toUpperCase()
+      if (adNameUpper.includes(slug)) {
+        const slackWebhook = process.env.SLACK_CREATIVE_CASES_WEBHOOK
+        if (slackWebhook) {
+          fetch(slackWebhook, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              text: `🎉 *Case Signed — Creative Attribution*\n*Rep:* ${rep.name}\n*Slug:* ${slug}\n*Client:* ${contactName || 'Unknown'}\n*Ad:* ${adName}`,
+            }),
+          }).catch(() => {})
+        }
+        break
+      }
+    }
+  }
+
   // Auto score event: +2pt for the rep who closed this lead
   if (closer) {
     const { data: repProfile } = await supabase
