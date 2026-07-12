@@ -629,7 +629,7 @@ export default async function DashboardPage() {
               const hasNewModule = levelStartedAt !== null && raw
                 .flatMap((s) => s.modules)
                 .some((m) => !moduleAttemptData[m.id]?.completed && new Date(m.created_at) > levelStartedAt)
-              const showTimer = isLevelUnlocked && !isLevelDone && !!deadlineAt && !hasNewModule
+              const showTimer = isLevelUnlocked && !isLevelDone && !!deadlineAt && !hasNewModule && !timerDisabled
 
               return (
                 <div key={num}>
