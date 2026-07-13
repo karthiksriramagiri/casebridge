@@ -325,6 +325,34 @@ function CreativeName({ name }: { name?: string | null }) {
   )
 }
 
+function CopyRowButton({ pc }: { pc: any }) {
+  const [copied, setCopied] = useState(false)
+  function handleCopy() {
+    const dol = pc.incidentDate ? String(pc.incidentDate).split('T')[0] : ''
+    const text = [pc.contactName || '', pc.contactPhone || '', pc.contactEmail || '', dol].join('\t')
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    })
+  }
+  return (
+    <button onClick={handleCopy} title="Copy for sheet" className="transition p-1 rounded"
+      style={{ color: copied ? '#15803D' : '#D1D5DB' }}
+      onMouseEnter={e => { if (!copied) e.currentTarget.style.color = '#6B7280' }}
+      onMouseLeave={e => { if (!copied) e.currentTarget.style.color = '#D1D5DB' }}>
+      {copied ? (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+        </svg>
+      ) : (
+        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+        </svg>
+      )}
+    </button>
+  )
+}
+
 const GROUP_PALETTE = [
   { border: '#3b82f6', bg: 'rgba(59,130,246,0.08)', text: '#1D4ED8' },
   { border: '#a855f7', bg: 'rgba(168,85,247,0.08)', text: '#7E22CE' },
@@ -559,22 +587,25 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                     )}
                     {!linkMode && (
                       <td className="py-3 px-3 text-right">
-                        {confirmDeleteId === pc.id ? (
-                          <div className="flex items-center gap-1.5 justify-end">
-                            <span className="text-[10px]" style={{ color: '#B91C1C' }}>Delete?</span>
-                            <button onClick={() => handleDeleteCase(pc)} disabled={busy}
-                              className="text-[10px] font-semibold disabled:opacity-40" style={{ color: '#B91C1C' }}>Yes</button>
-                            <button onClick={() => setConfirmDeleteId(null)} className="text-[10px]" style={{ color: MUTED }}>No</button>
-                          </div>
-                        ) : (
-                          <button onClick={() => handleDeleteCase(pc)}
-                            className="transition p-1 rounded" style={{ color: '#D1D5DB' }} title="Delete case"
-                            onMouseEnter={e => (e.currentTarget.style.color = '#B91C1C')} onMouseLeave={e => (e.currentTarget.style.color = '#D1D5DB')}>
-                            <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          </button>
-                        )}
+                        <div className="flex items-center gap-1 justify-end">
+                          <CopyRowButton pc={pc} />
+                          {confirmDeleteId === pc.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-[10px]" style={{ color: '#B91C1C' }}>Delete?</span>
+                              <button onClick={() => handleDeleteCase(pc)} disabled={busy}
+                                className="text-[10px] font-semibold disabled:opacity-40" style={{ color: '#B91C1C' }}>Yes</button>
+                              <button onClick={() => setConfirmDeleteId(null)} className="text-[10px]" style={{ color: MUTED }}>No</button>
+                            </div>
+                          ) : (
+                            <button onClick={() => handleDeleteCase(pc)}
+                              className="transition p-1 rounded" style={{ color: '#D1D5DB' }} title="Delete case"
+                              onMouseEnter={e => (e.currentTarget.style.color = '#B91C1C')} onMouseLeave={e => (e.currentTarget.style.color = '#D1D5DB')}>
+                              <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                              </svg>
+                            </button>
+                          )}
+                        </div>
                       </td>
                     )}
                   </tr>

@@ -372,7 +372,7 @@ export async function GET(request: NextRequest) {
       let q = supabase
         .from('ghl_leads')
         .select(
-          'id, contact_name, contact_phone, contact_email, ad_name, ad_id, victim_count, qualified_at, invoice_code, case_status, closed_by_profile_id, closer, accident_group_id, form_data'
+          'id, contact_name, contact_phone, contact_email, ad_name, ad_id, victim_count, qualified_at, invoice_code, case_status, closed_by_profile_id, closer, accident_group_id, form_data, raw_payload'
         )
         .eq('firm_id', firm.id)
         .order('qualified_at', { ascending: false })
@@ -602,11 +602,16 @@ export async function GET(request: NextRequest) {
   const pcs = allFirmLeads.map((row: any) => {
     const rw = replacementWindow(row.qualified_at, replacementDays, row.case_status)
     const wid = row.closed_by_profile_id as string | null
+    const rp = row.raw_payload || {}
+    const cf: Record<string, string> = {}
+    if (Array.isArray(rp.customField)) { for (const f of rp.customField) { if (f.fieldKey) cf[f.fieldKey] = f.value; if (f.name) cf[f.name] = f.value } }
+    const incidentDate = rp.incident_date || rp['Date of Accident*'] || rp['Date of Accident'] || cf.incident_date || cf['Date of Accident*'] || cf['Date of Accident'] || null
     return {
       id: row.id,
       contactName: row.contact_name,
       contactPhone: row.contact_phone,
       contactEmail: row.contact_email,
+      incidentDate,
       adName: row.ad_name || adIdToName[row.ad_id] || null,
       adId: row.ad_id,
       victimCount: row.victim_count ?? 1,
