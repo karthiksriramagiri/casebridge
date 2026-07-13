@@ -101,18 +101,30 @@ export function grossPay(regularHours: number, overtimeHours: number, hourlyRate
   return regularHours * hourlyRate + overtimeHours * OVERTIME_HOURLY
 }
 
+/** Maps a shift value (from profiles.shift) to the shift start hour in EST (24h). */
+export function shiftStartHourEST(shift: string | null | undefined): number {
+  switch (shift) {
+    case 'morning':
+    case 'morning_afternoon': return 10  // 7 AM PST = 10 AM EST
+    case 'afternoon':
+    case 'afternoon_evening': return 15  // 12 PM PST = 3 PM EST
+    case 'evening':           return 18  // 3 PM PST = 6 PM EST
+    default:                  return 14  // fallback: 2 PM EST
+  }
+}
+
 /** EST offset in hours (–5 standard, –4 daylight). Uses JS Intl for accuracy. */
-export function clockInIsLate(clockInIso: string): { late: boolean; minutesLate: number } {
+export function clockInIsLate(clockInIso: string, shift?: string | null): { late: boolean; minutesLate: number; shiftStartHour: number } {
   const clockIn = new Date(clockInIso)
-  // Get the hour:minute of clockIn in America/New_York
   const parts = new Intl.DateTimeFormat('en-US', {
     timeZone: 'America/New_York',
     hour: 'numeric', minute: 'numeric', hour12: false,
   }).formatToParts(clockIn)
   const hour = parseInt(parts.find(p => p.type === 'hour')?.value ?? '0', 10)
   const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0', 10)
-  const shiftStartMinutes = 14 * 60 // 2:00 PM = 840 minutes from midnight
+  const shiftHour = shiftStartHourEST(shift)
+  const shiftStartMinutes = shiftHour * 60
   const clockInMinutes = hour * 60 + minute
   const minutesLate = clockInMinutes - shiftStartMinutes
-  return { late: minutesLate > 0, minutesLate: Math.max(0, minutesLate) }
+  return { late: minutesLate > 0, minutesLate: Math.max(0, minutesLate), shiftStartHour: shiftHour }
 }

@@ -93,16 +93,17 @@ export async function POST() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const { data: profile } = await admin.from('profiles').select('name').eq('id', user.id).single()
+  const { data: profile } = await admin.from('profiles').select('name, shift').eq('id', user.id).single()
   const name = profile?.name || 'Worker'
-  const { late, minutesLate } = clockInIsLate(clockInTime)
+  const { late, minutesLate, shiftStartHour } = clockInIsLate(clockInTime, profile?.shift)
   const timeStr = fmtTimeEST(clockInTime)
+  const shiftLabel = `${shiftStartHour % 12 || 12}:00 ${shiftStartHour >= 12 ? 'PM' : 'AM'}`
 
   if (late) {
     const hrs = Math.floor(minutesLate / 60)
     const mins = minutesLate % 60
     const lateStr = hrs > 0 ? `${hrs}h ${mins}m` : `${mins}m`
-    await sendSlack(`⚠️ *${name}* clocked in at ${timeStr} EST — *LATE by ${lateStr}* (shift starts 2:00 PM)`)
+    await sendSlack(`⚠️ *${name}* clocked in at ${timeStr} EST — *LATE by ${lateStr}* (shift starts ${shiftLabel})`)
 
     // Auto score event — only once per day
     const { count } = await admin
