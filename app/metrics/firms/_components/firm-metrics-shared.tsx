@@ -382,7 +382,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   const [localPcs, setLocalPcs] = useState<any[]>(pcs)
   const [linkMode, setLinkMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [copyPending, setCopyPending] = useState<Set<string>>(new Set())
+  const [copyPending, setCopyPending] = useState<string[]>([])
   const [copyDone, setCopyDone] = useState(false)
   const [linking, setLinking] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
@@ -430,14 +430,15 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   }
 
   function toggleCopySelect(id: string) {
-    setCopyPending(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+    setCopyPending(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
   function copySelected() {
-    const rows = localPcs.filter(p => copyPending.has(p.id)).map(pcRowText).join('\n')
+    const pcById = Object.fromEntries(localPcs.map(p => [p.id, p]))
+    const rows = copyPending.map(id => pcRowText(pcById[id])).filter(Boolean).join('\n')
     navigator.clipboard.writeText(rows).then(() => {
       setCopyDone(true)
-      setTimeout(() => { setCopyDone(false); setCopyPending(new Set()) }, 1500)
+      setTimeout(() => { setCopyDone(false); setCopyPending([]) }, 1500)
     })
   }
 
@@ -480,14 +481,14 @@ export function PcTable({ pcs }: { pcs: any[] }) {
             )}
           </div>
           <div className="flex items-center gap-2">
-            {copyPending.size > 0 && (
+            {copyPending.length > 0 && (
               <>
                 <button onClick={copySelected}
                   className="text-xs px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
                   style={{ background: copyDone ? '#15803D' : TEXT, color: '#FFF' }}>
-                  {copyDone ? `Copied ${copyPending.size}!` : `Copy ${copyPending.size} row${copyPending.size !== 1 ? 's' : ''}`}
+                  {copyDone ? `Copied ${copyPending.length}!` : `Copy ${copyPending.length} row${copyPending.length !== 1 ? 's' : ''}`}
                 </button>
-                <button onClick={() => setCopyPending(new Set())}
+                <button onClick={() => setCopyPending([])}
                   className="text-xs px-2 py-1.5 transition" style={{ color: MUTED }}>Clear</button>
               </>
             )}
@@ -630,7 +631,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                     {!linkMode && (
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center gap-1 justify-end">
-                          <CopyRowButton pc={pc} selected={copyPending.has(pc.id)} onToggle={toggleCopySelect} />
+                          <CopyRowButton pc={pc} selected={copyPending.includes(pc.id)} onToggle={toggleCopySelect} />
                           {confirmDeleteId === pc.id ? (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px]" style={{ color: '#B91C1C' }}>Delete?</span>
