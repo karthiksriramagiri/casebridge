@@ -325,28 +325,38 @@ function CreativeName({ name }: { name?: string | null }) {
   )
 }
 
-function CopyRowButton({ pc }: { pc: any }) {
+function formatPhone(raw: string | null | undefined) {
+  if (!raw) return ''
+  const digits = raw.replace(/\D/g, '')
+  const d = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits
+  if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+  return raw
+}
+
+function pcRowText(pc: any) {
+  const dol = pc.incidentDate ? String(pc.incidentDate).split('T')[0] : ''
+  return [pc.contactName || '', formatPhone(pc.contactPhone), pc.contactEmail || '', dol].join('\t')
+}
+
+function CopyRowButton({ pc, selected, onToggle }: { pc: any; selected: boolean; onToggle: (id: string) => void }) {
   const [copied, setCopied] = useState(false)
-  function formatPhone(raw: string | null | undefined) {
-    if (!raw) return ''
-    const digits = raw.replace(/\D/g, '')
-    const d = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits
-    if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
-    return raw
-  }
-  function handleCopy() {
-    const dol = pc.incidentDate ? String(pc.incidentDate).split('T')[0] : ''
-    const text = [pc.contactName || '', formatPhone(pc.contactPhone), pc.contactEmail || '', dol].join('\t')
-    navigator.clipboard.writeText(text).then(() => {
+  function handleClick(e: React.MouseEvent) {
+    if (e.metaKey || e.ctrlKey) {
+      onToggle(pc.id)
+      return
+    }
+    navigator.clipboard.writeText(pcRowText(pc)).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
     })
   }
+  const color = selected ? '#2563EB' : copied ? '#15803D' : '#D1D5DB'
   return (
-    <button onClick={handleCopy} title="Copy for sheet" className="transition p-1 rounded"
-      style={{ color: copied ? '#15803D' : '#D1D5DB' }}
-      onMouseEnter={e => { if (!copied) e.currentTarget.style.color = '#6B7280' }}
-      onMouseLeave={e => { if (!copied) e.currentTarget.style.color = '#D1D5DB' }}>
+    <button onClick={handleClick} title={selected ? 'Selected (⌘click to deselect)' : 'Copy row (⌘click to multi-select)'}
+      className="transition p-1 rounded"
+      style={{ color }}
+      onMouseEnter={e => { if (!selected && !copied) e.currentTarget.style.color = '#6B7280' }}
+      onMouseLeave={e => { if (!selected && !copied) e.currentTarget.style.color = '#D1D5DB' }}>
       {copied ? (
         <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
@@ -372,6 +382,8 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   const [localPcs, setLocalPcs] = useState<any[]>(pcs)
   const [linkMode, setLinkMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [copyPending, setCopyPending] = useState<Set<string>>(new Set())
+  const [copyDone, setCopyDone] = useState(false)
   const [linking, setLinking] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [editingCloser, setEditingCloser] = useState<{ id: string; value: string } | null>(null)
@@ -417,6 +429,18 @@ export function PcTable({ pcs }: { pcs: any[] }) {
     setSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
   }
 
+  function toggleCopySelect(id: string) {
+    setCopyPending(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  function copySelected() {
+    const rows = localPcs.filter(p => copyPending.has(p.id)).map(pcRowText).join('\n')
+    navigator.clipboard.writeText(rows).then(() => {
+      setCopyDone(true)
+      setTimeout(() => { setCopyDone(false); setCopyPending(new Set()) }, 1500)
+    })
+  }
+
   async function handleLink() {
     const ids = [...selected]
     if (ids.length < 2) return
@@ -456,6 +480,17 @@ export function PcTable({ pcs }: { pcs: any[] }) {
             )}
           </div>
           <div className="flex items-center gap-2">
+            {copyPending.size > 0 && (
+              <>
+                <button onClick={copySelected}
+                  className="text-xs px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                  style={{ background: copyDone ? '#15803D' : TEXT, color: '#FFF' }}>
+                  {copyDone ? `Copied ${copyPending.size}!` : `Copy ${copyPending.size} row${copyPending.size !== 1 ? 's' : ''}`}
+                </button>
+                <button onClick={() => setCopyPending(new Set())}
+                  className="text-xs px-2 py-1.5 transition" style={{ color: MUTED }}>Clear</button>
+              </>
+            )}
             {linkMode ? (
               <>
                 <span className="text-xs" style={{ color: MUTED }}>{selected.size} selected</span>
@@ -595,7 +630,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                     {!linkMode && (
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center gap-1 justify-end">
-                          <CopyRowButton pc={pc} />
+                          <CopyRowButton pc={pc} selected={copyPending.has(pc.id)} onToggle={toggleCopySelect} />
                           {confirmDeleteId === pc.id ? (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px]" style={{ color: '#B91C1C' }}>Delete?</span>
