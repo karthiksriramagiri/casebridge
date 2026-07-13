@@ -327,9 +327,16 @@ function CreativeName({ name }: { name?: string | null }) {
 
 function CopyRowButton({ pc }: { pc: any }) {
   const [copied, setCopied] = useState(false)
+  function formatPhone(raw: string | null | undefined) {
+    if (!raw) return ''
+    const digits = raw.replace(/\D/g, '')
+    const d = digits.length === 11 && digits[0] === '1' ? digits.slice(1) : digits
+    if (d.length === 10) return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
+    return raw
+  }
   function handleCopy() {
     const dol = pc.incidentDate ? String(pc.incidentDate).split('T')[0] : ''
-    const text = [pc.contactName || '', pc.contactPhone || '', pc.contactEmail || '', dol].join('\t')
+    const text = [pc.contactName || '', formatPhone(pc.contactPhone), pc.contactEmail || '', dol].join('\t')
     navigator.clipboard.writeText(text).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 1500)
