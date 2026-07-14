@@ -43,7 +43,7 @@ function isPSTWorkHours(date: Date): boolean {
   const pstStr = date.toLocaleString('en-US', { timeZone: 'America/Los_Angeles' })
   const pst = new Date(pstStr)
   const hour = pst.getHours()
-  return hour >= 7 && hour < 15 // 7am–3pm PST
+  return hour >= 7 && hour < 21 // 7am–9pm PST
 }
 
 async function fetchGHLCalls(contactId: string): Promise<{ userId: string; dateAdded: string }[]> {

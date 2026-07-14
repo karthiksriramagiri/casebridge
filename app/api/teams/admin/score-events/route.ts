@@ -29,7 +29,6 @@ export const POINT_VALUES: Record<string, number> = {
   late_clockin:            -1,
   minor_violation:         -0.25,
   bad_call:                -1,
-  slow_checkmark:          -1,
 }
 
 const BASE_SCORE = 2
@@ -139,7 +138,6 @@ export async function POST(req: NextRequest) {
         late_clockin:            'Late Clock-In',
         minor_violation:         'Minor Rule Violation',
         bad_call:                'Bad Call Quality',
-        slow_checkmark:          'Slow Lead Checkmark',
       }
       const label = EVENT_NAMES[event_type] || event_type
       const noteStr = note ? `\n*Note:* ${note}` : ''

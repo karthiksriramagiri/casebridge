@@ -45,7 +45,6 @@ const EVENT_LABELS: Record<string, string> = {
   late_clockin:             'Late Clock-In (>10 min)',
   minor_violation:          'Minor Rule Violation',
   bad_call:                 'Bad Call Quality',
-  slow_checkmark:           'Slow Lead Checkmark',
 }
 
 const MANUAL_EVENTS = [
@@ -70,7 +69,6 @@ const POINT_LABELS: Record<string, string> = {
   late_clockin:             '−1 pt',
   minor_violation:          '−0.25 pt',
   bad_call:                 '−1 pt',
-  slow_checkmark:           '−1 pt',
 }
 
 function pointsColor(pts: number) {

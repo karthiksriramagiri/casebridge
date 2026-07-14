@@ -179,7 +179,8 @@
       "Bash(head -20 grep -n \"select\\\\|rep_phase\\\\|nda_signed\\\\|router.push\\\\|redirect\" /Users/karthik/Documents/CaseBridge/app/teams/todos/page.tsx)",
       "Bash(sed -n '120,135p' /Users/karthik/Documents/CaseBridge/app/api/teams/home/route.ts)",
       "Bash(sed -n '240,255p' /Users/karthik/Documents/CaseBridge/app/api/teams/todos/route.ts)",
-      "Bash(head -15 grep -n \"getUser\\\\|getSession\\\\|const user\" /Users/karthik/Documents/CaseBridge/app/api/teams/todos/route.ts)"
+      "Bash(head -15 grep -n \"getUser\\\\|getSession\\\\|const user\" /Users/karthik/Documents/CaseBridge/app/api/teams/todos/route.ts)",
+      "Bash(URL=\"https://cdazkpnndbtcxioanwdx.supabase.co\" KEY=\"sb_secret_PgeFlg4QlghtRpuwYci6sw_QbPB8Km7\" __NEW_LINE_34d2f9e31cdd5df2__ curl -s \"$URL/rest/v1/profiles?select=id,name,nda_signed,timer_disabled,timeclock_enabled,team_type,rep_phase&role=eq.rep&order=created_at.desc&limit=10\" -H \"apikey: $KEY\" -H \"Authorization: Bearer $KEY\")"
     ]
   }
 }

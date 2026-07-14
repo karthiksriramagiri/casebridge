@@ -34,38 +34,35 @@ const EVENT_LABELS: Record<string, string> = {
   lead_closed:              'Lead Closed',
   perfect_day:              'Perfect Day Bonus',
   good_call:                'Good Call Quality',
-  todo_complete:            'To-Do Completed',
   missed_checkmark:         'Lead Not Checkmarked in Time',
   no_call_after_checkmark:  'No Call After Checkmark',
   missed_followup_call:     'Missed Follow-Up / Chase Call',
   late_clockin:             'Late Clock-In (>10 min)',
   minor_violation:          'Minor Rule Violation',
   bad_call:                 'Bad Call Quality',
-  slow_checkmark:           'Slow Lead Checkmark',
+
 }
 
 const POINT_VALUES: Record<string, number> = {
   lead_closed:              2,
   perfect_day:              1,
   good_call:                1,
-  todo_complete:            0.5,
   missed_checkmark:        -1,
   no_call_after_checkmark: -3,
   missed_followup_call:    -2,
   late_clockin:            -1,
   minor_violation:         -0.25,
   bad_call:                -1,
-  slow_checkmark:          -1,
+
 }
 
 const MANUAL_EVENTS = [
   { type: 'good_call',                pts: +1 },
   { type: 'lead_closed',              pts: +2 },
   { type: 'perfect_day',              pts: +1 },
-  { type: 'todo_complete',            pts: +0.5 },
   { type: 'bad_call',                 pts: -1 },
   { type: 'missed_checkmark',         pts: -1 },
-  { type: 'slow_checkmark',           pts: -1 },
+
   { type: 'missed_followup_call',     pts: -2 },
   { type: 'no_call_after_checkmark',  pts: -3 },
   { type: 'late_clockin',             pts: -1 },
