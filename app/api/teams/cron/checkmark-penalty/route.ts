@@ -139,6 +139,7 @@ export async function GET(req: NextRequest) {
     .from('profiles')
     .select('id')
     .eq('role', 'rep')
+    .eq('team_type', 'intake')
     .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik')
 
   const repIds = (reps || []).map(r => r.id)
