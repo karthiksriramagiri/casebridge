@@ -1,10 +1,6 @@
 {
   "crons": [
     {
-      "path": "/api/teams/cron/checkmark-penalty",
-      "schedule": "*/2 * * * *"
-    },
-    {
       "path": "/api/cron/shift-report",
       "schedule": "5 20 * * *"
     },
