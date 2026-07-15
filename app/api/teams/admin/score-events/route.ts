@@ -53,7 +53,7 @@ export async function GET(req: NextRequest) {
       .select('id, name')
       .eq('role', 'rep')
       .eq('team_type', 'intake')
-      .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik'),
+      .or('hide_from_hr.is.null,hide_from_hr.eq.false'),
     admin
       .from('ghl_leads')
       .select('closed_by_profile_id, case_status')

@@ -124,7 +124,7 @@ export async function GET(req: NextRequest) {
     .select('id')
     .eq('role', 'rep')
     .eq('team_type', 'intake')
-    .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik')
+    .or('hide_from_hr.is.null,hide_from_hr.eq.false')
 
   const repIds = (reps || []).map(r => r.id)
   let missedPenalized = 0
