@@ -90,7 +90,6 @@ export default function PerformancePage() {
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       if (prof.team_type === 'creative') { router.push('/teams/dashboard'); return }
-      if ((prof.rep_phase ?? 1) < 3) { router.push('/teams/home'); return }
       setTimeclockEnabled(!!prof.timeclock_enabled)
       setTeamType(prof.team_type ?? 'intake')
 
