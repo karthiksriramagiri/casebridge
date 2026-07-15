@@ -5,18 +5,25 @@ import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceLine, R
 interface DayScore {
   date: string
   dayScore: number
+  events?: { id: string }[]
 }
 
 export default function ScoreChart({ dailyScores }: { dailyScores: DayScore[] }) {
-  const data = [...dailyScores].reverse().map(d => ({
-    date: d.date,
-    score: Number(d.dayScore),
-    label: new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
-  }))
+  // Only show days that have actual events (no flat base-score padding)
+  const data = [...dailyScores]
+    .filter(d => d.events && d.events.length > 0)
+    .reverse()
+    .map(d => ({
+      date: d.date,
+      score: Number(d.dayScore),
+      label: new Date(d.date + 'T12:00:00').toLocaleDateString('en-US', { month: 'numeric', day: 'numeric' }),
+    }))
+
+  if (data.length === 0) return null
 
   return (
     <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 pt-4 pb-2">
-      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Score — Last 30 Days</p>
+      <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Score History</p>
       <ResponsiveContainer width="100%" height={160}>
         <LineChart data={data} margin={{ top: 4, right: 8, bottom: 0, left: -24 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="#f3f4f6" vertical={false} />
