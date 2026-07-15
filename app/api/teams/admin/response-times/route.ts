@@ -32,12 +32,15 @@ const SLACK_ID_TO_NAME: Record<string, string> = {
   'U0BDB0H8Z33': 'Mauricio',
 }
 
+const EXCLUDED_NAMES = new Set(['Karthik'])
+
 function resolveWorkerName(workerName: string | null): string | null {
   if (!workerName) return null
   // If it looks like a Slack user ID, map it
   if (/^U[A-Z0-9]{8,}$/.test(workerName)) {
     return SLACK_ID_TO_NAME[workerName] ?? null // null = exclude
   }
+  if (EXCLUDED_NAMES.has(workerName)) return null
   return workerName
 }
 
