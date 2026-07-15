@@ -46,22 +46,6 @@ function isPSTWorkHours(date: Date): boolean {
   return hour >= 7 && hour < 21 // 7am–9pm PST
 }
 
-async function fetchGHLCalls(contactId: string): Promise<{ userId: string; dateAdded: string }[]> {
-  try {
-    const res = await fetch(
-      `https://services.leadconnectorhq.com/contacts/${contactId}/activities/calls?location_id=${GHL_LOCATION_ID}&limit=20`,
-      { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' } }
-    )
-    if (!res.ok) return []
-    const data = await res.json()
-    return (data.activities || data.calls || []).map((a: any) => ({
-      userId:    a.userId || a.user_id || '',
-      dateAdded: a.dateAdded || a.startedAt || a.createdAt || '',
-    }))
-  } catch {
-    return []
-  }
-}
 
 // Fetch NR leads from GHL created in the last `maxAgeSec` seconds and upsert into nr_lead_sightings
 async function syncRecentNRSightings(maxAgeSec: number) {
@@ -185,83 +169,8 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  // ── CHECK 2: Checkmarked but no GHL call within 120s (-3pt individual) ─────
-  // Leads that appeared 121–420s ago where the rep who checkmarked didn't call in GHL
-  const callWindowStart = new Date(now.getTime() - 420 * 1000).toISOString()
-  const callWindowEnd   = new Date(now.getTime() - 121 * 1000).toISOString()
-
-  const { data: callSightings } = await admin
-    .from('nr_lead_sightings')
-    .select('contact_id, contact_name, first_seen_at, opp_created_at')
-    .gte('first_seen_at', callWindowStart)
-    .lte('first_seen_at', callWindowEnd)
-
-  let callPenalized = 0
-
-  for (const sighting of callSightings || []) {
-    const baseline = sighting.opp_created_at || sighting.first_seen_at
-    if (!isPSTWorkHours(new Date(baseline))) continue
-
-    // Find reps who checkmarked this lead
-    const { data: checkmarks } = await admin
-      .from('lead_response_events')
-      .select('worker_id, worker_name, responded_at')
-      .eq('contact_id', sighting.contact_id)
-
-    if (!checkmarks || checkmarks.length === 0) continue
-
-    for (const checkmark of checkmarks) {
-      if (!checkmark.worker_id || !checkmark.worker_name) continue
-
-      // Dedup: only penalize once per rep per contact
-      const noteKey = `No GHL call: ${sighting.contact_id}:${checkmark.worker_id}`
-      const { count: existing } = await admin
-        .from('score_events')
-        .select('id', { count: 'exact', head: true })
-        .eq('user_id', checkmark.worker_id)
-        .eq('date', today)
-        .eq('event_type', 'no_call_after_checkmark')
-        .eq('note', noteKey)
-
-      if ((existing ?? 0) > 0) continue
-
-      // Look up GHL user ID for this rep
-      const repConfig = REP_IDS[checkmark.worker_name]
-      if (!repConfig) {
-        console.log(`[call-penalty] No GHL ID mapped for rep: ${checkmark.worker_name}`)
-        continue
-      }
-
-      // Fetch GHL call logs for this contact
-      const calls = await fetchGHLCalls(sighting.contact_id)
-      const baselineMs = new Date(baseline).getTime()
-
-      const calledInTime = calls.some(call => {
-        if (call.userId !== repConfig.ghlUserId) return false
-        const callMs = new Date(call.dateAdded).getTime()
-        // Call must be after lead arrived and within 120s
-        return callMs >= baselineMs && callMs - baselineMs <= 120_000
-      })
-
-      if (!calledInTime) {
-        const contactLabel = sighting.contact_name || sighting.contact_id
-        await admin.from('score_events').insert({
-          user_id:        checkmark.worker_id,
-          event_type:     'no_call_after_checkmark',
-          points:         -3,
-          note:           noteKey,
-          date:           today,
-          auto_generated: true,
-        })
-        await notifySlack(`📵 *No Call After Checkmark — ${checkmark.worker_name}*\n*Penalty:* -3 pts\n*Lead:* ${contactLabel}\n*Rule:* Checkmarked but no GHL call within 120s of lead arrival`)
-        callPenalized++
-      }
-    }
-  }
-
   return NextResponse.json({
     ok: true,
     missedCheckmark: { checked: (missedSightings || []).length, penalized: missedPenalized },
-    noCallAfterCheckmark: { checked: (callSightings || []).length, penalized: callPenalized },
   })
 }
