@@ -27,8 +27,8 @@ export async function GET(req: NextRequest) {
   if (!repId) return NextResponse.json({ error: 'repId required' }, { status: 400 })
 
   const clientDate = req.nextUrl.searchParams.get('date')
-  const today = clientDate || new Date().toISOString().slice(0, 10)
-  const thirtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
+  const today = clientDate || new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const [profileRes, eventsRes, closesRes] = await Promise.all([
     admin.from('profiles').select('id, name').eq('id', repId).single(),
@@ -55,13 +55,15 @@ export async function GET(req: NextRequest) {
     byDate[e.date].push(e)
   }
 
-  // Only show days that have events, sorted newest first
-  const dailyScores = Object.entries(byDate)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, dayEvents]) => {
-      const eventTotal = dayEvents.reduce((s, e) => s + Number(e.points), 0)
-      return { date, events: dayEvents, eventTotal, dayScore: BASE_SCORE + eventTotal }
-    })
+  // Build last 30 days (newest first), always include every day
+  const dailyScores = []
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
+    const date = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const dayEvents = byDate[date] ?? []
+    const eventTotal = dayEvents.reduce((s, e) => s + Number(e.points), 0)
+    dailyScores.push({ date, events: dayEvents, eventTotal, dayScore: BASE_SCORE + eventTotal })
+  }
 
   const todayEvents = byDate[today] ?? []
   const todayScore = BASE_SCORE + todayEvents.reduce((s, e) => s + Number(e.points), 0)

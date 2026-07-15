@@ -271,59 +271,66 @@ export default function RepPerformancePage({ params }: { params: { repId: string
         )}
       </div>
 
-      {/* Score History */}
+      {/* Score History — last 30 days */}
       <div>
-        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Score History</h2>
-        {data.dailyScores.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-6 text-center text-gray-400 text-sm">
-            No events logged yet.
-          </div>
-        ) : (
-          <div className="space-y-2">
-            {data.dailyScores.map(day => {
-              const isToday = day.date === today
-              const isExpanded = expandedDay === day.date
-              return (
-                <div key={day.date} className={`rounded-xl border shadow-sm overflow-hidden ${isToday ? 'border-blue-100 bg-blue-50/30' : 'bg-white border-gray-100'}`}>
-                  <div
-                    onClick={() => setExpandedDay(isExpanded ? null : day.date)}
-                    className="flex items-center justify-between px-5 py-3.5 cursor-pointer hover:bg-black/[0.02] transition-colors"
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <span className="font-semibold text-gray-900 text-sm">
-                        {format(new Date(day.date + 'T12:00:00'), 'EEE, MMM d')}
+        <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wider mb-3">Score History (Last 30 Days)</h2>
+        <div className="space-y-1.5">
+          {data.dailyScores.map(day => {
+            const isToday = day.date === today
+            const isExpanded = expandedDay === day.date
+            const hasEvents = day.events.length > 0
+            return (
+              <div key={day.date} className={`rounded-xl border shadow-sm overflow-hidden ${isToday ? 'border-blue-200 bg-blue-50/40' : 'bg-white border-gray-100'}`}>
+                <div
+                  onClick={() => hasEvents && setExpandedDay(isExpanded ? null : day.date)}
+                  className={`flex items-center justify-between px-5 py-3 transition-colors ${hasEvents ? 'cursor-pointer hover:bg-black/[0.02]' : ''}`}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <span className="font-semibold text-gray-900 text-sm w-28">
+                      {format(new Date(day.date + 'T12:00:00'), 'EEE, MMM d')}
+                    </span>
+                    {isToday && (
+                      <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Today</span>
+                    )}
+                    {hasEvents ? (
+                      <div className="flex flex-wrap gap-1.5">
+                        {day.events.map(e => (
+                          <span key={e.id} className={`text-xs px-2 py-0.5 rounded-full font-medium border ${e.points > 0 ? 'bg-green-50 text-green-700 border-green-100' : 'bg-red-50 text-red-600 border-red-100'}`}>
+                            {EVENT_LABELS[e.event_type] || e.event_type} ({fmtPts(Number(e.points))})
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-gray-300">No events</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 shrink-0 ml-4">
+                    {day.eventTotal !== 0 && (
+                      <span className={`text-xs font-semibold ${day.eventTotal > 0 ? 'text-green-500' : 'text-red-400'}`}>
+                        {fmtPts(day.eventTotal)} pts
                       </span>
-                      {isToday && (
-                        <span className="text-xs bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full font-medium">Today</span>
-                      )}
-                      <span className="text-xs text-gray-400">{day.events.length} event{day.events.length !== 1 ? 's' : ''}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      {day.eventTotal !== 0 && (
-                        <span className={`text-xs font-semibold ${day.eventTotal > 0 ? 'text-green-500' : 'text-red-400'}`}>
-                          {fmtPts(day.eventTotal)} pts
-                        </span>
-                      )}
-                      <span className={`text-xl font-bold tabular-nums ${scoreColor(day.dayScore)}`}>
-                        {Math.round(day.dayScore * 100) / 100}
-                      </span>
-                      <svg className={`w-4 h-4 text-gray-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    )}
+                    <span className={`text-xl font-bold tabular-nums w-8 text-right ${scoreColor(day.dayScore)}`}>
+                      {Math.round(day.dayScore * 100) / 100}
+                    </span>
+                    {hasEvents && (
+                      <svg className={`w-4 h-4 text-gray-300 transition-transform shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
-                    </div>
+                    )}
                   </div>
-                  {isExpanded && (
-                    <div className="border-t border-gray-100 divide-y divide-gray-50">
-                      {day.events.map(e => (
-                        <EventRow key={e.id} e={e} onDelete={handleDelete} deletingId={deletingId} />
-                      ))}
-                    </div>
-                  )}
                 </div>
-              )
-            })}
-          </div>
-        )}
+                {isExpanded && hasEvents && (
+                  <div className="border-t border-gray-100 divide-y divide-gray-50">
+                    {day.events.map(e => (
+                      <EventRow key={e.id} e={e} onDelete={handleDelete} deletingId={deletingId} />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
       </div>
 
       {/* Scoring Rules */}
