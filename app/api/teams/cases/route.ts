@@ -64,10 +64,19 @@ export async function GET() {
 
   const repCases = (manualCases || []).map((c: any) => ({ ...c, source: 'manual' }))
 
-  // Merge: ghl first (deduplicated by contact name + date to avoid doubles if admin also logged manually)
-  const manualKeys = new Set(repCases.map((c: any) => `${c.contact_name}|${c.closed_at}`))
-  const filteredGhl = ghlCases.filter(
-    (c) => !manualKeys.has(`${c.contact_name}|${c.closed_at}`)
+  // Deduplicate ghl rows by contact_name + date (keep first occurrence)
+  const ghlSeen = new Set<string>()
+  const dedupedGhl = ghlCases.filter(c => {
+    const key = `${c.contact_name.toLowerCase()}|${c.closed_at}`
+    if (ghlSeen.has(key)) return false
+    ghlSeen.add(key)
+    return true
+  })
+
+  // Merge: ghl first, skip manual entries already covered by ghl
+  const manualKeys = new Set(repCases.map((c: any) => `${c.contact_name.toLowerCase()}|${c.closed_at}`))
+  const filteredGhl = dedupedGhl.filter(
+    (c) => !manualKeys.has(`${c.contact_name.toLowerCase()}|${c.closed_at}`)
   )
 
   const allCases = [...filteredGhl, ...repCases].sort(
