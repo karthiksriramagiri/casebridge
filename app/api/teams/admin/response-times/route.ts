@@ -26,6 +26,21 @@ function fmtSeconds(s: number | null) {
   return rem > 0 ? `${m}m ${rem}s` : `${m}m`
 }
 
+// Map Slack user IDs → real names. IDs not listed here are excluded from the report.
+const SLACK_ID_TO_NAME: Record<string, string> = {
+  'U0B8B2BE4BZ': 'Ziyad',
+  'U0BDB0H8Z33': 'Mauricio',
+}
+
+function resolveWorkerName(workerName: string | null): string | null {
+  if (!workerName) return null
+  // If it looks like a Slack user ID, map it
+  if (/^U[A-Z0-9]{8,}$/.test(workerName)) {
+    return SLACK_ID_TO_NAME[workerName] ?? null // null = exclude
+  }
+  return workerName
+}
+
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const days = Math.min(90, Math.max(1, Number(searchParams.get('days') || 7)))
@@ -45,9 +60,11 @@ export async function GET(req: NextRequest) {
   }> = {}
 
   for (const e of events || []) {
+    const resolvedName = resolveWorkerName(e.worker_name)
+    if (resolvedName === null) continue // exclude unmapped Slack IDs
     const key = e.worker_id || e.worker_name || 'unknown'
     if (!byWorker[key]) {
-      byWorker[key] = { workerName: e.worker_name || 'Unknown', slackTimes: [], callTimes: [], recentEvents: [] }
+      byWorker[key] = { workerName: resolvedName, slackTimes: [], callTimes: [], recentEvents: [] }
     }
     const w = byWorker[key]
     if (e.response_seconds != null) {
