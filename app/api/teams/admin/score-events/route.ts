@@ -154,13 +154,15 @@ export async function POST(req: NextRequest) {
       }).catch(() => {})
     }
 
-    const repScoreWebhook = process.env.SLACK_REP_SCORE_WEBHOOK
-    if (repScoreWebhook) {
-      await fetch(repScoreWebhook, {
+    try {
+      const res = await fetch('https://hooks.slack.com/services/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', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: `${icon} *${repName}* — ${label}\n*Points:* ${ptsStr}${noteStr}` }),
-      }).catch(() => {})
+      })
+      console.log('[rep-score-webhook] status:', res.status, await res.text())
+    } catch (e) {
+      console.error('[rep-score-webhook] error:', e)
     }
   }
 
