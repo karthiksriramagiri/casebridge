@@ -9,6 +9,7 @@ const admin = adminClient(
 )
 
 const SLACK_WEBHOOK = process.env.SLACK_TIMECLOCK_WEBHOOK
+const REP_SCORE_WEBHOOK = process.env.SLACK_REP_SCORE_WEBHOOK
 
 async function sendSlack(text: string) {
   if (!SLACK_WEBHOOK) return
@@ -127,6 +128,13 @@ export async function POST() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: `⏰ *Late Clock-In — ${name}*\n*Penalty:* -1 pt\n*Clocked in:* ${timeStr} EST (${lateStr} late)\n*Rule:* Must clock in within 10 min of shift start` }),
+        }).catch(() => {})
+      }
+      if (REP_SCORE_WEBHOOK) {
+        fetch(REP_SCORE_WEBHOOK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ text: `⏰ *${name}* — Late Clock-In\n*Points:* -1\n*Note:* Clocked in ${lateStr} late (shift starts ${shiftLabel} EST)` }),
         }).catch(() => {})
       }
     }

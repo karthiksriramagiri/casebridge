@@ -126,26 +126,40 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Notify Slack for negative events
-  if (points < 0) {
+  // Notify Slack
+  {
+    const { data: repProfile } = await admin.from('profiles').select('name').eq('id', user_id).single()
+    const repName = repProfile?.name || user_id
+    const EVENT_NAMES: Record<string, string> = {
+      lead_closed:             'Lead Closed',
+      perfect_day:             'Perfect Day Bonus',
+      good_call:               'Good Call Quality',
+      missed_checkmark:        'Lead Not Checkmarked in Time',
+      missed_followup_call:    'Missed Follow-Up / Chase Call',
+      late_clockin:            'Late Clock-In',
+      minor_violation:         'Minor Rule Violation',
+      bad_call:                'Bad Call Quality',
+    }
+    const label = EVENT_NAMES[event_type] || event_type
+    const noteStr = note ? `\n*Note:* ${note}` : ''
+    const icon = points > 0 ? '✅' : '⚠️'
+    const ptsStr = points > 0 ? `+${points}` : `${points}`
+
     const perfWebhook = process.env.SLACK_PERFORMANCE_WEBHOOK
-    if (perfWebhook) {
-      const { data: repProfile } = await admin.from('profiles').select('name').eq('id', user_id).single()
-      const repName = repProfile?.name || user_id
-      const EVENT_NAMES: Record<string, string> = {
-        missed_checkmark:        'Lead Not Checkmarked in Time',
-        no_call_after_checkmark: 'No Call After Checkmark',
-        missed_followup_call:    'Missed Follow-Up / Chase Call',
-        late_clockin:            'Late Clock-In',
-        minor_violation:         'Minor Rule Violation',
-        bad_call:                'Bad Call Quality',
-      }
-      const label = EVENT_NAMES[event_type] || event_type
-      const noteStr = note ? `\n*Note:* ${note}` : ''
+    if (perfWebhook && points < 0) {
       fetch(perfWebhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: `⚠️ *${label} — ${repName}*\n*Penalty:* ${points} pt (manual)${noteStr}` }),
+      }).catch(() => {})
+    }
+
+    const repScoreWebhook = process.env.SLACK_REP_SCORE_WEBHOOK
+    if (repScoreWebhook) {
+      fetch(repScoreWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: `${icon} *${repName}* — ${label}\n*Points:* ${ptsStr}${noteStr}` }),
       }).catch(() => {})
     }
   }

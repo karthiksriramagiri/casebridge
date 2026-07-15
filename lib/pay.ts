@@ -126,5 +126,5 @@ export function clockInIsLate(clockInIso: string, shift?: string | null): { late
   const shiftStartMinutes = shiftHour * 60
   const clockInMinutes = hour * 60 + minute
   const minutesLate = clockInMinutes - shiftStartMinutes
-  return { late: minutesLate > 0, minutesLate: Math.max(0, minutesLate), shiftStartHour: shiftHour }
+  return { late: minutesLate >= 10, minutesLate: Math.max(0, minutesLate), shiftStartHour: shiftHour }
 }
