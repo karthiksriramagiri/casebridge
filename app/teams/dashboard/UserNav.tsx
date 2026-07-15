@@ -24,7 +24,7 @@ export default function UserNav({ timeclockEnabled, teamType, phase = 3 }: Props
     : [
         { label: 'Home', href: '/teams/home' },
         { label: 'Training', href: '/teams/dashboard' },
-        { label: 'Performance', href: '/teams/performance', activeOnly: true },
+        { label: 'Performance', href: '/teams/performance' },
         { label: 'Incentives', href: '/teams/incentives' },
         { label: 'My Cases', href: '/teams/cases', activeOnly: true },
         { label: 'Pay', href: '/teams/pay' },
