@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, use } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 
@@ -86,8 +86,8 @@ function scoreBg(score: number) {
   return score > 2 ? 'bg-green-50 border-green-100' : score >= 2 ? 'bg-white border-gray-100' : 'bg-red-50 border-red-100'
 }
 
-export default function RepPerformancePage({ params }: { params: { repId: string } }) {
-  const { repId } = params
+export default function RepPerformancePage({ params }: { params: Promise<{ repId: string }> }) {
+  const { repId } = use(params)
   const [data, setData] = useState<RepData | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')

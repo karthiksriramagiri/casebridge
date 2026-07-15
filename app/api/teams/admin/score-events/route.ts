@@ -32,6 +32,7 @@ export const POINT_VALUES: Record<string, number> = {
 }
 
 const BASE_SCORE = 2
+const MAX_SCORE = 5
 
 // GET /api/teams/admin/score-events — full scoreboard + today's scores
 export async function GET(req: NextRequest) {
@@ -83,7 +84,7 @@ export async function GET(req: NextRequest) {
     .map(r => ({
       id: r.id,
       name: r.name,
-      todayScore: BASE_SCORE + (todayByRep[r.id] ?? 0),
+      todayScore: Math.min(MAX_SCORE, BASE_SCORE + (todayByRep[r.id] ?? 0)),
       todayEventTotal: todayByRep[r.id] ?? 0,
       closes: closesByRep[r.id] ?? 0,
     }))

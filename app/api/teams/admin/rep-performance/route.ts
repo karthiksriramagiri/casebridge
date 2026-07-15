@@ -8,6 +8,7 @@ const admin = adminClient(
 )
 
 const BASE_SCORE = 2
+const MAX_SCORE = 5
 
 async function requireAdmin() {
   const supabase = await createClient()
@@ -62,11 +63,11 @@ export async function GET(req: NextRequest) {
     const date = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
     const dayEvents = byDate[date] ?? []
     const eventTotal = dayEvents.reduce((s, e) => s + Number(e.points), 0)
-    dailyScores.push({ date, events: dayEvents, eventTotal, dayScore: BASE_SCORE + eventTotal })
+    dailyScores.push({ date, events: dayEvents, eventTotal, dayScore: Math.min(MAX_SCORE, BASE_SCORE + eventTotal) })
   }
 
   const todayEvents = byDate[today] ?? []
-  const todayScore = BASE_SCORE + todayEvents.reduce((s, e) => s + Number(e.points), 0)
+  const todayScore = Math.min(MAX_SCORE, BASE_SCORE + todayEvents.reduce((s, e) => s + Number(e.points), 0))
 
   return NextResponse.json({ profile, dailyScores, todayScore, todayEvents, closes, baseScore: BASE_SCORE })
 }
