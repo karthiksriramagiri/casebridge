@@ -156,7 +156,7 @@ export async function POST(req: NextRequest) {
 
     const repScoreWebhook = process.env.SLACK_REP_SCORE_WEBHOOK
     if (repScoreWebhook) {
-      fetch(repScoreWebhook, {
+      await fetch(repScoreWebhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: `${icon} *${repName}* — ${label}\n*Points:* ${ptsStr}${noteStr}` }),

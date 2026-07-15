@@ -131,7 +131,7 @@ export async function POST() {
         }).catch(() => {})
       }
       if (REP_SCORE_WEBHOOK) {
-        fetch(REP_SCORE_WEBHOOK, {
+        await fetch(REP_SCORE_WEBHOOK, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: `⏰ *${name}* — Late Clock-In\n*Points:* -1\n*Note:* Clocked in ${lateStr} late (shift starts ${shiftLabel} EST)` }),

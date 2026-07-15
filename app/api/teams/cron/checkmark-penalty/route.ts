@@ -167,7 +167,7 @@ export async function GET(req: NextRequest) {
       await admin.from('score_events').insert(inserts)
       await notifySlack(`❌ *Missed Lead Checkmark — All Reps*\n*Penalty:* -1 pt each\n*Lead:* ${contactLabel}\n*Rule:* No one checkmarked within 60s (7am–9pm PST)`)
       if (REP_SCORE_WEBHOOK) {
-        fetch(REP_SCORE_WEBHOOK, {
+        await fetch(REP_SCORE_WEBHOOK, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text: `❌ *All Reps* — Lead Not Checkmarked in Time\n*Points:* -1 each\n*Lead:* ${contactLabel}` }),
