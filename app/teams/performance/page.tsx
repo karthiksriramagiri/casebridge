@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { format, subDays, startOfWeek } from 'date-fns'
 import TeamsShell from '../dashboard/TeamsShell'
+import ScoreChart from '../ScoreChart'
 
 interface ScoreEvent {
   id: string
@@ -184,6 +185,13 @@ export default function PerformancePage() {
                 </div>
               )}
             </div>
+
+            {/* Score chart */}
+            {dailyScores.length > 0 && (
+              <div className="mb-6">
+                <ScoreChart dailyScores={dailyScores} />
+              </div>
+            )}
 
             {/* Point rules */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-8">

@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, use } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
+import ScoreChart from '@/app/teams/ScoreChart'
 
 interface ScoreEvent {
   id: string
@@ -192,6 +193,9 @@ export default function RepPerformancePage({ params }: { params: Promise<{ repId
           <p className="text-2xl font-bold text-gray-900 mt-1">{data.todayEvents.length}</p>
         </div>
       </div>
+
+      {/* Score chart */}
+      <ScoreChart dailyScores={data.dailyScores} />
 
       {/* Log Event */}
       <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-5">
