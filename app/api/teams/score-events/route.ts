@@ -8,6 +8,7 @@ const admin = adminClient(
 )
 
 export const BASE_SCORE = 2
+const MAX_SCORE = 5
 
 // GET /api/teams/score-events — rep's own events, daily scores, today's score, rank
 export async function GET() {
@@ -15,34 +16,37 @@ export async function GET() {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const today = new Date().toISOString().slice(0, 10)
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)
 
   const { data: events } = await admin
     .from('score_events')
     .select('id, event_type, points, note, date, auto_generated, created_at')
     .eq('user_id', user.id)
+    .gte('date', thirtyDaysAgo)
     .order('date', { ascending: false })
     .order('created_at', { ascending: false })
 
-  // Group events by date → compute daily score = BASE_SCORE + sum(events)
+  // Group events by date
   const byDate: Record<string, typeof events> = {}
   for (const e of events || []) {
     if (!byDate[e.date]) byDate[e.date] = []
     byDate[e.date]!.push(e)
   }
 
-  const dailyScores = Object.entries(byDate)
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, dayEvents]) => ({
-      date,
-      events: dayEvents,
-      eventTotal: dayEvents!.reduce((s, e) => s + Number(e.points), 0),
-      dayScore: BASE_SCORE + dayEvents!.reduce((s, e) => s + Number(e.points), 0),
-    }))
+  // Build last 30 days array (newest first), always include every day
+  const dailyScores = []
+  for (let i = 0; i < 30; i++) {
+    const d = new Date(Date.now() - i * 24 * 60 * 60 * 1000)
+    const date = d.toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    const dayEvents = byDate[date] ?? []
+    const eventTotal = dayEvents.reduce((s, e) => s + Number(e.points), 0)
+    dailyScores.push({ date, events: dayEvents, eventTotal, dayScore: Math.min(MAX_SCORE, BASE_SCORE + eventTotal) })
+  }
 
   const todayEvents = byDate[today] ?? []
   const todayEventTotal = todayEvents.reduce((s, e) => s + Number(e.points), 0)
-  const todayScore = BASE_SCORE + todayEventTotal
+  const todayScore = Math.min(MAX_SCORE, BASE_SCORE + todayEventTotal)
 
   // Rank by this week's cumulative event points (base is equal for all, so skip it for ranking)
   const weekStart = new Date()
@@ -63,7 +67,7 @@ export async function GET() {
     .from('profiles')
     .select('id')
     .eq('role', 'rep')
-    .or('hide_from_hr.is.null,hide_from_hr.eq.false,name.eq.Karthik')
+    .or('hide_from_hr.is.null,hide_from_hr.eq.false')
 
   const allRepIds = (allReps || []).map(r => r.id)
   const totalReps = allRepIds.length

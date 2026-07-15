@@ -24,31 +24,25 @@ interface DayScore {
 }
 
 const EVENT_LABELS: Record<string, string> = {
-  lead_closed:              'Lead Closed',
-  perfect_day:              'Perfect Day Bonus',
-  good_call:                'Good Call Quality',
-  todo_complete:            'To-Do Completed',
-  missed_checkmark:         'Lead Not Checkmarked in Time',
-  no_call_after_checkmark:  'No Call After Checkmark',
-  missed_followup_call:     'Missed Follow-Up / Chase Call',
-  late_clockin:             'Late Clock-In (>10 min)',
-  minor_violation:          'Minor Rule Violation',
-  bad_call:                 'Bad Call Quality',
-  slow_checkmark:           'Slow Lead Checkmark',
+  lead_closed:          'Lead Closed',
+  perfect_day:          'Perfect Day Bonus',
+  good_call:            'Good Call Quality',
+  missed_checkmark:     'Lead Not Checkmarked in Time',
+  missed_followup_call: 'Missed Follow-Up / Chase Call',
+  late_clockin:         'Late Clock-In (>10 min)',
+  minor_violation:      'Minor Rule Violation',
+  bad_call:             'Bad Call Quality',
 }
 
 const EVENT_ICONS: Record<string, string> = {
-  lead_closed:              '🤝',
-  perfect_day:              '✨',
-  good_call:                '📞',
-  todo_complete:            '✅',
-  missed_checkmark:         '❌',
-  no_call_after_checkmark:  '📵',
-  missed_followup_call:     '📋',
-  late_clockin:             '⏰',
-  minor_violation:          '⚠️',
-  bad_call:                 '🚫',
-  slow_checkmark:           '🐢',
+  lead_closed:          '🤝',
+  perfect_day:          '✨',
+  good_call:            '📞',
+  missed_checkmark:     '❌',
+  missed_followup_call: '📋',
+  late_clockin:         '⏰',
+  minor_violation:      '⚠️',
+  bad_call:             '🚫',
 }
 
 type Range = 'week' | '7d' | '30d' | 'all'
@@ -136,7 +130,7 @@ export default function PerformancePage() {
 
         <div className="mb-6">
           <h1 className="text-2xl font-bold text-gray-900">My Performance</h1>
-          <p className="text-gray-500 mt-1 text-sm">You start at 2 pts each day. Events adjust it up or down.</p>
+          <p className="text-gray-500 mt-1 text-sm">You start at 2 pts each day. Events adjust it up or down. Max score is 5.</p>
         </div>
 
         {loading ? (
@@ -201,6 +195,7 @@ export default function PerformancePage() {
                   {[
                     ['🤝 Close a lead', '+2'],
                     ['✨ No negative points today', '+1'],
+                    ['📞 Good call quality', '+1'],
                   ].map(([label, pts]) => (
                     <div key={label} className="flex justify-between">
                       <span className="text-gray-600">{label}</span>
@@ -214,9 +209,10 @@ export default function PerformancePage() {
                 <div className="space-y-1 text-sm">
                   {[
                     ['❌ Lead not checkmarked in 60s (7am–9pm PST)', '−1'],
-                    ['📵 Checkmarked but no call in 60s', '−3'],
                     ['📋 Missed Follow-Up / Chase call', '−2'],
                     ['⏰ Late clock-in (>10 min)', '−1'],
+                    ['⚠️ Minor rule violation', '−0.25'],
+                    ['🚫 Bad call quality', '−1'],
                   ].map(([label, pts]) => (
                     <div key={label} className="flex justify-between gap-4">
                       <span className="text-gray-600">{label}</span>
