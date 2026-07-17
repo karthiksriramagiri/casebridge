@@ -6,6 +6,7 @@ import {
   billableHoursForDay, recentPayDates,
   COMMISSION_PER_CLOSED_NEW,
   DEFAULT_REPLACEMENT_WINDOW_DAYS,
+  PERIOD_START_OVERRIDES,
 } from '@/lib/pay'
 
 const admin = adminClient(
@@ -151,17 +152,18 @@ export async function GET() {
   const histRows = histTimeRes.data || []
 
   const previousPeriods = prevPeriods.map(({ start, end }) => {
-    const startStr = start.toISOString().slice(0, 10)
     const endStr = end.toISOString().slice(0, 10)
+    // Apply override: some pay dates cover non-standard periods (e.g. Jul 17 covers Jun 26–Jul 17)
+    const effectiveStart = PERIOD_START_OVERRIDES[endStr] ? new Date(PERIOD_START_OVERRIDES[endStr]) : start
+    const startStr = effectiveStart.toISOString().slice(0, 10)
 
     const periodRows = histRows.filter(e => e.date >= startStr && e.date < endStr)
     const { sessions: periodDailySessions, totalHours: periodHours } = buildDailySessions(periodRows)
     const periodHourlyPay = Math.round(periodHours * HOURLY_RATE * 100) / 100
 
     // Cases whose replacement window CLEARED during this paycheck period
-    // (eligibleAt falls between this period's start and end — each case appears in exactly one paycheck)
     const eligibleInPeriod = allSignedCases.filter(
-      c => c.eligibleAt > start && c.eligibleAt <= end
+      c => c.eligibleAt > effectiveStart && c.eligibleAt <= end
     )
     const periodCommission = eligibleInPeriod.reduce((sum, c) => sum + c.commission, 0)
     const periodTotal = Math.round((periodHourlyPay + periodCommission) * 100) / 100

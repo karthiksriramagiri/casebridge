@@ -24,7 +24,7 @@ const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000
 
 // Override period start for pay dates that cover non-standard periods.
 // Key = pay date (YYYY-MM-DD), value = period start (YYYY-MM-DD).
-const PERIOD_START_OVERRIDES: Record<string, string> = {
+export const PERIOD_START_OVERRIDES: Record<string, string> = {
   '2026-07-17': '2026-06-26', // Jul 4 holiday moved Jul 10 payout → Jul 17; period covers Jun 26–Jul 17
 }
 
