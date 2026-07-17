@@ -26,12 +26,15 @@ async function getSlackDisplayName(userId: string): Promise<string> {
 }
 
 async function postThreadReply(channel: string, threadTs: string, text: string) {
-  if (!SLACK_BOT_TOKEN) return
-  await fetch('https://slack.com/api/chat.postMessage', {
+  if (!SLACK_BOT_TOKEN) { console.log('[lead-claim] no bot token'); return null }
+  const res = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ channel, thread_ts: threadTs, text }),
   })
+  const json = await res.json()
+  console.log('[lead-claim] chat.postMessage:', JSON.stringify(json))
+  return json
 }
 
 // Verify the request came from Slack
@@ -129,6 +132,8 @@ export async function POST(req: NextRequest) {
       event.reaction === 'white_check_mark' &&
       (SLACK_NEW_LEAD_CHANNELS.size === 0 || SLACK_NEW_LEAD_CHANNELS.has(channel))
     ) {
+      console.log('[lead-claim] ✅ reaction in channel', channel, 'by', slackUserId, 'has bot token:', !!SLACK_BOT_TOKEN)
+
       const { data: profile } = await admin
         .from('profiles')
         .select('id, name')
@@ -139,9 +144,13 @@ export async function POST(req: NextRequest) {
         .from('lead_claims')
         .insert({ message_ts: messageTsStr, channel_id: channel, claimed_by_slack_id: slackUserId })
 
+      console.log('[lead-claim] insert result — error:', claimError?.code, claimError?.message)
+
       if (!claimError) {
         const displayName = profile?.name || await getSlackDisplayName(slackUserId)
-        await postThreadReply(channel, messageTsStr, `✅ *${displayName}* got the lead!`)
+        console.log('[lead-claim] winner:', displayName, '— posting to thread')
+        const res = await postThreadReply(channel, messageTsStr, `✅ *${displayName}* got the lead!`)
+        console.log('[lead-claim] postMessage result:', res)
       } else if (claimError.code === '23505') {
         const { data: existing } = await admin
           .from('lead_claims')
