@@ -114,15 +114,19 @@ export async function GET() {
   // --- Classify cases — rate depends on qualified_at vs cutoff ---
   type CaseEntry = { id: string; name: string; date: string; eligibleAt: Date; commission: number }
   const allSignedCases: CaseEntry[] = []
+  const caseSeen = new Set<string>()
 
   for (const c of casesRes.data || []) {
     if (!c.qualified_at) continue
-    const qualifiedAt = new Date(c.qualified_at)
     const isReplacement = (c.case_status || '').toLowerCase() === 'replacement'
-
     if (isReplacement) continue // replacements earn $0 — skip entirely
-    const commissionAmount = COMMISSION_PER_CLOSED_NEW // $30 for all signed cases
 
+    // Deduplicate by contact name + date
+    const dedupeKey = `${(c.contact_name || '').toLowerCase()}|${c.qualified_at.slice(0, 10)}`
+    if (caseSeen.has(dedupeKey)) continue
+    caseSeen.add(dedupeKey)
+
+    const qualifiedAt = new Date(c.qualified_at)
     const windowDays = (c.firms as any)?.replacement_window_days ?? DEFAULT_REPLACEMENT_WINDOW_DAYS
     const eligibleAt = new Date(qualifiedAt.getTime() + windowDays * 24 * 60 * 60 * 1000)
     allSignedCases.push({
@@ -130,7 +134,7 @@ export async function GET() {
       name: c.contact_name || 'Unknown',
       date: c.qualified_at.slice(0, 10),
       eligibleAt,
-      commission: commissionAmount,
+      commission: COMMISSION_PER_CLOSED_NEW,
     })
   }
 
