@@ -12,6 +12,9 @@ const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || ''
 const SLACK_NR_LEAD_CHANNELS = new Set(
   (process.env.SLACK_NR_LEADS_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean)
 )
+const SLACK_NEW_LEAD_CHANNELS = new Set(
+  (process.env.SLACK_NEW_LEAD_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean)
+)
 
 async function getSlackDisplayName(userId: string): Promise<string> {
   if (!SLACK_BOT_TOKEN) return userId
@@ -88,55 +91,58 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  // Only track reactions in the NR leads channel
   if (event.type === 'reaction_added') {
     const channel = event.item?.channel
-    if (SLACK_NR_LEAD_CHANNELS.size > 0 && !SLACK_NR_LEAD_CHANNELS.has(channel)) {
-      return NextResponse.json({ ok: true })
-    }
-
     const messageTsStr: string = event.item?.ts || ''
     const eventTsStr: string   = event.event_ts || ''
     const slackUserId: string  = event.user || ''
 
-    if (!messageTsStr || !eventTsStr || !slackUserId) {
+    if (!messageTsStr || !eventTsStr || !slackUserId || !channel) {
       return NextResponse.json({ ok: true })
     }
 
-    // Slack ts format: "1234567890.123456" — seconds since epoch
     const messagePostedAt = new Date(parseFloat(messageTsStr) * 1000)
     const reactedAt       = new Date(parseFloat(eventTsStr) * 1000)
     const responseSeconds = Math.round((reactedAt.getTime() - messagePostedAt.getTime()) / 1000)
 
-    // Look up worker by Slack user ID
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('id, name')
-      .eq('slack_user_id', slackUserId)
-      .maybeSingle()
+    // ── Response time tracking (NR lead channels) ─────────────────────────────
+    if (SLACK_NR_LEAD_CHANNELS.size === 0 || SLACK_NR_LEAD_CHANNELS.has(channel)) {
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('id, name')
+        .eq('slack_user_id', slackUserId)
+        .maybeSingle()
 
-    await admin.from('lead_response_events').insert({
-      contact_id:         messageTsStr,
-      worker_id:          profile?.id || null,
-      worker_name:        profile?.name || slackUserId,
-      event_type:         'slack_reaction',
-      lead_first_seen_at: messagePostedAt.toISOString(),
-      responded_at:       reactedAt.toISOString(),
-      response_seconds:   responseSeconds,
-    })
+      await admin.from('lead_response_events').insert({
+        contact_id:         messageTsStr,
+        worker_id:          profile?.id || null,
+        worker_name:        profile?.name || slackUserId,
+        event_type:         'slack_reaction',
+        lead_first_seen_at: messagePostedAt.toISOString(),
+        responded_at:       reactedAt.toISOString(),
+        response_seconds:   responseSeconds,
+      })
+    }
 
-    // ── Lead claim winner announcement (✅ only) ──────────────────────────────
-    if (event.reaction === 'white_check_mark') {
+    // ── Lead claim winner announcement (new lead channels, ✅ only) ───────────
+    if (
+      event.reaction === 'white_check_mark' &&
+      (SLACK_NEW_LEAD_CHANNELS.size === 0 || SLACK_NEW_LEAD_CHANNELS.has(channel))
+    ) {
+      const { data: profile } = await admin
+        .from('profiles')
+        .select('id, name')
+        .eq('slack_user_id', slackUserId)
+        .maybeSingle()
+
       const { error: claimError } = await admin
         .from('lead_claims')
         .insert({ message_ts: messageTsStr, channel_id: channel, claimed_by_slack_id: slackUserId })
 
       if (!claimError) {
-        // First to claim — announce winner in thread
         const displayName = profile?.name || await getSlackDisplayName(slackUserId)
         await postThreadReply(channel, messageTsStr, `✅ *${displayName}* got the lead!`)
       } else if (claimError.code === '23505') {
-        // Already claimed — look up who got it first
         const { data: existing } = await admin
           .from('lead_claims')
           .select('claimed_by_slack_id')
