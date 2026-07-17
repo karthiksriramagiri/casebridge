@@ -8,9 +8,28 @@ const admin = createClient(
 )
 
 const SLACK_SIGNING_SECRET = process.env.SLACK_SIGNING_SECRET || ''
+const SLACK_BOT_TOKEN = process.env.SLACK_BOT_TOKEN || ''
 const SLACK_NR_LEAD_CHANNELS = new Set(
   (process.env.SLACK_NR_LEADS_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean)
 )
+
+async function getSlackDisplayName(userId: string): Promise<string> {
+  if (!SLACK_BOT_TOKEN) return userId
+  const res = await fetch(`https://slack.com/api/users.info?user=${userId}`, {
+    headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
+  })
+  const d = await res.json()
+  return d.user?.profile?.display_name || d.user?.real_name || userId
+}
+
+async function postThreadReply(channel: string, threadTs: string, text: string) {
+  if (!SLACK_BOT_TOKEN) return
+  await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ channel, thread_ts: threadTs, text }),
+  })
+}
 
 // Verify the request came from Slack
 function verifySlackSignature(body: string, timestamp: string, signature: string): boolean {
@@ -97,7 +116,7 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     await admin.from('lead_response_events').insert({
-      contact_id:         messageTsStr, // use message ts as identifier (no contact link needed)
+      contact_id:         messageTsStr,
       worker_id:          profile?.id || null,
       worker_name:        profile?.name || slackUserId,
       event_type:         'slack_reaction',
@@ -105,6 +124,35 @@ export async function POST(req: NextRequest) {
       responded_at:       reactedAt.toISOString(),
       response_seconds:   responseSeconds,
     })
+
+    // ── Lead claim winner announcement (✅ only) ──────────────────────────────
+    if (event.reaction === 'white_check_mark') {
+      const { error: claimError } = await admin
+        .from('lead_claims')
+        .insert({ message_ts: messageTsStr, channel_id: channel, claimed_by_slack_id: slackUserId })
+
+      if (!claimError) {
+        // First to claim — announce winner in thread
+        const displayName = profile?.name || await getSlackDisplayName(slackUserId)
+        await postThreadReply(channel, messageTsStr, `✅ *${displayName}* got the lead!`)
+      } else if (claimError.code === '23505') {
+        // Already claimed — look up who got it first
+        const { data: existing } = await admin
+          .from('lead_claims')
+          .select('claimed_by_slack_id')
+          .eq('message_ts', messageTsStr)
+          .single()
+        if (existing) {
+          const { data: firstProfile } = await admin
+            .from('profiles')
+            .select('name')
+            .eq('slack_user_id', existing.claimed_by_slack_id)
+            .maybeSingle()
+          const firstName = firstProfile?.name || await getSlackDisplayName(existing.claimed_by_slack_id)
+          await postThreadReply(channel, messageTsStr, `⚡ *${firstName}* already claimed this lead first.`)
+        }
+      }
+    }
   }
 
   return NextResponse.json({ ok: true })
