@@ -1,7 +1,7 @@
 // ─── Pay calculation rules ───────────────────────────────────────────────────
 // Shift:       2:00 PM – 11:00 PM EST (9 regular hours)
 // Rounding:    floor each session to nearest 0.05h; ignore sessions < 0.05h
-// Pay period:  bi-weekly (every 14 days), anchored to Fri Jun 12, 2026
+// Pay period:  bi-weekly (every 14 days), anchored to Fri Jul 17, 2026
 // Commission:  $25 per signed case, $0 per replacement case (as of Jun 13, 2026)
 
 export const OVERTIME_HOURLY = 6
@@ -17,9 +17,16 @@ export const COMMISSION_PER_REPLACEMENT_NEW = 0  // replacements no longer earn 
 
 export const DEFAULT_REPLACEMENT_WINDOW_DAYS = 28
 
-// Bi-weekly anchor: confirmed pay date Fri Jun 12, 2026
-const ANCHOR_PAY_DATE = new Date(Date.UTC(2026, 5, 12)) // June 12, 2026 UTC
+// Bi-weekly anchor: confirmed pay date Fri Jul 17, 2026
+// (Jul 3 was a special early payout due to Jul 4 holiday, covering Jun 26–Jul 17)
+const ANCHOR_PAY_DATE = new Date(Date.UTC(2026, 6, 17)) // July 17, 2026 UTC
 const TWO_WEEKS_MS = 14 * 24 * 60 * 60 * 1000
+
+// Override period start for pay dates that cover non-standard periods.
+// Key = pay date (YYYY-MM-DD), value = period start (YYYY-MM-DD).
+const PERIOD_START_OVERRIDES: Record<string, string> = {
+  '2026-07-17': '2026-06-26', // Jul 4 holiday moved Jul 10 payout → Jul 17; period covers Jun 26–Jul 17
+}
 
 /**
  * Generates bi-weekly pay dates centered around `now`.
@@ -47,7 +54,7 @@ export function recentPayDates(now: Date, periodsBack = 8): Date[] {
   return dates.sort((a, b) => a.getTime() - b.getTime())
 }
 
-/** Returns the next payment date (2nd or 4th Friday on/after today) */
+/** Returns the next payment date (on/after today) */
 export function nextPaymentDate(now = new Date()): Date {
   const todayMs = now.getTime()
   const dates = nearbyPayDates(now)
@@ -56,9 +63,13 @@ export function nextPaymentDate(now = new Date()): Date {
 
 /** Returns the start of the current pay period (the pay date before today) */
 export function currentPayPeriodStart(now = new Date()): Date {
+  const nextPay = nextPaymentDate(now)
+  const nextPayStr = nextPay.toISOString().slice(0, 10)
+  if (PERIOD_START_OVERRIDES[nextPayStr]) {
+    return new Date(PERIOD_START_OVERRIDES[nextPayStr])
+  }
   const todayMs = now.getTime()
   const dates = nearbyPayDates(now)
-  // Last pay date that is strictly before today
   const prev = [...dates].reverse().find(d => d.getTime() < todayMs)
   return prev ?? dates[0]
 }
