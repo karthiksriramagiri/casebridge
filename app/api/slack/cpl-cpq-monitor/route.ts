@@ -102,7 +102,7 @@ export async function GET(req: NextRequest) {
   // ── Fetch all firms ───────────────────────────────────────────────────────
   const { data: firms } = await supabase
     .from('firms')
-    .select('id, name, slug, meta_account_id, meta_campaign_filter, target_cpq')
+    .select('id, name, slug, meta_account_id, meta_campaign_filter')
     .order('name')
 
   if (!firms?.length) {
