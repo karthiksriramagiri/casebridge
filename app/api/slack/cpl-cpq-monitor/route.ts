@@ -226,34 +226,38 @@ export async function GET(req: NextRequest) {
 
       if (!cplIssue && !cpqIssue && !volumeIssue) continue
 
-      // Build issue description
-      const flags: string[] = []
+      // Standard metrics (always shown)
+      const cplDisplay  = weekCpl  != null ? fmt$(weekCpl)  : '—'
+      const cpqDisplay  = weekCpq  != null ? fmt$(weekCpq)  : '—'
+      const maxCplDisplay = maxCpl != null ? fmt$(maxCpl)   : '—'
+      const maxCpqDisplay = maxCpq != null ? fmt$(maxCpq)   : '—'
+
+      // Issue reasons
+      const issues: string[] = []
 
       if (cplIssue && weekCpl != null && maxCpl != null) {
         const pct = Math.round(((weekCpl - maxCpl) / maxCpl) * 100)
-        flags.push(`⚠️ CPL ↑ ${fmt$(weekCpl)} (7d) vs ${fmt$(maxCpl)} avg *+${pct}%*`)
+        issues.push(`⚠️ *CPL is rising* — ${fmt$(weekCpl)} this week vs ${fmt$(maxCpl)} all-time avg (+${pct}%), cost per lead is trending up`)
       }
 
       if (cpqIssue && weekCpq != null) {
         if (targetCpq != null && weekCpq > targetCpq) {
-          flags.push(`⚠️ CPQ ${fmt$(weekCpq)} (7d) above target ${fmt$(targetCpq)}`)
+          issues.push(`⚠️ *CPQ above target* — ${fmt$(weekCpq)} this week vs target ${fmt$(targetCpq)}, spend per signed case is too high`)
         } else if (maxCpq != null) {
           const pct = Math.round(((weekCpq - maxCpq) / maxCpq) * 100)
-          flags.push(`⚠️ CPQ ↑ ${fmt$(weekCpq)} (7d) vs ${fmt$(maxCpq)} avg *+${pct}%*`)
+          issues.push(`⚠️ *CPQ is rising* — ${fmt$(weekCpq)} this week vs ${fmt$(maxCpq)} all-time avg (+${pct}%), fewer cases relative to spend`)
         }
       }
 
       if (volumeIssue) {
         const drop = Math.round(((priorLeads - recentLeads) / priorLeads) * 100)
-        flags.push(`⚠️ Leads ↓ ${recentLeads} (last 4d) vs ${priorLeads} (prior 4d) *-${drop}%*`)
+        issues.push(`⚠️ *Lead volume dropping* — ${recentLeads} leads last 4d vs ${priorLeads} prior 4d (−${drop}%), creative may be fatiguing`)
       }
-
-      const statsLine = `Spend 7d: ${fmt$(week.spend)} · Leads 7d: ${week.leads} · Signed 7d: ${weekCases}`
 
       issueLines.push([
         `• *${week.adName}*`,
-        ...flags.map(f => `  ${f}`),
-        `  _${statsLine}_`,
+        `  CPL: ${cplDisplay} (7d) vs ${maxCplDisplay} avg  |  CPQ: ${cpqDisplay} (7d) vs ${maxCpqDisplay} avg  |  Spend 7d: ${fmt$(week.spend)} · Leads: ${week.leads} · Signed: ${weekCases}`,
+        ...issues.map(i => `  ${i}`),
       ].join('\n'))
     }
 
