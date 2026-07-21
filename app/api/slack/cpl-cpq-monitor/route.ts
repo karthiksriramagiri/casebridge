@@ -276,10 +276,9 @@ export async function GET(req: NextRequest) {
   if (totalIssues === 0) {
     message = `*${timeLabel} ET | CPL & CPQ Monitor*\n✅ All creatives within normal range — no issues detected.`
   } else {
-    const header    = `*${timeLabel} ET | CPL & CPQ Monitor* — ⚠️ ${totalIssues} Issue Creative${totalIssues !== 1 ? 's' : ''}`
-    const subheader = `_Flagged if: 7d CPL/CPQ >15% above all-time avg · lead volume down >25% last 4d vs prior 4d_`
-    const divider   = '\n' + '─'.repeat(40)
-    message = [header, subheader, ...firmSections].join(divider)
+    const header  = `*${timeLabel} ET | CPL & CPQ Monitor* — ⚠️ ${totalIssues} Issue Creative${totalIssues !== 1 ? 's' : ''}`
+    const divider = '─'.repeat(40)
+    message = [header, divider, ...firmSections.map(s => s.trimStart())].join('\n')
   }
 
   const slackRes = await fetch(SLACK_WEBHOOK, {
