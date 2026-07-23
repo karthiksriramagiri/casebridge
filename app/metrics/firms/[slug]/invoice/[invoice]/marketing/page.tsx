@@ -377,13 +377,20 @@ function AlertBadge({ level }: { level: ReturnType<typeof alertLevel> }) {
 }
 
 function PipelineBreakdown({ ad, onClickStage }: {
-  ad: any; onClickStage: (stage: 'nr' | 'nq' | 'fu' | 'chase') => void
+  ad: any; onClickStage: (stage: string) => void
 }) {
   const items = ([
-    { label: 'NR',    stage: 'nr'    as const, count: (ad.nrCount    ?? 0) as number, color: 'text-gray-400' },
-    { label: 'NQ',    stage: 'nq'    as const, count: (ad.nqCount    ?? 0) as number, color: 'text-red-400' },
-    { label: 'F/U',   stage: 'fu'    as const, count: (ad.fuCount    ?? 0) as number, color: 'text-blue-400' },
-    { label: 'Chase', stage: 'chase' as const, count: (ad.chaseCount ?? 0) as number, color: 'text-orange-400' },
+    { label: 'New',      stage: 'new_lead',      count: (ad.newLeadCount      ?? 0) as number, color: 'text-sky-400' },
+    { label: 'NR',       stage: 'nr',            count: (ad.nrCount           ?? 0) as number, color: 'text-gray-400' },
+    { label: 'F/U',      stage: 'fu',            count: (ad.fuCount           ?? 0) as number, color: 'text-blue-400' },
+    { label: 'Chase',    stage: 'chase',         count: (ad.chaseCount        ?? 0) as number, color: 'text-orange-400' },
+    { label: 'Appt',     stage: 'appointment',   count: (ad.appointmentCount  ?? 0) as number, color: 'text-violet-400' },
+    { label: 'Contract', stage: 'contract_sent', count: (ad.contractSentCount ?? 0) as number, color: 'text-cyan-400' },
+    { label: 'Pending',  stage: 'pending_send',  count: (ad.pendingSendCount  ?? 0) as number, color: 'text-cyan-600' },
+    { label: 'NQ',       stage: 'nq',            count: (ad.nqCount           ?? 0) as number, color: 'text-red-400' },
+    { label: 'MIA',      stage: 'mia',           count: (ad.miaCount          ?? 0) as number, color: 'text-gray-500' },
+    { label: 'Qualified',stage: 'qualified',     count: (ad.qualifiedCount    ?? 0) as number, color: 'text-emerald-400' },
+    { label: 'Closed',   stage: 'closed',        count: (ad.closedCount       ?? 0) as number, color: 'text-gray-400' },
   ]).filter(i => i.count > 0)
 
   if (!items.length) return null
@@ -402,7 +409,7 @@ function PipelineBreakdown({ ad, onClickStage }: {
 function CreativeChartCard({ ad, maxes, isActive, onClickMetric, onClickCases, onClickStage, onClickLeads }: {
   ad: any; maxes: Record<string, number>; isActive: boolean
   onClickMetric: (metric: string) => void; onClickCases: () => void
-  onClickStage: (stage: 'nr' | 'nq' | 'fu' | 'chase') => void; onClickLeads: () => void
+  onClickStage: (stage: string) => void; onClickLeads: () => void
 }) {
   const level = alertLevel(ad)
   const border =
@@ -482,11 +489,18 @@ function CreativeCell({ adName, adId }: { adName: string; adId?: string }) {
 // All Leads Modal — aggregates NR + NQ + F/U + Signed for a creative
 // ─────────────────────────────────────────────────────────────────────────────
 const STAGE_CFG: Record<string, { label: string; cls: string }> = {
-  signed: { label: 'Signed',           cls: 'bg-green-900/40 text-green-400' },
-  fu:     { label: 'Follow Up',        cls: 'bg-blue-900/40 text-blue-400' },
-  nr:     { label: 'No Response',      cls: 'bg-gray-800 text-gray-400' },
-  nq:     { label: 'Not Qualified',    cls: 'bg-red-900/40 text-red-400' },
-  chase:  { label: 'Chase',            cls: 'bg-orange-900/40 text-orange-400' },
+  signed:        { label: 'Signed',          cls: 'bg-green-900/40 text-green-400' },
+  fu:            { label: 'Follow Up',       cls: 'bg-blue-900/40 text-blue-400' },
+  nr:            { label: 'No Response',     cls: 'bg-gray-800 text-gray-400' },
+  nq:            { label: 'Not Qualified',   cls: 'bg-red-900/40 text-red-400' },
+  chase:         { label: 'Chase',           cls: 'bg-orange-900/40 text-orange-400' },
+  new_lead:      { label: 'New Lead',        cls: 'bg-sky-900/40 text-sky-400' },
+  appointment:   { label: 'Appointment',     cls: 'bg-violet-900/40 text-violet-400' },
+  contract_sent: { label: 'Contract Sent',   cls: 'bg-cyan-900/40 text-cyan-400' },
+  pending_send:  { label: 'Pending Send',    cls: 'bg-cyan-900/40 text-cyan-600' },
+  mia:           { label: 'MIA',             cls: 'bg-gray-800 text-gray-500' },
+  qualified:     { label: 'Qualified',       cls: 'bg-emerald-900/40 text-emerald-400' },
+  closed:        { label: 'Closed',          cls: 'bg-gray-800 text-gray-400' },
 }
 
 function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
@@ -497,17 +511,31 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
   }, [onClose])
 
   const all = [
-    ...(ad.nrLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nr' })),
-    ...(ad.nqLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nq' })),
-    ...(ad.fuLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'fu' })),
-    ...(ad.chaseLeads || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'chase' })),
+    ...(ad.newLeadLeads      || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'new_lead' })),
+    ...(ad.nrLeads           || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nr' })),
+    ...(ad.fuLeads           || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'fu' })),
+    ...(ad.chaseLeads        || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'chase' })),
+    ...(ad.appointmentLeads  || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'appointment' })),
+    ...(ad.contractSentLeads || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'contract_sent' })),
+    ...(ad.pendingSendLeads  || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'pending_send' })),
+    ...(ad.nqLeads           || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'nq' })),
+    ...(ad.miaLeads          || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'mia' })),
+    ...(ad.qualifiedLeads    || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'qualified' })),
+    ...(ad.closedLeads       || []).map((l: any) => ({ ...l, date: l.createdAt, stage: 'closed' })),
   ].sort((a, b) => (b.date || '').localeCompare(a.date || ''))
 
   const stageSummary = [
-    { key: 'nr',    label: 'No Response', count: (ad.nrLeads    || []).length, cls: 'bg-gray-800 text-gray-400' },
-    { key: 'nq',    label: 'Not Qualified', count: (ad.nqLeads  || []).length, cls: 'bg-red-900/40 text-red-400' },
-    { key: 'fu',    label: 'Follow Up',   count: (ad.fuLeads    || []).length, cls: 'bg-blue-900/40 text-blue-400' },
-    { key: 'chase', label: 'Chase',       count: (ad.chaseLeads || []).length, cls: 'bg-orange-900/40 text-orange-400' },
+    { key: 'new_lead',      label: 'New Lead',       count: (ad.newLeadLeads      || []).length, cls: 'bg-sky-900/40 text-sky-400' },
+    { key: 'nr',            label: 'No Response',    count: (ad.nrLeads           || []).length, cls: 'bg-gray-800 text-gray-400' },
+    { key: 'fu',            label: 'Follow Up',      count: (ad.fuLeads           || []).length, cls: 'bg-blue-900/40 text-blue-400' },
+    { key: 'chase',         label: 'Chase',          count: (ad.chaseLeads        || []).length, cls: 'bg-orange-900/40 text-orange-400' },
+    { key: 'appointment',   label: 'Appointment',    count: (ad.appointmentLeads  || []).length, cls: 'bg-violet-900/40 text-violet-400' },
+    { key: 'contract_sent', label: 'Contract Sent',  count: (ad.contractSentLeads || []).length, cls: 'bg-cyan-900/40 text-cyan-400' },
+    { key: 'pending_send',  label: 'Pending Send',   count: (ad.pendingSendLeads  || []).length, cls: 'bg-cyan-900/40 text-cyan-600' },
+    { key: 'nq',            label: 'Not Qualified',  count: (ad.nqLeads           || []).length, cls: 'bg-red-900/40 text-red-400' },
+    { key: 'mia',           label: 'MIA',            count: (ad.miaLeads          || []).length, cls: 'bg-gray-800 text-gray-500' },
+    { key: 'qualified',     label: 'Qualified',      count: (ad.qualifiedLeads    || []).length, cls: 'bg-emerald-900/40 text-emerald-400' },
+    { key: 'closed',        label: 'Closed',         count: (ad.closedLeads       || []).length, cls: 'bg-gray-800 text-gray-400' },
   ].filter(s => s.count > 0)
 
   return (
@@ -576,16 +604,37 @@ function AllLeadsModal({ ad, onClose }: { ad: any; onClose: () => void }) {
 // Pipeline Leads Modal (NR / NQ / F/U)
 // ─────────────────────────────────────────────────────────────────────────────
 const PIPELINE_LABEL: Record<string, { label: string; color: string }> = {
-  nr:    { label: 'No Response',        color: 'text-gray-400' },
-  nq:    { label: 'Not Qualified',      color: 'text-red-400' },
-  fu:    { label: 'Follow Up Required', color: 'text-blue-400' },
-  chase: { label: 'Chase',             color: 'text-orange-400' },
+  nr:            { label: 'No Response',        color: 'text-gray-400' },
+  nq:            { label: 'Not Qualified',      color: 'text-red-400' },
+  fu:            { label: 'Follow Up Required', color: 'text-blue-400' },
+  chase:         { label: 'Chase',              color: 'text-orange-400' },
+  new_lead:      { label: 'New Lead',           color: 'text-sky-400' },
+  appointment:   { label: 'Appointment',        color: 'text-violet-400' },
+  contract_sent: { label: 'Contract Sent',      color: 'text-cyan-400' },
+  pending_send:  { label: 'Pending Send',       color: 'text-cyan-600' },
+  mia:           { label: 'MIA',               color: 'text-gray-500' },
+  qualified:     { label: 'Qualified',          color: 'text-emerald-400' },
+  closed:        { label: 'Closed',             color: 'text-gray-400' },
+}
+
+const STAGE_FIELD: Record<string, string> = {
+  nr:            'nrLeads',
+  nq:            'nqLeads',
+  fu:            'fuLeads',
+  chase:         'chaseLeads',
+  new_lead:      'newLeadLeads',
+  appointment:   'appointmentLeads',
+  contract_sent: 'contractSentLeads',
+  pending_send:  'pendingSendLeads',
+  mia:           'miaLeads',
+  qualified:     'qualifiedLeads',
+  closed:        'closedLeads',
 }
 
 function PipelineLeadsModal({ ad, stage, onClose }: {
-  ad: any; stage: 'nr' | 'nq' | 'fu' | 'chase'; onClose: () => void
+  ad: any; stage: string; onClose: () => void
 }) {
-  const leads: any[] = ad[`${stage}Leads`] || []
+  const leads: any[] = ad[STAGE_FIELD[stage] || `${stage}Leads`] || []
   const cfg = PIPELINE_LABEL[stage]
 
   useEffect(() => {
@@ -646,10 +695,12 @@ function PipelineLeadsModal({ ad, stage, onClose }: {
 // ─────────────────────────────────────────────────────────────────────────────
 // Cases Modal
 // ─────────────────────────────────────────────────────────────────────────────
-function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser }: {
+function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser, onUpdateSecondCloser, onToggleOt }: {
   ad: any; pcs: any[]; onClose: () => void
   onDelete: (pc: any) => Promise<void>
   onUpdateCloser: (pcId: string, closer: string) => Promise<void>
+  onUpdateSecondCloser: (pcId: string, secondCloser: string) => Promise<void>
+  onToggleOt: (pcId: string, isOtClose: boolean) => Promise<void>
 }) {
   const cases = pcs.filter(p => {
     const hasRealAdId = p.adId && !p.adId.includes('{{')
@@ -659,6 +710,7 @@ function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser }: {
   const ref = useRef<HTMLDivElement>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [editingCloser, setEditingCloser] = useState<{ id: string; value: string } | null>(null)
+  const [editingSecondCloser, setEditingSecondCloser] = useState<{ id: string; value: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => {
@@ -680,10 +732,23 @@ function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser }: {
     finally { setBusy(false) }
   }
 
+  async function handleSaveSecondCloser(pcId: string) {
+    if (!editingSecondCloser) return
+    setBusy(true)
+    try { await onUpdateSecondCloser(pcId, editingSecondCloser.value); setEditingSecondCloser(null) }
+    finally { setBusy(false) }
+  }
+
+  async function handleToggleOt(pc: any) {
+    setBusy(true)
+    try { await onToggleOt(pc.id, !pc.isOtClose) }
+    finally { setBusy(false) }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}>
-      <div ref={ref} className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-3xl max-h-[80vh] flex flex-col shadow-2xl">
+      <div ref={ref} className="bg-gray-900 border border-gray-700 rounded-2xl w-full max-w-4xl max-h-[80vh] flex flex-col shadow-2xl">
         <div className="p-5 border-b border-gray-800 flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs text-gray-500 mb-1">Signed Cases — Creative</p>
@@ -701,7 +766,7 @@ function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser }: {
             <table className="w-full text-sm">
               <thead className="sticky top-0 bg-gray-900">
                 <tr className="border-b border-gray-800">
-                  {['Contact', 'Signed', 'Invoice', 'Status', 'Closer', ''].map((h, i) => (
+                  {['Contact', 'Signed', 'Invoice', 'Status', 'Closer', '2nd Rep', 'OT', ''].map((h, i) => (
                     <th key={i} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>
@@ -755,6 +820,61 @@ function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser }: {
                         </button>
                       )}
                     </td>
+                    {/* 2nd Rep — inline editable */}
+                    <td className="py-3 px-4 text-xs">
+                      {editingSecondCloser?.id === pc.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            autoFocus
+                            className="bg-gray-800 border border-gray-600 rounded px-2 py-1 text-gray-200 text-xs w-28 outline-none focus:border-blue-500"
+                            value={editingSecondCloser?.value ?? ''}
+                            onChange={e => setEditingSecondCloser({ id: pc.id, value: e.target.value })}
+                            onKeyDown={e => {
+                              if (e.key === 'Enter') handleSaveSecondCloser(pc.id)
+                              if (e.key === 'Escape') setEditingSecondCloser(null)
+                            }}
+                          />
+                          <button onClick={() => handleSaveSecondCloser(pc.id)} disabled={busy}
+                            className="text-green-400 hover:text-green-300 disabled:opacity-40 text-[10px] font-semibold">Save</button>
+                          <button onClick={() => setEditingSecondCloser(null)}
+                            className="text-gray-500 hover:text-gray-300 text-[10px]">×</button>
+                        </div>
+                      ) : pc.secondWorkerName || pc.secondCloser ? (
+                        <button
+                          onClick={() => setEditingSecondCloser({ id: pc.id, value: pc.secondWorkerName || pc.secondCloser || '' })}
+                          className="group flex items-center gap-1 text-gray-400 hover:text-gray-200 transition"
+                        >
+                          <span>{pc.secondWorkerName || pc.secondCloser}</span>
+                          <svg className="w-3 h-3 opacity-0 group-hover:opacity-60 transition" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-2.828 0L9 13z" />
+                          </svg>
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => setEditingSecondCloser({ id: pc.id, value: '' })}
+                          className="text-gray-700 hover:text-gray-400 text-[10px] flex items-center gap-0.5 transition"
+                          title="Add a second rep — close credit splits 50/50"
+                        >
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                          Rep
+                        </button>
+                      )}
+                    </td>
+                    {/* OT close toggle */}
+                    <td className="py-3 px-4">
+                      <button
+                        onClick={() => handleToggleOt(pc)}
+                        disabled={busy}
+                        title={pc.isOtClose ? 'OT Close ($50) — click to remove' : 'Mark as OT Close ($50 commission)'}
+                        className={`text-[10px] font-semibold px-2 py-0.5 rounded border transition disabled:opacity-40 ${
+                          pc.isOtClose
+                            ? 'bg-amber-900/40 text-amber-400 border-amber-700/40'
+                            : 'text-gray-700 border-gray-700 hover:text-amber-400 hover:border-amber-700/40'
+                        }`}
+                      >
+                        OT
+                      </button>
+                    </td>
                     {/* Delete */}
                     <td className="py-3 px-3 text-right">
                       {confirmDeleteId === pc.id ? (
@@ -782,7 +902,7 @@ function CasesModal({ ad, pcs, onClose, onDelete, onUpdateCloser }: {
           )}
         </div>
         <div className="px-5 py-3 border-t border-gray-800 text-xs text-gray-600">
-          {cases.length} case{cases.length !== 1 ? 's' : ''} matched
+          {cases.length} case{cases.length !== 1 ? 's' : ''} matched · Split closes count 0.5 each · OT closes pay $50
         </div>
       </div>
     </div>
@@ -805,7 +925,7 @@ export default function MarketingPage() {
   const [timeframe, setTimeframe] = useState<TF>('invoice')
   const [selectedAd, setSelectedAd] = useState<any | null>(null)
   const [trendState, setTrendState] = useState<{ ad: any; metric: string } | null>(null)
-  const [pipelineModal, setPipelineModal] = useState<{ ad: any; stage: 'nr' | 'nq' | 'fu' | 'chase' } | null>(null)
+  const [pipelineModal, setPipelineModal] = useState<{ ad: any; stage: string } | null>(null)
   const [leadsModal, setLeadsModal] = useState<any | null>(null)
   const [refreshKey, setRefreshKey] = useState(0)
 
@@ -828,6 +948,38 @@ export default function MarketingPage() {
       ...prev,
       pcs: (prev.pcs || []).map((p: any) =>
         p.id === pcId ? { ...p, closer, workerName: closer || p.workerName } : p
+      ),
+    }))
+  }
+
+  // Update second closer — optimistic update
+  async function handleUpdateSecondCloser(pcId: string, secondCloser: string) {
+    const res = await fetch('/api/metrics/case', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: pcId, second_closer: secondCloser }),
+    })
+    if (!res.ok) throw new Error('Update failed')
+    setKpi((prev: any) => ({
+      ...prev,
+      pcs: (prev.pcs || []).map((p: any) =>
+        p.id === pcId ? { ...p, secondCloser, secondWorkerName: secondCloser || null } : p
+      ),
+    }))
+  }
+
+  // Toggle OT close — optimistic update
+  async function handleToggleOt(pcId: string, isOtClose: boolean) {
+    const res = await fetch('/api/metrics/case', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: pcId, is_ot_close: isOtClose }),
+    })
+    if (!res.ok) throw new Error('Update failed')
+    setKpi((prev: any) => ({
+      ...prev,
+      pcs: (prev.pcs || []).map((p: any) =>
+        p.id === pcId ? { ...p, isOtClose } : p
       ),
     }))
   }
@@ -1013,7 +1165,7 @@ export default function MarketingPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'NR', 'NQ', 'F/U', 'Chase', 'Signed', 'CPQ'].map(c => (
+                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'New Lead', 'NR', 'F/U', 'Chase', 'Appt', 'Contract', 'Pending', 'NQ', 'MIA', 'Qualified', 'Closed', 'Signed', 'CPQ'].map(c => (
                         <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
                       ))}
                     </tr>
@@ -1034,7 +1186,7 @@ export default function MarketingPage() {
                           <td className="py-3 px-4 text-gray-200 whitespace-nowrap">{fmt$(a.spend)}</td>
                           <td className="py-3 px-4">
                             {(() => {
-                              const total = (a.nrCount ?? 0) + (a.nqCount ?? 0) + (a.fuCount ?? 0) + (a.chaseCount ?? 0) + (a.newLeadCount ?? 0)
+                              const total = (a.newLeadCount ?? 0) + (a.nrCount ?? 0) + (a.fuCount ?? 0) + (a.chaseCount ?? 0) + (a.appointmentCount ?? 0) + (a.contractSentCount ?? 0) + (a.pendingSendCount ?? 0) + (a.nqCount ?? 0) + (a.miaCount ?? 0) + (a.qualifiedCount ?? 0) + (a.closedCount ?? 0)
                               return total > 0
                                 ? <button onClick={() => setLeadsModal(a)} className="text-gray-300 hover:text-white hover:underline underline-offset-2 transition">{total}</button>
                                 : <span className="text-gray-600">0</span>
@@ -1060,23 +1212,58 @@ export default function MarketingPage() {
                             {a.lpvToLeadPct != null ? a.lpvToLeadPct.toFixed(2) + '%' : '—'}
                           </td>
                           <td className="py-3 px-4 text-xs">
-                            {a.nrCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nr' })} className="text-gray-400 hover:underline underline-offset-2">{a.nrCount}</button>
+                            {(a.newLeadCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'new_lead' })} className="text-sky-400 hover:underline underline-offset-2 transition">{a.newLeadCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
-                            {a.nqCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nq' })} className="text-red-400 hover:underline underline-offset-2">{a.nqCount}</button>
+                            {(a.nrCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nr' })} className="text-gray-400 hover:underline underline-offset-2 transition">{a.nrCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
-                            {a.fuCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'fu' })} className="text-blue-400 hover:underline underline-offset-2">{a.fuCount}</button>
+                            {(a.fuCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'fu' })} className="text-blue-400 hover:underline underline-offset-2 transition">{a.fuCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4 text-xs">
-                            {a.chaseCount > 0
-                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'chase' })} className="text-orange-400 hover:underline underline-offset-2">{a.chaseCount}</button>
+                            {(a.chaseCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'chase' })} className="text-orange-400 hover:underline underline-offset-2 transition">{a.chaseCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.appointmentCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'appointment' })} className="text-violet-400 hover:underline underline-offset-2 transition">{a.appointmentCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.contractSentCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'contract_sent' })} className="text-cyan-400 hover:underline underline-offset-2 transition">{a.contractSentCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.pendingSendCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'pending_send' })} className="text-cyan-600 hover:underline underline-offset-2 transition">{a.pendingSendCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.nqCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'nq' })} className="text-red-400 font-semibold hover:underline underline-offset-2 transition">{a.nqCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.miaCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'mia' })} className="text-gray-500 hover:underline underline-offset-2 transition">{a.miaCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.qualifiedCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'qualified' })} className="text-emerald-400 hover:underline underline-offset-2 transition">{a.qualifiedCount}</button>
+                              : <span className="text-gray-700">—</span>}
+                          </td>
+                          <td className="py-3 px-4 text-xs">
+                            {(a.closedCount ?? 0) > 0
+                              ? <button onClick={() => setPipelineModal({ ad: a, stage: 'closed' })} className="text-gray-400 hover:underline underline-offset-2 transition">{a.closedCount}</button>
                               : <span className="text-gray-700">—</span>}
                           </td>
                           <td className="py-3 px-4">
@@ -1203,6 +1390,8 @@ export default function MarketingPage() {
           onClose={() => setSelectedAd(null)}
           onDelete={handleDeleteCase}
           onUpdateCloser={handleUpdateCloser}
+          onUpdateSecondCloser={handleUpdateSecondCloser}
+          onToggleOt={handleToggleOt}
         />
       )}
       {trendState && (

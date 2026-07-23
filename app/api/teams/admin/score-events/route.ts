@@ -52,11 +52,10 @@ export async function GET(req: NextRequest) {
       .from('profiles')
       .select('id, name')
       .eq('role', 'rep')
-      .eq('team_type', 'intake')
-      .or('hide_from_hr.is.null,hide_from_hr.eq.false'),
+      .or('team_type.is.null,team_type.eq.intake'),
     admin
       .from('ghl_leads')
-      .select('closed_by_profile_id, case_status')
+      .select('closed_by_profile_id, second_closer_profile_id, case_status')
       .not('closed_by_profile_id', 'is', null),
   ])
 
@@ -64,12 +63,19 @@ export async function GET(req: NextRequest) {
   const reps = repsRes.data || []
 
   // Count closes per rep from ghl_leads (anything that's not a replacement or cancelled)
+  // If a second closer is assigned, each rep gets 0.5 close credit
   const closesByRep: Record<string, number> = {}
   for (const lead of leadsRes.data || []) {
     const status = (lead.case_status || '').toLowerCase()
     if (status === 'replacement' || status === 'cancelled') continue
+    const hasSecondCloser = !!lead.second_closer_profile_id
+    const credit = hasSecondCloser ? 0.5 : 1
     const pid = lead.closed_by_profile_id
-    if (pid) closesByRep[pid] = (closesByRep[pid] ?? 0) + 1
+    if (pid) closesByRep[pid] = (closesByRep[pid] ?? 0) + credit
+    if (hasSecondCloser) {
+      const pid2 = lead.second_closer_profile_id
+      closesByRep[pid2] = (closesByRep[pid2] ?? 0) + 0.5
+    }
   }
 
   // Today's score per rep = BASE_SCORE + today's events sum
@@ -105,16 +111,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'user_id and event_type are required' }, { status: 400 })
   }
 
-  const points = POINT_VALUES[event_type]
-  if (points === undefined) {
-    return NextResponse.json({ error: `Unknown event type: ${event_type}` }, { status: 400 })
+  let points: number
+  if (event_type === 'custom') {
+    const customPoints = Number(body.points)
+    if (isNaN(customPoints) || customPoints === 0) {
+      return NextResponse.json({ error: 'Custom events require a non-zero points value' }, { status: 400 })
+    }
+    points = customPoints
+  } else {
+    points = POINT_VALUES[event_type]
+    if (points === undefined) {
+      return NextResponse.json({ error: `Unknown event type: ${event_type}` }, { status: 400 })
+    }
   }
 
   const { data, error } = await admin
     .from('score_events')
     .insert({
       user_id,
-      event_type,
+      event_type: event_type === 'custom' ? 'custom' : event_type,
       points,
       note: note?.trim() || null,
       date: date || new Date().toISOString().slice(0, 10),

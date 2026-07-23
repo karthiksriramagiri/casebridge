@@ -15,42 +15,93 @@ const GHL_LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 
 // Pipeline IDs per firm slug
 const GHL_PIPELINES: Record<string, string> = {
-  lhp:       'yMqNixSnChC5lcGQXA1g',
-  eisenberg: 'Yk4w3ML56ECc10PFzjpK',
-  thl:       'DYtmw8WEUtGePFbEDAIZ',
-  mca:       '6Ku9EwTtMFk51o7Re9x0',
+  lhp:         'yMqNixSnChC5lcGQXA1g',
+  lhp_spanish: 'r1AsAtC7lzwO9ybtkQlA',
+  eisenberg:   'Yk4w3ML56ECc10PFzjpK',
+  thl:         'DYtmw8WEUtGePFbEDAIZ',
+  mca:         '6Ku9EwTtMFk51o7Re9x0',
+  fears:       'Jj4DCdu5duYDgI87ERbx',
+  levine:      'JPyMNjGGAIxUv0FWW7Cg',
 }
 
-// Stage IDs → normalized label (covers all four firm pipelines)
-const GHL_STAGE_LABEL: Record<string, 'nr' | 'nq' | 'fu' | 'chase'> = {
+type StageLabel = 'new_lead' | 'nr' | 'fu' | 'chase' | 'appointment' | 'contract_sent' | 'pending_send' | 'nq' | 'mia' | 'qualified' | 'closed'
+
+// Stage IDs → normalized label (all pipelines, all stages)
+const GHL_STAGE_LABEL: Record<string, StageLabel> = {
   // LHP
+  '3f868702-6f7a-4775-8b1c-b47e868ffe3a': 'new_lead',
   '1175a360-9914-4ce5-906d-d89adb27c732': 'nr',
   '87759fbc-6d3e-46b1-aa47-9ae42ff88393': 'fu',
   '1a4eed62-09ea-4108-ab64-2e16930350d6': 'chase',
+  'ebf66385-363b-4e9e-98ae-62be59369437': 'appointment',
+  '65c64d09-1fe5-4c40-954a-9efce26c5dbd': 'contract_sent',
+  '7d951bd5-f762-442c-9c89-a9b32acc72f5': 'pending_send',
   'a9e1b12f-94c4-4ca2-b696-1b3bf349d158': 'nq',
+  'e222baf6-1253-4bb8-9be9-49ee79a37eab': 'mia',
+  // LHP Spanish
+  'f6c598ba-45ba-4c30-815d-a51fc221f09c': 'new_lead',
+  '70ea4655-6fb0-4aa8-b2b9-a4928230211c': 'nr',
+  'e32cd5fd-a883-4da2-a374-10d9911a98f5': 'fu',
+  '3886bd4a-5ad9-4197-ae89-3ebe5f4a00c4': 'chase',
+  '0bcfd145-ef2b-492d-9937-dff5343fbdfb': 'contract_sent',
+  'eca88328-b4b2-4380-a9e0-2cc3da9098d6': 'nq',
+  '7b923790-2400-4bf8-b48f-dacd1258337a': 'mia',
   // Eisenberg
+  '4e209e89-c540-44fd-b5c2-91f35884bb3a': 'new_lead',
   'c63f684a-f2eb-48f8-84f1-7ab35a1ba25b': 'nr',
   'fd0f13e3-b535-471a-ac37-7dc2ca177854': 'fu',
   'f0382a1e-b759-450f-8efe-d168cc10e3b1': 'nq',
+  'f011f3ad-b429-443f-9ff3-4e0eff68854a': 'closed',
   // THL
+  '51f0c592-1111-43ba-bb3b-2f2f489177a8': 'new_lead',
   '121ae7a9-35c9-4204-a7d4-8fb19f297758': 'nr',
   '866213c6-c43e-47a2-a1d9-20a740f0dd0b': 'fu',
   '0c82f94f-f013-4fd6-99f8-75ef7b547915': 'nq',
+  '20ffb08b-2f48-46e6-b86a-3eb46a79c322': 'closed',
   // MCA
+  '402b0271-c256-4347-b217-4f771ec37992': 'new_lead',
   '87d0a194-8841-4062-b6a3-bfedd9186070': 'nr',
   'bda11191-0a4a-40da-b368-cd925ec884dc': 'fu',
   '8206445b-2ac5-46bb-be3e-93d116420161': 'nq',
+  'cd35b35b-b09c-4151-b382-9c1574210d15': 'qualified',
+  'e4c30bbe-35aa-4411-8c84-cc032b1c0252': 'closed',
+  // Fears Law
+  'c894b249-0d17-40dd-8ac6-72294a874e9e': 'new_lead',
+  '91ced34f-cb7b-4a03-a47d-f4ffd25fd108': 'nr',
+  '1d6faa32-dd4b-4258-8595-93fdd6d0c8c5': 'fu',
+  '8e00bca9-3318-442a-8f71-f358762878da': 'chase',
+  '4612d574-c0c5-4280-bb7d-ed015f5e6e22': 'appointment',
+  '6134ba10-9449-4d1b-971b-98aa6d395aa9': 'contract_sent',
+  'cf799840-d3b1-43a8-9ea1-70eadb6ee8e7': 'pending_send',
+  '04c022c5-2491-46d9-a37d-1c6410dfdc42': 'nq',
+  'a6b2cede-5cf5-4c9a-bf57-0a5bee22a6a4': 'mia',
+  // Levine Law
+  '3d2d57c6-a91b-47a2-8a1a-16dd6bcaffa2': 'new_lead',
+  '620b4cfc-fc0c-4c2c-a490-44a6bb36a3d1': 'nr',
+  '0ce872eb-1757-4267-949b-cebf521b3466': 'fu',
+  '47301b0f-3f04-4ab7-869f-55407e63c72d': 'chase',
+  '42721281-30d6-4320-a89f-da91231353b4': 'nq',
 }
 
 type PipelineContact = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
-type PipelineAdLeads = { nr: PipelineContact[]; nq: PipelineContact[]; fu: PipelineContact[]; chase: PipelineContact[]; new_lead: PipelineContact[] }
+type PipelineAdLeads = {
+  new_lead: PipelineContact[]; nr: PipelineContact[]; fu: PipelineContact[]; chase: PipelineContact[]
+  appointment: PipelineContact[]; contract_sent: PipelineContact[]; pending_send: PipelineContact[]
+  nq: PipelineContact[]; mia: PipelineContact[]; qualified: PipelineContact[]; closed: PipelineContact[]
+}
 
-const STAGE_MAP: Record<string, 'nr' | 'nq' | 'fu' | 'chase' | 'new_lead'> = {
+const STAGE_MAP: Record<string, StageLabel> = {
+  new_lead:      'new_lead',
   no_response:   'nr',
-  not_qualified: 'nq',
   follow_up:     'fu',
   chase:         'chase',
-  new_lead:      'new_lead',
+  appointment:   'appointment',
+  contract_sent: 'contract_sent',
+  pending_send:  'pending_send',
+  not_qualified: 'nq',
+  mia:           'mia',
+  qualified:     'qualified',
+  closed:        'closed',
 }
 
 // Fetch all opportunities for a pipeline and return per-ad NR/NQ/FU contact lists
@@ -78,14 +129,19 @@ async function fetchGHLPipelineBreakdown(
 
     for (const opp of (data.opportunities || [])) {
       const stageName = (opp.pipelineStage?.name || '').toLowerCase()
-      const label: 'nr' | 'nq' | 'fu' | 'chase' | 'new_lead' | undefined =
+      const label: StageLabel | undefined =
         GHL_STAGE_LABEL[opp.pipelineStageId] ||
-        (stageName.includes('chase') ? 'chase' :
+        (stageName.includes('new lead') || stageName.includes('new_lead') ? 'new_lead' :
          stageName.includes('no response') || stageName.includes('no_response') ? 'nr' :
-         stageName.includes('not qualified') || stageName.includes('not_qualified') ? 'nq' :
          stageName.includes('follow up') || stageName.includes('follow_up') ? 'fu' :
-         stageName.includes('new lead') || stageName.includes('new_lead') ? 'new_lead' :
-         undefined)
+         stageName.includes('chase') ? 'chase' :
+         stageName.includes('appointment') ? 'appointment' :
+         stageName.includes('contract sent') || stageName.includes('contract_sent') ? 'contract_sent' :
+         stageName.includes('pending send') || stageName.includes('pending_send') ? 'pending_send' :
+         stageName.includes('not qualified') || stageName.includes('not_qualified') ? 'nq' :
+         stageName === 'mia' ? 'mia' :
+         stageName.includes('qualified lead') ? 'qualified' :
+         stageName.includes('closed') ? 'closed' : undefined)
       if (!label) continue
 
       // Filter to invoice/date window by opportunity createdAt
@@ -97,7 +153,7 @@ async function fetchGHLPipelineBreakdown(
       const adId = attr?.utmAdId || attr?.utmContent || null
       if (!adId) continue
 
-      if (!breakdown[adId]) breakdown[adId] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
+      if (!breakdown[adId]) breakdown[adId] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
       breakdown[adId][label].push({
         name:      opp.contact?.name || opp.name || null,
         phone:     opp.contact?.phone || null,
@@ -372,7 +428,7 @@ export async function GET(request: NextRequest) {
       let q = supabase
         .from('ghl_leads')
         .select(
-          'id, contact_name, contact_phone, contact_email, ad_name, ad_id, victim_count, qualified_at, invoice_code, case_status, closed_by_profile_id, closer, accident_group_id, form_data, raw_payload'
+          'id, contact_name, contact_phone, contact_email, ad_name, ad_id, victim_count, qualified_at, invoice_code, case_status, closed_by_profile_id, closer, second_closer_profile_id, second_closer, is_ot_close, accident_group_id, form_data, raw_payload'
         )
         .eq('firm_id', firm.id)
         .order('qualified_at', { ascending: false })
@@ -441,10 +497,10 @@ export async function GET(request: NextRequest) {
     }
     const hasRealAdId = row.ad_id && !row.ad_id.includes('{{')
     if (hasRealAdId) {
-      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
+      if (!ghlPipelineBreakdown[row.ad_id]) ghlPipelineBreakdown[row.ad_id] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
       ghlPipelineBreakdown[row.ad_id][label].push(contact)
     } else if (row.ad_name) {
-      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
+      if (!ghlPipelineByName[row.ad_name]) ghlPipelineByName[row.ad_name] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
       ghlPipelineByName[row.ad_name][label].push(contact)
     } else if (row.contact_id) {
       // No ad attribution in this record — will try to inherit from signed record below
@@ -480,10 +536,10 @@ export async function GET(request: NextRequest) {
         }
         const hasRealAdId = attrib.ad_id && !attrib.ad_id.includes('{{')
         if (hasRealAdId) {
-          if (!ghlPipelineBreakdown[attrib.ad_id!]) ghlPipelineBreakdown[attrib.ad_id!] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
+          if (!ghlPipelineBreakdown[attrib.ad_id!]) ghlPipelineBreakdown[attrib.ad_id!] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
           ghlPipelineBreakdown[attrib.ad_id!][label].push(contact)
         } else if (attrib.ad_name) {
-          if (!ghlPipelineByName[attrib.ad_name]) ghlPipelineByName[attrib.ad_name] = { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
+          if (!ghlPipelineByName[attrib.ad_name]) ghlPipelineByName[attrib.ad_name] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
           ghlPipelineByName[attrib.ad_name][label].push(contact)
         }
       }
@@ -592,16 +648,22 @@ export async function GET(request: NextRequest) {
   const weeklySignedCases = weeklySignedRes.count ?? 0
   const weeklyCpq = weeklySignedCases > 0 ? weeklySpend / weeklySignedCases : null
 
-  const closerIds = [...new Set(allFirmLeads.map((r: any) => r.closed_by_profile_id).filter(Boolean))]
+  const allCloserIds = [
+    ...new Set([
+      ...allFirmLeads.map((r: any) => r.closed_by_profile_id),
+      ...allFirmLeads.map((r: any) => r.second_closer_profile_id),
+    ].filter(Boolean))
+  ]
   let closerNames: Record<string, string> = {}
-  if (closerIds.length > 0) {
-    const { data: profRows } = await supabase.from('profiles').select('id, name').in('id', closerIds)
+  if (allCloserIds.length > 0) {
+    const { data: profRows } = await supabase.from('profiles').select('id, name').in('id', allCloserIds)
     closerNames = Object.fromEntries((profRows || []).map((p: any) => [p.id, p.name || '']))
   }
 
   const pcs = allFirmLeads.map((row: any) => {
     const rw = replacementWindow(row.qualified_at, replacementDays, row.case_status)
     const wid = row.closed_by_profile_id as string | null
+    const wid2 = row.second_closer_profile_id as string | null
     const rp = row.raw_payload || {}
     const cf: Record<string, string> = {}
     if (Array.isArray(rp.customField)) { for (const f of rp.customField) { if (f.fieldKey) cf[f.fieldKey] = f.value; if (f.name) cf[f.name] = f.value } }
@@ -620,6 +682,10 @@ export async function GET(request: NextRequest) {
       caseStatus: row.case_status,
       workerName: (wid ? closerNames[wid] : null) || row.closer || null,
       closer: row.closer || null,
+      secondWorkerName: (wid2 ? closerNames[wid2] : null) || row.second_closer || null,
+      secondCloser: row.second_closer || null,
+      secondCloserProfileId: wid2 || null,
+      isOtClose: row.is_ot_close === true,
       accidentGroupId: row.accident_group_id || null,
       replacementDaysLeft: rw.daysLeft,
       replacementEnds: rw.replacementEnds,
@@ -750,7 +816,7 @@ export async function GET(request: NextRequest) {
     const adVictims = adMatchedLeads.reduce((s: number, l: any) => s + (l.victim_count || 1), 0)
 
     // Pipeline stage counts — from Supabase ghl_leads, matched by ad_id then ad_name
-    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { nr: [], nq: [], fu: [], chase: [], new_lead: [] }
+    const pipeline = ghlPipelineBreakdown[a.ad_id] || ghlPipelineByName[a.ad_name] || { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
 
     return {
       adId: a.ad_id,
@@ -773,17 +839,29 @@ export async function GET(request: NextRequest) {
       ctr: parseFloat(a.ctr || 0),
       impressions: parseInt(a.impressions || 0),
       // Pipeline breakdown — live from GHL (contacts + counts)
-      nrLeads:      pipeline.nr,
-      nqLeads:      pipeline.nq,
-      fuLeads:      pipeline.fu,
-      chaseLeads:   pipeline.chase,
-      newLeadLeads: pipeline.new_lead,
-      signedLeads:  signedLeadsBreakdown[a.ad_id] || signedLeadsByName[a.ad_name] || [],
-      nrCount:      pipeline.nr.length,
-      nqCount:      pipeline.nq.length,
-      fuCount:      pipeline.fu.length,
-      chaseCount:   pipeline.chase.length,
-      newLeadCount: pipeline.new_lead.length,
+      newLeadLeads:      pipeline.new_lead,
+      nrLeads:           pipeline.nr,
+      fuLeads:           pipeline.fu,
+      chaseLeads:        pipeline.chase,
+      appointmentLeads:  pipeline.appointment,
+      contractSentLeads: pipeline.contract_sent,
+      pendingSendLeads:  pipeline.pending_send,
+      nqLeads:           pipeline.nq,
+      miaLeads:          pipeline.mia,
+      qualifiedLeads:    pipeline.qualified,
+      closedLeads:       pipeline.closed,
+      signedLeads:       signedLeadsBreakdown[a.ad_id] || signedLeadsByName[a.ad_name] || [],
+      newLeadCount:      pipeline.new_lead.length,
+      nrCount:           pipeline.nr.length,
+      fuCount:           pipeline.fu.length,
+      chaseCount:        pipeline.chase.length,
+      appointmentCount:  pipeline.appointment.length,
+      contractSentCount: pipeline.contract_sent.length,
+      pendingSendCount:  pipeline.pending_send.length,
+      nqCount:           pipeline.nq.length,
+      miaCount:          pipeline.mia.length,
+      qualifiedCount:    pipeline.qualified.length,
+      closedCount:       pipeline.closed.length,
     }
   }).sort((a: any, b: any) => {
     // Sort: ads with signed cases first (by CPQ asc), then by spend desc

@@ -19,15 +19,23 @@ export async function DELETE(request: NextRequest) {
 }
 
 // PATCH /api/metrics/case
-// Updates the closer field on a ghl_leads row
+// Updates fields on a ghl_leads row: closer, second_closer, second_closer_profile_id, is_ot_close
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
-  const { id, closer } = body
+  const { id } = body
   if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  const update: Record<string, any> = {}
+  if ('closer' in body) update.closer = body.closer || null
+  if ('second_closer' in body) update.second_closer = body.second_closer || null
+  if ('second_closer_profile_id' in body) update.second_closer_profile_id = body.second_closer_profile_id || null
+  if ('is_ot_close' in body) update.is_ot_close = body.is_ot_close === true
+
+  if (Object.keys(update).length === 0) return NextResponse.json({ error: 'no fields to update' }, { status: 400 })
 
   const { error } = await supabase
     .from('ghl_leads')
-    .update({ closer: closer || null })
+    .update(update)
     .eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json({ ok: true })

@@ -14,6 +14,7 @@ export const COMMISSION_PER_REPLACEMENT = 10
 export const COMMISSION_CUTOFF = new Date(Date.UTC(2026, 5, 13)) // Jun 13, 2026
 export const COMMISSION_PER_CLOSED_NEW = 30
 export const COMMISSION_PER_REPLACEMENT_NEW = 0  // replacements no longer earn commission
+export const COMMISSION_OT_CLOSE = 50            // OT close flat commission (overrides per-close rate)
 
 export const DEFAULT_REPLACEMENT_WINDOW_DAYS = 28
 

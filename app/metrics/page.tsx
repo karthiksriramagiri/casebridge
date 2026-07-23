@@ -91,16 +91,23 @@ function fmt$(n: number | null | undefined) {
 // ─── Campaign section ────────────────────────────────────────────────────────
 function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
   name: string; ads: any[]
-  onClickStage: (ad: any, stage: 'nr' | 'nq' | 'fu' | 'chase') => void
+  onClickStage: (ad: any, stage: string) => void
   onClickLeads: (ad: any) => void
 }) {
   const totalSpend  = ads.reduce((s, a) => s + (a.spend ?? 0), 0)
   const totalLeads  = ads.reduce((s, a) => s + (a.metaLeads ?? a.leads ?? 0), 0)
   const totalSigned = ads.reduce((s, a) => s + (a.signedCases ?? 0), 0)
-  const totalNr     = ads.reduce((s, a) => s + (a.nrCount ?? 0), 0)
-  const totalNq     = ads.reduce((s, a) => s + (a.nqCount ?? 0), 0)
-  const totalFu     = ads.reduce((s, a) => s + (a.fuCount ?? 0), 0)
-  const totalChase  = ads.reduce((s, a) => s + (a.chaseCount ?? 0), 0)
+  const totalNewLead     = ads.reduce((s, a) => s + (a.newLeadCount     ?? 0), 0)
+  const totalNr          = ads.reduce((s, a) => s + (a.nrCount          ?? 0), 0)
+  const totalFu          = ads.reduce((s, a) => s + (a.fuCount          ?? 0), 0)
+  const totalChase       = ads.reduce((s, a) => s + (a.chaseCount       ?? 0), 0)
+  const totalAppointment = ads.reduce((s, a) => s + (a.appointmentCount ?? 0), 0)
+  const totalContractSent= ads.reduce((s, a) => s + (a.contractSentCount?? 0), 0)
+  const totalPendingSend = ads.reduce((s, a) => s + (a.pendingSendCount  ?? 0), 0)
+  const totalNq          = ads.reduce((s, a) => s + (a.nqCount          ?? 0), 0)
+  const totalMia         = ads.reduce((s, a) => s + (a.miaCount         ?? 0), 0)
+  const totalQualified   = ads.reduce((s, a) => s + (a.qualifiedCount   ?? 0), 0)
+  const totalClosed      = ads.reduce((s, a) => s + (a.closedCount      ?? 0), 0)
   const cpl  = totalLeads  > 0 ? totalSpend / totalLeads  : null
   const cpq  = totalSigned > 0 ? totalSpend / totalSigned : null
   const phase = campaignPhase(ads)
@@ -151,10 +158,17 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
               <TH>CTR</TH>
               <TH>Click→Lead</TH>
               <TH>LPV→Lead</TH>
+              <TH>New Lead</TH>
               <TH>NR</TH>
-              <TH>NQ</TH>
               <TH>F/U</TH>
               <TH>Chase</TH>
+              <TH>Appt</TH>
+              <TH>Contract</TH>
+              <TH>Pending</TH>
+              <TH>NQ</TH>
+              <TH>MIA</TH>
+              <TH>Qualified</TH>
+              <TH>Closed</TH>
               <TH>Signed</TH>
               <TH>CPQ</TH>
             </tr>
@@ -223,31 +237,71 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
                     {fmtPct(lpv)}
                   </td>
 
+                  {/* New Lead */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.newLeadCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'new_lead')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#075985', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.newLeadCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+
                   {/* NR */}
                   <td style={{ padding: '8px 10px' }}>
                     {(ad.nrCount ?? 0) > 0
                       ? <button onClick={() => onClickStage(ad, 'nr')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: DARK, fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.nrCount}</button>
                       : <span style={{ color: dim }}>—</span>}
                   </td>
-
-                  {/* NQ */}
-                  <td style={{ padding: '8px 10px' }}>
-                    {(ad.nqCount ?? 0) > 0
-                      ? <button onClick={() => onClickStage(ad, 'nq')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#B91C1C', fontWeight: 700, textDecoration: 'underline', textDecorationColor: '#FCA5A5', textUnderlineOffset: 2, fontSize: 12 }}>{ad.nqCount}</button>
-                      : <span style={{ color: dim }}>—</span>}
-                  </td>
-
                   {/* F/U */}
                   <td style={{ padding: '8px 10px' }}>
                     {(ad.fuCount ?? 0) > 0
-                      ? <button onClick={() => onClickStage(ad, 'fu')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: ACCENT, fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#E8C4A0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.fuCount}</button>
+                      ? <button onClick={() => onClickStage(ad, 'fu')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: ACCENT, fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.fuCount}</button>
                       : <span style={{ color: dim }}>—</span>}
                   </td>
-
                   {/* Chase */}
                   <td style={{ padding: '8px 10px' }}>
                     {(ad.chaseCount ?? 0) > 0
-                      ? <button onClick={() => onClickStage(ad, 'chase')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#EA580C', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#FDBA74', textUnderlineOffset: 2, fontSize: 12 }}>{ad.chaseCount}</button>
+                      ? <button onClick={() => onClickStage(ad, 'chase')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#EA580C', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.chaseCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* Appointment */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.appointmentCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'appointment')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#7C3AED', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.appointmentCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* Contract Sent */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.contractSentCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'contract_sent')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#0891B2', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.contractSentCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* Pending Send */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.pendingSendCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'pending_send')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#0891B2', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.pendingSendCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* NQ */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.nqCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'nq')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#B91C1C', fontWeight: 700, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.nqCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* MIA */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.miaCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'mia')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#6B7280', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.miaCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* Qualified */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.qualifiedCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'qualified')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#059669', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.qualifiedCount}</button>
+                      : <span style={{ color: dim }}>—</span>}
+                  </td>
+                  {/* Closed */}
+                  <td style={{ padding: '8px 10px' }}>
+                    {(ad.closedCount ?? 0) > 0
+                      ? <button onClick={() => onClickStage(ad, 'closed')} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 0, color: '#374151', fontWeight: 600, textDecoration: 'underline', textDecorationColor: '#C4BAB0', textUnderlineOffset: 2, fontSize: 12 }}>{ad.closedCount}</button>
                       : <span style={{ color: dim }}>—</span>}
                   </td>
 
@@ -274,9 +328,17 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
               <td style={{ padding: '9px 10px', color: '#FFF', fontWeight: 600 }}>{totalLeads || '—'}</td>
               <td style={{ padding: '9px 10px', color: ACCENT, fontWeight: 700 }}>{fmt$(cpl)}</td>
               <td colSpan={4}></td>
+              <td style={{ padding: '9px 10px', color: totalNewLead > 0 ? '#7DD3FC' : '#9CA3AF' }}>{totalNewLead || '—'}</td>
               <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalNr || '—'}</td>
-              <td style={{ padding: '9px 10px', color: totalNq > 0 ? '#FCA5A5' : '#9CA3AF' }}>{totalNq || '—'}</td>
               <td style={{ padding: '9px 10px', color: totalFu > 0 ? ACCENT : '#9CA3AF' }}>{totalFu || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalChase || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalAppointment || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalContractSent || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalPendingSend || '—'}</td>
+              <td style={{ padding: '9px 10px', color: totalNq > 0 ? '#FCA5A5' : '#9CA3AF' }}>{totalNq || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalMia || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalQualified || '—'}</td>
+              <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalClosed || '—'}</td>
               <td style={{ padding: '9px 10px', color: totalSigned > 0 ? '#4ADE80' : '#9CA3AF', fontWeight: 700 }}>{totalSigned || '—'}</td>
               <td style={{ padding: '9px 10px', color: ACCENT, fontWeight: 700 }}>{fmt$(cpq)}</td>
               <td></td>
@@ -290,15 +352,22 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
 
 // ─── Creative leads modal — lazy-loads from /api/metrics/creative-leads ──────
 const STAGE_BADGE: Record<string, { label: string; bg: string; color: string }> = {
-  fu:     { label: 'Follow Up',     bg: '#FEF3C7', color: '#92400E' },
-  nr:     { label: 'No Response',   bg: '#F3F4F6', color: '#374151' },
-  nq:     { label: 'Not Qualified', bg: '#FEE2E2', color: '#991B1B' },
-  chase:  { label: 'Chase',         bg: '#FFF7ED', color: '#C2410C' },
-  signed: { label: 'Signed',        bg: '#DCFCE7', color: '#166534' },
+  fu:            { label: 'Follow Up',      bg: '#FEF3C7', color: '#92400E' },
+  nr:            { label: 'No Response',    bg: '#F3F4F6', color: '#374151' },
+  nq:            { label: 'Not Qualified',  bg: '#FEE2E2', color: '#991B1B' },
+  chase:         { label: 'Chase',          bg: '#FFF7ED', color: '#C2410C' },
+  signed:        { label: 'Signed',         bg: '#DCFCE7', color: '#166534' },
+  new_lead:      { label: 'New Lead',       bg: '#E0F2FE', color: '#075985' },
+  appointment:   { label: 'Appointment',    bg: '#EDE9FE', color: '#5B21B6' },
+  contract_sent: { label: 'Contract Sent',  bg: '#CFFAFE', color: '#0E7490' },
+  pending_send:  { label: 'Pending Send',   bg: '#CFFAFE', color: '#155E75' },
+  mia:           { label: 'MIA',            bg: '#F9FAFB', color: '#6B7280' },
+  qualified:     { label: 'Qualified',      bg: '#DCFCE7', color: '#166534' },
+  closed:        { label: 'Closed',         bg: '#F3F4F6', color: '#374151' },
 }
 
 function CreativeLeadsModal({ ad, filterStage, onClose }: {
-  ad: any; filterStage?: 'nr' | 'nq' | 'fu' | 'chase' | null; onClose: () => void
+  ad: any; filterStage?: string | null; onClose: () => void
 }) {
   useEffect(() => {
     function onKey(e: KeyboardEvent) { if (e.key === 'Escape') onClose() }
@@ -308,11 +377,18 @@ function CreativeLeadsModal({ ad, filterStage, onClose }: {
 
   // Data is pre-loaded from the same GHL pipeline fetch as the firm page
   const all: any[] = [
-    ...(ad.signedLeads || []).map((l: any) => ({ ...l, stage: 'signed' })),
-    ...(ad.nrLeads     || []).map((l: any) => ({ ...l, stage: 'nr' })),
-    ...(ad.nqLeads     || []).map((l: any) => ({ ...l, stage: 'nq' })),
-    ...(ad.fuLeads     || []).map((l: any) => ({ ...l, stage: 'fu' })),
-    ...(ad.chaseLeads  || []).map((l: any) => ({ ...l, stage: 'chase' })),
+    ...(ad.signedLeads       || []).map((l: any) => ({ ...l, stage: 'signed' })),
+    ...(ad.newLeadLeads      || []).map((l: any) => ({ ...l, stage: 'new_lead' })),
+    ...(ad.nrLeads           || []).map((l: any) => ({ ...l, stage: 'nr' })),
+    ...(ad.fuLeads           || []).map((l: any) => ({ ...l, stage: 'fu' })),
+    ...(ad.chaseLeads        || []).map((l: any) => ({ ...l, stage: 'chase' })),
+    ...(ad.appointmentLeads  || []).map((l: any) => ({ ...l, stage: 'appointment' })),
+    ...(ad.contractSentLeads || []).map((l: any) => ({ ...l, stage: 'contract_sent' })),
+    ...(ad.pendingSendLeads  || []).map((l: any) => ({ ...l, stage: 'pending_send' })),
+    ...(ad.nqLeads           || []).map((l: any) => ({ ...l, stage: 'nq' })),
+    ...(ad.miaLeads          || []).map((l: any) => ({ ...l, stage: 'mia' })),
+    ...(ad.qualifiedLeads    || []).map((l: any) => ({ ...l, stage: 'qualified' })),
+    ...(ad.closedLeads       || []).map((l: any) => ({ ...l, stage: 'closed' })),
   ]
   const displayed = filterStage ? all.filter(l => l.stage === filterStage) : all
   const metaLeads = ad.metaLeads ?? ad.leads ?? 0
@@ -398,7 +474,7 @@ export default function MetricsPage() {
   const [workers, setWorkers] = useState<any[]>([])
   const [timeEntries, setTimeEntries] = useState<any[]>([]) // today's time entries
   const [expandedWorker, setExpandedWorker] = useState<string | null>(null)
-  const [leadsModal, setLeadsModal] = useState<{ ad: any; stage?: 'nr' | 'nq' | 'fu' | 'chase' } | null>(null)
+  const [leadsModal, setLeadsModal] = useState<{ ad: any; stage?: string } | null>(null)
   const [firms, setFirms] = useState<any[]>([])
   const [showAddWorker, setShowAddWorker] = useState(false)
   const [addName, setAddName] = useState('')
@@ -481,7 +557,7 @@ export default function MetricsPage() {
     const pl = pipelineOverview[ad.id] || {}
     const signedCases = ov.signedCases || 0
     const adCpq = signedCases > 0 ? ad.spend / signedCases : null
-    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, latestInvoice: ov.latestInvoice || null, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: pl.chaseCount || 0, nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [] }
+    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, latestInvoice: ov.latestInvoice || null, newLeadCount: pl.newLeadCount || 0, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: pl.chaseCount || 0, appointmentCount: pl.appointmentCount || 0, contractSentCount: pl.contractSentCount || 0, pendingSendCount: pl.pendingSendCount || 0, miaCount: pl.miaCount || 0, qualifiedCount: pl.qualifiedCount || 0, closedCount: pl.closedCount || 0, newLeadLeads: pl.newLeadLeads || [], nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [], appointmentLeads: pl.appointmentLeads || [], contractSentLeads: pl.contractSentLeads || [], pendingSendLeads: pl.pendingSendLeads || [], miaLeads: pl.miaLeads || [], qualifiedLeads: pl.qualifiedLeads || [], closedLeads: pl.closedLeads || [] }
   }).sort((a: any, b: any) => b.spend - a.spend)
 
   // CPQ = total spend / total signed cases (both from the same date-filtered Meta + attribution data)
@@ -643,7 +719,7 @@ export default function MetricsPage() {
                   <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: ACCENT, fontSize: 28 }}>HR</span>
                 </h1>
                 <p style={{ fontSize: 13, color: MUTED, marginBottom: 24 }}>
-                  Commission $25/closed case &nbsp;·&nbsp; OT ${6}/hr after 9h &nbsp;·&nbsp; Paid biweekly Friday
+                  Commission $30/close · OT close $50 · Split close = 0.5 each &nbsp;·&nbsp; OT ${6}/hr after 9h &nbsp;·&nbsp; Paid biweekly Friday
                 </p>
 
                 {workersWithHours.length > 0 && (
@@ -697,7 +773,7 @@ export default function MetricsPage() {
                                 <td style={{ padding: '10px 16px', fontWeight: 700, color: DARK }}>{w.signedCases}</td>
                                 <td style={{ padding: '10px 16px', fontWeight: 700, color: w.nextPayment > 0 ? DARK : '#C4BAB0' }}>
                                   {w.nextPayment > 0 ? (
-                                    <span title={`Base $${w.basePay?.toFixed(2)} + Commission $${w.commissionInPeriod}`}>
+                                    <span title={`Base $${w.basePay?.toFixed(2)} + Commission $${w.commissionInPeriod} (${w.closedInPeriod} closes × $30${w.otClosedInPeriod > 0 ? ` + ${w.otClosedInPeriod} OT × $50` : ''})`}>
                                       ${w.nextPayment.toLocaleString()}
                                     </span>
                                   ) : '—'}

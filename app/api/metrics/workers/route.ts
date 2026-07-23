@@ -3,7 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
   billableHoursForDay, splitOvertimeHours, grossPay,
-  COMMISSION_PER_CLOSED_NEW_NEW, COMMISSION_PER_REPLACEMENT_NEW,
+  COMMISSION_PER_CLOSED_NEW, COMMISSION_PER_REPLACEMENT_NEW, COMMISSION_OT_CLOSE,
 } from '@/lib/pay'
 
 const supabase = createClient(
@@ -22,7 +22,7 @@ export async function GET() {
   // ── Leads / cases ──────────────────────────────────────────────────────────
   const { data: leads, error } = await supabase
     .from('ghl_leads')
-    .select('closer, closed_by_profile_id, case_status, qualified_at, firm_id, firms(name, slug)')
+    .select('closer, closed_by_profile_id, second_closer, second_closer_profile_id, is_ot_close, case_status, qualified_at, firm_id, firms(name, slug)')
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -39,11 +39,17 @@ export async function GET() {
   const byWorker: Record<string, {
     profileId: string | null
     signedCases: number
-    closedCases: number
-    closedInPeriod: number        // signed cases in current pay period
+    closedCases: number           // fractional: 0.5 if shared close
+    closedInPeriod: number        // regular (non-OT) closes in current pay period, fractional
+    otClosedInPeriod: number      // OT closes in current pay period, fractional
     replacementsInPeriod: number  // replacement cases in current pay period
     byFirm: Record<string, FirmStats>
   }> = {}
+
+  function ensureWorker(key: string, profileId: string | null) {
+    if (!byWorker[key]) byWorker[key] = { profileId, signedCases: 0, closedCases: 0, closedInPeriod: 0, otClosedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
+    if (!byWorker[key].profileId && profileId) byWorker[key].profileId = profileId
+  }
 
   for (const lead of leads || []) {
     const name =
@@ -51,18 +57,25 @@ export async function GET() {
       lead.closer || null
     if (!name) continue
 
+    const hasSecondCloser = !!(lead.second_closer_profile_id || lead.second_closer)
+    const closeCredit = hasSecondCloser ? 0.5 : 1
+    const isOtClose = lead.is_ot_close === true
+
     const key = name.trim()
-    if (!byWorker[key]) byWorker[key] = { profileId: lead.closed_by_profile_id || profileIds[key] || null, signedCases: 0, closedCases: 0, closedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
+    ensureWorker(key, lead.closed_by_profile_id || profileIds[key] || null)
 
     byWorker[key].signedCases += 1
     const status = (lead.case_status || '').toLowerCase()
     const isClosed = status === 'closed'
     const isReplacement = status === 'replacement'
     if (isClosed) {
-      byWorker[key].closedCases += 1
+      byWorker[key].closedCases += closeCredit
       if (lead.qualified_at) {
         const d = lead.qualified_at.slice(0, 10)
-        if (d >= periodStartStr && d < periodEndStr) byWorker[key].closedInPeriod += 1
+        if (d >= periodStartStr && d < periodEndStr) {
+          if (isOtClose) byWorker[key].otClosedInPeriod += closeCredit
+          else byWorker[key].closedInPeriod += closeCredit
+        }
       }
     }
     if (isReplacement && lead.qualified_at) {
@@ -76,7 +89,30 @@ export async function GET() {
     const firmSlug = firm?.slug || ''
     if (!byWorker[key].byFirm[firmId]) byWorker[key].byFirm[firmId] = { firmId, firmName, firmSlug, signedCases: 0, closedCases: 0 }
     byWorker[key].byFirm[firmId].signedCases += 1
-    if (isClosed) byWorker[key].byFirm[firmId].closedCases += 1
+    if (isClosed) byWorker[key].byFirm[firmId].closedCases += closeCredit
+
+    // Second closer — gets 0.5 close credit
+    if (isClosed && hasSecondCloser) {
+      const secondName =
+        (lead.second_closer_profile_id ? profileNames[lead.second_closer_profile_id] : null) ||
+        lead.second_closer || null
+      if (secondName) {
+        const secondKey = secondName.trim()
+        ensureWorker(secondKey, lead.second_closer_profile_id || profileIds[secondKey] || null)
+        byWorker[secondKey].signedCases += 1
+        byWorker[secondKey].closedCases += 0.5
+        if (lead.qualified_at) {
+          const d = lead.qualified_at.slice(0, 10)
+          if (d >= periodStartStr && d < periodEndStr) {
+            if (isOtClose) byWorker[secondKey].otClosedInPeriod += 0.5
+            else byWorker[secondKey].closedInPeriod += 0.5
+          }
+        }
+        if (!byWorker[secondKey].byFirm[firmId]) byWorker[secondKey].byFirm[firmId] = { firmId, firmName, firmSlug, signedCases: 0, closedCases: 0 }
+        byWorker[secondKey].byFirm[firmId].signedCases += 1
+        byWorker[secondKey].byFirm[firmId].closedCases += 0.5
+      }
+    }
   }
 
   // Include registered reps with 0 cases (exclude hidden profiles)
@@ -86,7 +122,7 @@ export async function GET() {
     if (rep.hide_from_hr) continue
     const name = (rep.name || '').trim()
     if (!name) continue
-    if (!byWorker[name]) byWorker[name] = { profileId: rep.id, signedCases: 0, closedCases: 0, closedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
+    if (!byWorker[name]) byWorker[name] = { profileId: rep.id, signedCases: 0, closedCases: 0, closedInPeriod: 0, otClosedInPeriod: 0, replacementsInPeriod: 0, byFirm: {} }
     if (!byWorker[name].profileId) byWorker[name].profileId = rep.id
   }
 
@@ -146,6 +182,7 @@ export async function GET() {
     const { regularHours = 0, overtimeHours = 0, basePay = 0 } = pid ? (hoursAndPay[pid] || {}) : {}
     const commissionInPeriod =
       stats.closedInPeriod * COMMISSION_PER_CLOSED_NEW +
+      stats.otClosedInPeriod * COMMISSION_OT_CLOSE +
       stats.replacementsInPeriod * COMMISSION_PER_REPLACEMENT_NEW
     const totalPayment = Math.round((basePay + commissionInPeriod) * 100) / 100
 
@@ -164,6 +201,7 @@ export async function GET() {
       basePay,
       commissionInPeriod,
       closedInPeriod: stats.closedInPeriod,
+      otClosedInPeriod: stats.otClosedInPeriod,
       replacementsInPeriod: stats.replacementsInPeriod,
       nextPayment: totalPayment,
       nextPaymentDate: nextPayLabel,

@@ -387,6 +387,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   const [linking, setLinking] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
   const [editingCloser, setEditingCloser] = useState<{ id: string; value: string } | null>(null)
+  const [editingSecondCloser, setEditingSecondCloser] = useState<{ id: string; value: string } | null>(null)
   const [busy, setBusy] = useState(false)
 
   useEffect(() => { setLocalPcs(pcs) }, [pcs])
@@ -410,6 +411,26 @@ export function PcTable({ pcs }: { pcs: any[] }) {
       if (!res.ok) throw new Error('Update failed')
       setLocalPcs(prev => prev.map(p => p.id === pcId ? { ...p, closer: editingCloser.value, workerName: editingCloser.value || p.workerName } : p))
       setEditingCloser(null)
+    } finally { setBusy(false) }
+  }
+
+  async function handleSaveSecondCloser(pcId: string) {
+    if (!editingSecondCloser) return
+    setBusy(true)
+    try {
+      const res = await fetch('/api/metrics/case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pcId, second_closer: editingSecondCloser.value }) })
+      if (!res.ok) throw new Error('Update failed')
+      setLocalPcs(prev => prev.map(p => p.id === pcId ? { ...p, secondCloser: editingSecondCloser.value, secondWorkerName: editingSecondCloser.value || null } : p))
+      setEditingSecondCloser(null)
+    } finally { setBusy(false) }
+  }
+
+  async function handleToggleOt(pc: any) {
+    setBusy(true)
+    try {
+      const res = await fetch('/api/metrics/case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pc.id, is_ot_close: !pc.isOtClose }) })
+      if (!res.ok) throw new Error('Update failed')
+      setLocalPcs(prev => prev.map(p => p.id === pc.id ? { ...p, isOtClose: !pc.isOtClose } : p))
     } finally { setBusy(false) }
   }
 
@@ -458,8 +479,8 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   }
 
   const cols = linkMode
-    ? ['', 'Client', 'Invoice', 'Status', 'Signed', 'Replacement Window', 'Creative', 'Closer']
-    : ['Client', 'Invoice', 'Status', 'Signed', 'Replacement Window', 'Value', 'Creative', 'Closer', 'Accident', '']
+    ? ['', 'Client', 'Invoice', 'Status', 'Signed', 'Replacement Window', 'Creative', 'Closer', '2nd Rep', 'OT']
+    : ['Client', 'Invoice', 'Status', 'Signed', 'Replacement Window', 'Value', 'Creative', 'Closer', '2nd Rep', 'OT', 'Accident', '']
 
   const thCls = "text-left text-xs font-semibold py-3 px-4 uppercase tracking-wider whitespace-nowrap"
 
@@ -612,6 +633,59 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                           )}
                         </button>
                       )}
+                    </td>
+                    {/* 2nd Rep */}
+                    <td className="py-3 px-4 text-xs">
+                      {editingSecondCloser?.id === pc.id ? (
+                        <div className="flex items-center gap-1.5">
+                          <input autoFocus
+                            className="text-xs w-28 px-2 py-1 rounded outline-none"
+                            style={{ background: '#F5F0E8', border: `1px solid ${ACCENT}`, color: TEXT }}
+                            value={editingSecondCloser?.value ?? ''}
+                            onChange={e => setEditingSecondCloser({ id: pc.id, value: e.target.value })}
+                            onKeyDown={e => { if (e.key === 'Enter') handleSaveSecondCloser(pc.id); if (e.key === 'Escape') setEditingSecondCloser(null) }} />
+                          <button onClick={() => handleSaveSecondCloser(pc.id)} disabled={busy}
+                            className="text-[10px] font-semibold disabled:opacity-40" style={{ color: '#15803D' }}>Save</button>
+                          <button onClick={() => setEditingSecondCloser(null)} className="text-[10px]" style={{ color: MUTED }}>×</button>
+                        </div>
+                      ) : pc.secondWorkerName || pc.secondCloser ? (
+                        <button onClick={linkMode ? undefined : () => setEditingSecondCloser({ id: pc.id, value: pc.secondWorkerName || pc.secondCloser || '' })}
+                          className={`group flex items-center gap-1 transition ${!linkMode ? 'cursor-pointer' : 'cursor-default'}`}
+                          style={{ color: MUTED }}>
+                          <span>{pc.secondWorkerName || pc.secondCloser}</span>
+                          {!linkMode && (
+                            <svg className="w-3 h-3 opacity-0 group-hover:opacity-60 transition shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-2.828 0L9 13z" />
+                            </svg>
+                          )}
+                        </button>
+                      ) : !linkMode ? (
+                        <button onClick={() => setEditingSecondCloser({ id: pc.id, value: '' })}
+                          className="flex items-center gap-0.5 transition"
+                          style={{ color: '#D1D5DB' }}
+                          title="Add a second rep — close credit splits 50/50"
+                          onMouseEnter={e => (e.currentTarget.style.color = MUTED)}
+                          onMouseLeave={e => (e.currentTarget.style.color = '#D1D5DB')}>
+                          <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                          <span className="text-[10px]">Rep</span>
+                        </button>
+                      ) : null}
+                    </td>
+                    {/* OT Close */}
+                    <td className="py-3 px-4">
+                      <button
+                        onClick={linkMode ? undefined : () => handleToggleOt(pc)}
+                        disabled={busy || linkMode}
+                        title={pc.isOtClose ? 'OT Close ($50) — click to remove' : 'Mark as OT Close ($50 commission)'}
+                        className="text-[10px] font-semibold px-2 py-0.5 rounded border transition disabled:opacity-40"
+                        style={pc.isOtClose
+                          ? { background: '#FFF7ED', color: '#C2410C', borderColor: '#FDBA74' }
+                          : { color: '#D1D5DB', borderColor: '#E5E7EB' }}
+                        onMouseEnter={e => { if (!pc.isOtClose && !linkMode) { (e.currentTarget as HTMLElement).style.color = '#C2410C'; (e.currentTarget as HTMLElement).style.borderColor = '#FDBA74' } }}
+                        onMouseLeave={e => { if (!pc.isOtClose && !linkMode) { (e.currentTarget as HTMLElement).style.color = '#D1D5DB'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB' } }}
+                      >
+                        OT
+                      </button>
                     </td>
                     {!linkMode && (
                       <td className="py-3 px-4">
