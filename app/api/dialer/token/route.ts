@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
-import { createServerSupabase } from '../../dialer/_lib/supabase-server'
+import { createServerSupabase } from '../../../dialer/_lib/supabase-server'
 
 function b64url(obj: object) {
   return Buffer.from(JSON.stringify(obj))

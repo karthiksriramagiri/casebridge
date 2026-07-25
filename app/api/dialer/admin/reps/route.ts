@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { createServerSupabase } from '../../../dialer/_lib/supabase-server'
+import { createServerSupabase } from '../../../../dialer/_lib/supabase-server'
 
 function adminClient() {
   return createClient(

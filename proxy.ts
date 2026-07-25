@@ -74,9 +74,30 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  // ── Dialer auth ──────────────────────────────────────────────────────────
+  const isDialerLogin = pathname === '/dialer/login'
+  const isDialer      = pathname.startsWith('/dialer')
+  const isDialerAdmin = pathname.startsWith('/dialer/admin')
+
+  if (isDialer && !isDialerLogin) {
+    if (!user) {
+      return NextResponse.redirect(new URL('/dialer/login', request.url))
+    }
+    if (isDialerAdmin) {
+      const role = user.user_metadata?.role ?? 'REP'
+      if (role !== 'ADMIN') {
+        return NextResponse.redirect(new URL('/dialer/agent', request.url))
+      }
+    }
+  }
+
+  if (isDialerLogin && user) {
+    return NextResponse.redirect(new URL('/dialer/agent', request.url))
+  }
+
   return supabaseResponse
 }
 
 export const config = {
-  matcher: ['/teams/:path*', '/metrics/:path*'],
+  matcher: ['/teams/:path*', '/metrics/:path*', '/dialer/:path*'],
 }
