@@ -1,10 +1,10 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useCall } from '../_context/call'
-import { useAuth } from '../_context/auth'
-import { StatusPill } from '../_components/StatusPill'
-import { DISPOSITIONS, type RepStatus, type Disposition, type Lead } from '../_types'
+import { useCall } from '../../_context/call'
+import { useAuth } from '../../_context/auth'
+import { StatusPill } from '../../_components/StatusPill'
+import { DISPOSITIONS, type RepStatus, type Disposition, type Lead } from '../../_types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 

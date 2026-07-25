@@ -8,7 +8,7 @@ export default function LoginPage() {
   const router   = useRouter()
   const supabase = createClient()
 
-  const [email,    setEmail]    = useState('')
+  const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [error,    setError]    = useState<string | null>(null)
   const [loading,  setLoading]  = useState(false)
@@ -17,9 +17,28 @@ export default function LoginPage() {
     e.preventDefault()
     setError(null)
     setLoading(true)
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      setError(error.message)
+
+    // Step 1: look up email from username
+    const lookupRes = await fetch('/api/dialer/auth/lookup', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: username.trim() }),
+    })
+    const lookupData = await lookupRes.json()
+    if (!lookupRes.ok) {
+      setError('Username not found')
+      setLoading(false)
+      return
+    }
+
+    // Step 2: sign in with email + password
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email:    lookupData.email,
+      password,
+    })
+
+    if (signInError) {
+      setError('Incorrect password')
       setLoading(false)
     } else {
       router.push('/dialer/agent')
@@ -30,7 +49,6 @@ export default function LoginPage() {
   return (
     <div className="flex min-h-screen items-center justify-center bg-gray-950 px-4">
       <div className="w-full max-w-sm">
-        {/* Logo */}
         <div className="mb-8 text-center">
           <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-600 text-white font-bold text-lg mb-3">CB</div>
           <h1 className="text-xl font-bold text-white">CB Dialer</h1>
@@ -39,14 +57,15 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-400 mb-1.5">Email</label>
+            <label className="block text-xs font-medium text-gray-400 mb-1.5">Username</label>
             <input
-              type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={e => setUsername(e.target.value)}
               required
               autoFocus
-              placeholder="you@case-bridge.com"
+              autoComplete="off"
+              placeholder="Your username"
               className="w-full rounded-lg border border-gray-700 bg-gray-900 px-4 py-3 text-sm text-white placeholder-gray-600 focus:border-cyan-500 focus:outline-none focus:ring-1 focus:ring-cyan-500"
             />
           </div>

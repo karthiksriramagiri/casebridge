@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
-import { useCall } from '../_context/call'
-import { StatusPill } from '../_components/StatusPill'
-import type { RepStatus } from '../_types'
+import { useCall } from '../../_context/call'
+import { StatusPill } from '../../_components/StatusPill'
+import type { RepStatus } from '../../_types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
