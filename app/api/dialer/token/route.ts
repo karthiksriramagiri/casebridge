@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createHmac } from 'crypto'
+import { createServerSupabase } from '../../dialer/_lib/supabase-server'
 
 function b64url(obj: object) {
   return Buffer.from(JSON.stringify(obj))
@@ -21,7 +22,17 @@ export async function GET(req: NextRequest) {
   const apiKeySid    = process.env.TWILIO_API_KEY_SID!.trim()
   const apiKeySecret = process.env.TWILIO_API_KEY_SECRET!.trim()
   const twimlAppSid  = process.env.TWILIO_TWIML_APP_SID!.trim()
-  const identity     = (req.nextUrl.searchParams.get('identity') || 'agent').trim()
+
+  // Prefer authenticated session identity; fall back to query param for backward compat
+  let identity = (req.nextUrl.searchParams.get('identity') || '').trim()
+  try {
+    const supabase = await createServerSupabase()
+    const { data: { user } } = await supabase.auth.getUser()
+    if (user?.user_metadata?.twilio_identity) {
+      identity = user.user_metadata.twilio_identity.trim()
+    }
+  } catch { /* ignore — fallback to query param */ }
+  if (!identity) identity = 'agent'
 
   const now = Math.floor(Date.now() / 1000)
 

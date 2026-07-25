@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useCall } from '../_context/call'
+import { useAuth } from '../_context/auth'
 import { StatusPill } from '../_components/StatusPill'
 import { DISPOSITIONS, type RepStatus, type Disposition, type Lead } from '../_types'
 
@@ -165,6 +166,13 @@ export default function AgentPage() {
     muted, toggleMute, hangUp, sendDtmf,
     placeCall: ctxPlaceCall, identity, setIdentity,
   } = useCall()
+
+  const { name: authName, identity: authIdentity, signOut } = useAuth()
+
+  // Sync Twilio identity from auth on mount
+  useEffect(() => {
+    if (authIdentity) setIdentity(authIdentity)
+  }, [authIdentity]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const [status,           setStatus]           = useState<RepStatus>('OFFLINE')
   const [campaigns,        setCampaigns]         = useState<Campaign[]>([])
@@ -518,13 +526,14 @@ export default function AgentPage() {
 
         {/* Identity */}
         <div className="flex items-center gap-2 text-xs text-gray-400">
-          <span>Registered as</span>
-          <input value={identity} onChange={e => setIdentity(e.target.value)}
-            className="rounded border border-gray-200 bg-transparent px-1 text-gray-500 focus:border-gray-400 focus:outline-none w-24 dark:border-gray-800 dark:text-gray-500" />
+          <span>Signed in as</span>
+          <span className="font-medium text-gray-600 dark:text-gray-300">{authName}</span>
           <span>·</span>
           <span className={deviceReady ? 'text-green-600 dark:text-green-500' : 'text-gray-400'}>
             {deviceReady ? '● device ready' : '○ not registered'}
           </span>
+          <span>·</span>
+          <button onClick={signOut} className="text-gray-400 hover:text-red-400 transition-colors">Sign out</button>
         </div>
       </div>
 

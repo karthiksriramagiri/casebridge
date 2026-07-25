@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useTheme } from '../_context/theme'
+import { useAuth } from '../_context/auth'
 
 interface NavItem {
   href: string
@@ -76,6 +77,7 @@ interface Props {
 export function DialerNav({ role = 'ADMIN' }: Props) {
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
+  const { name, role: authRole, signOut } = useAuth()
   const isAdmin = role !== 'REP'
   const [unreadSms, setUnreadSms] = useState(0)
 
@@ -147,13 +149,26 @@ export function DialerNav({ role = 'ADMIN' }: Props) {
 
         <div className="flex w-full items-center gap-2 rounded-md px-2 py-2">
           <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-gray-700 dark:bg-gray-700 dark:text-white">
-            CB
+            {name ? name.charAt(0).toUpperCase() : 'CB'}
           </div>
-          <div className="hidden lg:block">
-            <p className="text-xs font-medium text-gray-900 dark:text-white">CB Dialer</p>
-            <p className="text-xs text-gray-500">{role}</p>
+          <div className="hidden lg:block min-w-0 flex-1">
+            <p className="truncate text-xs font-medium text-gray-900 dark:text-white">{name || 'CB Dialer'}</p>
+            <p className="text-xs text-gray-500">{authRole}</p>
           </div>
         </div>
+
+        <button
+          onClick={signOut}
+          className="flex items-center gap-3 rounded-md px-2 py-2 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-100 hover:text-red-600 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-red-400"
+          title="Sign out"
+        >
+          <span className="shrink-0">
+            <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+              <path fillRule="evenodd" d="M3 3a1 1 0 00-1 1v12a1 1 0 001 1h7a1 1 0 000-2H4V5h6a1 1 0 000-2H3zm10.293 4.293a1 1 0 011.414 0l3 3a1 1 0 010 1.414l-3 3a1 1 0 01-1.414-1.414L14.586 11H8a1 1 0 010-2h6.586l-1.293-1.293a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </span>
+          <span className="hidden lg:block">Sign out</span>
+        </button>
       </div>
     </aside>
   )
