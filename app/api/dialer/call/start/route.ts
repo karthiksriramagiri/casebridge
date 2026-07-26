@@ -35,13 +35,20 @@ export async function POST(req: NextRequest) {
   if (campaign)    statusUrl.searchParams.set('Campaign',    campaign)
   if (campaignId)  statusUrl.searchParams.set('CampaignId',  campaignId)
 
-  // Dial the customer into the conference
+  // Recording status callback — Twilio posts here when the recording is ready
+  const recordingCallbackUrl = new URL(`${base}/api/dialer/twiml/recording`)
+  if (contactId) recordingCallbackUrl.searchParams.set('ContactId', contactId)
+
+  // Dial the customer into the conference and start recording immediately
   const participant = await client.conferences(confName).participants.create({
     to: phone,
     from: process.env.TWILIO_CALLER_ID || '+12137344168',
     label: 'customer',
     earlyMedia: true,
     endConferenceOnExit: true,
+    record: true,
+    recordingStatusCallback: recordingCallbackUrl.toString(),
+    recordingStatusCallbackMethod: 'POST',
     statusCallback: statusUrl.toString(),
     statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     statusCallbackMethod: 'POST',

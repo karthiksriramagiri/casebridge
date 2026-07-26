@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
   // Look up the active session for this rep
   const { data: session } = await db
     .from('dialer_active_sessions')
-    .select('customer_call_sid, conference_sid, conference_name')
+    .select('customer_call_sid, conference_sid, conference_name, started_at')
     .eq('rep_identity', identity)
     .maybeSingle()
 
