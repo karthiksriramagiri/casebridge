@@ -1,0 +1,51 @@
+import { NextRequest, NextResponse } from 'next/server'
+import twilio from 'twilio'
+import { createClient } from '@supabase/supabase-js'
+
+function supabaseAdmin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
+
+// POST /api/dialer/call/end
+// Called by the rep's browser when they click hang up.
+// Force-terminates the customer's outbound call leg and clears the active session.
+// This handles the case where the rep disconnects before fully joining the conference,
+// which would otherwise leave the customer's call ringing indefinitely.
+export async function POST(req: NextRequest) {
+  const { identity } = await req.json()
+  if (!identity) return NextResponse.json({ error: 'identity required' }, { status: 400 })
+
+  const db = supabaseAdmin()
+
+  // Look up the active session for this rep
+  const { data: session } = await db
+    .from('dialer_active_sessions')
+    .select('customer_call_sid, conference_sid, conference_name')
+    .eq('rep_identity', identity)
+    .maybeSingle()
+
+  if (!session) return NextResponse.json({ ok: true, note: 'no active session' })
+
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
+
+  // Kill the customer's outbound call leg
+  if (session.customer_call_sid) {
+    await client.calls(session.customer_call_sid)
+      .update({ status: 'completed' })
+      .catch(() => {}) // ignore if already ended
+  }
+
+  // End the conference if it exists
+  if (session.conference_sid) {
+    await client.conferences(session.conference_sid)
+      .update({ status: 'completed' } as any)
+      .catch(() => {}) // ignore if already ended
+  }
+
+  // Clear the active session — conference-end webhook will also try this but that's fine
+  await db.from('dialer_active_sessions')
+    .delete()
+    .eq('rep_identity', identity)
+
+  return NextResponse.json({ ok: true })
+}

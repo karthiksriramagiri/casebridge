@@ -21,6 +21,7 @@ export async function GET(req: NextRequest) {
   const limit      = parseInt(searchParams.get('limit') ?? '20', 10)
   const cursor     = searchParams.get('cursor') ?? ''
   const cursorId   = searchParams.get('cursorId') ?? ''
+  const search     = searchParams.get('search') ?? ''
 
   if (!pipelineId || !stageId) {
     return NextResponse.json({ error: 'pipelineId and stageId are required' }, { status: 400 })
@@ -31,6 +32,7 @@ export async function GET(req: NextRequest) {
   url.searchParams.set('pipeline_id', pipelineId)
   url.searchParams.set('pipeline_stage_id', stageId)
   url.searchParams.set('limit', String(limit))
+  if (search)   url.searchParams.set('q', search)
   if (cursor)   url.searchParams.set('startAfter', cursor)
   if (cursorId) url.searchParams.set('startAfterId', cursorId)
 

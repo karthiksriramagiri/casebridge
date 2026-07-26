@@ -12,9 +12,9 @@ function supabaseAdmin() {
 // Returns all calls and transcripts for a contact
 export async function GET(
   _req: NextRequest,
-  { params }: { params: { contactId: string } }
+  { params }: { params: Promise<{ contactId: string }> }
 ) {
-  const { contactId } = params
+  const { contactId } = await params
   const db = supabaseAdmin()
 
   // Fetch calls, transcripts, and AI summary in parallel

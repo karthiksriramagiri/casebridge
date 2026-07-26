@@ -11,6 +11,7 @@ interface NavItem {
   label: string
   icon: React.ReactNode
   adminOnly?: boolean
+  repOnly?: boolean
 }
 
 const PhoneIcon = () => (
@@ -58,12 +59,18 @@ const MoonIcon = () => (
     <path d="M17.293 13.293A8 8 0 016.707 2.707a8.001 8.001 0 1010.586 10.586z" />
   </svg>
 )
+const QueueIcon = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+    <path d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1z" />
+  </svg>
+)
 
 const NAV_ITEMS: NavItem[] = [
   { href: '/dialer/agent',            label: 'My Phone',   icon: <PhoneIcon /> },
   { href: '/dialer/leads',            label: 'Leads',      icon: <UsersIcon /> },
   { href: '/dialer/messages',         label: 'Messages',   icon: <ChatIcon /> },
   { href: '/dialer/admin',            label: 'Live Floor', icon: <GridIcon />,       adminOnly: true },
+  { href: '/dialer/admin/queue',      label: 'Queue',      icon: <QueueIcon />,      adminOnly: true },
   { href: '/dialer/admin/campaigns',  label: 'Campaigns',  icon: <BullhornIcon />,   adminOnly: true },
   { href: '/dialer/admin/caller-ids', label: 'Caller IDs', icon: <PhoneSlashIcon />, adminOnly: true },
   { href: '/dialer/admin/dnc',        label: 'DNC List',   icon: <PhoneSlashIcon />, adminOnly: true },
@@ -97,15 +104,15 @@ export function DialerNav({ role = 'ADMIN' }: Props) {
   return (
     <aside className="flex h-screen w-14 flex-col items-center gap-1 border-r border-gray-200 bg-gray-50 py-4 dark:border-gray-800 dark:bg-gray-950 lg:w-48 lg:items-start lg:px-2">
       {/* Logo */}
-      <div className="mb-4 flex items-center gap-2 px-2">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-600 text-white">
-          <PhoneIcon />
-        </div>
-        <span className="hidden text-sm font-semibold text-gray-900 dark:text-white lg:block">CB Dialer</span>
+      <div className="mb-4 px-2">
+        <span className="hidden text-sm lg:block whitespace-nowrap">
+          <span className="font-bold text-gray-900 dark:text-white">CaseBridge</span>{' '}
+          <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: '#C17A4A' }}>Dialer</span>
+        </span>
       </div>
 
       <nav className="flex w-full flex-col gap-0.5">
-        {NAV_ITEMS.filter(item => !item.adminOnly || isAdmin).map(item => {
+        {NAV_ITEMS.filter(item => (!item.adminOnly || isAdmin) && (!item.repOnly || !isAdmin)).map(item => {
           const active = pathname === item.href || (item.href !== '/dialer/agent' && pathname.startsWith(item.href))
           return (
             <Link

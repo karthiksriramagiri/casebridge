@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -463,8 +463,7 @@ export default function LeadsPage() {
   const [loadingMore, setLoadingMore]   = useState(false)
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null)
   const [search, setSearch]             = useState('')
-  const searchRef = useRef(search)
-  searchRef.current = search
+  const searchDebounce = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // Load campaigns
   useEffect(() => {
@@ -472,10 +471,8 @@ export default function LeadsPage() {
       .then(r => r.json())
       .then(d => {
         const list: Campaign[] = d.campaigns ?? []
-        // Sort by position within each firm
         list.sort((a, b) => a.position - b.position)
         setCampaigns(list)
-        // Auto-select first stage with leads
         const first = list.find(c => c.leadCount > 0)
         if (first) setSelectedStage(first)
       })
@@ -483,52 +480,46 @@ export default function LeadsPage() {
       .finally(() => setCampsLoading(false))
   }, [])
 
-  // Load leads when stage changes
-  useEffect(() => {
-    if (!selectedStage) return
-    setLeads([])
-    setSelectedLead(null)
-    setNextCursor(null)
-    setNextCursorId(null)
-    setLeadsLoading(true)
-    setSearch('')
+  const fetchLeads = useCallback((stage: Campaign, q: string, append = false, cursor = '', cursorId = '') => {
+    if (!append) { setLeadsLoading(true); setLeads([]) }
+    else setLoadingMore(true)
 
-    const params = new URLSearchParams({
-      pipelineId: selectedStage.pipelineId,
-      stageId:    selectedStage.stageId,
-      limit:      '50',
-    })
+    const params = new URLSearchParams({ pipelineId: stage.pipelineId, stageId: stage.stageId, limit: '50' })
+    if (q)        params.set('search', q)
+    if (cursor)   params.set('cursor', cursor)
+    if (cursorId) params.set('cursorId', cursorId)
+
     fetch(`/api/dialer/leads?${params}`)
       .then(r => r.json())
       .then(d => {
-        setLeads(d.leads ?? [])
+        setLeads(prev => append ? [...prev, ...(d.leads ?? [])] : (d.leads ?? []))
         setLeadsTotal(d.meta?.total ?? 0)
         setNextCursor(d.meta?.nextCursor ?? null)
         setNextCursorId(d.meta?.nextCursorId ?? null)
       })
       .catch(console.error)
-      .finally(() => setLeadsLoading(false))
+      .finally(() => { setLeadsLoading(false); setLoadingMore(false) })
+  }, [])
+
+  // Reload when stage changes
+  useEffect(() => {
+    if (!selectedStage) return
+    setSelectedLead(null)
+    setSearch('')
+    fetchLeads(selectedStage, '')
   }, [selectedStage?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Debounced search — re-fetches from server on every keystroke (after 300ms)
+  function handleSearch(q: string) {
+    setSearch(q)
+    if (searchDebounce.current) clearTimeout(searchDebounce.current)
+    if (!selectedStage) return
+    searchDebounce.current = setTimeout(() => fetchLeads(selectedStage, q), 300)
+  }
 
   function loadMore() {
     if (!selectedStage || !nextCursor || loadingMore) return
-    setLoadingMore(true)
-    const params = new URLSearchParams({
-      pipelineId: selectedStage.pipelineId,
-      stageId:    selectedStage.stageId,
-      limit:      '50',
-      cursor:     nextCursor,
-      cursorId:   nextCursorId ?? '',
-    })
-    fetch(`/api/dialer/leads?${params}`)
-      .then(r => r.json())
-      .then(d => {
-        setLeads(prev => [...prev, ...(d.leads ?? [])])
-        setNextCursor(d.meta?.nextCursor ?? null)
-        setNextCursorId(d.meta?.nextCursorId ?? null)
-      })
-      .catch(console.error)
-      .finally(() => setLoadingMore(false))
+    fetchLeads(selectedStage, search, true, nextCursor, nextCursorId ?? '')
   }
 
   // Group campaigns by firm
@@ -539,13 +530,7 @@ export default function LeadsPage() {
     byFirm[c.firmSlug].push(c)
   }
 
-  // Filter leads by search
-  const filteredLeads = search
-    ? leads.filter(l =>
-        l.name.toLowerCase().includes(search.toLowerCase()) ||
-        l.phone.includes(search)
-      )
-    : leads
+  const filteredLeads = leads
 
   function toggleFirm(slug: string) {
     setOpenFirms(prev => {
@@ -615,7 +600,10 @@ export default function LeadsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-gray-900 dark:text-white">{selectedStage.stageName}</p>
-                <p className="text-[11px] text-gray-400">{selectedStage.firm} · {leadsTotal} leads</p>
+                <p className="text-[11px] text-gray-400">
+                  {selectedStage.firm} · {selectedStage.leadCount} leads
+                  {search && leadsTotal !== selectedStage.leadCount && ` · ${leadsTotal} match`}
+                </p>
               </div>
             </div>
 
@@ -627,7 +615,7 @@ export default function LeadsPage() {
               </svg>
               <input
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={e => handleSearch(e.target.value)}
                 placeholder="Filter…"
                 className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-7 pr-3 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
               />
@@ -652,7 +640,7 @@ export default function LeadsPage() {
           {!leadsLoading && filteredLeads.length === 0 && (
             <div className="flex h-40 items-center justify-center text-center">
               <p className="text-xs text-gray-400">
-                {search ? 'No leads match your filter.' : 'No leads in this stage.'}
+                {search ? `No results for "${search}"` : 'No leads in this stage.'}
               </p>
             </div>
           )}

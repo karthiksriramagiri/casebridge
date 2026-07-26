@@ -12,7 +12,7 @@ interface CallContextValue {
   muted:          boolean
   identity:       string
   setIdentity:    (id: string) => void
-  placeCall:      (lead: Lead, meta?: { firm?: string; campaign?: string; campaignId?: string }) => Promise<void>
+  placeCall:      (lead: Lead, meta?: { firm?: string; campaign?: string; campaignId?: string; queueId?: string }) => Promise<void>
   joinConference: (confName: string, mode: 'listen' | 'whisper' | 'barge', coachSid?: string) => Promise<void>
   hangUp:         () => void
   toggleMute:     () => void
@@ -30,12 +30,14 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [currentLead,  setCurrentLead]  = useState<Lead | null>(null)
   const [callDuration, setCallDuration] = useState(0)
   const [muted,        setMuted]        = useState(false)
-  const [identity,     setIdentity]     = useState('agent')
+  const [identity,     setIdentity_]    = useState('agent')
+  function setIdentity(id: string) { setIdentity_(id); identityRef.current = id }
 
-  const deviceRef   = useRef<any>(null)
-  const callRef     = useRef<any>(null)
-  const timerRef    = useRef<ReturnType<typeof setInterval> | null>(null)
-  const initStarted = useRef(false)
+  const deviceRef    = useRef<any>(null)
+  const callRef      = useRef<any>(null)
+  const timerRef     = useRef<ReturnType<typeof setInterval> | null>(null)
+  const initStarted  = useRef(false)
+  const identityRef  = useRef(identity)
 
   useEffect(() => {
     if (initStarted.current) return
@@ -98,7 +100,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCallState('wrapup')
   }
 
-  const placeCall = useCallback(async (lead: Lead, meta?: { firm?: string; campaign?: string; campaignId?: string }) => {
+  const placeCall = useCallback(async (lead: Lead, meta?: { firm?: string; campaign?: string; campaignId?: string; queueId?: string }) => {
     if (!deviceRef.current || !deviceReady) return
     setCurrentLead(lead)
     setCallState('ringing')
@@ -116,6 +118,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           firm:        meta?.firm,
           campaign:    meta?.campaign,
           campaignId:  meta?.campaignId,
+          queueId:     meta?.queueId,
         }),
       })
       const data = await res.json()
@@ -149,7 +152,17 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     call.on('cancel',     () => { callRef.current = null; setMuted(false); setCallState('idle') })
   }, [deviceReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const hangUp = useCallback(() => callRef.current?.disconnect(), [])
+  const hangUp = useCallback(() => {
+    // Disconnect the Device leg (ends the rep's audio)
+    callRef.current?.disconnect()
+    // Force-kill the customer call server-side — handles the case where the rep
+    // hangs up before fully joining the conference (customer would keep ringing otherwise)
+    fetch('/api/dialer/call/end', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ identity: identityRef.current }),
+    }).catch(() => {})
+  }, [])
 
   const toggleMute = useCallback(() => {
     if (!callRef.current) return

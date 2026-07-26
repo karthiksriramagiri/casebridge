@@ -50,8 +50,10 @@ export default function LoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-gray-950 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-cyan-600 text-white font-bold text-lg mb-3">CB</div>
-          <h1 className="text-xl font-bold text-white">CB Dialer</h1>
+          <h1 className="text-2xl font-bold text-white mb-1">
+            CaseBridge{' '}
+            <span style={{ fontFamily: 'Georgia, serif', fontStyle: 'italic', fontWeight: 400, color: '#C17A4A' }}>Dialer</span>
+          </h1>
           <p className="text-sm text-gray-500 mt-1">Sign in to your account</p>
         </div>
 

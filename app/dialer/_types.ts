@@ -1,4 +1,19 @@
 export type RepStatus = 'OFFLINE' | 'READY' | 'ON_CALL' | 'PAUSED' | 'WRAPUP'
+
+export interface QueueLead {
+  queueId:          string
+  contactId:        string
+  name:             string
+  phone:            string
+  firm:             string
+  stageName:        string
+  timezone:         string
+  isCallback:       boolean
+  callbackAt:       string | null
+  callbackContext:  string | null
+  ownerRepIdentity: string | null
+  priority:         number
+}
 export type CallState = 'idle' | 'ringing' | 'connected' | 'wrapup'
 
 export interface Lead {

@@ -4,15 +4,10 @@ import { useState, useEffect, useRef } from 'react'
 import { useCall } from '../../_context/call'
 import { useAuth } from '../../_context/auth'
 import { StatusPill } from '../../_components/StatusPill'
-import { DISPOSITIONS, type RepStatus, type Disposition, type Lead } from '../../_types'
+import { MiniQueue } from '../../_components/MiniQueue'
+import { DISPOSITIONS, type RepStatus, type Disposition, type Lead, type QueueLead } from '../../_types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
-
-interface Campaign {
-  id: string; name: string; firm: string; firmSlug: string
-  pipelineId: string; stageId: string; stageName: string
-  leadCount: number; status: 'active' | 'paused'
-}
 
 interface ContactDetail {
   id: string; name: string; email: string; phone: string
@@ -21,12 +16,34 @@ interface ContactDetail {
   customFields: Array<{ label: string; value: string }>
 }
 
+interface Campaign {
+  id: string; name: string; firm: string; firmSlug: string
+  pipelineId: string; stageId: string; stageName: string
+  leadCount: number; position: number
+}
+
+interface GHLLead {
+  id: string; name: string; phone: string; email: string
+  company: string; contactId: string; tags: string[]; lastActivity: string
+}
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmtDuration(sec: number) {
   const m = Math.floor(sec / 60).toString().padStart(2, '0')
   const s = (sec % 60).toString().padStart(2, '0')
   return `${m}:${s}`
+}
+
+function fmtTZ(iso: string, timezone: string) {
+  try {
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: timezone, hour: 'numeric', minute: '2-digit', hour12: true,
+      month: 'short', day: 'numeric',
+    }).format(new Date(iso))
+  } catch {
+    return new Date(iso).toLocaleString()
+  }
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -112,12 +129,38 @@ function DtmfPad({ onKey }: { onKey: (k: string) => void }) {
 
 // ── Disposition Modal ──────────────────────────────────────────────────────────
 
-function DispositionModal({ lead, onSubmit }: {
+function DispositionModal({ lead, leadTimezone, onSubmit }: {
   lead: Lead
-  onSubmit: (d: Disposition, callbackTime: string, stop: boolean) => void
+  leadTimezone: string
+  onSubmit: (d: Disposition, callbackAt: string, stop: boolean, context?: string) => void
 }) {
   const [selected,     setSelected]     = useState<Disposition | null>(null)
   const [callbackTime, setCallbackTime] = useState('')
+  const [context,      setContext]      = useState('')
+
+  const localEquivalent = callbackTime && leadTimezone
+    ? (() => {
+        try {
+          return fmtTZ(callbackTime, leadTimezone)
+        } catch { return '' }
+      })()
+    : ''
+
+  const outsideHours = callbackTime && leadTimezone
+    ? (() => {
+        try {
+          const f = new Intl.DateTimeFormat('en-US', {
+            timeZone: leadTimezone, hour: 'numeric', minute: 'numeric', hour12: false
+          })
+          const parts = f.formatToParts(new Date(callbackTime))
+          const h = parseInt(parts.find(p => p.type === 'hour')?.value   ?? '0')
+          const m = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
+          const t = h * 60 + m
+          return t < 8 * 60 + 30 || t > 20 * 60 + 30
+        } catch { return false }
+      })()
+    : false
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
       <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
@@ -133,24 +176,236 @@ function DispositionModal({ lead, onSubmit }: {
             </button>
           ))}
         </div>
+
         {selected?.category === 'CALLBACK' && (
-          <div className="border-t border-gray-200 px-4 pb-4 dark:border-gray-800">
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">Callback time</label>
+          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+              Callback time (your local time)
+              {leadTimezone && <span className="ml-1 text-gray-400">— lead is in {leadTimezone}</span>}
+            </label>
             <input type="datetime-local" value={callbackTime} onChange={e => setCallbackTime(e.target.value)}
               className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+            {localEquivalent && (
+              <p className="text-xs text-gray-500">
+                In their timezone: <span className="font-medium text-gray-700 dark:text-gray-300">{localEquivalent}</span>
+              </p>
+            )}
+            {outsideHours && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+                ⚠ This time is outside the lead's calling hours (8:30am–8:30pm their time)
+              </p>
+            )}
+            <input
+              value={context} onChange={e => setContext(e.target.value)}
+              placeholder="Callback notes (optional)…"
+              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+            />
           </div>
         )}
+
         <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-800">
-          <button disabled={!selected} onClick={() => selected && onSubmit(selected, callbackTime, true)}
+          <button disabled={!selected} onClick={() => selected && onSubmit(selected, callbackTime, true, context)}
             className="flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30">
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><rect x="4" y="4" width="12" height="12" rx="1" /></svg>
-            Stop Queue
+            Stop
           </button>
-          <button disabled={!selected} onClick={() => selected && onSubmit(selected, callbackTime, false)}
+          <button
+            disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime)}
+            onClick={() => selected && onSubmit(selected, callbackTime, false, context)}
             className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
-            Submit &amp; Next →
+            Submit →
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Admin Lead Picker ──────────────────────────────────────────────────────────
+
+function AdminLeadPicker({
+  onCall,
+  disabled,
+  todayDisps,
+}: {
+  onCall: (lead: GHLLead, campaign: Campaign) => void
+  disabled: boolean
+  todayDisps: Array<{ lead: string; result: string; time: string; color: string }>
+}) {
+  const [campaigns,         setCampaigns]         = useState<Campaign[]>([])
+  const [campaignsLoading,  setCampaignsLoading]  = useState(true)
+  const [selectedCampaign,  setSelectedCampaign]  = useState<Campaign | null>(null)
+  const [leads,             setLeads]             = useState<GHLLead[]>([])
+  const [leadsLoading,      setLeadsLoading]      = useState(false)
+  const [nextCursor,        setNextCursor]        = useState<string | null>(null)
+  const [nextCursorId,      setNextCursorId]      = useState<string | null>(null)
+  const [hasMore,           setHasMore]           = useState(false)
+  const [loadingMore,       setLoadingMore]       = useState(false)
+  const [manualDial,        setManualDial]        = useState('')
+
+  // Fetch campaigns once
+  useEffect(() => {
+    setCampaignsLoading(true)
+    fetch('/api/dialer/campaigns')
+      .then(r => r.json())
+      .then(d => setCampaigns(d.campaigns ?? []))
+      .catch(() => {})
+      .finally(() => setCampaignsLoading(false))
+  }, [])
+
+  // Fetch leads when campaign changes
+  useEffect(() => {
+    if (!selectedCampaign) { setLeads([]); setNextCursor(null); setNextCursorId(null); setHasMore(false); return }
+    setLeadsLoading(true)
+    fetch(`/api/dialer/leads?pipelineId=${selectedCampaign.pipelineId}&stageId=${selectedCampaign.stageId}&limit=20`)
+      .then(r => r.json())
+      .then(d => {
+        setLeads(d.leads ?? [])
+        setNextCursor(d.meta?.nextCursor ?? null)
+        setNextCursorId(d.meta?.nextCursorId ?? null)
+        setHasMore(d.meta?.hasMore ?? false)
+      })
+      .catch(() => {})
+      .finally(() => setLeadsLoading(false))
+  }, [selectedCampaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadMore() {
+    if (!selectedCampaign || !hasMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const params = new URLSearchParams({
+        pipelineId: selectedCampaign.pipelineId,
+        stageId:    selectedCampaign.stageId,
+        limit:      '20',
+      })
+      if (nextCursor)   params.set('cursor', nextCursor)
+      if (nextCursorId) params.set('cursorId', nextCursorId)
+      const d = await fetch(`/api/dialer/leads?${params}`).then(r => r.json())
+      setLeads(prev => [...prev, ...(d.leads ?? [])])
+      setNextCursor(d.meta?.nextCursor ?? null)
+      setNextCursorId(d.meta?.nextCursorId ?? null)
+      setHasMore(d.meta?.hasMore ?? false)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const { placeCall: ctxPlaceCall, deviceReady, identity } = useCall()
+
+  function handleManualDial() {
+    if (!manualDial || !deviceReady) return
+    ctxPlaceCall({
+      id: 'manual', name: manualDial, phone: manualDial,
+      email: '', company: '', source: 'manual',
+      tags: [], lastActivity: new Date().toISOString(), contactId: '',
+    })
+    setManualDial('')
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      {/* Campaign selector */}
+      <div className="border-b border-gray-200 px-4 pt-3 pb-3 dark:border-gray-800">
+        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          Pipeline Stage
+        </label>
+        {campaignsLoading ? (
+          <div className="h-8 animate-pulse rounded-md bg-gray-200 dark:bg-gray-800" />
+        ) : (
+          <select
+            value={selectedCampaign?.id ?? ''}
+            onChange={e => {
+              const c = campaigns.find(x => x.id === e.target.value) ?? null
+              setSelectedCampaign(c)
+            }}
+            className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+          >
+            <option value="">Select a stage…</option>
+            {campaigns.map(c => (
+              <option key={c.id} value={c.id}>{c.name} ({c.leadCount})</option>
+            ))}
+          </select>
+        )}
+      </div>
+
+      {/* Lead list */}
+      <div className="flex-1 overflow-y-auto">
+        {!selectedCampaign && (
+          <p className="px-4 py-6 text-center text-xs text-gray-400">Select a stage to see leads.</p>
+        )}
+        {selectedCampaign && leadsLoading && (
+          <div className="space-y-2 p-4">
+            {[1,2,3,4,5].map(i => <div key={i} className="h-14 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />)}
+          </div>
+        )}
+        {selectedCampaign && !leadsLoading && leads.length === 0 && (
+          <p className="px-4 py-6 text-center text-xs text-gray-400">No leads in this stage.</p>
+        )}
+        {leads.map(lead => (
+          <button
+            key={lead.id}
+            onClick={() => selectedCampaign && !disabled && onCall(lead, selectedCampaign)}
+            disabled={disabled || !lead.phone}
+            className="w-full border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800/40 dark:hover:bg-gray-900"
+          >
+            <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
+            <p className="text-xs font-mono text-gray-500">{lead.phone || 'No phone'}</p>
+            {lead.tags.length > 0 && (
+              <div className="mt-1 flex flex-wrap gap-1">
+                {lead.tags.slice(0, 3).map(t => (
+                  <span key={t} className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] text-gray-600 dark:bg-gray-700 dark:text-gray-400">{t}</span>
+                ))}
+              </div>
+            )}
+          </button>
+        ))}
+        {hasMore && (
+          <div className="px-4 py-3">
+            <button
+              onClick={loadMore}
+              disabled={loadingMore}
+              className="w-full rounded-md border border-gray-300 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+            >
+              {loadingMore ? 'Loading…' : 'Load more'}
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Manual dial */}
+      <div className="border-t border-gray-200 p-3 dark:border-gray-800">
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">Manual dial</label>
+        <div className="flex gap-1.5">
+          <input
+            value={manualDial}
+            onChange={e => setManualDial(e.target.value)}
+            placeholder="+1 (555) 000-0000"
+            onKeyDown={e => e.key === 'Enter' && handleManualDial()}
+            className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+          />
+          <button
+            onClick={handleManualDial}
+            disabled={!deviceReady || !manualDial || disabled}
+            className="rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-40"
+          >
+            Dial
+          </button>
+        </div>
+      </div>
+
+      {/* Today's calls */}
+      <div className="max-h-44 overflow-y-auto border-t border-gray-200 dark:border-gray-800">
+        <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Today ({todayDisps.length})</p>
+        {todayDisps.map((d, i) => (
+          <div key={i} className="flex items-center justify-between px-4 py-1.5">
+            <div>
+              <p className="truncate text-xs text-gray-700 max-w-[140px] dark:text-gray-300">{d.lead}</p>
+              <p className={`text-xs ${d.color}`}>{d.result}</p>
+            </div>
+            <span className="text-xs text-gray-400">{d.time}</span>
+          </div>
+        ))}
+        {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-gray-400">No calls yet today.</p>}
       </div>
     </div>
   )
@@ -159,7 +414,6 @@ function DispositionModal({ lead, onSubmit }: {
 // ── Agent Page ─────────────────────────────────────────────────────────────────
 
 export default function AgentPage() {
-  // Call state from layout-level context (persists across navigation)
   const {
     deviceReady, deviceError, callState, setCallState,
     currentLead, setCurrentLead, callDuration,
@@ -167,40 +421,35 @@ export default function AgentPage() {
     placeCall: ctxPlaceCall, identity, setIdentity,
   } = useCall()
 
-  const { name: authName, identity: authIdentity, signOut } = useAuth()
+  const { name: authName, identity: authIdentity, role, signOut } = useAuth()
+  const isAdmin = role === 'ADMIN'
 
-  // Sync Twilio identity from auth on mount
   useEffect(() => {
     if (authIdentity) setIdentity(authIdentity)
   }, [authIdentity]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  const [status,           setStatus]           = useState<RepStatus>('OFFLINE')
-  const [campaigns,        setCampaigns]         = useState<Campaign[]>([])
-  const [campsLoading,     setCampsLoading]      = useState(true)
-  const [selectedCampaign, setSelectedCampaign]  = useState<Campaign | null>(null)
-  const [queueLeads,       setQueueLeads]        = useState<Lead[]>([])
-  const [leadsLoading,     setLeadsLoading]      = useState(false)
-  const [held,             setHeld]              = useState(false)
-  const [showDtmf,         setShowDtmf]          = useState(false)
-  const [dtmfBuffer,       setDtmfBuffer]        = useState('')
-  const [showDisposition,  setShowDisposition]   = useState(false)
-  const [manualDial,       setManualDial]        = useState('')
-  const [todayDisps,       setTodayDisps]        = useState<Array<{ lead: string; result: string; time: string; color: string }>>([])
-  const [previewLead,      setPreviewLead]       = useState<Lead | null>(null)
-  const [contactDetail,    setContactDetail]     = useState<ContactDetail | null>(null)
-  const [contactLoading,   setContactLoading]    = useState(false)
-  const [aiSummary,        setAiSummary]         = useState<string | null>(null)
+  const [status,          setStatus]          = useState<RepStatus>('OFFLINE')
+  const [held,            setHeld]            = useState(false)
+  const [showDtmf,        setShowDtmf]        = useState(false)
+  const [dtmfBuffer,      setDtmfBuffer]      = useState('')
+  const [showDisposition, setShowDisposition] = useState(false)
+  const [todayDisps,      setTodayDisps]      = useState<Array<{ lead: string; result: string; time: string; color: string }>>([])
+  const [contactDetail,   setContactDetail]   = useState<ContactDetail | null>(null)
+  const [contactLoading,  setContactLoading]  = useState(false)
+  const [aiSummary,       setAiSummary]       = useState<string | null>(null)
+  const [queueRefreshKey, setQueueRefreshKey] = useState(0)
 
-  const queueIndex  = useRef(0)
-  const prevCallState = useRef(callState)
+  // Track current queue item for disposition reporting (reps only)
+  const currentQueueLead = useRef<QueueLead | null>(null)
+  const prevCallState    = useRef(callState)
 
-  // Sync status with device ready state
+  // Sync status with device ready
   useEffect(() => {
     if (deviceReady && status === 'OFFLINE') setStatus('READY')
     if (!deviceReady) setStatus('OFFLINE')
   }, [deviceReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Ping rep status whenever status or identity changes
+  // Ping rep status on change
   useEffect(() => {
     if (!identity) return
     fetch('/api/dialer/rep-status', {
@@ -210,7 +459,7 @@ export default function AgentPage() {
     }).catch(() => {})
   }, [status, identity])
 
-  // Detect when call transitions to wrapup → show disposition
+  // Detect call transitions
   useEffect(() => {
     if (prevCallState.current !== 'wrapup' && callState === 'wrapup') {
       setHeld(false); setShowDtmf(false); setDtmfBuffer('')
@@ -222,159 +471,181 @@ export default function AgentPage() {
     prevCallState.current = callState
   }, [callState])
 
-  // Load campaigns
+  // Load contact detail when lead changes
   useEffect(() => {
-    fetch('/api/dialer/campaigns').then(r => r.json()).then(data => {
-      const list: Campaign[] = data.campaigns ?? []
-      setCampaigns(list)
-      if (list.length > 0) setSelectedCampaign(list[0])
-    }).catch(console.error).finally(() => setCampsLoading(false))
-  }, [])
-
-  // Load leads when campaign changes
-  useEffect(() => {
-    if (!selectedCampaign) return
-    setLeadsLoading(true); setQueueLeads([]); queueIndex.current = 0
-    fetch(`/api/dialer/leads?pipelineId=${selectedCampaign.pipelineId}&stageId=${selectedCampaign.stageId}&limit=100`)
-      .then(r => r.json()).then(data => {
-        const leads = data.leads ?? []
-        setQueueLeads(leads)
-        if (leads.length > 0) setPreviewLead(leads[0])
-      }).catch(console.error).finally(() => setLeadsLoading(false))
-  }, [selectedCampaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  // Fetch contact detail + AI summary when display lead changes
-  const displayLead      = currentLead ?? previewLead
-  const displayContactId = displayLead?.contactId
-  useEffect(() => {
-    if (!displayContactId) { setContactDetail(null); setAiSummary(null); return }
+    const cid = currentLead?.contactId
+    if (!cid) { setContactDetail(null); setAiSummary(null); return }
     setContactLoading(true)
     Promise.all([
-      fetch(`/api/dialer/contacts/${displayContactId}`).then(r => r.json()),
-      fetch(`/api/dialer/leads-db/${displayContactId}`).then(r => r.json()),
+      fetch(`/api/dialer/contacts/${cid}`).then(r => r.json()),
+      fetch(`/api/dialer/leads-db/${cid}`).then(r => r.json()),
     ]).then(([cd, ld]) => {
       setContactDetail(cd.contact ?? null)
       setAiSummary(ld.aiSummary ?? null)
     }).catch(() => { setContactDetail(null); setAiSummary(null) })
       .finally(() => setContactLoading(false))
-  }, [displayContactId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [currentLead?.contactId]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  async function placeCall(lead: Lead, indexInQueue?: number) {
+  // Rep queue call handler
+  async function handleQueueCall(ql: QueueLead) {
     if (!deviceReady || status !== 'READY') return
-    if (indexInQueue !== undefined) queueIndex.current = indexInQueue
-    setPreviewLead(lead)
-    await ctxPlaceCall(lead, { firm: selectedCampaign?.firm, campaign: selectedCampaign?.name, campaignId: selectedCampaign?.id })
+    currentQueueLead.current = ql
+    const lead: Lead = {
+      id:           ql.queueId,
+      name:         ql.name,
+      phone:        ql.phone,
+      email:        '',
+      company:      '',
+      source:       ql.firm,
+      tags:         [],
+      lastActivity: new Date().toISOString(),
+      contactId:    ql.contactId,
+    }
+    await ctxPlaceCall(lead, {
+      firm:     ql.firm,
+      campaign: ql.stageName,
+      queueId:  ql.queueId,
+    })
+    // Refresh queue immediately so the called lead drops out and #6-10 slide in
+    setQueueRefreshKey(k => k + 1)
+  }
+
+  // Admin lead call handler (no queue tracking)
+  async function handleAdminCall(ghlLead: GHLLead, campaign: Campaign) {
+    if (!deviceReady || status !== 'READY') return
+    currentQueueLead.current = null
+    const lead: Lead = {
+      id:           ghlLead.id,
+      name:         ghlLead.name,
+      phone:        ghlLead.phone,
+      email:        ghlLead.email,
+      company:      ghlLead.company,
+      source:       campaign.firmSlug,
+      tags:         ghlLead.tags,
+      lastActivity: ghlLead.lastActivity,
+      contactId:    ghlLead.contactId,
+    }
+    await ctxPlaceCall(lead, {
+      firm:       campaign.firmSlug,
+      campaign:   campaign.stageName,
+      campaignId: campaign.stageId,
+    })
   }
 
   function onDtmfKey(key: string) { sendDtmf(key); setDtmfBuffer(b => b + key) }
 
-  function handleDisposition(d: Disposition, _callbackTime: string, stop: boolean) {
+  async function handleDisposition(d: Disposition, callbackTime: string, stop: boolean, context?: string) {
     const disposedLead = currentLead
+    const ql           = currentQueueLead.current
+    const duration     = callDuration
+
     setShowDisposition(false)
     setTodayDisps(prev => [{
       lead:   disposedLead?.name ?? '—',
       result: d.label,
       time:   new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
-      color:  d.category === 'POSITIVE' ? 'text-green-600 dark:text-green-400' : d.category === 'CALLBACK' ? 'text-blue-600 dark:text-blue-400' : 'text-red-600 dark:text-red-400',
+      color:  d.category === 'POSITIVE' ? 'text-green-600 dark:text-green-400'
+            : d.category === 'CALLBACK' ? 'text-blue-600 dark:text-blue-400'
+            : 'text-red-600 dark:text-red-400',
     }, ...prev])
+
     setCurrentLead(null)
     setCallState('idle')
     setStatus('READY')
+    currentQueueLead.current = null
 
-    if (stop) return
-
-    const nextIndex = queueIndex.current + 1
-    queueIndex.current = nextIndex
-    const nextLead = queueLeads[nextIndex]
-    if (nextLead && deviceReady) {
-      setTimeout(() => placeCall(nextLead, nextIndex), 1500)
+    // Report disposition to queue engine (reps only, when called from queue)
+    if (ql?.queueId) {
+      const callbackAt = callbackTime ? new Date(callbackTime).toISOString() : undefined
+      fetch('/api/dialer/queue/disposition', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          queueId:         ql.queueId,
+          disposition:     d.label,
+          repIdentity:     identity,
+          callDuration:    duration,
+          callbackAt,
+          callbackContext: context || undefined,
+        }),
+      }).catch(console.error).finally(() => {
+        setQueueRefreshKey(k => k + 1)
+      })
+    } else {
+      setQueueRefreshKey(k => k + 1)
     }
   }
 
-  const nextLead = queueLeads[queueIndex.current] ?? queueLeads[0] ?? null
+  const leadTimezone = contactDetail?.timezone
+    ?? (currentLead?.source === 'lhp' ? 'America/Los_Angeles' : 'America/Chicago')
 
   return (
     <div className="flex h-full">
       {/* ── Left rail ── */}
       <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
-        <div className="border-b border-gray-200 p-4 space-y-3 dark:border-gray-800">
-          {campsLoading ? (
-            <div className="space-y-2">
-              <div className="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />
-              <div className="h-9 animate-pulse rounded-md bg-gray-200 dark:bg-gray-800" />
+        {isAdmin ? (
+          /* Admin: campaign picker + GHL lead list */
+          <AdminLeadPicker
+            onCall={handleAdminCall}
+            disabled={callState !== 'idle' || !deviceReady || status !== 'READY'}
+            todayDisps={todayDisps}
+          />
+        ) : (
+          /* Rep: managed queue */
+          <>
+            <div className="flex-1 min-h-0">
+              <MiniQueue
+                repIdentity={identity}
+                disabled={callState !== 'idle' || !deviceReady || status !== 'READY'}
+                onCall={handleQueueCall}
+                refreshKey={queueRefreshKey}
+                activeQueueId={currentQueueLead.current?.queueId ?? null}
+              />
             </div>
-          ) : (
-            <>
-              <div>
-                <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">Campaign</label>
-                <select value={selectedCampaign?.id ?? ''} onChange={e => setSelectedCampaign(campaigns.find(c => c.id === e.target.value) ?? null)}
-                  disabled={callState !== 'idle'}
-                  className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none disabled:opacity-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white">
-                  {campaigns.map(c => <option key={c.id} value={c.id}>{c.name}{c.leadCount > 0 ? ` (${c.leadCount})` : ''}</option>)}
-                </select>
-              </div>
-              {selectedCampaign && (
-                <div className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 space-y-1.5 dark:border-gray-800 dark:bg-gray-900">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500">Firm</span>
-                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{selectedCampaign.firm}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500">Stage</span>
-                    <span className="text-sm text-gray-700 dark:text-gray-200">{selectedCampaign.stageName}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-[11px] text-gray-500">Leads</span>
-                    <span className="text-sm font-semibold text-cyan-600 dark:text-cyan-400">{selectedCampaign.leadCount}</span>
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
 
-        {/* Lead list */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="sticky top-0 border-b border-gray-200/50 bg-gray-50 px-4 pt-3 pb-2 dark:border-gray-800/50 dark:bg-gray-950">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
-              Leads {leadsLoading ? <span className="animate-pulse text-gray-400">loading…</span> : <span className="text-gray-400">({queueLeads.length})</span>}
-            </p>
-          </div>
-          {queueLeads.map((lead, i) => (
-            <button key={lead.id} onClick={() => {
-              setPreviewLead(lead); queueIndex.current = i
-              if (callState === 'idle' && deviceReady && status === 'READY') placeCall(lead, i)
-            }}
-              className={`w-full border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-100 dark:border-gray-800/40 dark:hover:bg-gray-900 ${i === queueIndex.current ? 'border-l-2 border-l-cyan-500 bg-cyan-50/50 dark:bg-cyan-950/20' : ''}`}>
-              <div className="flex items-center justify-between gap-2">
-                <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
-                <span className="shrink-0 text-xs text-gray-400">{i + 1}</span>
+            {/* Manual dial */}
+            <div className="border-t border-gray-200 p-3 dark:border-gray-800">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">Manual dial</label>
+              <div className="flex gap-1.5">
+                <input
+                  onChange={e => {}}
+                  placeholder="+1 (555) 000-0000"
+                  onKeyDown={e => {
+                    const val = (e.target as HTMLInputElement).value
+                    if (e.key === 'Enter' && val && deviceReady && status === 'READY') {
+                      ctxPlaceCall({ id: 'manual', name: val, phone: val, email: '', company: '', source: 'manual', tags: [], lastActivity: new Date().toISOString(), contactId: '' })
+                    }
+                  }}
+                  className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                />
+                <button
+                  disabled={!deviceReady || status !== 'READY'}
+                  onClick={e => {
+                    const input = (e.currentTarget.previousElementSibling as HTMLInputElement)
+                    if (input?.value) ctxPlaceCall({ id: 'manual', name: input.value, phone: input.value, email: '', company: '', source: 'manual', tags: [], lastActivity: new Date().toISOString(), contactId: '' })
+                  }}
+                  className="rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-40">
+                  Dial
+                </button>
               </div>
-              <p className="text-xs text-gray-500 font-mono">{lead.phone}</p>
-              {lead.tags.length > 0 && (
-                <div className="mt-1 flex gap-1 flex-wrap">
-                  {lead.tags.slice(0, 2).map(t => <span key={t} className="rounded bg-gray-200 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-500">{t}</span>)}
-                </div>
-              )}
-            </button>
-          ))}
-          {!leadsLoading && queueLeads.length === 0 && <p className="px-4 py-6 text-xs text-gray-400 text-center">No leads in this stage.</p>}
-        </div>
-
-        {/* Today's calls */}
-        <div className="max-h-44 overflow-y-auto border-t border-gray-200 dark:border-gray-800">
-          <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Today ({todayDisps.length})</p>
-          {todayDisps.map((d, i) => (
-            <div key={i} className="flex items-center justify-between px-4 py-1.5">
-              <div>
-                <p className="truncate text-xs text-gray-700 max-w-[140px] dark:text-gray-300">{d.lead}</p>
-                <p className={`text-xs ${d.color}`}>{d.result}</p>
-              </div>
-              <span className="text-xs text-gray-400">{d.time}</span>
             </div>
-          ))}
-          {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-gray-400">No calls yet today.</p>}
-        </div>
+
+            {/* Today's calls */}
+            <div className="max-h-44 overflow-y-auto border-t border-gray-200 dark:border-gray-800">
+              <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Today ({todayDisps.length})</p>
+              {todayDisps.map((d, i) => (
+                <div key={i} className="flex items-center justify-between px-4 py-1.5">
+                  <div>
+                    <p className="truncate text-xs text-gray-700 max-w-[140px] dark:text-gray-300">{d.lead}</p>
+                    <p className={`text-xs ${d.color}`}>{d.result}</p>
+                  </div>
+                  <span className="text-xs text-gray-400">{d.time}</span>
+                </div>
+              ))}
+              {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-gray-400">No calls yet today.</p>}
+            </div>
+          </>
+        )}
       </div>
 
       {/* ── Center: softphone ── */}
@@ -410,28 +681,15 @@ export default function AgentPage() {
         {/* Call card */}
         <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
           {callState === 'idle' ? (
-            <div className="flex flex-col items-center gap-4 py-10 px-6">
+            <div className="flex flex-col items-center gap-3 py-10 px-6">
               <div className="flex h-16 w-16 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600">
                 <PhoneInIcon />
               </div>
-              <p className="text-sm text-gray-500">{deviceReady ? 'Ready — device registered' : 'Initialising device…'}</p>
-              {nextLead && (
-                <button onClick={() => placeCall(nextLead, queueIndex.current)} disabled={!deviceReady || status !== 'READY'}
-                  className="w-full rounded-lg bg-green-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40">
-                  {status === 'READY' ? `Call Next — ${nextLead.name}` : 'Set status to Ready first'}
-                </button>
-              )}
-              <div className="w-full">
-                <label className="mb-1 block text-xs text-gray-500">Manual dial</label>
-                <div className="flex gap-2">
-                  <input value={manualDial} onChange={e => setManualDial(e.target.value)} placeholder="+1 (555) 000-0000"
-                    onKeyDown={e => { if (e.key === 'Enter' && manualDial) placeCall({ id: 'manual', name: manualDial, phone: manualDial, email: '', company: '', source: 'manual', tags: [], lastActivity: new Date().toISOString(), contactId: '' }) }}
-                    className="flex-1 rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600" />
-                  <button onClick={() => placeCall({ id: 'manual', name: manualDial, phone: manualDial, email: '', company: '', source: 'manual', tags: [], lastActivity: new Date().toISOString(), contactId: '' })}
-                    disabled={!deviceReady || !manualDial || status !== 'READY'}
-                    className="rounded-lg bg-cyan-600 px-3 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-40">Dial</button>
-                </div>
-              </div>
+              <p className="text-sm text-gray-500">
+                {deviceReady
+                  ? isAdmin ? 'Ready — pick a lead from the left' : 'Ready — use the queue on the left'
+                  : 'Initialising device…'}
+              </p>
             </div>
           ) : (
             <>
@@ -440,7 +698,11 @@ export default function AgentPage() {
                   <div>
                     <p className="text-lg font-semibold text-gray-900 dark:text-white">{currentLead?.name}</p>
                     <p className="text-sm text-gray-600 dark:text-gray-300">{currentLead?.phone}</p>
-                    {currentLead?.company && <p className="mt-0.5 text-xs text-gray-500">{currentLead.company}</p>}
+                    {currentQueueLead.current && (
+                      <p className="mt-0.5 text-xs text-gray-500">
+                        {currentQueueLead.current.stageName} · {currentQueueLead.current.firm.toUpperCase()}
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     {callState === 'ringing'   && <span className="text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">Ringing…</span>}
@@ -448,25 +710,26 @@ export default function AgentPage() {
                     {callState === 'wrapup'    && <span className="text-xs font-medium text-violet-600 dark:text-violet-400">Wrap-up</span>}
                   </div>
                 </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {currentLead?.source && <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs text-gray-600 dark:bg-black/30 dark:text-gray-300">{currentLead.source}</span>}
-                  {selectedCampaign && <span className="rounded-full bg-black/10 px-2 py-0.5 text-xs text-gray-600 dark:bg-black/30 dark:text-gray-300">{selectedCampaign.stageName}</span>}
-                </div>
+                {currentQueueLead.current?.isCallback && (
+                  <div className="mt-2 rounded-md bg-blue-100 px-2.5 py-1.5 text-xs text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                    📅 Callback — {currentQueueLead.current.callbackContext || 'scheduled callback'}
+                  </div>
+                )}
               </div>
 
               {callState !== 'wrapup' && (
                 <div className="px-5 py-4">
                   <div className="mb-4 flex items-center justify-center gap-3">
                     <button onClick={toggleMute}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${muted ? 'border-red-300 bg-red-50 text-red-500 dark:border-red-500 dark:bg-red-900/50 dark:text-red-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}`}>
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${muted ? 'border-red-300 bg-red-50 text-red-500 dark:border-red-500 dark:bg-red-900/50 dark:text-red-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
                       {muted ? <MicOffIcon /> : <MicIcon />}
                     </button>
                     <button onClick={() => setHeld(h => !h)}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${held ? 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-500 dark:bg-amber-900/50 dark:text-amber-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}`}>
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${held ? 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-500 dark:bg-amber-900/50 dark:text-amber-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
                       <PauseIcon />
                     </button>
                     <button onClick={() => setShowDtmf(d => !d)}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${showDtmf ? 'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-500 dark:bg-cyan-900/50 dark:text-cyan-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:border-gray-600 dark:hover:text-gray-200'}`}>
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${showDtmf ? 'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-500 dark:bg-cyan-900/50 dark:text-cyan-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
                       <GridIcon />
                     </button>
                     <button onClick={hangUp}
@@ -497,7 +760,7 @@ export default function AgentPage() {
           )}
         </div>
 
-        {/* AI Case Summary — center panel */}
+        {/* AI Case Summary */}
         <div className="w-full max-w-sm rounded-xl border border-cyan-200 bg-white shadow-sm dark:border-cyan-900 dark:bg-gray-900">
           <div className="border-b border-cyan-100 px-4 py-2.5 dark:border-cyan-900/60">
             <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
@@ -518,7 +781,7 @@ export default function AgentPage() {
               </ul>
             ) : (
               <p className="text-xs italic text-gray-400 dark:text-gray-600">
-                No summary yet — will appear after the first connected call.
+                {currentLead ? 'Generating summary…' : 'Select a lead to see their case summary.'}
               </p>
             )}
           </div>
@@ -537,93 +800,74 @@ export default function AgentPage() {
         </div>
       </div>
 
-      {/* ── Right rail ── */}
-      {(() => {
-        const dl = currentLead ?? previewLead
-        return (
-          <div className="w-72 shrink-0 border-l border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950 overflow-y-auto">
-            {dl ? (
-              <div className="p-4 space-y-4">
-                {/* Header */}
-                <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Lead Detail</p>
-                  {!currentLead
-                    ? <span className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800">Preview</span>
-                    : <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">Live</span>
-                  }
-                </div>
+      {/* ── Right rail: Lead Detail ── */}
+      <div className="w-72 shrink-0 border-l border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950 overflow-y-auto">
+        {currentLead ? (
+          <div className="p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Lead Detail</p>
+              <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">Live</span>
+            </div>
 
-                {/* Core fields */}
-                <div className="space-y-2.5">
-                  {([
-                    ['Name',     dl.name],
-                    ['Phone',    dl.phone],
-                    ['Email',    dl.email],
-                    ['Company',  dl.company],
-                    ['Source',   contactDetail?.source || dl.source],
-                    ['Country',  contactDetail?.country],
-                    ['Timezone', contactDetail?.timezone],
-                    ['Added',    contactDetail?.dateAdded ? new Date(contactDetail.dateAdded).toLocaleDateString() : ''],
-                    ['Via',      contactDetail?.attributionSource],
-                  ] as [string, string | undefined][]).map(([label, value]) => value ? (
-                    <div key={label}>
-                      <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
-                      <p className="text-sm text-gray-800 dark:text-gray-200 break-words">{value}</p>
-                    </div>
-                  ) : null)}
+            <div className="space-y-2.5">
+              {([
+                ['Name',     currentLead.name],
+                ['Phone',    currentLead.phone],
+                ['Country',  contactDetail?.country],
+                ['Timezone', contactDetail?.timezone],
+                ['Added',    contactDetail?.dateAdded ? new Date(contactDetail.dateAdded).toLocaleDateString() : ''],
+                ['Via',      contactDetail?.attributionSource],
+              ] as [string, string | undefined][]).map(([label, value]) => value ? (
+                <div key={label}>
+                  <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
+                  <p className="text-sm text-gray-800 dark:text-gray-200 break-words">{value}</p>
                 </div>
+              ) : null)}
+            </div>
 
-                {/* Tag editor */}
-                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <TagEditor key={dl.id} lead={dl} onTagsChange={tags => {
-                    const update = (l: Lead) => l.id === dl.id ? { ...l, tags } : l
-                    setQueueLeads(prev => prev.map(update))
-                    if (currentLead?.id === dl.id) setCurrentLead(l => l ? { ...l, tags } : l)
-                    if (previewLead?.id  === dl.id) setPreviewLead(l => l ? { ...l, tags } : l)
-                  }} />
-                </div>
+            <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+              <TagEditor key={currentLead.id} lead={currentLead} onTagsChange={() => {}} />
+            </div>
 
-                {/* AI Case Summary */}
-                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
-                  {contactLoading ? (
-                    <div className="space-y-1.5">
-                      {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
-                    </div>
-                  ) : aiSummary ? (
-                    <ul className="space-y-1.5">
-                      {aiSummary.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean).map((line, i) => (
-                        <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700 dark:text-gray-300">
-                          <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
-                          {line}
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs italic text-gray-400 dark:text-gray-600">
-                      No summary yet — will appear after the first connected call.
-                    </p>
-                  )}
+            <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
+              {contactLoading ? (
+                <div className="space-y-1.5">
+                  {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
                 </div>
+              ) : aiSummary ? (
+                <ul className="space-y-1.5">
+                  {aiSummary.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean).map((line, i) => (
+                    <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+                      {line}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="text-xs italic text-gray-400 dark:text-gray-600">No summary yet.</p>
+              )}
+            </div>
 
-                {/* Notes */}
-                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Notes</p>
-                  <textarea placeholder="Add call notes…" rows={3}
-                    className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-800 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-600" />
-                </div>
-              </div>
-            ) : (
-              <div className="flex h-full flex-col items-center justify-center text-center p-4">
-                <p className="text-xs text-gray-400">Select a lead from<br />the queue to preview<br />their details here.</p>
-              </div>
-            )}
+            <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Notes</p>
+              <textarea placeholder="Add call notes…" rows={3}
+                className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-800 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-600" />
+            </div>
           </div>
-        )
-      })()}
+        ) : (
+          <div className="flex h-full flex-col items-center justify-center text-center p-4">
+            <p className="text-xs text-gray-400">Lead details appear here<br />while on a call.</p>
+          </div>
+        )}
+      </div>
 
       {showDisposition && currentLead && (
-        <DispositionModal lead={currentLead} onSubmit={handleDisposition} />
+        <DispositionModal
+          lead={currentLead}
+          leadTimezone={leadTimezone}
+          onSubmit={handleDisposition}
+        />
       )}
     </div>
   )
