@@ -3,6 +3,6 @@
     {
       "path": "/api/cron/shift-report",
       "schedule": "5 20 * * *"
-    },
+    }
   ]
 }
