@@ -95,17 +95,22 @@ export async function getNextLeads(repIdentity: string, count = 10): Promise<Que
   const db  = supabaseAdmin()
   const now = new Date()
 
-  // Clean stale locks (> 90s old)
+  // Clean stale locks (> 30s old)
   await db.from('dialer_queue')
     .update({ locked_by: null, locked_at: null })
-    .lt('locked_at', new Date(now.getTime() - 90 * 1000).toISOString())
+    .lt('locked_at', new Date(now.getTime() - 30 * 1000).toISOString())
     .not('locked_by', 'is', null)
 
   // Who's online (any active status) — used to detect owner presence.
-  const { data: onlineRows } = await db.from('dialer_rep_status')
-    .select('rep_identity, status')
-    .in('status', ['READY', 'ON_CALL', 'WRAPUP', 'PAUSED'])
+  const [{ data: onlineRows }, { data: activeSessions }] = await Promise.all([
+    db.from('dialer_rep_status')
+      .select('rep_identity, status')
+      .in('status', ['READY', 'ON_CALL', 'WRAPUP', 'PAUSED']),
+    db.from('dialer_active_sessions').select('rep_identity'),
+  ])
   const onlineSet = new Set((onlineRows ?? []).map((r: any) => r.rep_identity as string))
+  // Reps currently ON_CALL (active session) — never steal a lead from them
+  const onCallSet = new Set((activeSessions ?? []).map((s: any) => s.rep_identity as string))
 
   // Round-robin pool: only READY reps receive new lead assignments.
   // Sorted alphabetically so every rep calculates the same stable ordering.
@@ -190,6 +195,10 @@ export async function getNextLeads(repIdentity: string, count = 10): Promise<Que
   // D: General pool — true round-robin by global position.
   // Lead at position i (0-based) in the ordered list is assigned to rep (i % repCount).
   // e.g. 3 reps: rep0 gets positions 0,3,6,9… rep1 gets 1,4,7,10… rep2 gets 2,5,8,11…
+  //
+  // Force-steal: if a lead falls on THIS rep's slot but another rep holds the lock
+  // (because they were the sole READY rep when they fetched), we steal it — UNLESS
+  // that rep is currently ON_CALL (active session).
   let poolIdx = 0
   for (const lead of allCandidates) {
     if (result.length >= count) break
@@ -200,7 +209,17 @@ export async function getNextLeads(repIdentity: string, count = 10): Promise<Que
     if (!isWithinCallingHours(lead.timezone)) { poolIdx++; continue }
 
     if (poolIdx % repCount === repIndex) {
-      if (await tryLock(lead)) { result.push(lead); added.add(lead.id) }
+      // Our slot — take it even if locked by the wrong rep (stale single-rep assignment)
+      // but never steal from a rep currently on an active call.
+      const holder = lead.locked_by
+      if (holder && holder !== repIdentity && onCallSet.has(holder)) {
+        poolIdx++; continue // active call in progress — skip
+      }
+      // Force-lock: always succeeds for our slot (no conditional on locked_by)
+      await db.from('dialer_queue')
+        .update({ locked_by: repIdentity, locked_at: now.toISOString() })
+        .eq('id', lead.id)
+      result.push(lead); added.add(lead.id)
     }
     poolIdx++
   }
@@ -244,7 +263,7 @@ export async function applyDisposition(
     .select('*').eq('id', queueId).single()
   if (!item) return
 
-  const isRealConversation = opts.callDuration > 30 &&
+  const isRealConversation = opts.callDuration > 60 &&
     !['No Answer', 'Voicemail Left', 'Wrong Number'].includes(disposition)
 
   const todayDate = now.toISOString().split('T')[0]
