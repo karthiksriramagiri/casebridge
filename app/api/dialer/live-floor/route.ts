@@ -6,10 +6,9 @@ function supabaseAdmin() {
 }
 
 const REP_LIST = [
-  { identity: 'karthik',  name: 'Karthik',  initials: 'K' },
-  { identity: 'pablo',    name: 'Pablo',     initials: 'P' },
-  { identity: 'ziyad',    name: 'Ziyad',     initials: 'Z' },
-  { identity: 'mauricio', name: 'Mauricio',  initials: 'M' },
+  { identity: 'karthik', name: 'Karthik', initials: 'K' },
+  { identity: 'pablo',   name: 'Pablo',   initials: 'P' },
+  { identity: 'ziyad',   name: 'Ziyad',   initials: 'Z' },
 ]
 
 export async function GET() {
@@ -52,6 +51,7 @@ export async function GET() {
       repCallSid:       session?.rep_call_sid       ?? null,
       contactName:      session?.contact_name       ?? null,
       contactId:        session?.contact_id         ?? null,
+      contactPhone:     session?.customer_phone     ?? null,
       firm:             session?.firm               ?? null,
       campaign:         session?.campaign           ?? null,
       callStartedAt:    session?.started_at         ?? null,

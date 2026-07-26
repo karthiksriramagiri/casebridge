@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient as createSupabaseAdmin } from '@supabase/supabase-js'
 
 // The four dialer reps for the team center
-const DIALER_REP_NAMES = ['Karthik', 'Pablo', 'Ziyad', 'Mauricio']
+const DIALER_REP_NAMES = ['Karthik', 'Pablo', 'Ziyad']
 
 export async function GET() {
   const admin = createSupabaseAdmin(
