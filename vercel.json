@@ -4,9 +4,5 @@
       "path": "/api/cron/shift-report",
       "schedule": "5 20 * * *"
     },
-    {
-      "path": "/api/cron/ghl-sync",
-      "schedule": "*/5 * * * *"
-    }
   ]
 }
