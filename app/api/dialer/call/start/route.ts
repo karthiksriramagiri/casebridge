@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
+import { lockQueueItem } from '@/app/dialer/_lib/queue-engine'
 
 function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -14,7 +15,7 @@ function baseUrl() {
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { phone, contactId, contactName, identity, firm, campaign, campaignId } = body
+  const { phone, contactId, contactName, identity, firm, campaign, campaignId, queueId } = body
 
   if (!phone || !identity) {
     return NextResponse.json({ error: 'phone and identity required' }, { status: 400 })
@@ -47,8 +48,10 @@ export async function POST(req: NextRequest) {
     timeout: 30,
   } as any)
 
+  const db  = supabaseAdmin()
+  const now = new Date().toISOString()
+
   // Store active session
-  const db = supabaseAdmin()
   await db.from('dialer_active_sessions').upsert({
     rep_identity:       identity,
     conference_name:    confName,
@@ -58,8 +61,26 @@ export async function POST(req: NextRequest) {
     contact_name:       contactName ?? phone,
     firm:               firm ?? '',
     campaign:           campaign ?? '',
-    started_at:         new Date().toISOString(),
+    started_at:         now,
   }, { onConflict: 'rep_identity' })
+
+  // Write the call record immediately — don't rely on Twilio status callbacks
+  // which can fail to reach localhost or be delayed significantly.
+  await db.from('dialer_calls').upsert({
+    call_sid:     participant.callSid,
+    contact_id:   contactId   ?? null,
+    contact_name: contactName ?? null,
+    rep_identity: identity,
+    phone,
+    firm:         firm        ?? null,
+    campaign_id:  campaignId  ?? null,
+    direction:    'outbound-api',
+    call_status:  'initiated',
+    started_at:   now,
+  }, { onConflict: 'call_sid' })
+
+  // Lock the queue item so no other rep gets this lead
+  if (queueId) await lockQueueItem(queueId, identity).catch(console.error)
 
   return NextResponse.json({ confName, customerCallSid: participant.callSid })
 }

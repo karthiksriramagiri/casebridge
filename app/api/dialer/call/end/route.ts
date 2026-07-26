@@ -42,6 +42,17 @@ export async function POST(req: NextRequest) {
       .catch(() => {}) // ignore if already ended
   }
 
+  // Stamp duration and completion on the call record
+  if (session.customer_call_sid) {
+    const startedAt  = session.started_at ? new Date(session.started_at).getTime() : null
+    const duration   = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0
+    await db.from('dialer_calls').update({
+      call_status: 'completed',
+      duration,
+      ended_at: new Date().toISOString(),
+    }).eq('call_sid', session.customer_call_sid)
+  }
+
   // Clear the active session — conference-end webhook will also try this but that's fine
   await db.from('dialer_active_sessions')
     .delete()
