@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createAdmin } from '@supabase/supabase-js'
 
-const FB_TOKEN = process.env.FB_ACCESS_TOKEN || ''
+// Use the same token as the metrics page (META_ACCESS_TOKEN)
+const META_TOKEN = (process.env.META_ACCESS_TOKEN || process.env.FB_ACCESS_TOKEN || '').trim()
 
 const admin = createAdmin(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -34,10 +35,10 @@ export async function GET() {
   // Pull matching Meta ads first so we can also filter ghl_leads by ad_id
   let metaAds: any[] = []
   const metaAdIds = new Set<string>()
-  if (FB_TOKEN) {
+  if (META_TOKEN) {
     try {
       const accountsRes = await fetch(
-        `https://graph.facebook.com/v19.0/me/adaccounts?fields=id&access_token=${FB_TOKEN}`,
+        `https://graph.facebook.com/v19.0/me/adaccounts?fields=id&access_token=${META_TOKEN}`,
         { next: { revalidate: 300 } }
       )
       if (accountsRes.ok) {
@@ -47,7 +48,7 @@ export async function GET() {
         const adResults = await Promise.all(
           accountIds.map(async (actId) => {
             const r = await fetch(
-              `https://graph.facebook.com/v19.0/${actId}/ads?fields=id,name,creative{name,thumbnail_url},adset{name},campaign{name}&filtering=${encodeURIComponent(JSON.stringify([{ field: 'ad.name', operator: 'CONTAIN', value: slug }]))}&limit=50&access_token=${FB_TOKEN}`,
+              `https://graph.facebook.com/v19.0/${actId}/ads?fields=id,name,creative{name,thumbnail_url},adset{name},campaign{name}&filtering=${encodeURIComponent(JSON.stringify([{ field: 'ad.name', operator: 'CONTAIN', value: slug }]))}&limit=50&access_token=${META_TOKEN}`,
               { next: { revalidate: 300 } }
             )
             if (!r.ok) return []
