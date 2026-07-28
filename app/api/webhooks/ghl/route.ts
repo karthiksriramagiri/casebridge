@@ -175,6 +175,22 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(invRows) && invRows.length > 0) invoiceCode = invRows[0].code
   }
 
+  // If ad_name is missing but ad_id is present, look it up from Meta so
+  // creative attribution works (GHL only sends ad_id, not ad_name)
+  let resolvedAdName = adName
+  if (!resolvedAdName && adId && process.env.FB_ACCESS_TOKEN) {
+    try {
+      const metaRes = await fetch(
+        `https://graph.facebook.com/v19.0/${adId}?fields=name&access_token=${process.env.FB_ACCESS_TOKEN}`,
+        { cache: 'no-store' }
+      )
+      if (metaRes.ok) {
+        const metaData = await metaRes.json()
+        resolvedAdName = metaData.name || null
+      }
+    } catch {}
+  }
+
   const { error } = await supabase.from('ghl_leads').insert({
     firm_id: firmId,
     contact_id: contactId,
@@ -184,7 +200,7 @@ export async function POST(request: NextRequest) {
     fbp,
     fbc,
     session_source: sessionSource,
-    ad_name: adName,
+    ad_name: resolvedAdName,
     ad_id: adId,
     adset_id: adsetId,
     campaign_id: campaignId,
@@ -207,14 +223,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Creative commission Slack alert — fire if ad_name or adset contains a creative slug
-  if (adName) {
+  if (resolvedAdName) {
     const { data: creativeReps } = await supabase
       .from('profiles')
       .select('name, creative_slug')
       .eq('team_type', 'creative')
       .not('creative_slug', 'is', null)
 
-    const adNameUpper = adName.toUpperCase()
+    const adNameUpper = resolvedAdName.toUpperCase()
     for (const rep of creativeReps ?? []) {
       const slug = (rep.creative_slug as string).toUpperCase()
       if (adNameUpper.includes(slug)) {
@@ -224,7 +240,7 @@ export async function POST(request: NextRequest) {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              text: `🎉 *Case Signed — Creative Attribution*\n*Rep:* ${rep.name}\n*Slug:* ${slug}\n*Client:* ${contactName || 'Unknown'}\n*Ad:* ${adName}`,
+              text: `🎉 *Case Signed — Creative Attribution*\n*Rep:* ${rep.name}\n*Slug:* ${slug}\n*Client:* ${contactName || 'Unknown'}\n*Ad:* ${resolvedAdName}`,
             }),
           }).catch(() => {})
         }

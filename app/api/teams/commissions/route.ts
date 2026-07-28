@@ -31,29 +31,11 @@ export async function GET() {
     return NextResponse.json({ slug: null, cases: [], ads: [] })
   }
 
-  // Get signed cases where ad_name contains this slug
-  const { data: cases } = await admin
-    .from('ghl_leads')
-    .select('id, contact_name, ad_name, ad_id, created_at, case_status')
-    .ilike('ad_name', `%${slug}%`)
-    .order('created_at', { ascending: false })
-
-  const signedCases = (cases ?? []).filter(c => !['cancelled'].includes(c.case_status ?? ''))
-
-  // Group by ad_id for summary
-  const byAd: Record<string, { adName: string; count: number; cases: any[] }> = {}
-  for (const c of signedCases) {
-    const key = c.ad_id || c.ad_name || 'unknown'
-    if (!byAd[key]) byAd[key] = { adName: c.ad_name || 'Unknown Ad', count: 0, cases: [] }
-    byAd[key].count++
-    byAd[key].cases.push({ id: c.id, contactName: c.contact_name, createdAt: c.created_at, status: c.case_status })
-  }
-
-  // Pull matching ads from Meta if token available
+  // Pull matching Meta ads first so we can also filter ghl_leads by ad_id
   let metaAds: any[] = []
+  const metaAdIds = new Set<string>()
   if (FB_TOKEN) {
     try {
-      // Search across the ad accounts for ads matching this slug in their name
       const accountsRes = await fetch(
         `https://graph.facebook.com/v19.0/me/adaccounts?fields=id&access_token=${FB_TOKEN}`,
         { next: { revalidate: 300 } }
@@ -74,8 +56,55 @@ export async function GET() {
           })
         )
         metaAds = adResults.flat()
+        for (const ad of metaAds) {
+          if (ad.id) metaAdIds.add(String(ad.id))
+        }
       }
     } catch {}
+  }
+
+  // Build a name map from Meta ad ID → ad name for display
+  const metaAdNameById: Record<string, string> = {}
+  for (const ad of metaAds) {
+    if (ad.id) metaAdNameById[String(ad.id)] = ad.name || ad.id
+  }
+
+  // Fetch cases matching by ad_name (legacy) OR ad_id (current — GHL sends id but not name)
+  const [byNameRes, byIdRes] = await Promise.all([
+    admin
+      .from('ghl_leads')
+      .select('id, contact_name, ad_name, ad_id, created_at, case_status')
+      .ilike('ad_name', `%${slug}%`)
+      .order('created_at', { ascending: false }),
+    metaAdIds.size > 0
+      ? admin
+          .from('ghl_leads')
+          .select('id, contact_name, ad_name, ad_id, created_at, case_status')
+          .in('ad_id', [...metaAdIds])
+          .order('created_at', { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+  ])
+
+  // Merge and deduplicate by id
+  const seen = new Set<string>()
+  const allCases: any[] = []
+  for (const c of [...(byNameRes.data ?? []), ...(byIdRes.data ?? [])]) {
+    if (!seen.has(c.id)) {
+      seen.add(c.id)
+      allCases.push(c)
+    }
+  }
+
+  const signedCases = allCases.filter(c => !['cancelled'].includes(c.case_status ?? ''))
+
+  // Group by ad_id for summary, using Meta name when ad_name is null
+  const byAd: Record<string, { adName: string; count: number; cases: any[] }> = {}
+  for (const c of signedCases) {
+    const key = c.ad_id || c.ad_name || 'unknown'
+    const displayName = c.ad_name || metaAdNameById[c.ad_id] || c.ad_id || 'Unknown Ad'
+    if (!byAd[key]) byAd[key] = { adName: displayName, count: 0, cases: [] }
+    byAd[key].count++
+    byAd[key].cases.push({ id: c.id, contactName: c.contact_name, createdAt: c.created_at, status: c.case_status })
   }
 
   return NextResponse.json({
