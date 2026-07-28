@@ -129,14 +129,16 @@ function DtmfPad({ onKey }: { onKey: (k: string) => void }) {
 
 // ── Disposition Modal ──────────────────────────────────────────────────────────
 
-function DispositionModal({ lead, leadTimezone, onSubmit }: {
+function DispositionModal({ lead, leadTimezone, firm, onSubmit }: {
   lead: Lead
   leadTimezone: string
-  onSubmit: (d: Disposition, callbackAt: string, stop: boolean, context?: string) => void
+  firm: string
+  onSubmit: (d: Disposition, callbackAt: string, stop: boolean, context?: string, nqReason?: string) => void
 }) {
   const [selected,     setSelected]     = useState<Disposition | null>(null)
   const [callbackTime, setCallbackTime] = useState('')
   const [context,      setContext]      = useState('')
+  const [nqReason,     setNqReason]     = useState('')
 
   const localEquivalent = callbackTime && leadTimezone
     ? (() => {
@@ -203,15 +205,28 @@ function DispositionModal({ lead, leadTimezone, onSubmit }: {
           </div>
         )}
 
+        {selected?.requiresReason && (
+          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
+            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+              Reason for not qualifying
+            </label>
+            <input
+              value={nqReason} onChange={e => setNqReason(e.target.value)}
+              placeholder="Enter reason…"
+              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+            />
+          </div>
+        )}
+
         <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-800">
-          <button disabled={!selected} onClick={() => selected && onSubmit(selected, callbackTime, true, context)}
+          <button disabled={!selected} onClick={() => selected && onSubmit(selected, callbackTime, true, context, nqReason)}
             className="flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30">
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><rect x="4" y="4" width="12" height="12" rx="1" /></svg>
             Stop
           </button>
           <button
-            disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime)}
-            onClick={() => selected && onSubmit(selected, callbackTime, false, context)}
+            disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
+            onClick={() => selected && onSubmit(selected, callbackTime, false, context, nqReason)}
             className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
             Submit →
           </button>
@@ -434,10 +449,17 @@ export default function AgentPage() {
   const [dtmfBuffer,      setDtmfBuffer]      = useState('')
   const [showDisposition, setShowDisposition] = useState(false)
   const [todayDisps,      setTodayDisps]      = useState<Array<{ lead: string; result: string; time: string; color: string }>>([])
-  const [contactDetail,   setContactDetail]   = useState<ContactDetail | null>(null)
-  const [contactLoading,  setContactLoading]  = useState(false)
-  const [aiSummary,       setAiSummary]       = useState<string | null>(null)
+  const [contactDetail,     setContactDetail]     = useState<ContactDetail | null>(null)
+  const [contactLoading,    setContactLoading]    = useState(false)
+  const [aiSummary,         setAiSummary]         = useState<string | null>(null)
+  const [selectedQueueLead, setSelectedQueueLead] = useState<QueueLead | null>(null)
   const [queueRefreshKey, setQueueRefreshKey] = useState(0)
+  const [showDocuseal,      setShowDocuseal]      = useState(false)
+  const [docusealSending,   setDocusealSending]   = useState(false)
+  const [docusealSent,      setDocusealSent]      = useState(false)
+  const [dsAccidentDate,    setDsAccidentDate]    = useState('')
+  const [dsAccidentCity,    setDsAccidentCity]    = useState('')
+  const [dsDob,             setDsDob]             = useState('')
 
   // Track current queue item for disposition reporting (reps only)
   const currentQueueLead = useRef<QueueLead | null>(null)
@@ -457,6 +479,9 @@ export default function AgentPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ identity, status }),
     }).catch(() => {})
+    // Buffer fill is handled by fillAllReadyReps (admin page on-mount)
+    // and fillBuffer in the disposition route (per-call top-up).
+    // Do NOT call refill here — it races with disposition and causes double-assignment.
   }, [status, identity])
 
   // Detect call transitions
@@ -471,24 +496,26 @@ export default function AgentPage() {
     prevCallState.current = callState
   }, [callState])
 
-  // Load contact detail when lead changes
+  // Load contact detail when lead changes (active call or selected from queue)
+  const detailContactId = currentLead?.contactId ?? selectedQueueLead?.contactId
   useEffect(() => {
-    const cid = currentLead?.contactId
-    if (!cid) { setContactDetail(null); setAiSummary(null); return }
+    if (!detailContactId) { setContactDetail(null); setAiSummary(null); return }
     setContactLoading(true)
+    setShowDocuseal(false); setDocusealSent(false); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('')
     Promise.all([
-      fetch(`/api/dialer/contacts/${cid}`).then(r => r.json()),
-      fetch(`/api/dialer/leads-db/${cid}`).then(r => r.json()),
+      fetch(`/api/dialer/contacts/${detailContactId}`).then(r => r.json()),
+      fetch(`/api/dialer/leads-db/${detailContactId}`).then(r => r.json()),
     ]).then(([cd, ld]) => {
       setContactDetail(cd.contact ?? null)
       setAiSummary(ld.aiSummary ?? null)
     }).catch(() => { setContactDetail(null); setAiSummary(null) })
       .finally(() => setContactLoading(false))
-  }, [currentLead?.contactId]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [detailContactId]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Rep queue call handler
   async function handleQueueCall(ql: QueueLead) {
     if (!deviceReady || status !== 'READY') return
+    setSelectedQueueLead(null)
     currentQueueLead.current = ql
     const lead: Lead = {
       id:           ql.queueId,
@@ -534,7 +561,7 @@ export default function AgentPage() {
 
   function onDtmfKey(key: string) { sendDtmf(key); setDtmfBuffer(b => b + key) }
 
-  async function handleDisposition(d: Disposition, callbackTime: string, stop: boolean, context?: string) {
+  async function handleDisposition(d: Disposition, callbackTime: string, stop: boolean, context?: string, nqReason?: string) {
     const disposedLead = currentLead
     const ql           = currentQueueLead.current
     const duration     = callDuration
@@ -567,6 +594,8 @@ export default function AgentPage() {
           callDuration:    duration,
           callbackAt,
           callbackContext: context || undefined,
+          firm:            ql.firm || undefined,
+          nqReason:        nqReason?.trim() || undefined,
         }),
       }).catch(console.error).finally(() => {
         setQueueRefreshKey(k => k + 1)
@@ -598,6 +627,8 @@ export default function AgentPage() {
                 repIdentity={identity}
                 disabled={callState !== 'idle' || !deviceReady || status !== 'READY'}
                 onCall={handleQueueCall}
+                onSelect={(ql) => setSelectedQueueLead(ql)}
+                selectedId={selectedQueueLead?.queueId ?? null}
                 refreshKey={queueRefreshKey}
                 activeQueueId={currentQueueLead.current?.queueId ?? null}
               />
@@ -802,62 +833,203 @@ export default function AgentPage() {
 
       {/* ── Right rail: Lead Detail ── */}
       <div className="w-72 shrink-0 border-l border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950 overflow-y-auto">
-        {currentLead ? (
-          <div className="p-4 space-y-4">
-            <div className="flex items-center justify-between">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Lead Detail</p>
-              <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">Live</span>
-            </div>
+        {(currentLead || selectedQueueLead) ? (() => {
+          const isLive = !!currentLead
+          const displayName  = currentLead?.name  ?? selectedQueueLead?.name  ?? ''
+          const displayPhone = currentLead?.phone ?? selectedQueueLead?.phone ?? ''
+          const displayFirm  = selectedQueueLead?.firm ?? currentLead?.source ?? ''
+          const displayStage = selectedQueueLead?.stageName ?? ''
+          const displayTz    = contactDetail?.timezone ?? selectedQueueLead?.timezone ?? ''
+          return (
+            <div className="p-4 space-y-4">
+              <div className="flex items-center justify-between">
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Lead Detail</p>
+                {isLive && (
+                  <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">Live</span>
+                )}
+                {!isLive && (
+                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">Preview</span>
+                )}
+              </div>
 
-            <div className="space-y-2.5">
-              {([
-                ['Name',     currentLead.name],
-                ['Phone',    currentLead.phone],
-                ['Country',  contactDetail?.country],
-                ['Timezone', contactDetail?.timezone],
-                ['Added',    contactDetail?.dateAdded ? new Date(contactDetail.dateAdded).toLocaleDateString() : ''],
-                ['Via',      contactDetail?.attributionSource],
-              ] as [string, string | undefined][]).map(([label, value]) => value ? (
-                <div key={label}>
-                  <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
-                  <p className="text-sm text-gray-800 dark:text-gray-200 break-words">{value}</p>
+              {/* ── Send Docuseal ── */}
+              {!showDocuseal && !docusealSent && (
+                <button
+                  onClick={() => { setShowDocuseal(true); setDocusealSent(false) }}
+                  className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700">
+                  Send Docuseal
+                </button>
+              )}
+              {docusealSent && (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-center dark:border-green-900 dark:bg-green-950/30">
+                  <p className="text-xs font-medium text-green-700 dark:text-green-400">Docuseal sent &amp; tagged</p>
                 </div>
-              ) : null)}
-            </div>
-
-            <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-              <TagEditor key={currentLead.id} lead={currentLead} onTagsChange={() => {}} />
-            </div>
-
-            <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
-              {contactLoading ? (
-                <div className="space-y-1.5">
-                  {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
+              )}
+              {showDocuseal && !docusealSent && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2.5 dark:border-indigo-900 dark:bg-indigo-950/20">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Docuseal Details</p>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Accident</label>
+                    <input
+                      type="date"
+                      value={dsAccidentDate}
+                      onChange={e => setDsAccidentDate(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">City of Accident</label>
+                    <input
+                      type="text"
+                      value={dsAccidentCity}
+                      onChange={e => setDsAccidentCity(e.target.value)}
+                      placeholder="e.g. Los Angeles"
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Birth</label>
+                    <input
+                      type="date"
+                      value={dsDob}
+                      onChange={e => setDsDob(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                    />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => { setShowDocuseal(false); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('') }}
+                      className="flex-1 rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
+                      Cancel
+                    </button>
+                    <button
+                      disabled={!dsAccidentDate || !dsAccidentCity || !dsDob || docusealSending}
+                      onClick={async () => {
+                        const cId = currentLead?.contactId ?? selectedQueueLead?.contactId
+                        const firm = displayFirm.toLowerCase()
+                        if (!cId) return
+                        setDocusealSending(true)
+                        try {
+                          const tag = firm === 'fears' ? 'fl - d' : 'lhp - d'
+                          const existing = contactDetail?.tags ?? []
+                          const merged = Array.from(new Set([...existing, tag]))
+                          const res = await fetch(`/api/dialer/contacts/${cId}/tags`, {
+                            method: 'PUT',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ tags: merged }),
+                          })
+                          if (!res.ok) throw new Error(`Tag failed: ${res.status}`)
+                          // Update local contactDetail tags so UI reflects immediately
+                          if (contactDetail) setContactDetail({ ...contactDetail, tags: merged })
+                          setShowDocuseal(false)
+                          setDocusealSent(true)
+                          setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('')
+                        } catch (e) {
+                          console.error('[Docuseal] tag error', e)
+                          alert('Failed to tag contact — check console')
+                        } finally {
+                          setDocusealSending(false)
+                        }
+                      }}
+                      className="flex-1 rounded-md bg-indigo-600 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                      {docusealSending ? 'Sending…' : 'Submit'}
+                    </button>
+                  </div>
                 </div>
-              ) : aiSummary ? (
-                <ul className="space-y-1.5">
-                  {aiSummary.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean).map((line, i) => (
-                    <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700 dark:text-gray-300">
-                      <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
-                      {line}
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <p className="text-xs italic text-gray-400 dark:text-gray-600">No summary yet.</p>
+              )}
+
+              <div className="space-y-2.5">
+                {([
+                  ['Name',     displayName],
+                  ['Phone',    displayPhone],
+                  ['Firm',     displayFirm ? displayFirm.toUpperCase() : ''],
+                  ['Stage',    displayStage],
+                  ['Country',  contactDetail?.country],
+                  ['Timezone', displayTz],
+                  ['Email',    contactDetail?.email],
+                  ['Added',    contactDetail?.dateAdded ? new Date(contactDetail.dateAdded).toLocaleDateString() : ''],
+                  ['Via',      contactDetail?.attributionSource],
+                ] as [string, string | undefined][]).map(([label, value]) => value ? (
+                  <div key={label}>
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
+                    <p className="text-sm text-gray-800 dark:text-gray-200 break-words">{value}</p>
+                  </div>
+                ) : null)}
+              </div>
+
+              {/* GHL Tags */}
+              <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+                {isLive && currentLead ? (
+                  <TagEditor key={currentLead.id} lead={currentLead} onTagsChange={() => {}} />
+                ) : (
+                  <>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Tags</p>
+                    {contactLoading ? (
+                      <div className="flex flex-wrap gap-1">
+                        {[1,2,3].map(i => <div key={i} className="h-5 w-14 animate-pulse rounded-full bg-gray-200 dark:bg-gray-800" />)}
+                      </div>
+                    ) : (contactDetail?.tags ?? []).length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {contactDetail!.tags.map((tag, i) => (
+                          <span key={i} className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">{tag}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-xs italic text-gray-400">No tags</p>
+                    )}
+                  </>
+                )}
+              </div>
+
+              {/* Custom Fields */}
+              {(contactDetail?.customFields ?? []).length > 0 && (
+                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Custom Fields</p>
+                  <div className="space-y-1.5">
+                    {contactDetail!.customFields.map((cf, i) => (
+                      <div key={i}>
+                        <p className="text-[10px] font-medium text-gray-400">{cf.label}</p>
+                        <p className="text-xs text-gray-700 dark:text-gray-300 break-words">{cf.value}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Case Summary */}
+              <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
+                {contactLoading ? (
+                  <div className="space-y-1.5">
+                    {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
+                  </div>
+                ) : aiSummary ? (
+                  <ul className="space-y-1.5">
+                    {aiSummary.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean).map((line, i) => (
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+                        {line}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="text-xs italic text-gray-400 dark:text-gray-600">No summary yet.</p>
+                )}
+              </div>
+
+              {/* Notes — only during active call */}
+              {isLive && (
+                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Notes</p>
+                  <textarea placeholder="Add call notes…" rows={3}
+                    className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-800 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-600" />
+                </div>
               )}
             </div>
-
-            <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Notes</p>
-              <textarea placeholder="Add call notes…" rows={3}
-                className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-800 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-600" />
-            </div>
-          </div>
-        ) : (
+          )
+        })() : (
           <div className="flex h-full flex-col items-center justify-center text-center p-4">
-            <p className="text-xs text-gray-400">Lead details appear here<br />while on a call.</p>
+            <p className="text-xs text-gray-400">Click a lead in your queue<br />to preview their details.</p>
           </div>
         )}
       </div>
@@ -866,6 +1038,7 @@ export default function AgentPage() {
         <DispositionModal
           lead={currentLead}
           leadTimezone={leadTimezone}
+          firm={currentQueueLead.current?.firm ?? ''}
           onSubmit={handleDisposition}
         />
       )}

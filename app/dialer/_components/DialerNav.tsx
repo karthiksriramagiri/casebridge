@@ -71,6 +71,7 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/dialer/messages',         label: 'Messages',   icon: <ChatIcon /> },
   { href: '/dialer/admin',            label: 'Live Floor', icon: <GridIcon />,       adminOnly: true },
   { href: '/dialer/admin/queue',      label: 'Queue',      icon: <QueueIcon />,      adminOnly: true },
+  { href: '/dialer/admin/reps',       label: 'Users',      icon: <UsersIcon />,      adminOnly: true },
   { href: '/dialer/admin/campaigns',  label: 'Campaigns',  icon: <BullhornIcon />,   adminOnly: true },
   { href: '/dialer/admin/caller-ids', label: 'Caller IDs', icon: <PhoneSlashIcon />, adminOnly: true },
   { href: '/dialer/admin/dnc',        label: 'DNC List',   icon: <PhoneSlashIcon />, adminOnly: true },
@@ -113,7 +114,7 @@ export function DialerNav({ role = 'ADMIN' }: Props) {
 
       <nav className="flex w-full flex-col gap-0.5">
         {NAV_ITEMS.filter(item => (!item.adminOnly || isAdmin) && (!item.repOnly || !isAdmin)).map(item => {
-          const active = pathname === item.href || (item.href !== '/dialer/agent' && pathname.startsWith(item.href))
+          const active = pathname === item.href || (item.href !== '/dialer/agent' && item.href !== '/dialer/admin' && pathname.startsWith(item.href))
           return (
             <Link
               key={item.href}

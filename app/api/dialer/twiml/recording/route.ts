@@ -74,24 +74,33 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 204 })
   }
 
-  // Build authenticated URL so Deepgram can fetch the audio from Twilio
-  const accountSid = process.env.TWILIO_ACCOUNT_SID!.trim()
-  const authToken  = process.env.TWILIO_AUTH_TOKEN!.trim()
-  const audioUrl   = `https://${accountSid}:${authToken}@${recordingUrl.replace('https://', '')}.mp3`
+  // Download audio from Twilio and send as binary to Deepgram.
+  // Passing the Twilio URL directly fails because Twilio doesn't return
+  // a Content-Length header, which Deepgram requires.
+  const accountSid  = process.env.TWILIO_ACCOUNT_SID!.trim()
+  const authToken   = process.env.TWILIO_AUTH_TOKEN!.trim()
+  const twilioAuth  = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
+  const audioFetch  = await fetch(`${recordingUrl}.mp3`, {
+    headers: { Authorization: `Basic ${twilioAuth}` },
+  })
+  if (!audioFetch.ok) {
+    console.error('[dialer:recording] failed to download audio', audioFetch.status)
+    await db.from('dialer_transcripts').update({ status: 'failed' }).eq('id', transcriptRow?.id)
+    return new NextResponse(null, { status: 204 })
+  }
+  const audioBuffer = await audioFetch.arrayBuffer()
 
-  const baseUrl = process.env.NEXT_PUBLIC_BASE_URL
-    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'https://acutely-pronto-unloved.ngrok-free.dev')
+  const baseUrl = (process.env.NEXT_PUBLIC_BASE_URL?.trim())
+    ?? (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL.trim()}` : 'https://acutely-pronto-unloved.ngrok-free.dev')
 
   const callbackUrl = `${baseUrl}/api/dialer/twiml/transcript-callback?transcriptId=${transcriptRow?.id ?? ''}&callSid=${callSid}`
 
-  // Use multichannel when we have a dual-channel recording (rep vs customer separated)
   const dgParams = new URLSearchParams({
     model:        'nova-2',
     smart_format: 'true',
-    multichannel: recordingChannels >= 2 ? 'true' : 'false',
     utterances:   'true',
     punctuate:    'true',
-    summarize:    'v2',    // free built-in summary
+    summarize:    'v2',
     language:     'en-US',
     callback:     callbackUrl,
   })
@@ -100,9 +109,9 @@ export async function POST(req: NextRequest) {
     method: 'POST',
     headers: {
       Authorization:  `Token ${deepgramKey}`,
-      'Content-Type': 'application/json',
+      'Content-Type': 'audio/mpeg',
     },
-    body: JSON.stringify({ url: audioUrl }),
+    body: audioBuffer,
   })
 
   if (!dgRes.ok) {

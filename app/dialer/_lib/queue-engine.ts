@@ -1,61 +1,21 @@
-import { createClient } from '@supabase/supabase-js'
+// CaseBridge Dialer — Attempt-Based Queue Engine
+// Replaces the old dialer_queue approach with dialer_attempts (one row per
+// planned call attempt, N per lead per day based on cadence rules).
 
-export interface QueueItem {
-  id:                string
-  contact_id:        string
-  contact_name:      string
-  phone:             string
-  firm:              string
-  pipeline_id:       string
-  stage_id:          string
-  stage_name:        string
-  timezone:          string
-  ghl_opportunity_id: string | null
-  owner_rep_identity: string | null
-  priority:          number
-  next_attempt_at:   string
-  attempt_count:      number
-  calls_today:       number
-  calls_today_date:  string | null
-  callback_at:       string | null
-  callback_for_rep:  string | null
-  callback_context:  string | null
-  locked_by:         string | null
-  exhausted:         boolean
-  last_disposition:  string | null
-  added_at:          string
-}
+import { createClient }                               from '@supabase/supabase-js'
+import { resolveTimezone }                            from './area-codes'
+import { BLOCKS_BY_COUNT, blockWindows, stagePriority } from './blocks'
+import type { BlockName } from './blocks'
 
-// How many times per day each stage should be called
-const DAILY_LIMIT: Record<string, number> = {
-  'contract sent':         4,
-  'chase':                 4,
-  'follow up required':    4,
-  'no response':           4,
-  'appointment scheduled': 1, // only surfaces at exact callback_at time
-}
-
-export function getDailyLimit(stageName: string): number {
-  return DAILY_LIMIT[stageName.toLowerCase()] ?? 3
-}
-
-
-const FIRM_TIMEZONE: Record<string, string> = {
-  lhp:   'America/Los_Angeles',
-  fears: 'America/Chicago',
-}
-
-// Only these stages are synced into the queue. Everything else (Qualified, NQ, DNC, etc.) is ignored.
-// Priority order for the daily master list.
-// Lower number = worked first. Appointment Scheduled is excluded from
-// the general list — it only surfaces when a specific callback_at is due.
-const INCLUDED_STAGES: Record<string, { priority: number }> = {
-  'contract sent':        { priority: 1 },
-  'chase':                { priority: 2 },
-  'follow up required':   { priority: 3 },
-  'no response':          { priority: 4 },
-  'appointment scheduled':{ priority: 5 }, // parked — only surfaces at callback_at
-}
+const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
+const PIPELINES = [
+  { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp',   defaultTz: 'America/Los_Angeles' },
+  { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears', defaultTz: 'America/Chicago'     },
+]
+// Stages synced into the queue (lower-cased for lookup)
+const INCLUDED_STAGES = new Set([
+  'contract sent', 'chase', 'follow up required', 'no response',
+])
 
 function supabaseAdmin() {
   return createClient(
@@ -64,482 +24,888 @@ function supabaseAdmin() {
   )
 }
 
-export function isWithinCallingHours(timezone: string): boolean {
-  try {
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: timezone,
-      hour: 'numeric',
-      minute: 'numeric',
-      hour12: false,
-    })
-    const parts = formatter.formatToParts(new Date())
-    const hour   = parseInt(parts.find(p => p.type === 'hour')?.value   ?? '0')
-    const minute = parseInt(parts.find(p => p.type === 'minute')?.value ?? '0')
-    const t = hour * 60 + minute
-    return t >= 8 * 60 + 30 && t <= 20 * 60 + 30
-  } catch {
-    return true
-  }
-}
-
-
-// Returns next N leads for a rep, prioritised:
-// 1. Callbacks due for this rep
-// 2. Callbacks with expired grace window (3 min), any rep
-// 3. Owned leads for this rep
-// 4. General pool (no owner, or owner offline)
-//
-// Leads are locked atomically at FETCH TIME — a lead shown in one rep's queue
-// will not appear in any other rep's queue until the lock expires (90s).
-export async function getNextLeads(repIdentity: string, count = 10): Promise<QueueItem[]> {
-  const db  = supabaseAdmin()
-  const now = new Date()
-
-  // Clean stale locks (> 30s old)
-  await db.from('dialer_queue')
-    .update({ locked_by: null, locked_at: null })
-    .lt('locked_at', new Date(now.getTime() - 30 * 1000).toISOString())
-    .not('locked_by', 'is', null)
-
-  // Who's online (any active status) — used to detect owner presence.
-  const [{ data: onlineRows }, { data: activeSessions }] = await Promise.all([
-    db.from('dialer_rep_status')
-      .select('rep_identity, status')
-      .in('status', ['READY', 'ON_CALL', 'WRAPUP', 'PAUSED']),
-    db.from('dialer_active_sessions').select('rep_identity'),
-  ])
-  const onlineSet = new Set((onlineRows ?? []).map((r: any) => r.rep_identity as string))
-  // Reps currently ON_CALL (active session) — never steal a lead from them
-  const onCallSet = new Set((activeSessions ?? []).map((s: any) => s.rep_identity as string))
-
-  // Round-robin pool: only READY reps receive new lead assignments.
-  // Sorted alphabetically so every rep calculates the same stable ordering.
-  let readyReps = (onlineRows ?? [])
-    .filter((r: any) => r.status === 'READY')
-    .map((r: any) => r.rep_identity as string)
-    .sort()
-  if (!readyReps.includes(repIdentity)) readyReps = [...readyReps, repIdentity].sort()
-  const repCount = readyReps.length
-  const repIndex = readyReps.indexOf(repIdentity)
-
-  const todayDate = now.toISOString().split('T')[0]
-
-  // Fetch ALL active candidates in priority order without lock filter —
-  // we need the global ordering to assign leads by position.
-  const { data: rows } = await db.from('dialer_queue')
-    .select('*')
-    .eq('exhausted', false)
-    .lte('next_attempt_at', now.toISOString())
-    .order('priority',       { ascending: true })
-    .order('last_called_at', { ascending: true, nullsFirst: true })
-    .limit(2000)
-
-  const allCandidates = (rows ?? [] as QueueItem[]).filter((lead: QueueItem) => {
-    const limit = getDailyLimit(lead.stage_name)
-    const callsToday = lead.calls_today_date === todayDate ? lead.calls_today : 0
-    return callsToday < limit
-  }) as QueueItem[]
-
-  const result: QueueItem[] = []
-  const added  = new Set<string>()
-  const graceExpiry = new Date(now.getTime() - 3 * 60 * 1000)
-
-  // Atomically acquire lock. Returns true only if this rep now holds it.
-  async function tryLock(lead: QueueItem): Promise<boolean> {
-    const { count: affected } = await db.from('dialer_queue')
-      .update({ locked_by: repIdentity, locked_at: now.toISOString() }, { count: 'exact' })
-      .eq('id', lead.id)
-      .or(`locked_by.is.null,locked_by.eq.${repIdentity}`)
-    return (affected ?? 0) > 0
-  }
-
-  // A: Callbacks specifically for this rep (always direct — skip round-robin)
-  for (const lead of allCandidates) {
-    if (result.length >= count) break
-    if (added.has(lead.id)) continue
-    if (
-      lead.callback_for_rep === repIdentity &&
-      lead.callback_at && new Date(lead.callback_at) <= now &&
-      isWithinCallingHours(lead.timezone)
-    ) {
-      if (await tryLock(lead)) { result.push(lead); added.add(lead.id) }
-    }
-  }
-
-  // B: Overdue callbacks (grace window expired), any rep
-  for (const lead of allCandidates) {
-    if (result.length >= count) break
-    if (added.has(lead.id)) continue
-    if (
-      lead.callback_at && new Date(lead.callback_at) <= graceExpiry &&
-      lead.callback_for_rep && lead.callback_for_rep !== repIdentity &&
-      isWithinCallingHours(lead.timezone)
-    ) {
-      if (await tryLock(lead)) { result.push(lead); added.add(lead.id) }
-    }
-  }
-
-  // C: Owned leads for this rep
-  for (const lead of allCandidates) {
-    if (result.length >= count) break
-    if (added.has(lead.id)) continue
-    if (
-      lead.owner_rep_identity === repIdentity &&
-      !lead.callback_for_rep &&
-      isWithinCallingHours(lead.timezone)
-    ) {
-      if (await tryLock(lead)) { result.push(lead); added.add(lead.id) }
-    }
-  }
-
-  // D: General pool — true round-robin by global position.
-  // Lead at position i (0-based) in the ordered list is assigned to rep (i % repCount).
-  // e.g. 3 reps: rep0 gets positions 0,3,6,9… rep1 gets 1,4,7,10… rep2 gets 2,5,8,11…
-  //
-  // Force-steal: if a lead falls on THIS rep's slot but another rep holds the lock
-  // (because they were the sole READY rep when they fetched), we steal it — UNLESS
-  // that rep is currently ON_CALL (active session).
-  let poolIdx = 0
-  for (const lead of allCandidates) {
-    if (result.length >= count) break
-    if (added.has(lead.id)) continue
-    if (lead.callback_for_rep) { poolIdx++; continue }
-    const ownerOnline = lead.owner_rep_identity && onlineSet.has(lead.owner_rep_identity)
-    if (ownerOnline) { poolIdx++; continue }
-    if (!isWithinCallingHours(lead.timezone)) { poolIdx++; continue }
-
-    if (poolIdx % repCount === repIndex) {
-      // Our slot — take it even if locked by the wrong rep (stale single-rep assignment)
-      // but never steal from a rep currently on an active call.
-      const holder = lead.locked_by
-      if (holder && holder !== repIdentity && onCallSet.has(holder)) {
-        poolIdx++; continue // active call in progress — skip
-      }
-      // Force-lock: always succeeds for our slot (no conditional on locked_by)
-      await db.from('dialer_queue')
-        .update({ locked_by: repIdentity, locked_at: now.toISOString() })
-        .eq('id', lead.id)
-      result.push(lead); added.add(lead.id)
-    }
-    poolIdx++
-  }
-
-  return result
-}
-
-export async function lockQueueItem(queueId: string, repIdentity: string) {
-  const db = supabaseAdmin()
-  // Allow refresh if already locked by this rep (preview lock → call lock)
-  await db.from('dialer_queue')
-    .update({ locked_by: repIdentity, locked_at: new Date().toISOString() })
-    .eq('id', queueId)
-    .or(`locked_by.is.null,locked_by.eq.${repIdentity}`)
-}
-
-export async function unlockQueueItem(queueId: string) {
-  const db = supabaseAdmin()
-  await db.from('dialer_queue')
-    .update({ locked_by: null, locked_at: null })
-    .eq('id', queueId)
-}
-
-export interface DispositionOptions {
-  repIdentity:     string
-  callDuration:    number
-  callbackAt?:     string
-  callbackContext?: string
-  nqReason?:       string
-}
-
-export async function applyDisposition(
-  queueId:     string,
-  disposition: string,
-  opts:        DispositionOptions,
-) {
-  const db  = supabaseAdmin()
-  const now = new Date()
-
-  const { data: item } = await db.from('dialer_queue')
-    .select('*').eq('id', queueId).single()
-  if (!item) return
-
-  const isRealConversation = opts.callDuration > 60 &&
-    !['No Answer', 'Voicemail Left', 'Wrong Number'].includes(disposition)
-
-  const todayDate = now.toISOString().split('T')[0]
-  const callsToday = item.calls_today_date === todayDate ? (item.calls_today ?? 0) : 0
-
-  const updates: Record<string, any> = {
-    locked_by:        null,
-    locked_at:        null,
-    last_called_at:   now.toISOString(),
-    last_disposition: disposition,
-    updated_at:       now.toISOString(),
-    attempt_count:    (item.attempt_count ?? 0) + 1,
-    calls_today:      callsToday + 1,
-    calls_today_date: todayDate,
-  }
-
-  // Assign ownership on first real conversation
-  if (isRealConversation && !item.owner_rep_identity) {
-    updates.owner_rep_identity = opts.repIdentity
-  }
-
-  switch (disposition) {
-    case 'No Answer':
-    case 'Voicemail Left': {
-      // Re-queue immediately — lead goes to back of its priority bucket
-      // (ordering by last_called_at means freshly-called leads surface last).
-      // Daily limit (calls_today) caps how many times per day the lead is called.
-      updates.callback_at      = null
-      updates.callback_for_rep = null
-      updates.next_attempt_at  = now.toISOString()
-      break
-    }
-
-    case 'Callback': {
-      const cbAt = opts.callbackAt ? new Date(opts.callbackAt) : new Date(now.getTime() + 24 * 60 * 60 * 1000)
-      updates.callback_at      = cbAt.toISOString()
-      updates.callback_for_rep = item.owner_rep_identity ?? opts.repIdentity
-      updates.callback_context = opts.callbackContext ?? null
-      updates.next_attempt_at  = cbAt.toISOString()
-      updates.priority         = 1
-      if (!item.owner_rep_identity) updates.owner_rep_identity = opts.repIdentity
-      break
-    }
-
-    case 'Appointment Set': {
-      // Move to Appointment Scheduled in GHL. Keep in queue but only surface at callback time.
-      if (opts.callbackAt) {
-        const cbAt = new Date(opts.callbackAt)
-        updates.callback_at      = cbAt.toISOString()
-        updates.callback_for_rep = item.owner_rep_identity ?? opts.repIdentity
-        updates.callback_context = 'Appointment'
-        updates.next_attempt_at  = cbAt.toISOString()
-        updates.priority         = 1
-        if (!item.owner_rep_identity) updates.owner_rep_identity = opts.repIdentity
-      } else {
-        // No time provided — park it far in the future
-        updates.next_attempt_at = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000).toISOString()
-      }
-      break
-    }
-
-    // Terminal — remove from queue
-    case 'Wrong Number':
-    case 'Do Not Call':
-    case 'Not Qualified':
-    case 'Not Interested':
-    case 'Qualified':
-    case 'Attorney Review': {
-      updates.exhausted    = true
-      updates.exhausted_at = now.toISOString()
-      break
-    }
-
-    default: {
-      updates.next_attempt_at = now.toISOString()
-    }
-  }
-
-  await db.from('dialer_queue').update(updates).eq('id', queueId)
-
-  // GHL stage move
-  const GHL_STAGE_MAP: Record<string, string> = {
-    'Qualified':       'Qualified',
-    'Not Qualified':   'Not Qualified',
-    'Not Interested':  'Not Interested',
-    'Appointment Set': 'Appointment Scheduled',
-    'Attorney Review': 'Contract Sent',
-  }
-  const targetStageName = GHL_STAGE_MAP[disposition]
-  if (targetStageName && item.ghl_opportunity_id) {
-    await moveGHLStage(item.ghl_opportunity_id, item.pipeline_id, targetStageName).catch(console.error)
-  }
-
-  if (disposition === 'Do Not Call' && item.contact_id) {
-    await tagGHLContact(item.contact_id, ['do-not-call']).catch(console.error)
-  }
-}
-
-async function moveGHLStage(opportunityId: string, pipelineId: string, targetStageName: string) {
-  const headers = {
+function ghlHeaders() {
+  return {
     Authorization: `Bearer ${(process.env.GHL_API_KEY ?? '').trim()}`,
     Version: '2021-07-28',
     'Content-Type': 'application/json',
   }
-  const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
+}
 
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export interface Attempt {
+  id:                 string
+  contact_id:         string
+  contact_name:       string
+  phone:              string
+  firm:               string
+  pipeline_id:        string
+  stage_id:           string
+  stage_name:         string
+  ghl_opportunity_id: string | null
+  plan_date:          string
+  attempt_number:     number
+  attempts_total:     number
+  block:              string
+  lead_timezone:      string
+  due_from:           string
+  due_until:          string
+  day_ends_at:        string
+  priority:           number
+  is_carryover:       boolean
+  status:             string
+  buffered_for:       string | null
+  buffered_at:        string | null
+  leased_by:          string | null
+  leased_at:          string | null
+  lease_expires_at:   string | null
+  completed_by:       string | null
+  completed_at:       string | null
+  disposition:        string | null
+  call_sid:           string | null
+  is_callback:        boolean
+  callback_at:        string | null
+  owner_rep:          string | null
+  created_at:         string
+  updated_at:         string
+}
+
+// ─── Date helper — always use Eastern midnight as the day boundary ────────────
+// The reset cron runs at 5 AM UTC (= midnight EST), so plan_date must always
+// reflect the current Eastern date, not UTC.
+export function todayEastern(): string {
+  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+}
+
+// ─── Sync: GHL → dialer_attempts ─────────────────────────────────────────────
+
+export async function syncGHLToQueue(): Promise<{
+  created: number; updated: number; cancelled: number; skipped: number
+}> {
+  const db      = supabaseAdmin()
+  const headers = ghlHeaders()
+  const today   = todayEastern()  // YYYY-MM-DD
+
+  // ── Batch-load reference data upfront (no per-lead queries) ──────────────
+  const [rulesRes, stateRes, existingAttemptsRes] = await Promise.all([
+    db.from('dialer_cadence_rules').select('stage_name, calls_per_day, enabled'),
+    db.from('dialer_lead_state').select('contact_id, suppressed, exhausted, owner_rep'),
+    db.from('dialer_attempts')
+      .select('id, contact_id, attempt_number, status, stage_name, priority, is_callback')
+      .eq('plan_date', today)
+      .eq('is_callback', false),
+  ])
+
+  const cadence: Record<string, number> = {}
+  for (const r of rulesRes.data ?? []) {
+    if (r.enabled) cadence[r.stage_name.toLowerCase()] = r.calls_per_day
+  }
+
+  const skip      = new Set<string>()
+  const ownerMap  = new Map<string, string | null>()
+  for (const row of stateRes.data ?? []) {
+    if (row.suppressed || row.exhausted) skip.add(row.contact_id)
+    ownerMap.set(row.contact_id, row.owner_rep ?? null)
+  }
+
+  // Map: `${contactId}:${attemptNumber}` → existing row
+  type ExistingAttempt = { id: string; status: string; stage_name: string; priority: number }
+  const existingMap = new Map<string, ExistingAttempt>()
+  for (const a of existingAttemptsRes.data ?? []) {
+    existingMap.set(`${a.contact_id}:${a.attempt_number}`, a)
+  }
+
+  let created = 0, updated = 0, cancelled = 0, skipped = 0
+  const seenContactIds = new Set<string>()
+
+  // Batch accumulators — flushed at the end
+  const toInsert:     Record<string, any>[] = []
+  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number }[] = []
+  const toReactivate: { id: string; fields: Record<string, any> }[] = []
+
+  // Fetch both pipeline schemas in parallel
+  const pipelineSchemas = await Promise.all(
+    PIPELINES.map(async pipeline => {
+      const pRes = await fetch(
+        `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${LOCATION_ID}`,
+        { headers }
+      )
+      if (!pRes.ok) return null
+      const pData = await pRes.json()
+      const pl    = (pData.pipelines ?? []).find((p: any) => p.id === pipeline.id)
+      return pl ? { pipeline, stages: pl.stages ?? [] } : null
+    })
+  )
+
+  // Collect all (pipeline, stage) combos with included stages
+  type StageJob = {
+    pipeline: typeof PIPELINES[0]
+    stage: { id: string; name: string }
+    callsPerDay: number
+    blocks: BlockName[]
+    priority: number
+  }
+  const stageJobs: StageJob[] = []
+  for (const schema of pipelineSchemas) {
+    if (!schema) continue
+    for (const stage of schema.stages) {
+      const stageKey = stage.name.toLowerCase()
+      if (!INCLUDED_STAGES.has(stageKey)) continue
+      const callsPerDay = cadence[stageKey] ?? 2
+      stageJobs.push({
+        pipeline:   schema.pipeline,
+        stage,
+        callsPerDay,
+        blocks:     (BLOCKS_BY_COUNT[callsPerDay] ?? BLOCKS_BY_COUNT[2]) as BlockName[],
+        priority:   stagePriority(stageKey),
+      })
+    }
+  }
+
+  // Fetch all stages in parallel — pagination within each stage stays sequential
+  await Promise.all(stageJobs.map(async ({ pipeline, stage, blocks, priority }) => {
+    let cursor: string | null   = null
+    let cursorId: string | null = null
+
+    while (true) {
+      const url = new URL('https://services.leadconnectorhq.com/opportunities/search')
+      url.searchParams.set('location_id', LOCATION_ID)
+      url.searchParams.set('pipeline_id',  pipeline.id)
+      url.searchParams.set('pipeline_stage_id', stage.id)
+      url.searchParams.set('limit', '100')
+      if (cursor)   url.searchParams.set('startAfter',   cursor)
+      if (cursorId) url.searchParams.set('startAfterId', cursorId)
+
+      const res  = await fetch(url.toString(), { headers })
+      if (!res.ok) break
+      const data = await res.json()
+      const opps = data.opportunities ?? []
+      if (opps.length === 0) break
+
+      for (const opp of opps) {
+        const contact = opp.contact ?? {}
+        const phone   =
+          contact.phone ??
+          (contact.phones?.find((p: any) => p.type === 'mobile') ?? contact.phones?.[0])?.number ??
+          ''
+        if (!phone || !opp.contactId) { skipped++; continue }
+        if (skip.has(opp.contactId))  { skipped++; continue }
+
+        seenContactIds.add(opp.contactId)
+
+        const timezone = resolveTimezone(
+          contact.timezone ?? opp.timezone,
+          phone,
+          pipeline.defaultTz
+        )
+        const ownerRep = ownerMap.get(opp.contactId) ?? null
+        const windows  = blockWindows(today, blocks, timezone)
+
+        for (let i = 0; i < windows.length; i++) {
+          const win           = windows[i]
+          const attemptNumber = i + 1
+          const key           = `${opp.contactId}:${attemptNumber}`
+          const existing      = existingMap.get(key)
+
+          if (existing) {
+            if (existing.status === 'cancelled') {
+              // Re-activate with ALL correct fields (timezone, windows, stage, priority)
+              toReactivate.push({ id: existing.id, fields: {
+                status:        'pending',
+                stage_name:    stage.name,
+                stage_id:      stage.id,
+                priority,
+                lead_timezone: timezone,
+                due_from:      win.dueFrom.toISOString(),
+                due_until:     win.dueUntil.toISOString(),
+                day_ends_at:   win.dayEndsAt.toISOString(),
+                attempts_total: windows.length,
+                owner_rep:     ownerRep,
+                buffered_for:  null, buffered_at: null,
+                leased_by:     null, leased_at: null, lease_expires_at: null,
+                completed_by:  null, completed_at: null, disposition: null,
+              }})
+              updated++
+            } else if (existing.status === 'pending' &&
+                (existing.stage_name !== stage.name || existing.priority !== priority)) {
+              toUpdate.push({ id: existing.id, stage_name: stage.name, stage_id: stage.id, priority })
+              updated++
+            }
+            continue
+          }
+
+          toInsert.push({
+            contact_id:         opp.contactId,
+            contact_name:       opp.name ?? contact.name ?? 'Unknown',
+            phone,
+            firm:               pipeline.firm,
+            pipeline_id:        pipeline.id,
+            stage_id:           stage.id,
+            stage_name:         stage.name,
+            ghl_opportunity_id: opp.id ?? null,
+            plan_date:          today,
+            attempt_number:     attemptNumber,
+            attempts_total:     windows.length,
+            block:              win.block,
+            lead_timezone:      timezone,
+            due_from:           win.dueFrom.toISOString(),
+            due_until:          win.dueUntil.toISOString(),
+            day_ends_at:        win.dayEndsAt.toISOString(),
+            priority,
+            owner_rep:          ownerRep,
+          })
+          created++
+        }
+      }
+
+      cursor   = data.meta?.startAfter   ?? null
+      cursorId = data.meta?.startAfterId ?? null
+      if (!cursor && !cursorId) break
+    }
+  }))
+
+  // ── Flush batches ─────────────────────────────────────────────────────────
+  const now = new Date().toISOString()
+
+  // Batch insert in chunks of 500
+  for (let i = 0; i < toInsert.length; i += 500) {
+    await db.from('dialer_attempts').insert(toInsert.slice(i, i + 500))
+  }
+
+  // Batch stage/priority updates for pending rows
+  type UpdateGroup = { stage_name: string; stage_id: string; priority: number; ids: string[] }
+  const updateGroups = new Map<string, UpdateGroup>()
+  for (const u of toUpdate) {
+    const k = `${u.stage_name}:${u.stage_id}:${u.priority}`
+    if (!updateGroups.has(k)) updateGroups.set(k, { stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority, ids: [] })
+    updateGroups.get(k)!.ids.push(u.id)
+  }
+  for (const g of updateGroups.values()) {
+    await db.from('dialer_attempts')
+      .update({ stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now })
+      .in('id', g.ids)
+  }
+
+  // Reactivate cancelled attempts with fully corrected fields (timezone, windows, stage)
+  // Process in chunks of 50 to avoid hitting query limits
+  for (let i = 0; i < toReactivate.length; i += 50) {
+    await Promise.all(
+      toReactivate.slice(i, i + 50).map(r =>
+        db.from('dialer_attempts').update({ ...r.fields, updated_at: now }).eq('id', r.id)
+      )
+    )
+  }
+
+  // Cancel pending attempts for leads no longer in any included stage
+  const { data: pendingAttempts } = await db.from('dialer_attempts')
+    .select('id, contact_id')
+    .eq('plan_date', today)
+    .eq('status', 'pending')
+    .eq('is_callback', false)
+  const toCancel = (pendingAttempts ?? []).filter(a => !seenContactIds.has(a.contact_id))
+  if (toCancel.length > 0) {
+    await db.from('dialer_attempts')
+      .update({ status: 'cancelled', updated_at: now })
+      .in('id', toCancel.map(a => a.id))
+    cancelled += toCancel.length
+  }
+
+  // Re-fill all READY reps so new leads are assigned contiguously
+  await fillAllReadyReps(5).catch(console.error)
+
+  return { created, updated, cancelled, skipped }
+}
+
+// ─── Buffer management ────────────────────────────────────────────────────────
+
+// Fill rep's buffer to `count`.
+// Replaces the Postgres RPC — does selection in TS so we can call it
+// at any time (the RPC had a due_from <= now() gate that blocked pre-loading).
+// Concurrency guard: UPDATE ... WHERE status='pending' ensures only one rep
+// wins if two requests race for the same lead.
+export async function fillBuffer(repIdentity: string, count = 5): Promise<Attempt[]> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+  const now   = new Date()
+
+  // Whitelist: only active REP users can receive leads
+  const { data: user } = await db.from('dialer_users')
+    .select('role, active')
+    .eq('twilio_identity', repIdentity)
+    .maybeSingle()
+  if (!user || user.role !== 'REP' || !user.active) return []
+
+  // How many already buffered/leased for this rep?
+  // Must check BOTH buffered_for and leased_by — leased leads have buffered_for=null
+  const { data: existing } = await db.from('dialer_attempts')
+    .select('id')
+    .eq('plan_date', today)
+    .in('status', ['buffered', 'leased'])
+    .or(`buffered_for.eq.${repIdentity},leased_by.eq.${repIdentity}`)
+  const current = existing?.length ?? 0
+  const needed  = count - current
+  if (needed <= 0) return []
+
+  // Only filter: contacts already in buffer/on call (can't assign same lead to two reps)
+  const { data: activeRes } = await db.from('dialer_attempts')
+    .select('contact_id')
+    .eq('plan_date', today)
+    .in('status', ['buffered', 'leased'])
+  const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
+
+  // Query with DB-side ORDER BY — matches admin queue display exactly
+  // due_from <= now: keeps leads paused until their block opens (e.g. LHP at 8:30 AM PST)
+  // No due_from in sort: once both blocks are active, firms interleave by priority
+  const { data: pending } = await db.from('dialer_attempts')
+    .select('*')
+    .eq('status', 'pending')
+    .eq('plan_date', today)
+    .lte('due_from', now.toISOString())
+    .gt('day_ends_at', now.toISOString())
+    .order('is_callback',    { ascending: false })
+    .order('is_carryover',   { ascending: false })
+    .order('priority',       { ascending: false })
+    .order('attempt_number', { ascending: true })
+    .order('created_at',     { ascending: true })
+    .order('id',             { ascending: true })
+
+  if (!pending?.length) return []
+
+  // Sequential constraint: only serve attempt N if all earlier attempts are done
+  const pendingByContact = new Map<string, number[]>()
+  for (const a of pending as Attempt[]) {
+    if (!a.is_callback) {
+      const arr = pendingByContact.get(a.contact_id) ?? []
+      arr.push(a.attempt_number)
+      pendingByContact.set(a.contact_id, arr)
+    }
+  }
+
+  // Filter: active contacts + sequential constraint only (preserving DB order)
+  const eligible = (pending as Attempt[]).filter(a => {
+    if (activeConts.has(a.contact_id)) return false
+    if (!a.is_callback) {
+      const nums = pendingByContact.get(a.contact_id) ?? []
+      if (a.attempt_number !== Math.min(...nums)) return false
+    }
+    return true
+  })
+
+  const toBuffer = eligible.slice(0, needed)
+  if (!toBuffer.length) return []
+
+  const nowIso = now.toISOString()
+  const { data: buffered, error } = await db.from('dialer_attempts')
+    .update({ status: 'buffered', buffered_for: repIdentity, buffered_at: nowIso, updated_at: nowIso })
+    .in('id', toBuffer.map(a => a.id))
+    .eq('status', 'pending')   // concurrency guard: only wins if still pending
+    .select()
+
+  if (error) {
+    console.error('[fillBuffer] update error', error)
+    return []
+  }
+  return (buffered ?? []) as Attempt[]
+}
+
+// Fill buffer for ALL READY reps in one pass — contiguous blocks, no gaps.
+// Releases existing buffers first, then reassigns from scratch to guarantee
+// contiguity even after new leads are added by sync.
+export async function fillAllReadyReps(count = 5): Promise<Record<string, number>> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+  const now   = new Date()
+
+  // Get READY reps — whitelist: ONLY users in dialer_users with role=REP
+  // This excludes ADMIN users AND phantom identities like "agent" that aren't real users
+  const [{ data: repStatuses }, { data: users }] = await Promise.all([
+    db.from('dialer_rep_status').select('rep_identity, status').eq('status', 'READY'),
+    db.from('dialer_users').select('twilio_identity, role, active'),
+  ])
+  const validRepIds = new Set(
+    (users ?? []).filter(u => u.role === 'REP' && u.active).map(u => u.twilio_identity)
+  )
+  const readyReps = (repStatuses ?? [])
+    .map(r => r.rep_identity)
+    .filter(id => validRepIds.has(id))
+  if (readyReps.length === 0) return {}
+
+  // Release buffered leads from INVALID identities (admin, agent, unknown)
+  // so they go back to the pending pool
+  const { data: allBuffered } = await db.from('dialer_attempts')
+    .select('id, buffered_for')
+    .eq('plan_date', today)
+    .eq('status', 'buffered')
+  const invalidIds = (allBuffered ?? [])
+    .filter(a => a.buffered_for && !validRepIds.has(a.buffered_for))
+    .map(a => a.id)
+  if (invalidIds.length > 0) {
+    await db.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: now.toISOString() })
+      .in('id', invalidIds)
+  }
+
+  // Release existing buffered leads for READY reps so we can reassign
+  // from scratch (guarantees contiguous assignment even after sync adds new leads).
+  // LEASED leads are NOT released — they're actively on a call.
+  await db.from('dialer_attempts')
+    .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: now.toISOString() })
+    .eq('plan_date', today)
+    .eq('status', 'buffered')
+    .in('buffered_for', readyReps)
+
+  // Count leased leads per rep (those stay assigned)
+  const { data: leasedRes } = await db.from('dialer_attempts')
+    .select('leased_by')
+    .eq('plan_date', today)
+    .eq('status', 'leased')
+    .in('leased_by', readyReps)
+  const leasedCounts: Record<string, number> = {}
+  for (const r of leasedRes ?? []) {
+    leasedCounts[r.leased_by] = (leasedCounts[r.leased_by] ?? 0) + 1
+  }
+
+  // Each rep needs (count - leased)
+  const repsNeedingLeads = readyReps
+    .map(rep => ({ rep, needed: count - (leasedCounts[rep] ?? 0) }))
+    .filter(r => r.needed > 0)
+  if (repsNeedingLeads.length === 0) return {}
+
+  // Contacts already buffered or leased by OTHER reps (non-ready reps still have leads)
+  const { data: activeRes } = await db.from('dialer_attempts')
+    .select('contact_id')
+    .eq('plan_date', today)
+    .in('status', ['buffered', 'leased'])
+  const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
+
+  // Query with DB-side ORDER BY — matches admin queue display exactly
+  // due_from <= now: keeps leads paused until their block opens (e.g. LHP at 8:30 AM PST)
+  const { data: pending } = await db.from('dialer_attempts')
+    .select('*')
+    .eq('status', 'pending')
+    .eq('plan_date', today)
+    .lte('due_from', now.toISOString())
+    .gt('day_ends_at', now.toISOString())
+    .order('is_callback',    { ascending: false })
+    .order('is_carryover',   { ascending: false })
+    .order('priority',       { ascending: false })
+    .order('attempt_number', { ascending: true })
+    .order('created_at',     { ascending: true })
+    .order('id',             { ascending: true })
+
+  if (!pending?.length) return {}
+
+  // Sequential constraint
+  const pendingByContact = new Map<string, number[]>()
+  for (const a of pending as Attempt[]) {
+    if (!a.is_callback) {
+      const arr = pendingByContact.get(a.contact_id) ?? []
+      arr.push(a.attempt_number)
+      pendingByContact.set(a.contact_id, arr)
+    }
+  }
+
+  // Filter: active contacts + sequential constraint only (preserving DB order)
+  const eligible = (pending as Attempt[]).filter(a => {
+    if (activeConts.has(a.contact_id)) return false
+    if (!a.is_callback) {
+      const nums = pendingByContact.get(a.contact_id) ?? []
+      if (a.attempt_number !== Math.min(...nums)) return false
+    }
+    return true
+  })
+
+  // Assign contiguous blocks: rep A gets 1-5, rep B gets 6-10, etc.
+  const toUpdate: { id: string; rep: string }[] = []
+  let idx = 0
+  for (const { rep, needed } of repsNeedingLeads) {
+    let assigned = 0
+    while (assigned < needed && idx < eligible.length) {
+      toUpdate.push({ id: eligible[idx].id, rep })
+      assigned++
+      idx++
+    }
+  }
+  if (toUpdate.length === 0) return {}
+
+  // Batch update — one UPDATE per rep
+  const nowIso = now.toISOString()
+  const result: Record<string, number> = {}
+  const byRep = new Map<string, string[]>()
+  for (const { id, rep } of toUpdate) {
+    const arr = byRep.get(rep) ?? []
+    arr.push(id)
+    byRep.set(rep, arr)
+  }
+  await Promise.all(Array.from(byRep.entries()).map(async ([rep, ids]) => {
+    const { data } = await db.from('dialer_attempts')
+      .update({ status: 'buffered', buffered_for: rep, buffered_at: nowIso, updated_at: nowIso })
+      .in('id', ids)
+      .eq('status', 'pending')
+      .select('id')
+    result[rep] = data?.length ?? 0
+  }))
+
+  return result
+}
+
+// Release all buffered attempts back to pending (rep went PAUSED/OFFLINE)
+export async function releaseBuffer(repIdentity: string): Promise<void> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+  await db.from('dialer_attempts')
+    .update({
+      status:       'pending',
+      buffered_for: null,
+      buffered_at:  null,
+      updated_at:   new Date().toISOString(),
+    })
+    .eq('buffered_for', repIdentity)
+    .eq('status', 'buffered')
+    .eq('plan_date', today)
+}
+
+// ─── Get next attempt (lease it) ─────────────────────────────────────────────
+
+// Pull the rep's first buffered attempt, set it to leased, return it.
+// If buffer is empty, fills it first (synchronous).
+export async function getNextAttempt(repIdentity: string): Promise<Attempt | null> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+  const now   = new Date()
+
+  // Ensure there's something in the buffer
+  await fillBuffer(repIdentity, 5)
+
+  // Callbacks for this rep that are due right now take absolute precedence
+  const { data: callbackFirst } = await db.from('dialer_attempts')
+    .select('*')
+    .eq('status', 'buffered')
+    .eq('buffered_for', repIdentity)
+    .eq('plan_date', today)
+    .eq('is_callback', true)
+    .lte('callback_at', now.toISOString())
+    .order('callback_at', { ascending: true })
+    .limit(1)
+    .maybeSingle()
+
+  const { data: nextRow } = callbackFirst
+    ? { data: callbackFirst }
+    : await db.from('dialer_attempts')
+        .select('*')
+        .eq('status', 'buffered')
+        .eq('buffered_for', repIdentity)
+        .eq('plan_date', today)
+        .order('priority',  { ascending: false })
+        .order('is_carryover', { ascending: false })
+        .order('attempt_number', { ascending: true })
+        .limit(1)
+        .maybeSingle()
+
+  if (!nextRow) return null
+
+  const leaseExpiry = new Date(now.getTime() + 5 * 60 * 1000) // 5 min lease
+
+  const { data: leased } = await db.from('dialer_attempts')
+    .update({
+      status:          'leased',
+      leased_by:       repIdentity,
+      leased_at:       now.toISOString(),
+      lease_expires_at: leaseExpiry.toISOString(),
+      buffered_for:    null,   // no longer in buffer
+      buffered_at:     null,
+      updated_at:      now.toISOString(),
+    })
+    .eq('id', nextRow.id)
+    .eq('status', 'buffered') // guard: must still be buffered
+    .select('*')
+    .single()
+
+  if (!leased) return null // race-condition guard: someone else took it
+
+  // Do NOT backfill here — top-up happens after disposition (completed call).
+  // Backfilling on dial caused over-assignment (rep had 4 buffered + 1 leased
+  // but fillBuffer only counted buffered_for, so it added extras).
+
+  return leased as Attempt
+}
+
+// Extend the lease while a call is live
+export async function extendLease(attemptId: string): Promise<void> {
+  const db = supabaseAdmin()
+  await db.from('dialer_attempts')
+    .update({ lease_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
+    .eq('id', attemptId)
+    .eq('status', 'leased')
+}
+
+// Release lease (call dropped, no disposition submitted)
+export async function releaseLease(attemptId: string): Promise<void> {
+  const db = supabaseAdmin()
+  await db.from('dialer_attempts')
+    .update({
+      status:          'pending',
+      leased_by:       null,
+      leased_at:       null,
+      lease_expires_at: null,
+      updated_at:      new Date().toISOString(),
+    })
+    .eq('id', attemptId)
+    .eq('status', 'leased')
+}
+
+// ─── Disposition ──────────────────────────────────────────────────────────────
+
+export interface DispositionOptions {
+  repIdentity:     string
+  callDuration:    number
+  callbackAt?:     string  // ISO, in lead's local time (frontend converts)
+  callbackContext?: string
+  callSid?:        string
+  firm?:           string  // 'lhp' | 'fears'
+  nqReason?:       string  // reason for Not Qualified
+}
+
+export async function applyDisposition(
+  attemptId:   string,
+  disposition: string,
+  opts:        DispositionOptions,
+): Promise<void> {
+  const db  = supabaseAdmin()
+  const now = new Date()
+
+  const { data: attempt } = await db.from('dialer_attempts')
+    .select('*').eq('id', attemptId).single()
+  if (!attempt) return
+
+  // A "real conversation" establishes ownership
+  const isRealConversation =
+    opts.callDuration > 60 ||
+    ['Callback', 'Qualified', 'Signed'].includes(disposition)
+
+  // ── Mark attempt completed ───────────────────────────────────────────────
+  await db.from('dialer_attempts').update({
+    status:       'completed',
+    completed_by: opts.repIdentity,
+    completed_at: now.toISOString(),
+    disposition,
+    call_sid:     opts.callSid ?? null,
+    leased_by:    null,
+    leased_at:    null,
+    lease_expires_at: null,
+    updated_at:   now.toISOString(),
+  }).eq('id', attemptId)
+
+  // ── Update lead state ────────────────────────────────────────────────────
+  const stateUpdate: Record<string, unknown> = {
+    last_dialed_at:   now.toISOString(),
+    last_disposition: disposition,
+    updated_at:       now.toISOString(),
+  }
+
+  if (isRealConversation) {
+    // Set ownership if not already set
+    const { data: currentState } = await db.from('dialer_lead_state')
+      .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
+    if (!currentState?.owner_rep) {
+      stateUpdate.owner_rep     = opts.repIdentity
+      stateUpdate.owner_set_at  = now.toISOString()
+    }
+  }
+
+  await db.from('dialer_lead_state').upsert(
+    { contact_id: attempt.contact_id, ...stateUpdate },
+    { onConflict: 'contact_id' }
+  )
+
+  // ── Disposition-specific effects ─────────────────────────────────────────
+  const today = now.toISOString().split('T')[0]
+  const firm  = opts.firm || attempt.firm || ''
+
+  switch (disposition) {
+    // No Answer — later attempts today stand unchanged
+    case 'No Answer':
+      break
+
+    case 'Callback': {
+      // Cancel remaining attempts today, create a callback attempt
+      await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
+
+      const cbAt = opts.callbackAt ? new Date(opts.callbackAt) : new Date(now.getTime() + 4 * 3600 * 1000)
+
+      // Determine owner (the owner who scheduled it, or this rep)
+      const { data: ls } = await db.from('dialer_lead_state')
+        .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
+      const callbackOwner = ls?.owner_rep ?? opts.repIdentity
+
+      await db.from('dialer_attempts').insert({
+        contact_id:         attempt.contact_id,
+        contact_name:       attempt.contact_name,
+        phone:              attempt.phone,
+        firm:               attempt.firm,
+        pipeline_id:        attempt.pipeline_id,
+        stage_id:           attempt.stage_id,
+        stage_name:         attempt.stage_name,
+        ghl_opportunity_id: attempt.ghl_opportunity_id,
+        plan_date:          today,
+        attempt_number:     99,  // sentinel for callback
+        attempts_total:     attempt.attempts_total,
+        block:              'morning',     // placeholder
+        lead_timezone:      attempt.lead_timezone,
+        due_from:           cbAt.toISOString(),
+        due_until:          cbAt.toISOString(),
+        day_ends_at:        attempt.day_ends_at,  // same day
+        priority:           500,   // callbacks are top priority
+        is_callback:        true,
+        callback_at:        cbAt.toISOString(),
+        owner_rep:          callbackOwner,
+      })
+      break
+    }
+
+    // Terminal: remove from calling pool
+    case 'Qualified':
+    case 'Signed':
+      await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
+      break
+
+    // Exhausted: lead won't appear in future syncs
+    case 'Not Qualified':
+      await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
+      await db.from('dialer_lead_state').upsert(
+        { contact_id: attempt.contact_id, exhausted: true, updated_at: now.toISOString() },
+        { onConflict: 'contact_id' }
+      )
+      break
+  }
+
+  // ── Update ownership on remaining attempts if ownership was just set ──────
+  if (isRealConversation) {
+    const { data: ls } = await db.from('dialer_lead_state')
+      .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
+    if (ls?.owner_rep) {
+      await db.from('dialer_attempts')
+        .update({ owner_rep: ls.owner_rep, updated_at: now.toISOString() })
+        .eq('contact_id', attempt.contact_id)
+        .in('status', ['pending', 'buffered'])
+        .eq('plan_date', today)
+    }
+  }
+
+  // ── GHL stage move ────────────────────────────────────────────────────────
+  const GHL_STAGE_MAP: Record<string, string> = {
+    'Not Qualified': 'Not Qualified',
+  }
+  const targetStage = GHL_STAGE_MAP[disposition]
+  if (targetStage && attempt.ghl_opportunity_id) {
+    await moveGHLStage(attempt.ghl_opportunity_id, attempt.pipeline_id, targetStage).catch(console.error)
+  }
+
+  // ── Firm-specific GHL tags ─────────────────────────────────────────────────
+  const TAG_MAP: Record<string, Record<string, string>> = {
+    lhp: {
+      'Qualified':     'lhp - chase',
+      'Not Qualified': 'lhp - nq',
+      'Callback':      'lhp - c',
+      'No Answer':     'lhp - nr',
+      'Signed':        'lhp - ps',
+    },
+    fears: {
+      'Qualified':     'fl - chase',
+      'Not Qualified': 'fl - nq',
+      'Callback':      'fl - c',
+      'No Answer':     'fl - nr',
+      'Signed':        'fl - ps',
+    },
+  }
+
+  const tag = TAG_MAP[firm]?.[disposition]
+  if (tag && attempt.contact_id) {
+    // tagGHLContact merges tags (deduplicates), so "No Answer" tag
+    // is only added if not already present
+    await tagGHLContact(attempt.contact_id, [tag]).catch(console.error)
+  }
+
+  // Store NQ reason as a note tag if provided
+  if (disposition === 'Not Qualified' && opts.nqReason && attempt.contact_id) {
+    const reasonTag = firm === 'lhp'
+      ? `lhp - nq - ${opts.nqReason}`
+      : `fl - nq - ${opts.nqReason}`
+    await tagGHLContact(attempt.contact_id, [reasonTag]).catch(console.error)
+  }
+}
+
+async function cancelRemainingAttempts(
+  contactId:       string,
+  planDate:        string,
+  excludeAttemptId: string,
+  db: ReturnType<typeof supabaseAdmin>,
+) {
+  await db.from('dialer_attempts')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('contact_id', contactId)
+    .eq('plan_date', planDate)
+    .in('status', ['pending', 'buffered'])
+    .neq('id', excludeAttemptId)
+}
+
+// ─── Reset day ────────────────────────────────────────────────────────────────
+
+export async function resetDay(): Promise<void> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+  await db.from('dialer_attempts')
+    .update({ status: 'cancelled', updated_at: new Date().toISOString() })
+    .eq('plan_date', today)
+    .in('status', ['pending', 'buffered', 'leased', 'expired'])
+}
+
+// ─── GHL helpers ─────────────────────────────────────────────────────────────
+
+async function moveGHLStage(opportunityId: string, pipelineId: string, targetStageName: string) {
+  const headers = ghlHeaders()
   const pRes = await fetch(
     `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${LOCATION_ID}`,
     { headers }
   )
   if (!pRes.ok) return
-  const pData = await pRes.json()
+  const pData    = await pRes.json()
   const pipeline = (pData.pipelines ?? []).find((p: any) => p.id === pipelineId)
   if (!pipeline) return
-  const stage = (pipeline.stages ?? []).find((s: any) =>
-    s.name.toLowerCase() === targetStageName.toLowerCase()
+  const stage    = (pipeline.stages ?? []).find(
+    (s: any) => s.name.toLowerCase() === targetStageName.toLowerCase()
   )
   if (!stage) return
-
   await fetch(`https://services.leadconnectorhq.com/opportunities/${opportunityId}`, {
-    method: 'PUT',
+    method:  'PUT',
     headers,
-    body: JSON.stringify({ pipelineStageId: stage.id }),
+    body:    JSON.stringify({ pipelineStageId: stage.id }),
   })
 }
 
 async function tagGHLContact(contactId: string, newTags: string[]) {
-  const headers = {
-    Authorization: `Bearer ${(process.env.GHL_API_KEY ?? '').trim()}`,
-    Version: '2021-07-28',
-    'Content-Type': 'application/json',
-  }
-  const cRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, { headers })
+  const headers = ghlHeaders()
+  const cRes = await fetch(
+    `https://services.leadconnectorhq.com/contacts/${contactId}`,
+    { headers }
+  )
   if (!cRes.ok) return
-  const cData = await cRes.json()
-  const existing: string[] = cData.contact?.tags ?? []
-  const merged = Array.from(new Set([...existing, ...newTags]))
+  const cData   = await cRes.json()
+  const existing = cData.contact?.tags ?? []
+  const merged   = Array.from(new Set([...existing, ...newTags]))
   await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
-    method: 'PUT',
+    method:  'PUT',
     headers,
-    body: JSON.stringify({ tags: merged }),
+    body:    JSON.stringify({ tags: merged }),
   })
 }
 
-// Sync GHL → dialer_queue
-// Only syncs the 5 specified stages. Upserts by contact_id+pipeline_id.
-// Appointment Scheduled leads are parked far in the future — only callable at callback time.
-export async function syncGHLToQueue(): Promise<{ inserted: number; updated: number; exhausted: number }> {
+// ─── DNC check ───────────────────────────────────────────────────────────────
+// Used by call-start endpoint to block suppressed leads
+export async function isLeadSuppressed(contactId: string): Promise<boolean> {
   const db = supabaseAdmin()
-  const GHL_BASE    = 'https://services.leadconnectorhq.com'
-  const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
-  const headers = {
-    Authorization: `Bearer ${(process.env.GHL_API_KEY ?? '').trim()}`,
-    Version: '2021-07-28',
-    'Content-Type': 'application/json',
-  }
-
-  const PIPELINES = [
-    { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp' },
-    { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears' },
-  ]
-
-  let inserted = 0
-  let updated  = 0
-
-  // Track every contact+pipeline combo found in included stages during this sync.
-  // Anything in our queue that's NOT found here has moved to a non-included stage — exhaust it.
-  const foundKeys = new Set<string>()
-
-  for (const pipeline of PIPELINES) {
-    const pRes = await fetch(`${GHL_BASE}/opportunities/pipelines?locationId=${LOCATION_ID}`, { headers })
-    if (!pRes.ok) continue
-    const pData = await pRes.json()
-    const pl = (pData.pipelines ?? []).find((p: any) => p.id === pipeline.id)
-    if (!pl) continue
-
-    for (const stage of (pl.stages ?? [])) {
-      const stageKey = stage.name.toLowerCase()
-      const stageCfg = INCLUDED_STAGES[stageKey]
-      if (!stageCfg) continue // skip anything not in our list
-
-      const timezone = FIRM_TIMEZONE[pipeline.firm] ?? 'America/Los_Angeles'
-      const isAppointmentStage = stageKey === 'appointment scheduled'
-
-      // Appointment Scheduled leads park far in future — only callable via explicit callback
-      const defaultNextAttempt = isAppointmentStage
-        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-        : new Date().toISOString()
-
-      let cursor: string | null = null
-      let cursorId: string | null = null
-
-      while (true) {
-        const url = new URL(`${GHL_BASE}/opportunities/search`)
-        url.searchParams.set('location_id', LOCATION_ID)
-        url.searchParams.set('pipeline_id', pipeline.id)
-        url.searchParams.set('pipeline_stage_id', stage.id)
-        url.searchParams.set('limit', '100')
-        if (cursor)   url.searchParams.set('startAfter', cursor)
-        if (cursorId) url.searchParams.set('startAfterId', cursorId)
-
-        const res = await fetch(url.toString(), { headers })
-        if (!res.ok) break
-        const data = await res.json()
-        const opps = data.opportunities ?? []
-        if (opps.length === 0) break
-
-        for (const opp of opps) {
-          const contact = opp.contact ?? {}
-          const phone =
-            contact.phone ??
-            (contact.phones?.find((p: any) => p.type === 'mobile') ?? contact.phones?.[0])?.number ??
-            ''
-          if (!phone || !opp.contactId) continue
-
-          foundKeys.add(`${opp.contactId}:${pipeline.id}`)
-
-          const { data: existing } = await db.from('dialer_queue')
-            .select('id, exhausted')
-            .eq('contact_id', opp.contactId)
-            .eq('pipeline_id', pipeline.id)
-            .maybeSingle()
-
-          if (existing) {
-            await db.from('dialer_queue').update({
-              contact_name:       opp.name ?? contact.name ?? 'Unknown',
-              phone,
-              stage_id:           stage.id,
-              stage_name:         stage.name,
-              ghl_opportunity_id: opp.id,
-              // If stage changed back to an active one, un-exhaust
-              ...(existing.exhausted ? { exhausted: false, exhausted_at: null } : {}),
-              updated_at:         new Date().toISOString(),
-            }).eq('id', existing.id)
-            updated++
-          } else {
-            await db.from('dialer_queue').insert({
-              contact_id:         opp.contactId,
-              contact_name:       opp.name ?? contact.name ?? 'Unknown',
-              phone,
-              firm:               pipeline.firm,
-              pipeline_id:        pipeline.id,
-              stage_id:           stage.id,
-              stage_name:         stage.name,
-              timezone,
-              ghl_opportunity_id: opp.id,
-              priority:           stageCfg.priority,
-              next_attempt_at:    defaultNextAttempt,
-              added_at:           opp.createdAt ?? new Date().toISOString(),
-            })
-            inserted++
-          }
-        }
-
-        cursor   = data.meta?.startAfter   ?? null
-        cursorId = data.meta?.startAfterId ?? null
-        if (!cursor && !cursorId) break
-      }
-    }
-  }
-
-  // Exhaust any active queue items whose lead has moved out of an included stage in GHL.
-  // Fetch all non-exhausted items and remove ones not seen during this sync.
-  const { data: activeItems } = await db.from('dialer_queue')
-    .select('id, contact_id, pipeline_id')
-    .eq('exhausted', false)
-
-  const toExhaust = (activeItems ?? [])
-    .filter((row: any) => !foundKeys.has(`${row.contact_id}:${row.pipeline_id}`))
-    .map((row: any) => row.id)
-
-  if (toExhaust.length > 0) {
-    await db.from('dialer_queue')
-      .update({ exhausted: true, exhausted_at: new Date().toISOString(), locked_by: null, locked_at: null })
-      .in('id', toExhaust)
-  }
-
-  return { inserted, updated, exhausted: toExhaust.length }
+  const { data } = await db.from('dialer_lead_state')
+    .select('suppressed').eq('contact_id', contactId).maybeSingle()
+  return data?.suppressed === true
 }

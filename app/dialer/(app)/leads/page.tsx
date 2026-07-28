@@ -391,10 +391,11 @@ function LeadDetail({
                       )}
                       {call.recording_url && (
                         <div className="border-t border-gray-100 px-4 py-2 dark:border-gray-800">
-                          <a href={call.recording_url} target="_blank" rel="noopener noreferrer"
-                            className="inline-flex items-center gap-1.5 text-xs text-cyan-600 hover:text-cyan-500 dark:text-cyan-400">
-                            <PlayIcon /> Play recording
-                          </a>
+                          <audio
+                            controls
+                            className="w-full h-8"
+                            src={`/api/dialer/recording?url=${encodeURIComponent(call.recording_url)}`}
+                          />
                         </div>
                       )}
                       {call.transcripts.length > 0 && (

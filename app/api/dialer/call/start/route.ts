@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
-import { lockQueueItem } from '@/app/dialer/_lib/queue-engine'
+import { extendLease, isLeadSuppressed } from '@/app/dialer/_lib/queue-engine'
 
 function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
 function baseUrl() {
-  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL
-  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL}`
+  if (process.env.NEXT_PUBLIC_BASE_URL) return process.env.NEXT_PUBLIC_BASE_URL.trim()
+  if (process.env.VERCEL_URL) return `https://${process.env.VERCEL_URL.trim()}`
   return 'https://acutely-pronto-unloved.ngrok-free.dev'
 }
 
@@ -19,6 +19,11 @@ export async function POST(req: NextRequest) {
 
   if (!phone || !identity) {
     return NextResponse.json({ error: 'phone and identity required' }, { status: 400 })
+  }
+
+  // Hard block on suppressed (DNC) leads — checked at dial time as final safety net
+  if (contactId && await isLeadSuppressed(contactId)) {
+    return NextResponse.json({ error: 'Lead is on the Do Not Call list' }, { status: 403 })
   }
 
   const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
@@ -86,8 +91,8 @@ export async function POST(req: NextRequest) {
     started_at:   now,
   }, { onConflict: 'call_sid' })
 
-  // Lock the queue item so no other rep gets this lead
-  if (queueId) await lockQueueItem(queueId, identity).catch(console.error)
+  // Extend the lease while the call is live (queueId = attemptId in new system)
+  if (queueId) await extendLease(queueId).catch(console.error)
 
   return NextResponse.json({ confName, customerCallSid: participant.callSid })
 }

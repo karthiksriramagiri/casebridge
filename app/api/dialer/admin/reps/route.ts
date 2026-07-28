@@ -40,27 +40,41 @@ export async function POST(req: NextRequest) {
 
   const db = adminClient()
 
-  // Create Supabase auth user
-  const { data: authData, error: authError } = await db.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { name, role, twilio_identity: twilio_identity ?? '' },
-  })
-  if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
+  // Check if auth user already exists (from a previous partial failure)
+  const { data: existingList } = await db.auth.admin.listUsers()
+  const existing = existingList?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
 
-  // Insert into dialer_users
-  const { error: dbError } = await db.from('dialer_users').insert({
-    id:              authData.user.id,
+  let userId: string
+  if (existing) {
+    // Auth user already exists — update password and metadata
+    await db.auth.admin.updateUserById(existing.id, {
+      password,
+      user_metadata: { name, role, twilio_identity: twilio_identity ?? '' },
+    })
+    userId = existing.id
+  } else {
+    const { data: authData, error: authError } = await db.auth.admin.createUser({
+      email,
+      password,
+      email_confirm: true,
+      user_metadata: { name, role, twilio_identity: twilio_identity ?? '' },
+    })
+    if (authError) return NextResponse.json({ error: authError.message }, { status: 400 })
+    userId = authData.user.id
+  }
+
+  // Upsert into dialer_users (handles re-tries gracefully)
+  const { error: dbError } = await db.from('dialer_users').upsert({
+    id:              userId,
     name,
     email,
     role,
     twilio_identity: twilio_identity ?? null,
     active:          true,
-  })
+  }, { onConflict: 'id' })
   if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 })
 
-  return NextResponse.json({ ok: true, id: authData.user.id })
+  return NextResponse.json({ ok: true, id: userId })
 }
 
 // PATCH /api/dialer/admin/reps — update rep (deactivate, change role, etc.)

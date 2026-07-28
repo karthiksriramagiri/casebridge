@@ -12,8 +12,11 @@ create table if not exists public.dialer_active_sessions (
   started_at        timestamptz default now()
 );
 alter table public.dialer_active_sessions enable row level security;
-create policy "service role full access" on public.dialer_active_sessions
-  for all using (true) with check (true);
+do $$ begin
+  create policy "service role full access" on public.dialer_active_sessions
+    for all using (true) with check (true);
+exception when duplicate_object then null;
+end $$;
 
 create table if not exists public.dialer_rep_status (
   rep_identity  text primary key,
@@ -21,5 +24,8 @@ create table if not exists public.dialer_rep_status (
   updated_at    timestamptz default now()
 );
 alter table public.dialer_rep_status enable row level security;
-create policy "service role full access" on public.dialer_rep_status
-  for all using (true) with check (true);
+do $$ begin
+  create policy "service role full access" on public.dialer_rep_status
+    for all using (true) with check (true);
+exception when duplicate_object then null;
+end $$;
