@@ -160,6 +160,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       call.on('disconnect', handleCallEnd)
       call.on('cancel',     handleCallEnd)
       call.on('error',      (err: any) => { setDeviceError(err.message); handleCallEnd() })
+      // Conference connects instantly (caller already waiting) — accept event
+      // may have fired before we registered the listener above
+      const status = typeof call.status === 'function' ? call.status() : (call as any)._status
+      if (status === 'open' || status === 'connected') setCallState('connected')
     } catch (err) {
       setDeviceError(String(err))
       setCallState('idle')

@@ -35,11 +35,23 @@ export async function POST(req: NextRequest) {
       .catch(() => {}) // ignore if already ended
   }
 
-  // End the conference if it exists
+  // End the conference if it exists (by SID or by name)
   if (session.conference_sid) {
     await client.conferences(session.conference_sid)
       .update({ status: 'completed' } as any)
-      .catch(() => {}) // ignore if already ended
+      .catch(() => {})
+  } else if (session.conference_name) {
+    // Inbound calls may not have conference_sid yet — find by friendly name
+    const confs = await client.conferences.list({
+      friendlyName: session.conference_name,
+      status: 'in-progress',
+      limit: 1,
+    }).catch(() => [] as any[])
+    for (const c of confs) {
+      await client.conferences(c.sid)
+        .update({ status: 'completed' } as any)
+        .catch(() => {})
+    }
   }
 
   // Mark the call as completed — but don't overwrite duration if Twilio
