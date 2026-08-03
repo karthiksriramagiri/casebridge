@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { useCall } from '../../_context/call'
 import { StatusPill } from '../../_components/StatusPill'
 import type { RepStatus } from '../../_types'
@@ -302,6 +302,23 @@ const MOCK_STATS: FloorStats = {
   onCall: 2, active: 3, totalDials: 40, totalConnected: 10, avgConnectRate: 25,
 }
 
+// ── Types for rep call log ────────────────────────────────────────────────────
+
+interface RepCall {
+  callSid:     string
+  contactName: string
+  phone:       string
+  status:      string
+  duration:    number
+  startedAt:   string
+  endedAt:     string | null
+  firm:        string | null
+  stageName:   string | null
+  answeredBy:  string | null
+  connected:   boolean
+  disposition: string | null
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function LiveFloorPage() {
@@ -313,6 +330,29 @@ export default function LiveFloorPage() {
   const [monitoring, setMonitoring] = useState<{ repIdentity: string; mode: string } | null>(null)
   const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
   const [mockMode,   setMockMode]   = useState(false)
+  const [expandedRep, setExpandedRep] = useState<string | null>(null)
+  const [repCalls,    setRepCalls]    = useState<RepCall[]>([])
+  const [repCallsLoading, setRepCallsLoading] = useState(false)
+
+  async function fetchRepCalls(repIdentity: string) {
+    setRepCallsLoading(true)
+    try {
+      const res  = await fetch(`/api/dialer/rep-calls?rep=${encodeURIComponent(repIdentity)}`)
+      const data = await res.json()
+      setRepCalls(data.calls ?? [])
+    } catch { setRepCalls([]) }
+    finally { setRepCallsLoading(false) }
+  }
+
+  function toggleRepExpand(repIdentity: string) {
+    if (expandedRep === repIdentity) {
+      setExpandedRep(null)
+      setRepCalls([])
+    } else {
+      setExpandedRep(repIdentity)
+      fetchRepCalls(repIdentity)
+    }
+  }
 
   async function fetchFloor() {
     const res  = await fetch('/api/dialer/live-floor')
@@ -456,41 +496,121 @@ export default function LiveFloorPage() {
               </thead>
               <tbody>
                 {reps.map(rep => (
-                  <tr key={rep.identity} className="border-b border-gray-50 hover:bg-gray-50/50 dark:border-gray-800/50 dark:hover:bg-gray-800/20">
-                    <td className="px-4 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">{rep.initials}</div>
-                        <span className="font-medium text-gray-800 dark:text-gray-200">{rep.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3"><StatusPill status={rep.status as RepStatus} size="sm" /></td>
-                    <td className="px-4 py-3 max-w-[160px]">
-                      {rep.status === 'ON_CALL' && rep.contactName
-                        ? <p className="truncate font-semibold text-cyan-700 dark:text-cyan-300">{rep.contactName}</p>
-                        : <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                      {rep.contactPhone ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
-                    </td>
-                    <td className="px-4 py-3">
-                      {rep.firm
-                        ? <div>
-                            <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{FIRM_LABEL[rep.firm] ?? rep.firm}</p>
-                            {rep.campaign && <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{rep.campaign}</p>}
+                  <React.Fragment key={rep.identity}>
+                    <tr
+                      className={`border-b border-gray-50 hover:bg-gray-50/50 dark:border-gray-800/50 dark:hover:bg-gray-800/20 cursor-pointer ${expandedRep === rep.identity ? 'bg-gray-50 dark:bg-gray-800/30' : ''}`}
+                      onClick={() => toggleRepExpand(rep.identity)}
+                    >
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">{rep.initials}</div>
+                          <span className="font-medium text-gray-800 dark:text-gray-200">{rep.name}</span>
+                          <svg className={`h-3.5 w-3.5 text-gray-400 transition-transform ${expandedRep === rep.identity ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3"><StatusPill status={rep.status as RepStatus} size="sm" /></td>
+                      <td className="px-4 py-3 max-w-[160px]">
+                        {rep.status === 'ON_CALL' && rep.contactName
+                          ? <p className="truncate font-semibold text-cyan-700 dark:text-cyan-300">{rep.contactName}</p>
+                          : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
+                        {rep.contactPhone ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      </td>
+                      <td className="px-4 py-3">
+                        {rep.firm
+                          ? <div>
+                              <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{FIRM_LABEL[rep.firm] ?? rep.firm}</p>
+                              {rep.campaign && <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{rep.campaign}</p>}
+                            </div>
+                          : <span className="text-gray-400">—</span>}
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200 font-medium">{rep.totalCalls}</td>
+                      <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200">{rep.connectedCalls}</td>
+                      <td className="px-4 py-3 tabular-nums font-semibold">
+                        <span className={rep.connectRate >= 30 ? 'text-green-600 dark:text-green-400' : rep.connectRate >= 15 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}>
+                          {rep.totalCalls > 0 ? `${rep.connectRate}%` : '—'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200">
+                        {rep.connectedCalls > 0 ? fmtDuration(rep.avgDuration) : '—'}
+                      </td>
+                    </tr>
+                    {expandedRep === rep.identity && (
+                      <tr>
+                        <td colSpan={10} className="bg-gray-50/80 px-4 py-0 dark:bg-gray-800/20">
+                          <div className="py-3 pl-9">
+                            {repCallsLoading ? (
+                              <p className="text-xs text-gray-400 animate-pulse py-2">Loading calls…</p>
+                            ) : repCalls.length === 0 ? (
+                              <p className="text-xs text-gray-400 py-2">No calls today.</p>
+                            ) : (
+                              <table className="w-full text-xs">
+                                <thead>
+                                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                                    {['Time', 'Contact', 'Phone', 'Firm', 'Status', 'Duration', 'Connected', 'Disposition'].map(h => (
+                                      <th key={h} className="px-3 py-1.5 text-left text-[9px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                                    ))}
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {repCalls.map(c => (
+                                    <tr key={c.callSid} className="border-b border-gray-100 dark:border-gray-800/50">
+                                      <td className="px-3 py-1.5 text-gray-500 tabular-nums">
+                                        {new Date(c.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                      </td>
+                                      <td className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300 max-w-[140px] truncate">{c.contactName}</td>
+                                      <td className="px-3 py-1.5 font-mono text-gray-500">{c.phone}</td>
+                                      <td className="px-3 py-1.5 text-gray-500">{c.firm ? (FIRM_LABEL[c.firm] ?? c.firm) : '—'}</td>
+                                      <td className="px-3 py-1.5">
+                                        <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                                          c.status === 'completed' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
+                                          c.status === 'no-answer' ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' :
+                                          c.status === 'busy'      ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' :
+                                          'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                        }`}>
+                                          {c.answeredBy?.startsWith('machine') ? 'voicemail' : c.status}
+                                        </span>
+                                      </td>
+                                      <td className="px-3 py-1.5 tabular-nums text-gray-700 dark:text-gray-300">{fmtDuration(c.duration)}</td>
+                                      <td className="px-3 py-1.5">
+                                        {c.connected ? (
+                                          <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-semibold">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Yes
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400">No</span>
+                                        )}
+                                      </td>
+                                      <td className="px-3 py-1.5">
+                                        {c.disposition ? (
+                                          <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
+                                            c.disposition === 'Signed'        ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' :
+                                            c.disposition === 'Qualified'     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' :
+                                            c.disposition === 'Callback'      ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' :
+                                            c.disposition === 'No Response'   ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
+                                            c.disposition === 'Not Qualified' ? 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400' :
+                                            c.disposition === 'Wrong Number'  ? 'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' :
+                                            'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                          }`}>
+                                            {c.disposition}
+                                          </span>
+                                        ) : (
+                                          <span className="text-gray-400">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
                           </div>
-                        : <span className="text-gray-400">—</span>}
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200 font-medium">{rep.totalCalls}</td>
-                    <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200">{rep.connectedCalls}</td>
-                    <td className="px-4 py-3 tabular-nums font-semibold">
-                      <span className={rep.connectRate >= 30 ? 'text-green-600 dark:text-green-400' : rep.connectRate >= 15 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}>
-                        {rep.totalCalls > 0 ? `${rep.connectRate}%` : '—'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200">
-                      {rep.connectedCalls > 0 ? fmtDuration(rep.avgDuration) : '—'}
-                    </td>
-                  </tr>
+                        </td>
+                      </tr>
+                    )}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>

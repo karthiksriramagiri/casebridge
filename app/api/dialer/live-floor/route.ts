@@ -5,6 +5,20 @@ function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// A call is "connected" if the rep actually spoke to a human.
+// - Must have duration > 0
+// - If AMD ran: answered_by must be 'human'
+// - If AMD didn't run (answered_by is null): use duration threshold —
+//   calls under 15s that went to "completed" are almost certainly voicemail.
+function isConnected(c: any): boolean {
+  const dur = c.duration ?? 0
+  if (dur <= 0) return false
+  const ab = c.answered_by ?? null
+  if (ab) return ab === 'human'
+  // No AMD data — short completed calls are likely VM
+  return dur >= 15
+}
+
 export async function GET() {
   const db    = supabaseAdmin()
   const today = new Date(); today.setHours(0, 0, 0, 0)
@@ -18,7 +32,7 @@ export async function GET() {
     db.from('dialer_active_sessions').select('*'),
     db.from('dialer_rep_status').select('*'),
     db.from('dialer_calls')
-      .select('rep_identity, call_status, duration, started_at')
+      .select('rep_identity, call_status, duration, started_at, answered_by')
       .gte('started_at', today.toISOString())
       .not('rep_identity', 'is', null),
   ])
@@ -44,10 +58,10 @@ export async function GET() {
     const repCalls = calls.filter(c => c.rep_identity === rep.identity)
 
     const totalCalls     = repCalls.length
-    const connectedCalls = repCalls.filter(c => (c.duration ?? 0) > 0).length
+    const connectedCalls = repCalls.filter(c => isConnected(c)).length
     const connectRate    = totalCalls > 0 ? Math.round((connectedCalls / totalCalls) * 100) : 0
     const avgDuration    = connectedCalls > 0
-      ? Math.round(repCalls.filter(c => (c.duration ?? 0) > 0).reduce((s, c) => s + (c.duration ?? 0), 0) / connectedCalls)
+      ? Math.round(repCalls.filter(c => isConnected(c)).reduce((s, c) => s + (c.duration ?? 0), 0) / connectedCalls)
       : 0
 
     let status = presence?.status ?? 'OFFLINE'

@@ -10,9 +10,11 @@ interface CallContextValue {
   currentLead:    Lead | null
   callDuration:   number
   muted:          boolean
+  callerIdUsed:   string | null
   identity:       string
   setIdentity:    (id: string) => void
   placeCall:      (lead: Lead, meta?: { firm?: string; campaign?: string; campaignId?: string; queueId?: string }) => Promise<void>
+  answerInbound:  (confName: string, lead: Lead) => Promise<void>
   joinConference: (confName: string, mode: 'listen' | 'whisper' | 'barge', coachSid?: string) => Promise<void>
   hangUp:         () => void
   toggleMute:     () => void
@@ -30,6 +32,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [currentLead,  setCurrentLead]  = useState<Lead | null>(null)
   const [callDuration, setCallDuration] = useState(0)
   const [muted,        setMuted]        = useState(false)
+  const [callerIdUsed, setCallerIdUsed] = useState<string | null>(null)
   const [identity,     setIdentity_]    = useState('agent')
   function setIdentity(id: string) { setIdentity_(id); identityRef.current = id }
 
@@ -61,24 +64,24 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         if (err?.code === 31005) return
         setDeviceError(err?.message ?? String(err))
       })
+      // Inbound calls are handled via conference queue (dialer_inbound_queue),
+      // not via direct device incoming. Reject any direct incoming calls.
       device.on('incoming', (call: any) => {
-        callRef.current = call
-        const from = call.parameters.From || ''
-        const inboundLead: Lead = {
-          id: call.parameters.CallSid ?? 'inbound', name: from || 'Inbound call',
-          phone: from, email: '', company: '', source: 'inbound',
-          tags: [], lastActivity: new Date().toISOString(), contactId: '',
-        }
-        setCurrentLead(inboundLead)
-        setCallState('ringing')
-        call.on('accept',     () => setCallState('connected'))
-        call.on('disconnect', handleCallEnd)
-        call.on('cancel',     handleCallEnd)
-        call.accept()
+        call.reject()
       })
 
       await device.register()
       deviceRef.current = device
+
+      // Pre-select the default mic so the Twilio SDK holds an audio stream.
+      // This prevents PermissionDeniedError on auto-dial calls (no user gesture).
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices()
+        const mic = devices.find(d => d.kind === 'audioinput')
+        if (mic?.deviceId && device.audio) {
+          await (device.audio as any).setInputDevice(mic.deviceId)
+        }
+      } catch { /* non-fatal — manual calls still work via user gesture */ }
     }
 
     initDevice().catch(err => setDeviceError(String(err)))
@@ -104,6 +107,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     if (!deviceRef.current || !deviceReady) return
     setCurrentLead(lead)
     setCallState('ringing')
+    setCallerIdUsed(null)
 
     try {
       // Create conference and dial customer
@@ -122,7 +126,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         }),
       })
       const data = await res.json()
-      if (!data.confName) throw new Error('Failed to create conference')
+      if (!data.confName) throw new Error(data.error || 'Failed to create conference')
+      if (data.callerIdUsed) setCallerIdUsed(data.callerIdUsed)
 
       // Rep joins the conference
       const call = await deviceRef.current.connect({
@@ -140,6 +145,27 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       setCurrentLead(null)
     }
   }, [deviceReady, identity]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Rep answers an inbound call by joining its conference
+  const answerInbound = useCallback(async (confName: string, lead: Lead) => {
+    if (!deviceRef.current || !deviceReady) return
+    setCurrentLead(lead)
+    setCallState('ringing')
+    try {
+      const call = await deviceRef.current.connect({
+        params: { ConferenceName: confName, Mode: 'rep' },
+      })
+      callRef.current = call
+      call.on('accept',     () => setCallState('connected'))
+      call.on('disconnect', handleCallEnd)
+      call.on('cancel',     handleCallEnd)
+      call.on('error',      (err: any) => { setDeviceError(err.message); handleCallEnd() })
+    } catch (err) {
+      setDeviceError(String(err))
+      setCallState('idle')
+      setCurrentLead(null)
+    }
+  }, [deviceReady]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const joinConference = useCallback(async (confName: string, mode: 'listen' | 'whisper' | 'barge', coachSid?: string) => {
     if (!deviceRef.current || !deviceReady) return
@@ -177,8 +203,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <CallContext.Provider value={{
-      deviceReady, deviceError, callState, currentLead, callDuration, muted,
-      identity, setIdentity, placeCall, joinConference, hangUp, toggleMute, sendDtmf,
+      deviceReady, deviceError, callState, currentLead, callDuration, muted, callerIdUsed,
+      identity, setIdentity, placeCall, answerInbound, joinConference, hangUp, toggleMute, sendDtmf,
       setCurrentLead, setCallState,
     }}>
       {children}

@@ -65,11 +65,18 @@ const QueueIcon = () => (
   </svg>
 )
 
+const InboundIcon = () => (
+  <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+    <path d="M14.414 7l3.293-3.293a1 1 0 00-1.414-1.414L13 5.586V4a1 1 0 10-2 0v4a1 1 0 001 1h4a1 1 0 100-2h-1.586zM2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+  </svg>
+)
+
 const NAV_ITEMS: NavItem[] = [
-  { href: '/dialer/agent',            label: 'My Phone',   icon: <PhoneIcon /> },
-  { href: '/dialer/leads',            label: 'Leads',      icon: <UsersIcon /> },
-  { href: '/dialer/messages',         label: 'Messages',   icon: <ChatIcon /> },
-  { href: '/dialer/admin',            label: 'Live Floor', icon: <GridIcon />,       adminOnly: true },
+  { href: '/dialer/agent',            label: 'My Phone',       icon: <PhoneIcon /> },
+  { href: '/dialer/inbound',          label: 'Inbound Calls',  icon: <InboundIcon /> },
+  { href: '/dialer/leads',            label: 'Leads',          icon: <UsersIcon /> },
+  { href: '/dialer/messages',         label: 'Messages',       icon: <ChatIcon /> },
+  { href: '/dialer/admin',            label: 'Live Floor',     icon: <GridIcon />,       adminOnly: true },
   { href: '/dialer/admin/queue',      label: 'Queue',      icon: <QueueIcon />,      adminOnly: true },
   { href: '/dialer/admin/reps',       label: 'Users',      icon: <UsersIcon />,      adminOnly: true },
   { href: '/dialer/admin/campaigns',  label: 'Campaigns',  icon: <BullhornIcon />,   adminOnly: true },
@@ -88,6 +95,7 @@ export function DialerNav({ role = 'ADMIN' }: Props) {
   const { name, role: authRole, signOut } = useAuth()
   const isAdmin = role !== 'REP'
   const [unreadSms, setUnreadSms] = useState(0)
+  const [ringingCount, setRingingCount] = useState(0)
 
   useEffect(() => {
     async function checkUnread() {
@@ -97,9 +105,18 @@ export function DialerNav({ role = 'ADMIN' }: Props) {
         setUnreadSms(data.totalUnread ?? 0)
       } catch { /* ignore */ }
     }
+    async function checkInbound() {
+      try {
+        const res  = await fetch('/api/dialer/inbound-calls')
+        const data = await res.json()
+        setRingingCount((data.ringing ?? []).length)
+      } catch { /* ignore */ }
+    }
     checkUnread()
-    const t = setInterval(checkUnread, 15_000)
-    return () => clearInterval(t)
+    checkInbound()
+    const t1 = setInterval(checkUnread, 15_000)
+    const t2 = setInterval(checkInbound, 5_000)
+    return () => { clearInterval(t1); clearInterval(t2) }
   }, [])
 
   return (
@@ -132,8 +149,18 @@ export function DialerNav({ role = 'ADMIN' }: Props) {
                     {unreadSms > 9 ? '9+' : unreadSms}
                   </span>
                 )}
+                {item.href === '/dialer/inbound' && ringingCount > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-3.5 w-3.5 items-center justify-center rounded-full bg-green-500 text-[8px] font-bold text-white animate-pulse">
+                    {ringingCount}
+                  </span>
+                )}
               </span>
               <span className="hidden lg:block">{item.label}</span>
+              {item.href === '/dialer/inbound' && ringingCount > 0 && (
+                <span className="ml-auto hidden rounded-full bg-green-500 px-1.5 py-0.5 text-[10px] font-bold text-white animate-pulse lg:block">
+                  {ringingCount}
+                </span>
+              )}
               {item.href === '/dialer/messages' && unreadSms > 0 && (
                 <span className="ml-auto hidden rounded-full bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white lg:block">
                   {unreadSms}

@@ -24,6 +24,7 @@ export async function POST(req: NextRequest) {
   const to         = p('To')
 
   // Custom params — may come from URL query string (participant status callbacks)
+  const answeredBy  = p('AnsweredBy')
   const contactId   = p('ContactId')
   const contactName = p('ContactName')
   const repIdentity = p('RepIdentity')
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
   const firm        = p('Firm')
   const stageName   = p('StageName')
 
-  console.log('[dialer:status]', { callSid, callStatus, direction, duration, from, to })
+  console.log('[dialer:status]', { callSid, callStatus, direction, duration, from, to, answeredBy })
 
   const db = supabaseAdmin()
 
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
     ...(stageName  ? { stage_name: stageName }    : {}),
     ...(callStatus === 'completed' ? { ended_at: new Date().toISOString() } : {}),
     ...(callStatus === 'initiated' ? { started_at: new Date().toISOString() } : {}),
+    ...(answeredBy ? { answered_by: answeredBy } : {}),
   }, { onConflict: 'call_sid' })
 
   return new NextResponse(null, { status: 204 })

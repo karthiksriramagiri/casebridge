@@ -32,8 +32,9 @@ export async function POST(req: NextRequest) {
 
     if (mode === 'rep') {
       // Rep joins their own conference — starts and ends with them.
-      // Recording is started via REST API on conference-start (dual-channel).
+      // earlyMedia on the customer participant pipes their ringback tone to the rep.
       confAttrs.startConferenceOnEnter = 'true'
+      confAttrs.beep = 'false'
       confAttrs.statusCallback = `${base}/api/dialer/twiml/conference-status`
       confAttrs.statusCallbackEvent = 'start end join leave'
       confAttrs.statusCallbackMethod = 'POST'
@@ -42,8 +43,7 @@ export async function POST(req: NextRequest) {
       confAttrs.muted = 'true'
     } else if (mode === 'whisper' && coachSid) {
       confAttrs.startConferenceOnEnter = 'false'
-      confAttrs.coaching = 'true'
-      confAttrs.callSidToCoach = coachSid
+      confAttrs.coach = coachSid
     } else {
       // barge
       confAttrs.startConferenceOnEnter = 'false'

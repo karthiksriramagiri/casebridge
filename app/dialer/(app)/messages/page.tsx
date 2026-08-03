@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useAuth } from '../../_context/auth'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -32,6 +33,134 @@ interface Message {
   created_at:   string
 }
 
+interface SearchContact {
+  id:    string
+  name:  string
+  phone: string
+  firm:  string | null
+}
+
+// ── Quick-reply templates ───────────────────────────────────────────────────────
+
+interface Template {
+  id:       string
+  label:    string
+  icon:     string
+  message:  string // {NAME} = lead first name, {REP} = rep name
+  group:    'flow' | 'additional'
+  step?:    number // ordering within the flow
+}
+
+// ── Qualification flow (sent in order as lead responds) ─────────────────────
+const FLOW_TEMPLATES: Template[] = [
+  {
+    id:      'intro',
+    label:   '1. Intro',
+    icon:    '👋',
+    group:   'flow',
+    step:    1,
+    message: `Hi {NAME}! 👋👋 It's William from Accident Support Desk, I was looking over your accident info and it looks very similar to another accident we just settled for a pretty significant amount. I think we can help show you how to do the same, just had a few quick questions for us to understand the situation a bit better. We can handle this over text message real quick, should only take a minute. Do you remember the date of the accident?`,
+  },
+  {
+    id:      'dol',
+    label:   '2. Date of Loss',
+    icon:    '📅',
+    group:   'flow',
+    step:    2,
+    message: `Do you remember the exact date of the accident? 📅 The more specific the better — it helps us figure out where you stand with your claim!`,
+  },
+  {
+    id:      'whatHappened',
+    label:   '3. What Happened',
+    icon:    '💥',
+    group:   'flow',
+    step:    3,
+    message: `Understood! Can you give me a quick rundown of what happened? 🙏`,
+  },
+  {
+    id:      'police',
+    label:   '4. Police on Scene',
+    icon:    '🚔',
+    group:   'flow',
+    step:    4,
+    message: `Got it! Did the police come to the scene and was a report filed? 🚔`,
+  },
+  {
+    id:      'insurance',
+    label:   '5. Insurance',
+    icon:    '📋',
+    group:   'flow',
+    step:    5,
+    message: `Was the other driver insured? And do you have your own auto insurance? 📋`,
+  },
+  {
+    id:      'feeling',
+    label:   '6. How Are You Feeling',
+    icon:    '🤕',
+    group:   'flow',
+    step:    6,
+    message: `How have you been feeling since the accident? Any pain, soreness, headaches? 🤕`,
+  },
+  {
+    id:      'treatment',
+    label:   '7. Treatment',
+    icon:    '🏥',
+    group:   'flow',
+    step:    7,
+    message: `Have you seen any doctors or gotten any treatment since the accident? 🏥`,
+  },
+  {
+    id:      'attorney',
+    label:   '8. Attorney',
+    icon:    '⚖️',
+    group:   'flow',
+    step:    8,
+    message: `Have you worked with a personal injury attorney before or is this your first time? ⚖️`,
+  },
+  {
+    id:      'explainProcess',
+    label:   '9. Explain Process',
+    icon:    '✅',
+    group:   'flow',
+    step:    9,
+    message: `Based on everything you've told me, you definitely have a case worth pursuing! 💰 The next step is connecting you with one of our Specialists who will walk you through your options and put together a gameplan for you. The call takes about 10-15 minutes, no cost or obligation. What time works best for a quick call? 📞`,
+  },
+]
+
+// ── Additional prompts (not part of the flow) ───────────────────────────────
+const ADDITIONAL_TEMPLATES: Template[] = [
+  {
+    id:      'call1hr',
+    label:   'Call in 1 Hour',
+    icon:    '⏰',
+    group:   'additional',
+    message: `Hey {NAME}! Your call with our Specialist is coming up in about an hour 📞 They'll be calling from a local number so keep an eye out!`,
+  },
+  {
+    id:      'call15min',
+    label:   'Call in 15 Min',
+    icon:    '🔔',
+    group:   'additional',
+    message: `Hey {NAME}! Your Specialist call is in about 15 minutes 🔔 They'll be calling from a local number!`,
+  },
+  {
+    id:      'cantConnect',
+    label:   "Couldn't Connect",
+    icon:    '📵',
+    group:   'additional',
+    message: `Hey {NAME}, we just tried reaching you but couldn't get connected 🙏 What time works best for us to try again? 📞`,
+  },
+  {
+    id:      'cmReachOut',
+    label:   'Case Manager Follow-up',
+    icon:    '📲',
+    group:   'additional',
+    message: `Hey {NAME}, your Case Manager has been trying to reach you but hasn't been able to get connected 📲 Can you let us know a good time to call?`,
+  },
+]
+
+const ALL_TEMPLATES = [...FLOW_TEMPLATES, ...ADDITIONAL_TEMPLATES]
+
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
 function fmtPhone(p: string) {
@@ -55,6 +184,11 @@ function fmtFull(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
   })
+}
+
+function firstName(full: string | null | undefined): string {
+  if (!full) return 'there'
+  return full.split(' ')[0] || 'there'
 }
 
 const FIRM_PILL: Record<string, string> = {
@@ -84,22 +218,14 @@ const PlusIcon = () => (
 
 // ── New conversation modal ─────────────────────────────────────────────────────
 
-interface GHLContact {
-  id:    string
-  name:  string
-  phone: string
-  email: string
-  tags:  string[]
-}
-
 function NewConvoModal({ onClose, onStart }: {
   onClose: () => void
-  onStart: (phone: string, name: string, contactId: string) => void
+  onStart: (phone: string, name: string, contactId: string, firm: string | null) => void
 }) {
   const [query,    setQuery]    = useState('')
-  const [results,  setResults]  = useState<GHLContact[]>([])
+  const [results,  setResults]  = useState<SearchContact[]>([])
   const [loading,  setLoading]  = useState(false)
-  const [selected, setSelected] = useState<GHLContact | null>(null)
+  const [selected, setSelected] = useState<SearchContact | null>(null)
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   function onQueryChange(q: string) {
@@ -118,7 +244,7 @@ function NewConvoModal({ onClose, onStart }: {
     }, 350)
   }
 
-  function pick(c: GHLContact) {
+  function pick(c: SearchContact) {
     setSelected(c)
     setQuery(c.name)
     setResults([])
@@ -126,7 +252,7 @@ function NewConvoModal({ onClose, onStart }: {
 
   function submit() {
     if (!selected) return
-    onStart(selected.phone, selected.name, selected.id)
+    onStart(selected.phone, selected.name, selected.id, selected.firm)
     onClose()
   }
 
@@ -157,18 +283,24 @@ function NewConvoModal({ onClose, onStart }: {
                   <button
                     key={c.id}
                     onClick={() => pick(c)}
-                    className="flex w-full flex-col px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
                   >
-                    <span className="text-sm font-medium text-gray-900 dark:text-white">{c.name}</span>
-                    <span className="font-mono text-xs text-gray-400">{c.phone}</span>
-                    {c.email && <span className="truncate text-xs text-gray-400">{c.email}</span>}
+                    <div className="min-w-0">
+                      <span className="block text-sm font-medium text-gray-900 dark:text-white">{c.name}</span>
+                      <span className="font-mono text-xs text-gray-400">{fmtPhone(c.phone)}</span>
+                    </div>
+                    {c.firm && (
+                      <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${FIRM_PILL[c.firm] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                        {c.firm}
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
             )}
             {!loading && query.trim() && results.length === 0 && !selected && (
               <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-gray-200 bg-white px-3 py-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                <p className="text-xs text-gray-400">No leads found in GHL.</p>
+                <p className="text-xs text-gray-400">No leads found.</p>
               </div>
             )}
           </div>
@@ -176,7 +308,7 @@ function NewConvoModal({ onClose, onStart }: {
           {selected && (
             <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2.5 dark:border-cyan-800 dark:bg-cyan-950/30">
               <p className="text-sm font-medium text-gray-900 dark:text-white">{selected.name}</p>
-              <p className="font-mono text-xs text-gray-500">{selected.phone}</p>
+              <p className="font-mono text-xs text-gray-500">{fmtPhone(selected.phone)}</p>
             </div>
           )}
 
@@ -199,6 +331,8 @@ function NewConvoModal({ onClose, onStart }: {
 // ── Main page ─────────────────────────────────────────────────────────────────
 
 export default function MessagesPage() {
+  const { name: authName, identity } = useAuth()
+
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [convoLoading, setConvoLoading]   = useState(true)
   const [selected, setSelected]           = useState<Conversation | null>(null)
@@ -208,12 +342,15 @@ export default function MessagesPage() {
   const [sending, setSending]             = useState(false)
   const [search, setSearch]               = useState('')
   const [showNew, setShowNew]             = useState(false)
-  const [identity]                        = useState('agent')
+  const [showTemplates, setShowTemplates] = useState(false)
 
   const bottomRef   = useRef<HTMLDivElement>(null)
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null)
   const selectedRef = useRef(selected)
   selectedRef.current = selected
+
+  // Resolve the rep display name for templates
+  const repName = authName || identity || 'William'
 
   // Load conversation list
   const loadConversations = useCallback(async () => {
@@ -248,6 +385,7 @@ export default function MessagesPage() {
     setSelected(convo)
     setMessages([])
     setMsgLoading(true)
+    setShowTemplates(false)
     try {
       const res  = await fetch(`/api/dialer/sms/thread?phone=${encodeURIComponent(convo.leadPhone)}`)
       const data = await res.json()
@@ -263,13 +401,13 @@ export default function MessagesPage() {
     }
   }
 
-  // Start a new conversation with a known GHL lead
-  function startNew(phone: string, name: string, contactId: string) {
+  // Start a new conversation
+  function startNew(phone: string, name: string, contactId: string, firm: string | null) {
     const convo: Conversation = {
       leadPhone:   phone,
       contactId:   contactId,
       contactName: name || null,
-      firm:        null,
+      firm:        firm ?? null,
       lastMessage: null,
       lastAt:      new Date().toISOString(),
       unreadCount: 0,
@@ -279,6 +417,16 @@ export default function MessagesPage() {
     setConversations(prev => [convo, ...prev.filter(c => c.leadPhone !== phone)])
     setSelected(convo)
     setMessages([])
+  }
+
+  // Apply a template — fill the draft with the template text
+  function applyTemplate(tpl: Template) {
+    const leadName = firstName(selected?.contactName)
+    const filled = tpl.message
+      .replace(/\{NAME\}/g, leadName)
+      .replace(/\{REP\}/g, repName)
+    setDraft(filled)
+    setShowTemplates(false)
   }
 
   // Scroll to bottom when messages change
@@ -296,14 +444,14 @@ export default function MessagesPage() {
     const optimistic: Message = {
       id:           `tmp-${Date.now()}`,
       direction:    'outbound',
-      from_number:  process.env.NEXT_PUBLIC_TWILIO_NUMBER ?? '',
+      from_number:  '',
       to_number:    selected.leadPhone,
       body,
       status:       'sending',
       media_url:    null,
       contact_id:   selected.contactId,
       contact_name: selected.contactName,
-      rep_identity: identity,
+      rep_identity: identity || authName,
       firm:         selected.firm,
       read:         true,
       created_at:   new Date().toISOString(),
@@ -317,7 +465,7 @@ export default function MessagesPage() {
         body: JSON.stringify({
           to:          selected.leadPhone,
           body,
-          repIdentity: identity,
+          repIdentity: identity || authName,
           contactId:   selected.contactId,
           contactName: selected.contactName,
           firm:        selected.firm,
@@ -349,7 +497,7 @@ export default function MessagesPage() {
       {showNew && (
         <NewConvoModal
           onClose={() => setShowNew(false)}
-          onStart={(phone, name, contactId) => startNew(phone, name, contactId)}
+          onStart={(phone, name, contactId, firm) => startNew(phone, name, contactId, firm)}
         />
       )}
 
@@ -489,7 +637,7 @@ export default function MessagesPage() {
 
               {!msgLoading && messages.length === 0 && (
                 <div className="flex h-full flex-col items-center justify-center text-center">
-                  <p className="text-xs text-gray-400">No messages yet.<br />Send the first one below.</p>
+                  <p className="text-xs text-gray-400">No messages yet.<br />Use a quick reply or type a message below.</p>
                 </div>
               )}
 
@@ -545,29 +693,81 @@ export default function MessagesPage() {
               <div ref={bottomRef} />
             </div>
 
-            {/* Send box */}
-            <div className="border-t border-gray-200 p-3 dark:border-gray-800">
-              <div className="flex items-end gap-2">
-                <textarea
-                  value={draft}
-                  onChange={e => setDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Enter' && !e.shiftKey) {
-                      e.preventDefault()
-                      sendMessage()
-                    }
-                  }}
-                  placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
-                  rows={2}
-                  className="flex-1 resize-none rounded-xl border border-gray-300 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
-                />
-                <button
-                  onClick={sendMessage}
-                  disabled={!draft.trim() || sending}
-                  className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-40 transition-colors"
-                >
-                  <SendIcon />
-                </button>
+            {/* ── Template picker + Send box ── */}
+            <div className="border-t border-gray-200 dark:border-gray-800">
+              {/* Quick replies */}
+              {showTemplates && (
+                <div className="max-h-72 overflow-y-auto border-b border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-900">
+                  {/* Qualification Flow */}
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Qualification Flow</p>
+                  <div className="grid grid-cols-3 gap-1.5 mb-3">
+                    {FLOW_TEMPLATES.map(tpl => (
+                      <button
+                        key={tpl.id}
+                        onClick={() => applyTemplate(tpl)}
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left transition-colors hover:border-cyan-300 hover:bg-cyan-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/30"
+                      >
+                        <span className="text-sm">{tpl.icon}</span>
+                        <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">{tpl.label}</span>
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Additional */}
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Additional</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {ADDITIONAL_TEMPLATES.map(tpl => (
+                      <button
+                        key={tpl.id}
+                        onClick={() => applyTemplate(tpl)}
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left transition-colors hover:border-violet-300 hover:bg-violet-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-violet-700 dark:hover:bg-violet-950/30"
+                      >
+                        <span className="text-sm">{tpl.icon}</span>
+                        <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">{tpl.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="p-3">
+                <div className="flex items-end gap-2">
+                  {/* Template toggle button */}
+                  <button
+                    onClick={() => setShowTemplates(v => !v)}
+                    title="Quick replies"
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
+                      showTemplates
+                        ? 'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400'
+                        : 'border-gray-300 bg-gray-50 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:text-gray-400'
+                    }`}
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-4.5 w-4.5">
+                      <path fillRule="evenodd" d="M3 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm0 4a1 1 0 011-1h8a1 1 0 110 2H4a1 1 0 01-1-1z" clipRule="evenodd" />
+                    </svg>
+                  </button>
+
+                  <textarea
+                    value={draft}
+                    onChange={e => setDraft(e.target.value)}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter' && !e.shiftKey) {
+                        e.preventDefault()
+                        sendMessage()
+                      }
+                    }}
+                    placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
+                    rows={2}
+                    className="flex-1 resize-none rounded-xl border border-gray-300 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                  />
+                  <button
+                    onClick={sendMessage}
+                    disabled={!draft.trim() || sending}
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-40 transition-colors"
+                  >
+                    <SendIcon />
+                  </button>
+                </div>
               </div>
             </div>
           </>

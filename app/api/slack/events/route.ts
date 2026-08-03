@@ -16,13 +16,23 @@ const SLACK_NEW_LEAD_CHANNELS = new Set(
   (process.env.SLACK_NEW_LEAD_CHANNELS || '').split(',').map(s => s.trim()).filter(Boolean)
 )
 
-async function getSlackDisplayName(userId: string): Promise<string> {
-  if (!SLACK_BOT_TOKEN) return userId
-  const res = await fetch(`https://slack.com/api/users.info?user=${userId}`, {
-    headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` },
-  })
-  const d = await res.json()
-  return d.user?.profile?.display_name || d.user?.real_name || userId
+// Returns true if the message is a root channel message (not a thread reply).
+// conversations.history only surfaces root messages, so if the exact ts isn't
+// found there, the reacted message must be a thread reply.
+async function isRootMessage(channel: string, ts: string): Promise<boolean> {
+  if (!SLACK_BOT_TOKEN) return true
+  try {
+    const res = await fetch(
+      `https://slack.com/api/conversations.history?channel=${channel}&latest=${ts}&limit=1&inclusive=true`,
+      { headers: { Authorization: `Bearer ${SLACK_BOT_TOKEN}` } }
+    )
+    const d = await res.json()
+    const msg = d.messages?.[0]
+    // Must be the exact message AND either have no thread_ts or thread_ts === its own ts
+    return !!msg && msg.ts === ts && (!msg.thread_ts || msg.thread_ts === msg.ts)
+  } catch {
+    return true // if check fails, allow through
+  }
 }
 
 async function postThreadReply(channel: string, threadTs: string, text: string) {
@@ -132,6 +142,13 @@ export async function POST(req: NextRequest) {
       event.reaction === 'white_check_mark' &&
       (SLACK_NEW_LEAD_CHANNELS.size === 0 || SLACK_NEW_LEAD_CHANNELS.has(channel))
     ) {
+      // Only fire for reactions on the root lead message, not thread replies
+      const isRoot = await isRootMessage(channel, messageTsStr)
+      if (!isRoot) {
+        console.log('[lead-claim] reaction on thread reply, skipping')
+        return NextResponse.json({ ok: true })
+      }
+
       console.log('[lead-claim] ✅ reaction in channel', channel, 'by', slackUserId, 'has bot token:', !!SLACK_BOT_TOKEN)
 
       const { data: profile } = await admin
@@ -147,7 +164,7 @@ export async function POST(req: NextRequest) {
       console.log('[lead-claim] insert result — error:', claimError?.code, claimError?.message)
 
       if (!claimError) {
-        const displayName = profile?.name || await getSlackDisplayName(slackUserId)
+        const displayName = profile?.name || `<@${slackUserId}>`
         console.log('[lead-claim] winner:', displayName, '— posting to thread')
         const res = await postThreadReply(channel, messageTsStr, `✅ *${displayName}* got the lead!`)
         console.log('[lead-claim] postMessage result:', res)
@@ -163,7 +180,7 @@ export async function POST(req: NextRequest) {
             .select('name')
             .eq('slack_user_id', existing.claimed_by_slack_id)
             .maybeSingle()
-          const firstName = firstProfile?.name || await getSlackDisplayName(existing.claimed_by_slack_id)
+          const firstName = firstProfile?.name || `<@${existing.claimed_by_slack_id}>`
           await postThreadReply(channel, messageTsStr, `⚡ *${firstName}* already claimed this lead first.`)
         }
       }

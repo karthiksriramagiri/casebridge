@@ -130,7 +130,7 @@ export default function QueueAdminPage() {
   const [status, setStatus] = useState('')
   const [block,  setBlock]  = useState('')
   const [search, setSearch] = useState('')
-  const [tab,    setTab]    = useState<'active' | 'done' | 'all'>('active')
+  const [tab,    setTab]    = useState<'active' | 'done' | 'callbacks' | 'all'>('active')
 
   const supabaseRef = useRef<ReturnType<typeof createClient> | null>(null)
 
@@ -311,11 +311,15 @@ export default function QueueAdminPage() {
       const sa = statusOrder(a.status)
       const sb = statusOrder(b.status)
       if (sa !== sb) return sa - sb
-      // 2. Block chronological: morning → afternoon → evening → night
+      // 2. Group by assigned rep (keeps each rep's leads contiguous)
+      const repA = a.buffered_for || a.leased_by || ''
+      const repB = b.buffered_for || b.leased_by || ''
+      if (repA !== repB) return repA.localeCompare(repB)
+      // 3. Block chronological: morning → afternoon → evening → night
       const ba = blockOrder(a.block)
       const bb = blockOrder(b.block)
       if (ba !== bb) return ba - bb
-      // 3. Priority order within same block
+      // 4. Priority order within same block
       if (a.is_callback !== b.is_callback) return a.is_callback ? -1 : 1
       if (a.is_carryover !== b.is_carryover) return a.is_carryover ? -1 : 1
       if (a.priority !== b.priority) return b.priority - a.priority
@@ -326,11 +330,24 @@ export default function QueueAdminPage() {
   }, [items])
 
   // Apply tab filter
-  const tabFiltered = sorted.filter(item => {
-    if (tab === 'active') return !['completed', 'cancelled', 'expired', 'merged'].includes(item.status)
-    if (tab === 'done')   return item.status === 'completed'
-    return true
-  })
+  const tabFiltered = useMemo(() => {
+    let list = sorted.filter(item => {
+      if (tab === 'active')    return !['completed', 'cancelled', 'expired', 'merged'].includes(item.status)
+      if (tab === 'done')      return item.status === 'completed'
+      if (tab === 'callbacks') return item.is_callback || item.disposition === 'Callback'
+      return true
+    })
+    // Sort callbacks by callback time (soonest first, completed at bottom)
+    if (tab === 'callbacks') {
+      list = [...list].sort((a, b) => {
+        const aDone = a.status === 'completed' ? 1 : 0
+        const bDone = b.status === 'completed' ? 1 : 0
+        if (aDone !== bDone) return aDone - bDone
+        return (a.callback_at ?? '').localeCompare(b.callback_at ?? '')
+      })
+    }
+    return list
+  }, [sorted, tab])
 
   // Apply search
   const filtered = tabFiltered.filter(item =>
@@ -441,12 +458,15 @@ export default function QueueAdminPage() {
 
         {/* Tab */}
         <div className="flex rounded-lg border border-gray-300 overflow-hidden dark:border-gray-700">
-          {(['active', 'done', 'all'] as const).map(t => (
-            <button key={t} onClick={() => setTab(t)}
-              className={`px-3 py-1.5 text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white' : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
-              {t === 'done' ? 'Completed' : t}
-            </button>
-          ))}
+          {(['active', 'done', 'callbacks', 'all'] as const).map(t => {
+            const label = t === 'done' ? 'Completed' : t === 'callbacks' ? `Callbacks${summary?.callbacks ? ` (${summary.callbacks})` : ''}` : t
+            return (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-3 py-1.5 text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white' : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
+                {label}
+              </button>
+            )
+          })}
         </div>
 
         <span className="text-xs text-gray-400">{filtered.length} attempts</span>
@@ -461,9 +481,69 @@ export default function QueueAdminPage() {
         ) : filtered.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <p className="text-sm text-gray-400">No attempts found</p>
-              <p className="mt-1 text-xs text-gray-400">Click "Sync from GHL" to plan today's calls</p>
+              <p className="text-sm text-gray-400">
+                {tab === 'callbacks' ? 'No callbacks scheduled' : 'No attempts found'}
+              </p>
+              <p className="mt-1 text-xs text-gray-400">
+                {tab === 'callbacks'
+                  ? 'Callbacks will appear here when reps set the Callback disposition'
+                  : 'Click "Sync from GHL" to plan today\'s calls'}
+              </p>
             </div>
+          </div>
+        ) : tab === 'callbacks' ? (
+          /* ── Callbacks card view ─────────────────────────────── */
+          <div className="grid gap-3 p-6 sm:grid-cols-2 lg:grid-cols-3">
+            {filtered.map(item => {
+              const isPast = item.callback_at ? new Date(item.callback_at) < new Date() : false
+              const isDone = item.status === 'completed'
+              return (
+                <div key={item.id}
+                  className={`rounded-xl border p-4 transition-colors
+                    ${isDone
+                      ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20'
+                      : isPast
+                        ? 'border-red-200 bg-red-50/40 dark:border-red-800 dark:bg-red-950/20'
+                        : 'border-blue-200 bg-blue-50/40 dark:border-blue-800 dark:bg-blue-950/20'}`}>
+                  {/* Callback time — prominent */}
+                  <div className="mb-3 flex items-center justify-between">
+                    <span className={`text-lg font-bold tabular-nums
+                      ${isDone ? 'text-emerald-600 dark:text-emerald-400'
+                        : isPast ? 'text-red-500 dark:text-red-400'
+                        : 'text-blue-600 dark:text-blue-400'}`}>
+                      {item.callback_at
+                        ? new Date(item.callback_at).toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
+                        : '—'}
+                    </span>
+                    <CallStatusBadge attempt={item} />
+                  </div>
+                  {/* Lead info */}
+                  <p className="font-semibold text-gray-900 dark:text-white">{item.contact_name}</p>
+                  <p className="text-xs font-mono text-gray-400">{item.phone}</p>
+                  {/* Meta row */}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
+                    <span className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800 dark:text-gray-400">
+                      {FIRM_LABEL[item.firm] ?? item.firm}
+                    </span>
+                    {item.owner_rep && (
+                      <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
+                        {item.owner_rep}
+                      </span>
+                    )}
+                    {item.disposition && (
+                      <span className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800 dark:text-gray-400">
+                        {item.disposition}
+                      </span>
+                    )}
+                    {isPast && !isDone && (
+                      <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                        Overdue
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
           </div>
         ) : (
           <table className="w-full text-sm">

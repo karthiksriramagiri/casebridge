@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
+import { cancelDrip } from '@/app/dialer/_lib/sms-drip'
 
 function supabaseAdmin() {
   return createClient(
@@ -54,6 +55,13 @@ export async function POST(req: NextRequest) {
     firm:         firm        || null,
     read:         true,
   })
+
+  // PC replied manually — cancel any active SMS drip automation for this contact
+  if (contactId) {
+    cancelDrip(contactId).catch(err =>
+      console.error('[dialer:sms:send] cancel drip error', err)
+    )
+  }
 
   return NextResponse.json({ messageSid })
 }

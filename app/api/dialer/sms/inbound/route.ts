@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
-const GHL_BASE    = 'https://services.leadconnectorhq.com'
-const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
-
 function supabaseAdmin() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -11,27 +8,48 @@ function supabaseAdmin() {
   )
 }
 
-// Look up a GHL contact by exact phone number
-async function lookupByPhone(phone: string): Promise<{ id: string; name: string } | null> {
-  const key = (process.env.GHL_API_KEY ?? '').trim()
+// Look up a contact by phone number from our own dialer data (calls + messages)
+async function lookupByPhone(
+  db: ReturnType<typeof supabaseAdmin>,
+  phone: string
+): Promise<{ id: string; name: string; firm: string | null } | null> {
+  // Check dialer_calls first (most reliable — has contact_id from GHL at call time)
+  const { data: callRow } = await db
+    .from('dialer_calls')
+    .select('contact_id, contact_name, firm')
+    .eq('phone', phone)
+    .not('contact_id', 'is', null)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  const url = new URL(`${GHL_BASE}/contacts/search/duplicate`)
-  url.searchParams.set('locationId', LOCATION_ID)
-  url.searchParams.set('phone', phone)
-
-  const res = await fetch(url.toString(), {
-    headers: { Authorization: `Bearer ${key}`, Version: '2021-07-28' },
-    cache: 'no-store',
-  })
-
-  if (!res.ok) return null
-  const data = await res.json()
-  const c = data.contact ?? data.contacts?.[0]
-  if (!c?.id) return null
-  return {
-    id:   c.id,
-    name: c.name ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
+  if (callRow?.contact_id) {
+    return {
+      id:   callRow.contact_id,
+      name: callRow.contact_name ?? phone,
+      firm: callRow.firm ?? null,
+    }
   }
+
+  // Fallback: check previous messages from this number
+  const { data: msgRow } = await db
+    .from('dialer_messages')
+    .select('contact_id, contact_name, firm')
+    .eq('from_number', phone)
+    .not('contact_id', 'is', null)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (msgRow?.contact_id) {
+    return {
+      id:   msgRow.contact_id,
+      name: msgRow.contact_name ?? phone,
+      firm: msgRow.firm ?? null,
+    }
+  }
+
+  return null
 }
 
 // Twilio POSTs here when an SMS is received on our number
@@ -47,26 +65,16 @@ export async function POST(req: NextRequest) {
 
   console.log('[dialer:sms:inbound]', { messageSid, from, to })
 
-  // Only store messages from known GHL leads
-  const contact = await lookupByPhone(from)
-  if (!contact) {
-    console.log('[dialer:sms:inbound] unknown number, ignoring', from)
-    return new NextResponse('<Response></Response>', {
-      headers: { 'Content-Type': 'text/xml' },
-    })
-  }
-
   const db = supabaseAdmin()
 
-  // Also pull firm from most recent call for this contact
-  const { data: callRow } = await db
-    .from('dialer_calls')
-    .select('firm')
-    .eq('contact_id', contact.id)
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .single()
+  // Look up contact from our own data
+  const contact = await lookupByPhone(db, from)
 
+  if (!contact) {
+    console.log('[dialer:sms:inbound] unknown number, storing without contact_id', from)
+  }
+
+  // Store ALL inbound messages — even unknown numbers (reps can see them)
   await db.from('dialer_messages').insert({
     message_sid:  messageSid,
     direction:    'inbound',
@@ -75,9 +83,9 @@ export async function POST(req: NextRequest) {
     body:         msgBody,
     status:       'received',
     media_url:    numMedia > 0 ? mediaUrl : null,
-    contact_id:   contact.id,
-    contact_name: contact.name,
-    firm:         callRow?.firm ?? null,
+    contact_id:   contact?.id   ?? null,
+    contact_name: contact?.name ?? null,
+    firm:         contact?.firm ?? null,
     read:         false,
   })
 

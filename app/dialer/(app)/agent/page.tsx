@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { createClient } from '../../_lib/supabase'
 import { useCall } from '../../_context/call'
 import { useAuth } from '../../_context/auth'
 import { StatusPill } from '../../_components/StatusPill'
@@ -228,7 +229,7 @@ function DispositionModal({ lead, leadTimezone, firm, onSubmit }: {
             disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
             onClick={() => selected && onSubmit(selected, callbackTime, false, context, nqReason)}
             className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
-            Submit →
+            Submit & Next
           </button>
         </div>
       </div>
@@ -237,6 +238,174 @@ function DispositionModal({ lead, leadTimezone, firm, onSubmit }: {
 }
 
 // ── Admin Lead Picker ──────────────────────────────────────────────────────────
+
+// ── Rep Lead Browser (collapsible, bottom of left rail) ──────────────────────
+
+function RepLeadBrowser({
+  onCall,
+  disabled,
+}: {
+  onCall: (lead: GHLLead, campaign: Campaign) => void
+  disabled: boolean
+}) {
+  const [open,              setOpen]              = useState(true)
+  const [campaigns,         setCampaigns]         = useState<Campaign[]>([])
+  const [campaignsLoading,  setCampaignsLoading]  = useState(false)
+  const [selectedCampaign,  setSelectedCampaign]  = useState<Campaign | null>(null)
+  const [leads,             setLeads]             = useState<GHLLead[]>([])
+  const [leadsLoading,      setLeadsLoading]      = useState(false)
+  const [nextCursor,        setNextCursor]        = useState<string | null>(null)
+  const [nextCursorId,      setNextCursorId]      = useState<string | null>(null)
+  const [hasMore,           setHasMore]           = useState(false)
+  const [loadingMore,       setLoadingMore]       = useState(false)
+  const [search,            setSearch]            = useState('')
+
+  // Fetch campaigns on mount
+  useEffect(() => {
+    if (campaigns.length > 0) return
+    setCampaignsLoading(true)
+    fetch('/api/dialer/campaigns')
+      .then(r => r.json())
+      .then(d => setCampaigns(d.campaigns ?? []))
+      .catch(() => {})
+      .finally(() => setCampaignsLoading(false))
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Fetch leads when campaign changes
+  useEffect(() => {
+    if (!selectedCampaign) { setLeads([]); return }
+    setLeadsLoading(true)
+    setSearch('')
+    fetch(`/api/dialer/leads?pipelineId=${selectedCampaign.pipelineId}&stageId=${selectedCampaign.stageId}&limit=20`)
+      .then(r => r.json())
+      .then(d => {
+        setLeads(d.leads ?? [])
+        setNextCursor(d.meta?.nextCursor ?? null)
+        setNextCursorId(d.meta?.nextCursorId ?? null)
+        setHasMore(d.meta?.hasMore ?? false)
+      })
+      .catch(() => {})
+      .finally(() => setLeadsLoading(false))
+  }, [selectedCampaign?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function loadMore() {
+    if (!selectedCampaign || !hasMore || loadingMore) return
+    setLoadingMore(true)
+    try {
+      const params = new URLSearchParams({
+        pipelineId: selectedCampaign.pipelineId,
+        stageId:    selectedCampaign.stageId,
+        limit:      '20',
+      })
+      if (nextCursor)   params.set('cursor', nextCursor)
+      if (nextCursorId) params.set('cursorId', nextCursorId)
+      const d = await fetch(`/api/dialer/leads?${params}`).then(r => r.json())
+      setLeads(prev => [...prev, ...(d.leads ?? [])])
+      setNextCursor(d.meta?.nextCursor ?? null)
+      setNextCursorId(d.meta?.nextCursorId ?? null)
+      setHasMore(d.meta?.hasMore ?? false)
+    } finally {
+      setLoadingMore(false)
+    }
+  }
+
+  const filtered = search
+    ? leads.filter(l => l.name.toLowerCase().includes(search.toLowerCase()) || l.phone.includes(search))
+    : leads
+
+  return (
+    <div className="border-t border-gray-200 dark:border-gray-800">
+      {/* Toggle header */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-100 dark:hover:bg-gray-900/50 transition-colors"
+      >
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Browse Leads</p>
+        <svg
+          viewBox="0 0 20 20" fill="currentColor"
+          className={`h-4 w-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+        >
+          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+        </svg>
+      </button>
+
+      {open && (
+        <div className="flex flex-col" style={{ maxHeight: '50vh' }}>
+          {/* Stage picker */}
+          <div className="px-4 pb-2">
+            {campaignsLoading ? (
+              <div className="h-7 animate-pulse rounded-md bg-gray-200 dark:bg-gray-800" />
+            ) : (
+              <select
+                value={selectedCampaign?.id ?? ''}
+                onChange={e => setSelectedCampaign(campaigns.find(x => x.id === e.target.value) ?? null)}
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              >
+                <option value="">Select a stage…</option>
+                {campaigns.map(c => (
+                  <option key={c.id} value={c.id}>{c.name} ({c.leadCount})</option>
+                ))}
+              </select>
+            )}
+          </div>
+
+          {/* Search within stage */}
+          {selectedCampaign && !leadsLoading && leads.length > 0 && (
+            <div className="px-4 pb-2">
+              <input
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Search name or phone…"
+                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+              />
+            </div>
+          )}
+
+          {/* Lead list */}
+          <div className="flex-1 overflow-y-auto">
+            {!selectedCampaign && (
+              <p className="px-4 py-4 text-center text-xs text-gray-400">Select a stage to browse leads.</p>
+            )}
+            {selectedCampaign && leadsLoading && (
+              <div className="space-y-2 p-4">
+                {[1,2,3].map(i => <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />)}
+              </div>
+            )}
+            {selectedCampaign && !leadsLoading && filtered.length === 0 && (
+              <p className="px-4 py-4 text-center text-xs text-gray-400">
+                {search ? 'No matches.' : 'No leads in this stage.'}
+              </p>
+            )}
+            {filtered.map(lead => (
+              <button
+                key={lead.id}
+                onClick={() => selectedCampaign && !disabled && onCall(lead, selectedCampaign)}
+                disabled={disabled || !lead.phone}
+                className="w-full border-b border-gray-100 px-4 py-2 text-left transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800/40 dark:hover:bg-gray-900"
+              >
+                <p className="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
+                <p className="text-[10px] font-mono text-gray-500">{lead.phone || 'No phone'}</p>
+              </button>
+            ))}
+            {hasMore && !search && (
+              <div className="px-4 py-2">
+                <button
+                  onClick={loadMore}
+                  disabled={loadingMore}
+                  className="w-full rounded-md border border-gray-300 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+                >
+                  {loadingMore ? 'Loading…' : 'Load more'}
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Admin Lead Picker ───────────────────────────────────────────────────────
 
 function AdminLeadPicker({
   onCall,
@@ -432,8 +601,9 @@ export default function AgentPage() {
   const {
     deviceReady, deviceError, callState, setCallState,
     currentLead, setCurrentLead, callDuration,
-    muted, toggleMute, hangUp, sendDtmf,
-    placeCall: ctxPlaceCall, identity, setIdentity,
+    muted, toggleMute, hangUp, sendDtmf, callerIdUsed,
+    placeCall: ctxPlaceCall, answerInbound: ctxAnswerInbound,
+    identity, setIdentity,
   } = useCall()
 
   const { name: authName, identity: authIdentity, role, signOut } = useAuth()
@@ -454,12 +624,140 @@ export default function AgentPage() {
   const [aiSummary,         setAiSummary]         = useState<string | null>(null)
   const [selectedQueueLead, setSelectedQueueLead] = useState<QueueLead | null>(null)
   const [queueRefreshKey, setQueueRefreshKey] = useState(0)
+  const [answeredBy,        setAnsweredBy]        = useState<string | null>(null)
+  const autoDialStopped = useRef(false)
+  const statusRef       = useRef(status)
+  const deviceReadyRef  = useRef(deviceReady)
+  useEffect(() => { statusRef.current = status }, [status])
+  useEffect(() => { deviceReadyRef.current = deviceReady }, [deviceReady])
   const [showDocuseal,      setShowDocuseal]      = useState(false)
   const [docusealSending,   setDocusealSending]   = useState(false)
   const [docusealSent,      setDocusealSent]      = useState(false)
   const [dsAccidentDate,    setDsAccidentDate]    = useState('')
   const [dsAccidentCity,    setDsAccidentCity]    = useState('')
   const [dsDob,             setDsDob]             = useState('')
+
+  // ── Inbound call alert state ──
+  interface InboundCall {
+    id: string
+    call_sid: string
+    conference_name: string
+    caller_phone: string
+    contact_id: string | null
+    contact_name: string | null
+    firm: string | null
+    status: string
+    created_at: string
+  }
+  const [inboundCalls, setInboundCalls] = useState<InboundCall[]>([])
+  const [answeringInbound, setAnsweringInbound] = useState(false)
+
+  // Subscribe to inbound queue via Supabase Realtime
+  useEffect(() => {
+    const db = createClient()
+
+    // Fetch any currently ringing calls on mount
+    db.from('dialer_inbound_queue')
+      .select('*')
+      .eq('status', 'ringing')
+      .then(({ data }) => setInboundCalls(data ?? []))
+
+    const channel = db.channel('inbound-queue')
+      .on('postgres_changes', {
+        event: '*',
+        schema: 'public',
+        table: 'dialer_inbound_queue',
+      }, (payload) => {
+        const row = payload.new as InboundCall
+        if (!row?.call_sid) return
+        if (row.status === 'ringing') {
+          setInboundCalls(prev => {
+            if (prev.some(c => c.call_sid === row.call_sid)) return prev
+            return [...prev, row]
+          })
+        } else {
+          // answered, missed, or completed — remove from list
+          setInboundCalls(prev => prev.filter(c => c.call_sid !== row.call_sid))
+        }
+      })
+      .subscribe()
+
+    return () => { db.removeChannel(channel) }
+  }, [])
+
+  // Play ringtone when inbound calls are pending
+  const ringtoneRef = useRef<HTMLAudioElement | null>(null)
+  useEffect(() => {
+    if (inboundCalls.length > 0 && callState === 'idle') {
+      if (!ringtoneRef.current) {
+        // Use a simple oscillator-based ringtone via Web Audio API
+        try {
+          const ctx = new AudioContext()
+          const osc = ctx.createOscillator()
+          const gain = ctx.createGain()
+          osc.frequency.value = 440
+          osc.type = 'sine'
+          gain.gain.value = 0.15
+          osc.connect(gain).connect(ctx.destination)
+          osc.start()
+          // Pulse on/off every 1s
+          const pulse = setInterval(() => {
+            gain.gain.value = gain.gain.value > 0 ? 0 : 0.15
+          }, 1000)
+          ringtoneRef.current = { stop: () => { osc.stop(); ctx.close(); clearInterval(pulse) } } as any
+        } catch { /* ignore audio errors */ }
+      }
+    } else {
+      if (ringtoneRef.current) {
+        (ringtoneRef.current as any).stop?.()
+        ringtoneRef.current = null
+      }
+    }
+    return () => {
+      if (ringtoneRef.current) {
+        (ringtoneRef.current as any).stop?.()
+        ringtoneRef.current = null
+      }
+    }
+  }, [inboundCalls.length, callState])
+
+  // Answer inbound call handler
+  async function handleAnswerInbound(call: InboundCall) {
+    if (callState !== 'idle' || !deviceReady || answeringInbound) return
+    setAnsweringInbound(true)
+    try {
+      const res = await fetch('/api/dialer/call/answer-inbound', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callSid: call.call_sid, repIdentity: identity }),
+      })
+      const data = await res.json()
+      if (data.error) {
+        // Already answered by another rep
+        setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
+        return
+      }
+      // Build the lead from inbound data
+      const lead: Lead = {
+        id:           call.call_sid,
+        name:         data.contactName || data.callerPhone || 'Inbound call',
+        phone:        data.callerPhone,
+        email:        '',
+        company:      '',
+        source:       data.firm || 'inbound',
+        tags:         [],
+        lastActivity: new Date().toISOString(),
+        contactId:    data.contactId || '',
+      }
+      // Join the conference
+      await ctxAnswerInbound(data.confName, lead)
+      setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
+    } catch (err) {
+      console.error('[inbound] answer error', err)
+    } finally {
+      setAnsweringInbound(false)
+    }
+  }
 
   // Track current queue item for disposition reporting (reps only)
   const currentQueueLead = useRef<QueueLead | null>(null)
@@ -490,11 +788,44 @@ export default function AgentPage() {
       setHeld(false); setShowDtmf(false); setDtmfBuffer('')
       setStatus('WRAPUP')
       setTimeout(() => setShowDisposition(true), 300)
+
+      // Poll for AI summary — recording → Deepgram → Claude takes ~30-60s
+      const cid = currentLead?.contactId
+      if (cid) {
+        let attempts = 0
+        const poll = setInterval(() => {
+          attempts++
+          fetch(`/api/dialer/leads-db/${cid}`).then(r => r.json()).then(d => {
+            if (d.aiSummary) { setAiSummary(d.aiSummary); clearInterval(poll) }
+          }).catch(() => {})
+          if (attempts >= 6) clearInterval(poll) // stop after ~60s
+        }, 10_000)
+        return () => clearInterval(poll)
+      }
     }
     if (callState === 'connected') setStatus('ON_CALL')
-    if (callState === 'ringing')   setStatus('ON_CALL')
+    if (callState === 'ringing')   { setStatus('ON_CALL'); setAnsweredBy(null) }
+    if (callState === 'idle')      setAnsweredBy(null)
     prevCallState.current = callState
-  }, [callState])
+  }, [callState]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Subscribe to AMD (Answering Machine Detection) results via active session updates
+  useEffect(() => {
+    if (!identity || callState === 'idle') return
+    const db = createClient()
+    const channel = db.channel(`amd-${identity}`)
+      .on('postgres_changes', {
+        event: 'UPDATE',
+        schema: 'public',
+        table: 'dialer_active_sessions',
+        filter: `rep_identity=eq.${identity}`,
+      }, (payload) => {
+        const ab = (payload.new as any)?.answered_by
+        if (ab) setAnsweredBy(ab)
+      })
+      .subscribe()
+    return () => { db.removeChannel(channel) }
+  }, [identity, callState])
 
   // Load contact detail when lead changes (active call or selected from queue)
   const detailContactId = currentLead?.contactId ?? selectedQueueLead?.contactId
@@ -515,6 +846,7 @@ export default function AgentPage() {
   // Rep queue call handler
   async function handleQueueCall(ql: QueueLead) {
     if (!deviceReady || status !== 'READY') return
+    autoDialStopped.current = false   // reset — auto-dial continues unless they click Stop
     setSelectedQueueLead(null)
     currentQueueLead.current = ql
     const lead: Lead = {
@@ -581,6 +913,9 @@ export default function AgentPage() {
     setStatus('READY')
     currentQueueLead.current = null
 
+    // Track whether rep clicked Stop
+    autoDialStopped.current = stop
+
     // Report disposition to queue engine (reps only, when called from queue)
     if (ql?.queueId) {
       const callbackAt = callbackTime ? new Date(callbackTime).toISOString() : undefined
@@ -599,10 +934,60 @@ export default function AgentPage() {
         }),
       }).catch(console.error).finally(() => {
         setQueueRefreshKey(k => k + 1)
+        if (!stop) setTimeout(() => autoDialNext(), 1500)
       })
     } else {
       setQueueRefreshKey(k => k + 1)
+      if (!stop) setTimeout(() => autoDialNext(), 1500)
     }
+  }
+
+  // Auto-dial: fetch the next buffered lead and call it
+  // Uses refs to avoid stale closures from setTimeout in handleDisposition
+  async function autoDialNext() {
+    if (autoDialStopped.current || !deviceReadyRef.current || statusRef.current !== 'READY') return
+    try {
+      const repId = authIdentity || identity
+      const res  = await fetch(`/api/dialer/queue/next?rep=${encodeURIComponent(repId)}&count=5`)
+      const data = await res.json()
+      const leads = data.leads ?? []
+      if (leads.length === 0) return
+      const item = leads[0]
+      const ql: QueueLead = {
+        queueId:          item.id ?? item.queueId,
+        contactId:        item.contact_id ?? item.contactId,
+        name:             item.contact_name ?? item.name,
+        phone:            item.phone,
+        firm:             item.firm,
+        stageName:        item.stage_name ?? item.stageName,
+        timezone:         item.lead_timezone ?? item.timezone ?? 'America/Los_Angeles',
+        isCallback:       false,
+        callbackAt:       item.callback_at ?? null,
+        callbackContext:  null,
+        ownerRepIdentity: item.owner_rep ?? null,
+        priority:         item.priority,
+      }
+      autoDialStopped.current = false
+      setSelectedQueueLead(null)
+      currentQueueLead.current = ql
+      const lead: Lead = {
+        id:           ql.queueId,
+        name:         ql.name,
+        phone:        ql.phone,
+        email:        '',
+        company:      '',
+        source:       ql.firm,
+        tags:         [],
+        lastActivity: new Date().toISOString(),
+        contactId:    ql.contactId,
+      }
+      await ctxPlaceCall(lead, {
+        firm:     ql.firm,
+        campaign: ql.stageName,
+        queueId:  ql.queueId,
+      })
+      setQueueRefreshKey(k => k + 1)
+    } catch { /* queue empty or error — just stop */ }
   }
 
   const leadTimezone = contactDetail?.timezone
@@ -624,7 +1009,7 @@ export default function AgentPage() {
           <>
             <div className="flex-1 min-h-0">
               <MiniQueue
-                repIdentity={identity}
+                repIdentity={authIdentity || identity}
                 disabled={callState !== 'idle' || !deviceReady || status !== 'READY'}
                 onCall={handleQueueCall}
                 onSelect={(ql) => setSelectedQueueLead(ql)}
@@ -675,6 +1060,12 @@ export default function AgentPage() {
               ))}
               {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-gray-400">No calls yet today.</p>}
             </div>
+
+            {/* Browse all leads */}
+            <RepLeadBrowser
+              onCall={handleAdminCall}
+              disabled={callState !== 'idle' || !deviceReady || status !== 'READY'}
+            />
           </>
         )}
       </div>
@@ -689,6 +1080,41 @@ export default function AgentPage() {
         {!deviceReady && !deviceError && (
           <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs text-gray-400 animate-pulse dark:border-gray-800 dark:bg-gray-900/60">
             Connecting to Twilio…
+          </div>
+        )}
+
+        {/* Inbound call alerts */}
+        {inboundCalls.length > 0 && callState === 'idle' && (
+          <div className="w-full max-w-sm space-y-2">
+            {inboundCalls.map(ic => (
+              <div key={ic.call_sid} className="rounded-xl border-2 border-green-400 bg-green-50 px-4 py-3 shadow-lg animate-pulse dark:border-green-600 dark:bg-green-950/40">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="flex h-3 w-3 items-center justify-center">
+                        <span className="absolute h-3 w-3 rounded-full bg-green-400 animate-ping" />
+                        <span className="relative h-2 w-2 rounded-full bg-green-500" />
+                      </span>
+                      <p className="text-sm font-bold text-green-800 dark:text-green-300">Incoming Call</p>
+                    </div>
+                    <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
+                      {ic.contact_name || ic.caller_phone}
+                    </p>
+                    <p className="text-xs text-gray-500 font-mono">{ic.caller_phone}</p>
+                    {ic.firm && <p className="text-[10px] text-gray-400 uppercase">{ic.firm}</p>}
+                  </div>
+                  <button
+                    disabled={!deviceReady || status !== 'READY' || answeringInbound}
+                    onClick={() => handleAnswerInbound(ic)}
+                    className="rounded-full bg-green-600 p-3 text-white shadow-md transition-all hover:bg-green-500 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
+                  >
+                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                      <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+            ))}
           </div>
         )}
 
@@ -734,6 +1160,11 @@ export default function AgentPage() {
                         {currentQueueLead.current.stageName} · {currentQueueLead.current.firm.toUpperCase()}
                       </p>
                     )}
+                    {callerIdUsed && (
+                      <p className="mt-0.5 text-[10px] text-gray-400">
+                        Calling from: <span className="font-mono">{callerIdUsed}</span>
+                      </p>
+                    )}
                   </div>
                   <div className="text-right">
                     {callState === 'ringing'   && <span className="text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">Ringing…</span>}
@@ -744,6 +1175,11 @@ export default function AgentPage() {
                 {currentQueueLead.current?.isCallback && (
                   <div className="mt-2 rounded-md bg-blue-100 px-2.5 py-1.5 text-xs text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
                     📅 Callback — {currentQueueLead.current.callbackContext || 'scheduled callback'}
+                  </div>
+                )}
+                {answeredBy && answeredBy.startsWith('machine') && (
+                  <div className="mt-2 rounded-md bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
+                    📠 Voicemail detected
                   </div>
                 )}
               </div>

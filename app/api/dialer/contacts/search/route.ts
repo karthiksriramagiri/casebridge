@@ -1,73 +1,53 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
-const GHL_BASE    = 'https://services.leadconnectorhq.com'
-const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
-
-function ghlHeaders() {
-  const key = (process.env.GHL_API_KEY ?? '').trim()
-  return {
-    Authorization: `Bearer ${key}`,
-    Version: '2021-07-28',
-    'Content-Type': 'application/json',
-  }
+function supabaseAdmin() {
+  return createClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  )
 }
 
 // GET /api/dialer/contacts/search?q=<name or phone>
-// Searches GHL contacts by name or phone — used for the new-message lead picker
+// Searches our own dialer data for contacts by name or phone
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q') ?? ''
   if (!q) return NextResponse.json({ contacts: [] })
 
-  const url = new URL(`${GHL_BASE}/contacts/`)
-  url.searchParams.set('locationId', LOCATION_ID)
-  url.searchParams.set('query', q)
-  url.searchParams.set('limit', '20')
+  const db = supabaseAdmin()
 
-  const res = await fetch(url.toString(), {
-    headers: ghlHeaders(),
-    cache: 'no-store',
-  })
+  // Search dialer_calls for matching contacts (has the most complete data)
+  const isPhoneSearch = /^\+?\d/.test(q.trim())
 
-  if (!res.ok) {
-    const text = await res.text()
-    console.error('[contacts:search] GHL error', res.status, text)
-    return NextResponse.json({ contacts: [] })
+  let query = db
+    .from('dialer_calls')
+    .select('contact_id, contact_name, phone, firm')
+    .not('contact_id', 'is', null)
+    .not('phone', 'is', null)
+
+  if (isPhoneSearch) {
+    query = query.ilike('phone', `%${q.trim()}%`)
+  } else {
+    query = query.ilike('contact_name', `%${q.trim()}%`)
   }
 
-  const data = await res.json()
+  const { data: rows } = await query
+    .order('started_at', { ascending: false })
+    .limit(100)
 
-  const contacts = (data.contacts ?? []).map((c: any) => ({
-    id:    c.id,
-    name:  c.name ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-    phone: c.phone ?? '',
-    email: c.email ?? '',
-    tags:  c.tags ?? [],
-  })).filter((c: any) => c.phone)
+  // Dedupe by contact_id, keep most recent
+  const seen = new Map<string, { id: string; name: string; phone: string; firm: string | null }>()
+  for (const row of rows ?? []) {
+    if (!row.contact_id || seen.has(row.contact_id)) continue
+    seen.set(row.contact_id, {
+      id:    row.contact_id,
+      name:  row.contact_name ?? '',
+      phone: row.phone,
+      firm:  row.firm ?? null,
+    })
+  }
+
+  const contacts = Array.from(seen.values()).slice(0, 20)
 
   return NextResponse.json({ contacts })
-}
-
-// Also used server-side to look up a contact by exact phone number
-export async function lookupByPhone(phone: string): Promise<{ id: string; name: string } | null> {
-  const url = new URL(`${GHL_BASE}/contacts/search/duplicate`)
-  url.searchParams.set('locationId', LOCATION_ID)
-  url.searchParams.set('phone', phone)
-
-  const key = (process.env.GHL_API_KEY ?? '').trim()
-  const res = await fetch(url.toString(), {
-    headers: {
-      Authorization: `Bearer ${key}`,
-      Version: '2021-07-28',
-    },
-    cache: 'no-store',
-  })
-
-  if (!res.ok) return null
-  const data = await res.json()
-  const c = data.contact ?? data.contacts?.[0]
-  if (!c?.id) return null
-  return {
-    id:   c.id,
-    name: c.name ?? `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim(),
-  }
 }

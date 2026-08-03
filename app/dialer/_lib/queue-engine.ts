@@ -6,6 +6,7 @@ import { createClient }                               from '@supabase/supabase-j
 import { resolveTimezone }                            from './area-codes'
 import { BLOCKS_BY_COUNT, blockWindows, stagePriority } from './blocks'
 import type { BlockName } from './blocks'
+import { getNumberPool, assignRandomCallerId }         from './number-pool'
 
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const PIPELINES = [
@@ -336,6 +337,24 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     .maybeSingle()
   if (!user || user.role !== 'REP' || !user.active) return []
 
+  // ── Force-buffer due callbacks owned by this rep (bypass buffer limit) ──
+  const { data: dueCallbacks } = await db.from('dialer_attempts')
+    .select('id')
+    .eq('status', 'pending')
+    .eq('plan_date', today)
+    .eq('is_callback', true)
+    .eq('owner_rep', repIdentity)
+    .lte('due_from', now.toISOString())
+
+  if (dueCallbacks?.length) {
+    const nowIso = now.toISOString()
+    await db.from('dialer_attempts')
+      .update({ status: 'buffered', buffered_for: repIdentity, buffered_at: nowIso, updated_at: nowIso })
+      .in('id', dueCallbacks.map(a => a.id))
+      .eq('status', 'pending')
+    console.log(`[fillBuffer] force-buffered ${dueCallbacks.length} due callback(s) for ${repIdentity}`)
+  }
+
   // How many already buffered/leased for this rep?
   // Must check BOTH buffered_for and leased_by — leased leads have buffered_for=null
   const { data: existing } = await db.from('dialer_attempts')
@@ -382,9 +401,11 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     }
   }
 
-  // Filter: active contacts + sequential constraint only (preserving DB order)
+  // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
+    // Callbacks are exclusive to their owner rep — don't assign to anyone else
+    if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
     if (!a.is_callback) {
       const nums = pendingByContact.get(a.contact_id) ?? []
       if (a.attempt_number !== Math.min(...nums)) return false
@@ -446,29 +467,22 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
       .in('id', invalidIds)
   }
 
-  // Release existing buffered leads for READY reps so we can reassign
-  // from scratch (guarantees contiguous assignment even after sync adds new leads).
-  // LEASED leads are NOT released — they're actively on a call.
-  await db.from('dialer_attempts')
-    .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: now.toISOString() })
+  // Count existing buffered + leased leads per rep (no release-and-reassign —
+  // that pattern races with concurrent fillBuffer calls and causes double-buffering)
+  const { data: assignedRes } = await db.from('dialer_attempts')
+    .select('buffered_for, leased_by, status')
     .eq('plan_date', today)
-    .eq('status', 'buffered')
-    .in('buffered_for', readyReps)
-
-  // Count leased leads per rep (those stay assigned)
-  const { data: leasedRes } = await db.from('dialer_attempts')
-    .select('leased_by')
-    .eq('plan_date', today)
-    .eq('status', 'leased')
-    .in('leased_by', readyReps)
-  const leasedCounts: Record<string, number> = {}
-  for (const r of leasedRes ?? []) {
-    leasedCounts[r.leased_by] = (leasedCounts[r.leased_by] ?? 0) + 1
+    .in('status', ['buffered', 'leased'])
+    .or(readyReps.map(r => `buffered_for.eq.${r},leased_by.eq.${r}`).join(','))
+  const assignedCounts: Record<string, number> = {}
+  for (const r of assignedRes ?? []) {
+    const rep = r.status === 'leased' ? r.leased_by : r.buffered_for
+    if (rep) assignedCounts[rep] = (assignedCounts[rep] ?? 0) + 1
   }
 
-  // Each rep needs (count - leased)
+  // Each rep needs (count - already assigned)
   const repsNeedingLeads = readyReps
-    .map(rep => ({ rep, needed: count - (leasedCounts[rep] ?? 0) }))
+    .map(rep => ({ rep, needed: count - (assignedCounts[rep] ?? 0) }))
     .filter(r => r.needed > 0)
   if (repsNeedingLeads.length === 0) return {}
 
@@ -506,7 +520,7 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     }
   }
 
-  // Filter: active contacts + sequential constraint only (preserving DB order)
+  // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
     if (!a.is_callback) {
@@ -517,13 +531,31 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   })
 
   // Assign contiguous blocks: rep A gets 1-5, rep B gets 6-10, etc.
+  // BUT callbacks go to their owner rep first, not round-robin
   const toUpdate: { id: string; rep: string }[] = []
+  const repNeeds = new Map(repsNeedingLeads.map(r => [r.rep, r.needed]))
+
+  // Pass 1: route callbacks to their owner rep
+  const remainingEligible: typeof eligible = []
+  for (const a of eligible) {
+    if (a.is_callback && a.owner_rep && repNeeds.has(a.owner_rep)) {
+      const left = repNeeds.get(a.owner_rep)!
+      if (left > 0) {
+        toUpdate.push({ id: a.id, rep: a.owner_rep })
+        repNeeds.set(a.owner_rep, left - 1)
+        continue
+      }
+    }
+    remainingEligible.push(a)
+  }
+
+  // Pass 2: regular round-robin for non-callback leads
   let idx = 0
-  for (const { rep, needed } of repsNeedingLeads) {
-    let assigned = 0
-    while (assigned < needed && idx < eligible.length) {
-      toUpdate.push({ id: eligible[idx].id, rep })
-      assigned++
+  for (const { rep } of repsNeedingLeads) {
+    let left = repNeeds.get(rep) ?? 0
+    while (left > 0 && idx < remainingEligible.length) {
+      toUpdate.push({ id: remainingEligible[idx].id, rep })
+      left--
       idx++
     }
   }
@@ -597,8 +629,9 @@ export async function getNextAttempt(repIdentity: string): Promise<Attempt | nul
         .eq('status', 'buffered')
         .eq('buffered_for', repIdentity)
         .eq('plan_date', today)
-        .order('priority',  { ascending: false })
-        .order('is_carryover', { ascending: false })
+        .order('buffered_at',    { ascending: true })
+        .order('priority',       { ascending: false })
+        .order('is_carryover',   { ascending: false })
         .order('attempt_number', { ascending: true })
         .limit(1)
         .maybeSingle()
@@ -725,8 +758,38 @@ export async function applyDisposition(
 
   switch (disposition) {
     // No Answer — later attempts today stand unchanged
-    case 'No Answer':
+    case 'No Answer': {
+      // Assign a persistent random caller ID for NR leads (used on all retries)
+      const { data: ls } = await db.from('dialer_lead_state')
+        .select('assigned_caller_id, sms_drip_active')
+        .eq('contact_id', attempt.contact_id)
+        .maybeSingle()
+
+      if (!ls?.assigned_caller_id) {
+        const pool = await getNumberPool()
+        const assignedId = assignRandomCallerId(pool)
+        if (assignedId) {
+          await db.from('dialer_lead_state')
+            .update({ assigned_caller_id: assignedId, updated_at: now.toISOString() })
+            .eq('contact_id', attempt.contact_id)
+        }
+      }
+
+      // Start SMS drip on first No Answer (only if never had drip before)
+      if (!ls?.sms_drip_active) {
+        const { hasDripHistory, scheduleDrip } = await import('./sms-drip')
+        const hadDrip = await hasDripHistory(attempt.contact_id)
+        if (!hadDrip) {
+          scheduleDrip({
+            contactId:   attempt.contact_id,
+            contactName: attempt.contact_name,
+            phone:       attempt.phone,
+            firm:        attempt.firm ?? null,
+          }).catch(err => console.error('[sms-drip] schedule error', err))
+        }
+      }
       break
+    }
 
     case 'Callback': {
       // Cancel remaining attempts today, create a callback attempt
@@ -768,6 +831,10 @@ export async function applyDisposition(
     case 'Qualified':
     case 'Signed':
       await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
+      // Clear NR caller ID assignment (lead is no longer in NR rotation)
+      await db.from('dialer_lead_state')
+        .update({ assigned_caller_id: null, updated_at: now.toISOString() })
+        .eq('contact_id', attempt.contact_id)
       break
 
     // Exhausted: lead won't appear in future syncs

@@ -136,6 +136,7 @@ export function MiniQueue({ repIdentity, disabled, onCall, onSelect, refreshKey,
   // Initial load + Supabase Realtime subscription
   useEffect(() => {
     if (!repIdentity) return
+    setLoading(true)
     fetchQueue()
 
     const db = createClient()
@@ -144,19 +145,18 @@ export function MiniQueue({ repIdentity, disabled, onCall, onSelect, refreshKey,
     const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
     const channel = db.channel(`mini-queue-${repIdentity}`)
       .on('postgres_changes', {
-        event:  'UPDATE',
+        event:  '*',
         schema: 'public',
         table:  'dialer_attempts',
         filter: `plan_date=eq.${today}`,
       }, () => {
-        // Any attempt changed today — re-fetch this rep's buffer
-        // (new lead buffered in, or existing one completed)
+        // Any attempt inserted/changed/deleted today — re-fetch this rep's buffer
         fetchQueue()
       })
       .subscribe()
 
-    // Fallback poll every 30s
-    const poll = setInterval(fetchQueue, 30_000)
+    // Fallback poll every 10s
+    const poll = setInterval(fetchQueue, 10_000)
 
     return () => {
       db.removeChannel(channel)
@@ -193,13 +193,13 @@ export function MiniQueue({ repIdentity, disabled, onCall, onSelect, refreshKey,
         </div>
       </div>
 
-      {/* Call Next button */}
+      {/* Call Next */}
       <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
         <button
           onClick={() => next && !disabled && onCall(next as QueueLead)}
           disabled={!next || disabled}
           className="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40">
-          {next ? `Call Next — ${next.name.split(' ')[0]}` : 'Queue empty'}
+          {next ? 'Call Next' : 'Queue empty'}
         </button>
       </div>
 

@@ -93,6 +93,14 @@ export default function AdminPerformancePage() {
   const [saving, setSaving] = useState(false)
   const [msg, setMsg] = useState('')
 
+  // Custom penalty form
+  const [customUserId, setCustomUserId] = useState('')
+  const [customLabel, setCustomLabel] = useState('')
+  const [customPoints, setCustomPoints] = useState('')
+  const [customDate, setCustomDate] = useState(new Date().toISOString().slice(0, 10))
+  const [customSaving, setCustomSaving] = useState(false)
+  const [customMsg, setCustomMsg] = useState('')
+
   // Response times
   const [responseTimes, setResponseTimes] = useState<WorkerResponseStats[]>([])
   const [rtDays, setRtDays] = useState(7)
@@ -116,7 +124,7 @@ export default function AdminPerformancePage() {
 
   useEffect(() => {
     fetch('/api/teams/admin/reps').then(r => r.json()).then(d => {
-      setReps((d.reps || []).filter((r: any) => (r.teamType ?? 'intake') === 'intake').map((r: any) => ({ id: r.id, name: r.name })))
+      setReps((d.reps || []).filter((r: any) => !r.teamType || r.teamType === 'intake').map((r: any) => ({ id: r.id, name: r.name })))
     })
     fetchEvents()
   }, [fetchEvents])
@@ -158,6 +166,29 @@ export default function AdminPerformancePage() {
     if (!confirm('Remove this score event?')) return
     await fetch(`/api/teams/admin/score-events?id=${id}`, { method: 'DELETE' })
     await fetchEvents()
+  }
+
+  async function handleCustomSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!customUserId) { setCustomMsg('Select a rep.'); return }
+    if (!customLabel.trim()) { setCustomMsg('Enter a reason.'); return }
+    const pts = parseFloat(customPoints)
+    if (isNaN(pts) || pts === 0) { setCustomMsg('Enter a non-zero point value.'); return }
+    setCustomSaving(true)
+    setCustomMsg('')
+    const res = await fetch('/api/teams/admin/score-events', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ user_id: customUserId, event_type: 'custom', note: customLabel.trim(), points: pts, date: customDate }),
+    })
+    const d = await res.json()
+    if (!res.ok) { setCustomMsg(`Error: ${d.error}`); setCustomSaving(false); return }
+    setCustomMsg('Logged!')
+    setCustomLabel('')
+    setCustomPoints('')
+    await fetchEvents()
+    setCustomSaving(false)
+    setTimeout(() => setCustomMsg(''), 3000)
   }
 
   const today = new Date().toLocaleDateString('en-CA')
@@ -295,6 +326,65 @@ export default function AdminPerformancePage() {
               {saving ? 'Saving...' : 'Log Event'}
             </button>
             {msg && <p className={`text-sm font-medium ${msg.startsWith('Error') ? 'text-red-500' : 'text-green-600'}`}>{msg}</p>}
+          </div>
+        </form>
+      </div>
+
+      {/* ── Custom Penalty / Bonus ── */}
+      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-5">
+        <h2 className="text-sm font-semibold text-gray-700 mb-1">Custom Event</h2>
+        <p className="text-xs text-gray-400 mb-4">Log any penalty or bonus with a custom reason and point value.</p>
+        <form onSubmit={handleCustomSubmit} className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Rep</label>
+            <select
+              value={customUserId}
+              onChange={e => setCustomUserId(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="">Select rep...</option>
+              {reps.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Reason</label>
+            <input
+              type="text"
+              value={customLabel}
+              onChange={e => setCustomLabel(e.target.value)}
+              placeholder="e.g. Missed team meeting"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Points (use − for penalty)</label>
+            <input
+              type="number"
+              step="0.25"
+              value={customPoints}
+              onChange={e => setCustomPoints(e.target.value)}
+              placeholder="e.g. −1 or +2"
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Date</label>
+            <input
+              type="date"
+              value={customDate}
+              onChange={e => setCustomDate(e.target.value)}
+              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          <div className="col-span-2 sm:col-span-4 flex items-center gap-4">
+            <button
+              type="submit"
+              disabled={customSaving}
+              className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
+            >
+              {customSaving ? 'Saving...' : 'Log Custom Event'}
+            </button>
+            {customMsg && <p className={`text-sm font-medium ${customMsg.startsWith('Error') ? 'text-red-500' : 'text-green-600'}`}>{customMsg}</p>}
           </div>
         </form>
       </div>
@@ -451,14 +541,14 @@ export default function AdminPerformancePage() {
                       <div key={e.id} className="flex items-center justify-between px-5 py-2.5">
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-gray-800">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                            <span className="text-sm font-medium text-gray-800">{e.event_type === 'custom' ? (e.note || 'Custom Event') : (EVENT_LABELS[e.event_type] || e.event_type)}</span>
                             {e.auto_generated && (
                               <span className="text-xs bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">auto</span>
                             )}
                           </div>
                           <p className="text-xs text-gray-400 mt-0.5">
                             {format(new Date(e.date + 'T12:00:00'), 'EEE, MMM d')}
-                            {e.note && ` · ${e.note}`}
+                            {e.event_type !== 'custom' && e.note && ` · ${e.note}`}
                           </p>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">

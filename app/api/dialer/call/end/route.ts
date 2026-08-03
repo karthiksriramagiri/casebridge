@@ -42,13 +42,19 @@ export async function POST(req: NextRequest) {
       .catch(() => {}) // ignore if already ended
   }
 
-  // Stamp duration and completion on the call record
+  // Mark the call as completed — but don't overwrite duration if Twilio
+  // already set it via status callback (which has the real talk time).
   if (session.customer_call_sid) {
-    const startedAt  = session.started_at ? new Date(session.started_at).getTime() : null
-    const duration   = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0
+    const { data: existingCall } = await db.from('dialer_calls')
+      .select('duration, call_status')
+      .eq('call_sid', session.customer_call_sid)
+      .maybeSingle()
+
+    // Only update duration if Twilio hasn't already set it
+    const alreadyHasDuration = (existingCall?.duration ?? 0) > 0
     await db.from('dialer_calls').update({
       call_status: 'completed',
-      duration,
+      ...(!alreadyHasDuration ? { duration: 0 } : {}),
       ended_at: new Date().toISOString(),
     }).eq('call_sid', session.customer_call_sid)
   }

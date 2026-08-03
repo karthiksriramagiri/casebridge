@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
 import { extendLease, isLeadSuppressed } from '@/app/dialer/_lib/queue-engine'
+import { getNumberPool, selectCallerId } from '@/app/dialer/_lib/number-pool'
 
 function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -29,6 +30,25 @@ export async function POST(req: NextRequest) {
   const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
   const confName = `conf-${identity}-${Date.now()}`
   const base = baseUrl()
+  const db   = supabaseAdmin()
+
+  // Resolve dynamic caller ID (area-code match → state match → random → fallback)
+  let callerIdUsed = process.env.TWILIO_CALLER_ID || '+12137344168'
+  if (contactId) {
+    const [pool, { data: leadState }] = await Promise.all([
+      getNumberPool(),
+      db.from('dialer_lead_state')
+        .select('last_disposition, assigned_caller_id')
+        .eq('contact_id', contactId)
+        .maybeSingle(),
+    ])
+    callerIdUsed = selectCallerId(
+      phone,
+      leadState?.last_disposition ?? null,
+      leadState?.assigned_caller_id ?? null,
+      pool,
+    )
+  }
 
   // Embed contact/rep info in the status callback URL — participant callbacks
   // don't carry custom body params, so we pass them as query strings instead.
@@ -44,12 +64,18 @@ export async function POST(req: NextRequest) {
   const recordingCallbackUrl = new URL(`${base}/api/dialer/twiml/recording`)
   if (contactId) recordingCallbackUrl.searchParams.set('ContactId', contactId)
 
+  // AMD callback — Twilio posts answering machine detection result here
+  const amdCallbackUrl = new URL(`${base}/api/dialer/twiml/amd`)
+  if (contactId)   amdCallbackUrl.searchParams.set('ContactId',   contactId)
+  if (identity)    amdCallbackUrl.searchParams.set('RepIdentity', identity)
+
   // Dial the customer into the conference and start recording immediately
   const participant = await client.conferences(confName).participants.create({
     to: phone,
-    from: process.env.TWILIO_CALLER_ID || '+12137344168',
+    from: callerIdUsed,
     label: 'customer',
     earlyMedia: true,
+    startConferenceOnEnter: false,
     endConferenceOnExit: true,
     record: true,
     recordingStatusCallback: recordingCallbackUrl.toString(),
@@ -58,9 +84,12 @@ export async function POST(req: NextRequest) {
     statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     statusCallbackMethod: 'POST',
     timeout: 30,
+    machineDetection: 'Enable',
+    asyncAmd: 'true',
+    asyncAmdStatusCallback: amdCallbackUrl.toString(),
+    asyncAmdStatusCallbackMethod: 'POST',
   } as any)
 
-  const db  = supabaseAdmin()
   const now = new Date().toISOString()
 
   // Store active session
@@ -86,13 +115,14 @@ export async function POST(req: NextRequest) {
     phone,
     firm:         firm        ?? null,
     campaign_id:  campaignId  ?? null,
-    direction:    'outbound-api',
-    call_status:  'initiated',
-    started_at:   now,
+    direction:       'outbound-api',
+    call_status:     'initiated',
+    caller_id_used:  callerIdUsed,
+    started_at:      now,
   }, { onConflict: 'call_sid' })
 
   // Extend the lease while the call is live (queueId = attemptId in new system)
   if (queueId) await extendLease(queueId).catch(console.error)
 
-  return NextResponse.json({ confName, customerCallSid: participant.callSid })
+  return NextResponse.json({ confName, customerCallSid: participant.callSid, callerIdUsed })
 }
