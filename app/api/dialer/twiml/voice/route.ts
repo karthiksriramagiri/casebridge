@@ -49,7 +49,7 @@ export async function POST(req: NextRequest) {
       confAttrs.startConferenceOnEnter = 'false'
     }
 
-    dial.conference(confName, confAttrs)
+    dial.conference(confAttrs as any, confName)
   } else if (to.startsWith('client:')) {
     const dial = twiml.dial()
     dial.client(to.replace('client:', ''))

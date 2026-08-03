@@ -77,19 +77,19 @@ export async function POST(req: NextRequest) {
     timeout: 120,
   } as any)
 
-  dial.conference(confName as any, {
-    startConferenceOnEnter: 'false',
-    endConferenceOnExit: 'true',
+  dial.conference({
+    startConferenceOnEnter: false,
+    endConferenceOnExit: true,
     waitUrl: 'http://twimlets.com/holdmusic?Bucket=com.twilio.music.soft-rock',
     waitMethod: 'GET',
-    beep: 'false',
+    beep: false,
     statusCallback: `${base}/api/dialer/twiml/conference-status`,
     statusCallbackEvent: 'start end join leave',
     statusCallbackMethod: 'POST',
     record: 'record-from-start',
     recordingStatusCallback: `${base}/api/dialer/twiml/recording`,
     recordingStatusCallbackMethod: 'POST',
-  } as any)
+  } as any, confName)
 
   return new NextResponse(twiml.toString(), {
     headers: { 'Content-Type': 'text/xml' },
