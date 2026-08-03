@@ -58,7 +58,7 @@ function LiveTimer({ created }: { created: string }) {
 }
 
 export default function InboundCallsPage() {
-  const { deviceReady, answerInbound, callState } = useCall()
+  const { deviceReady, callState, setCurrentLead } = useCall()
   const { identity } = useAuth()
 
   const [ringing, setRinging]     = useState<InboundCall[]>([])
@@ -146,6 +146,9 @@ export default function InboundCallsPage() {
         fetchData() // refresh — call was grabbed by someone else
         return
       }
+      // Set the lead — the server already added the rep to the conference
+      // via REST API, which triggers an incoming call on the device that is
+      // auto-accepted by the incoming handler in call.tsx
       const lead: Lead = {
         id:           call.call_sid,
         name:         data.contactName || data.callerPhone || 'Inbound call',
@@ -157,7 +160,7 @@ export default function InboundCallsPage() {
         lastActivity: new Date().toISOString(),
         contactId:    data.contactId || '',
       }
-      await answerInbound(data.confName, lead)
+      setCurrentLead(lead)
     } catch (err) {
       console.error('[inbound] answer error', err)
     } finally {

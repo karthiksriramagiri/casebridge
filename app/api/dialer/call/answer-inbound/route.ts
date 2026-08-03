@@ -64,19 +64,36 @@ export async function POST(req: NextRequest) {
   const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
   const base   = baseUrl()
 
-  const statusUrl = new URL(`${base}/api/dialer/twiml/conference-status`)
+  try {
+    // Look up the conference by friendly name to get the SID
+    const confs = await client.conferences.list({
+      friendlyName: claimed.conference_name,
+      limit: 1,
+    })
 
-  await client.conferences(claimed.conference_name)
-    .participants.create({
-      to:                      `client:${repIdentity}`,
-      from:                    process.env.TWILIO_CALLER_ID || '+12137344168',
-      startConferenceOnEnter:  true,
-      endConferenceOnExit:     true,
-      beep:                    false,
-      statusCallback:          statusUrl.toString(),
-      statusCallbackEvent:     ['join', 'leave'],
-      label:                   'rep',
-    } as any)
+    if (confs.length === 0) {
+      console.error('[answer-inbound] Conference not found:', claimed.conference_name)
+      return NextResponse.json({ error: 'Conference not found' }, { status: 404 })
+    }
+
+    const confSid   = confs[0].sid
+    const statusUrl = new URL(`${base}/api/dialer/twiml/conference-status`)
+
+    await client.conferences(confSid)
+      .participants.create({
+        to:                      `client:${repIdentity}`,
+        from:                    process.env.TWILIO_CALLER_ID || '+12137344168',
+        startConferenceOnEnter:  true,
+        endConferenceOnExit:     true,
+        beep:                    false,
+        statusCallback:          statusUrl.toString(),
+        statusCallbackEvent:     ['join', 'leave'],
+        label:                   'rep',
+      } as any)
+  } catch (err: any) {
+    console.error('[answer-inbound] Twilio error:', err?.message ?? err)
+    return NextResponse.json({ error: 'Failed to join conference' }, { status: 500 })
+  }
 
   return NextResponse.json({
     confName:    claimed.conference_name,
