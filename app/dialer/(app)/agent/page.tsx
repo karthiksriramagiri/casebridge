@@ -602,7 +602,7 @@ export default function AgentPage() {
     deviceReady, deviceError, callState, setCallState,
     currentLead, setCurrentLead, callDuration,
     muted, toggleMute, hangUp, sendDtmf, callerIdUsed,
-    placeCall: ctxPlaceCall, answerInbound: ctxAnswerInbound,
+    placeCall: ctxPlaceCall,
     identity, setIdentity,
   } = useCall()
 
@@ -737,7 +737,9 @@ export default function AgentPage() {
         setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
         return
       }
-      // Build the lead from inbound data
+      // Build the lead from inbound data and set it — the server already added
+      // the rep to the conference via REST API, which triggers an incoming call
+      // on the device that is auto-accepted by the incoming handler in call.tsx
       const lead: Lead = {
         id:           call.call_sid,
         name:         data.contactName || data.callerPhone || 'Inbound call',
@@ -749,8 +751,7 @@ export default function AgentPage() {
         lastActivity: new Date().toISOString(),
         contactId:    data.contactId || '',
       }
-      // Join the conference
-      await ctxAnswerInbound(data.confName, lead)
+      setCurrentLead(lead)
       setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
     } catch (err) {
       console.error('[inbound] answer error', err)

@@ -64,10 +64,16 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
         if (err?.code === 31005) return
         setDeviceError(err?.message ?? String(err))
       })
-      // Inbound calls are handled via conference queue (dialer_inbound_queue),
-      // not via direct device incoming. Reject any direct incoming calls.
+      // Accept incoming calls from the server (REST API participants.create).
+      // These are triggered when a rep answers an inbound call — the server adds
+      // them to the conference, which sends an incoming call to the device.
       device.on('incoming', (call: any) => {
-        call.reject()
+        callRef.current = call
+        call.accept()
+        setCallState('connected')
+        call.on('disconnect', handleCallEnd)
+        call.on('cancel',     handleCallEnd)
+        call.on('error',      (err: any) => { setDeviceError(err.message); handleCallEnd() })
       })
 
       await device.register()
