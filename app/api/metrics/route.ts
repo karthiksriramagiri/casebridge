@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const TOKEN = process.env.META_ACCESS_TOKEN!
+const TOKEN = (process.env.META_ACCESS_TOKEN || '').trim().replace(/\\n$/, '')
 const AD_ACCOUNT = 'act_788484706914452'
 const BASE = 'https://graph.facebook.com/v25.0'
 

@@ -5,7 +5,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
-const TOKEN = process.env.META_ACCESS_TOKEN!
+const TOKEN = (process.env.META_ACCESS_TOKEN || '').trim().replace(/\\n$/, '')
 const BASE = 'https://graph.facebook.com/v25.0'
 
 async function fetchMeta(path: string, params: Record<string, string> = {}) {

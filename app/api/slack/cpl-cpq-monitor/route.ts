@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const META_TOKEN    = process.env.META_ACCESS_TOKEN!
+const META_TOKEN    = (process.env.META_ACCESS_TOKEN || '').trim().replace(/\\n$/, '')
 const CRON_SECRET   = process.env.CRON_SECRET!
 const BASE          = 'https://graph.facebook.com/v25.0'
 const SLACK_WEBHOOK = process.env.SLACK_CPL_CPQ_WEBHOOK!

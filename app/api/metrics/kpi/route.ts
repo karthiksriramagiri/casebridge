@@ -6,7 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const TOKEN = process.env.META_ACCESS_TOKEN!
+const TOKEN = (process.env.META_ACCESS_TOKEN || '').trim().replace(/\\n$/, '')
 const BASE = 'https://graph.facebook.com/v25.0'
 
 // ─── GHL Pipeline ──────────────────────────────────────────────────────────
