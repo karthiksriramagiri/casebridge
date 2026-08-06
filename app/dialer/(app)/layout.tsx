@@ -4,6 +4,7 @@ import { AuthProvider } from '../_context/auth'
 import { DialerNav } from '../_components/DialerNav'
 import { FloatingCallBar } from '../_components/FloatingCallBar'
 import { InboundCallOverlay } from '../_components/InboundCallOverlay'
+import { RepHeartbeat } from '../_components/RepHeartbeat'
 import { createServerSupabase } from '../_lib/supabase-server'
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -18,6 +19,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
             <FloatingCallBar />
             <InboundCallOverlay />
+            <RepHeartbeat />
             <DialerNav role={role} />
             <main className="flex-1 overflow-auto">{children}</main>
           </div>
