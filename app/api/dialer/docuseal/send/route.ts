@@ -32,6 +32,8 @@ export async function POST(req: NextRequest) {
     cityOfAccident,
     firm,
     existingTags,
+    passengers,
+    skipTag,
   } = await req.json()
 
   if (!contactId || !fullName || !firm) {
@@ -106,24 +108,72 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'DocuSeal request failed' }, { status: 502 })
   }
 
-  // 2. Tag the GHL contact with lhp - d or fl - d
-  const tag = firmKey === 'fears' ? 'fl - d' : 'lhp - d'
-  const tags = Array.from(new Set([...(existingTags ?? []), tag]))
-
-  try {
-    const tagRes = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
-      method: 'PUT',
-      headers: ghlHeaders(),
-      body: JSON.stringify({ tags }),
-    })
-
-    if (!tagRes.ok) {
-      const text = await tagRes.text()
-      console.error('[docuseal] GHL tag error', tagRes.status, text)
+  // 2. Create submissions for each passenger
+  const passengerIds: number[] = []
+  if (passengers?.length) {
+    for (const p of passengers) {
+      if (!p.name) continue
+      const pBody = {
+        template_id: templateId,
+        send_email: false,
+        send_sms: !!p.phone && p.phone !== '+1',
+        submitters: [
+          {
+            role: 'First Party',
+            phone: p.phone && p.phone !== '+1' ? p.phone : undefined,
+            name: p.name,
+            values: {
+              'Full Name':        p.name,
+              'Date of Accident': fmtDate(p.dateOfAccident || dateOfAccident),
+              'Date of Birth':    fmtDate(p.dob || ''),
+              'City of Accident': p.cityOfAccident || cityOfAccident || '',
+              "Today's Date":     todayFmt,
+            },
+          },
+        ],
+      }
+      try {
+        const pRes = await fetch(`${DOCUSEAL_API}/submissions`, {
+          method: 'POST',
+          headers: { 'X-Auth-Token': DOCUSEAL_TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify(pBody),
+        })
+        const pData = await pRes.json()
+        if (pRes.ok) {
+          const pid = pData?.[0]?.submission_id ?? pData?.id ?? null
+          if (pid) passengerIds.push(pid)
+          console.log('[docuseal] Passenger submission created', { name: p.name, submissionId: pid })
+        } else {
+          console.error('[docuseal] Passenger submission failed', p.name, pRes.status, pData)
+        }
+      } catch (err) {
+        console.error('[docuseal] Passenger submission error', p.name, err)
+      }
     }
-  } catch (err) {
-    console.error('[docuseal] GHL tag error', err)
   }
 
-  return NextResponse.json({ ok: true, submissionId, tag, tags })
+  // 3. Tag the GHL contact with lhp - d or fl - d (skip for passenger-only submissions)
+  let tag: string | null = null
+  let tags: string[] = existingTags ?? []
+  if (!skipTag) {
+    tag = firmKey === 'fears' ? 'fl - d' : 'lhp - d'
+    tags = Array.from(new Set([...(existingTags ?? []), tag]))
+
+    try {
+      const tagRes = await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+        method: 'PUT',
+        headers: ghlHeaders(),
+        body: JSON.stringify({ tags }),
+      })
+
+      if (!tagRes.ok) {
+        const text = await tagRes.text()
+        console.error('[docuseal] GHL tag error', tagRes.status, text)
+      }
+    } catch (err) {
+      console.error('[docuseal] GHL tag error', err)
+    }
+  }
+
+  return NextResponse.json({ ok: true, submissionId, passengerIds, tag, tags })
 }

@@ -638,6 +638,14 @@ export default function AgentPage() {
   const [dsAccidentDate,    setDsAccidentDate]    = useState('')
   const [dsAccidentCity,    setDsAccidentCity]    = useState('')
   const [dsDob,             setDsDob]             = useState('')
+  const [showPassenger,     setShowPassenger]     = useState(false)
+  const [passengerSending,  setPassengerSending]  = useState(false)
+  const [passengerSent,     setPassengerSent]     = useState(false)
+  const [pName,             setPName]             = useState('')
+  const [pPhone,            setPPhone]            = useState('+1')
+  const [pDob,              setPDob]              = useState('')
+  const [pAccidentDate,     setPAccidentDate]     = useState('')
+  const [pAccidentCity,     setPAccidentCity]     = useState('')
 
   // Track current queue item for disposition reporting (reps only)
   const currentQueueLead = useRef<QueueLead | null>(null)
@@ -713,6 +721,7 @@ export default function AgentPage() {
     if (!detailContactId) { setContactDetail(null); setAiSummary(null); return }
     setContactLoading(true)
     setShowDocuseal(false); setDocusealSent(false); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('')
+    setShowPassenger(false); setPassengerSent(false); setPName(''); setPPhone('+1'); setPDob(''); setPAccidentDate(''); setPAccidentCity('')
     Promise.all([
       fetch(`/api/dialer/contacts/${detailContactId}`).then(r => r.json()),
       fetch(`/api/dialer/leads-db/${detailContactId}`).then(r => r.json()),
@@ -1222,6 +1231,100 @@ export default function AgentPage() {
                       }}
                       className="flex-1 rounded-md bg-indigo-600 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
                       {docusealSending ? 'Sending…' : 'Submit'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* ── Add Passenger (separate from Docuseal) ── */}
+              {!showPassenger && !passengerSent && (
+                <button
+                  onClick={() => { setShowPassenger(true); setPassengerSent(false) }}
+                  className="w-full rounded-lg border border-indigo-300 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 active:bg-indigo-100 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30">
+                  Add Passenger
+                </button>
+              )}
+              {passengerSent && (
+                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 dark:border-green-900 dark:bg-green-950/30 flex items-center justify-between">
+                  <p className="text-xs font-medium text-green-700 dark:text-green-400">Passenger contract sent</p>
+                  <button onClick={() => { setPassengerSent(false) }}
+                    className="text-[10px] text-green-600 hover:text-green-500 dark:text-green-400">Send Another</button>
+                </div>
+              )}
+              {showPassenger && !passengerSent && (
+                <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 space-y-2.5 dark:border-orange-900 dark:bg-orange-950/20">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">Passenger Details</p>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Name</label>
+                    <input type="text" value={pName} placeholder="Full Name"
+                      onChange={e => setPName(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Phone Number</label>
+                    <input type="tel" value={pPhone} placeholder="+1"
+                      onChange={e => setPPhone(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Accident</label>
+                    <input type="date" value={pAccidentDate}
+                      onChange={e => setPAccidentDate(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">City of Accident</label>
+                    <input type="text" value={pAccidentCity} placeholder="e.g. Los Angeles"
+                      onChange={e => setPAccidentCity(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Birth</label>
+                    <input type="date" value={pDob}
+                      onChange={e => setPDob(e.target.value)}
+                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                  </div>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => { setShowPassenger(false); setPName(''); setPPhone('+1'); setPDob(''); setPAccidentDate(''); setPAccidentCity('') }}
+                      className="flex-1 rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
+                      Cancel
+                    </button>
+                    <button
+                      disabled={!pName || !pPhone || !pAccidentDate || !pAccidentCity || !pDob || passengerSending}
+                      onClick={async () => {
+                        const firm = displayFirm.toLowerCase()
+                        setPassengerSending(true)
+                        try {
+                          const res = await fetch('/api/dialer/docuseal/send', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              contactId:      currentLead?.contactId ?? selectedQueueLead?.contactId ?? 'passenger',
+                              fullName:       pName,
+                              phone:          pPhone,
+                              email:          '',
+                              dateOfAccident: pAccidentDate,
+                              dateOfBirth:    pDob,
+                              cityOfAccident: pAccidentCity,
+                              firm:           firm,
+                              skipTag:        true,
+                            }),
+                          })
+                          const data = await res.json()
+                          if (!res.ok) throw new Error(data.error || 'Send failed')
+                          setShowPassenger(false)
+                          setPassengerSent(true)
+                          setPName(''); setPPhone('+1'); setPDob(''); setPAccidentDate(''); setPAccidentCity('')
+                        } catch (e) {
+                          console.error('[Passenger] send error', e)
+                          alert('Failed to send passenger contract — check console')
+                        } finally {
+                          setPassengerSending(false)
+                        }
+                      }}
+                      className="flex-1 rounded-md bg-orange-600 py-1.5 text-xs font-semibold text-white hover:bg-orange-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                      {passengerSending ? 'Sending…' : 'Send Contract'}
                     </button>
                   </div>
                 </div>
