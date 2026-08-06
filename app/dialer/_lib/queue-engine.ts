@@ -863,25 +863,48 @@ export async function applyDisposition(
   // ── GHL stage move ────────────────────────────────────────────────────────
   const GHL_STAGE_MAP: Record<string, string> = {
     'Not Qualified': 'Not Qualified',
+    'Qualified':     'Chase',
+    'Callback':      'Follow Up Required',
+    'Signed':        'Signed/Sent',
+    'No Answer':     'No Response',
   }
   const targetStage = GHL_STAGE_MAP[disposition]
-  if (targetStage && attempt.ghl_opportunity_id) {
-    await moveGHLStage(attempt.ghl_opportunity_id, attempt.pipeline_id, targetStage).catch(console.error)
+
+  // No Answer: only move to "No Response" on first NR (skip if already NR)
+  let skipStageMove = false
+  if (disposition === 'No Answer') {
+    const { data: prevState } = await db.from('dialer_lead_state')
+      .select('last_disposition')
+      .eq('contact_id', attempt.contact_id)
+      .maybeSingle()
+    if (prevState?.last_disposition === 'No Answer') {
+      skipStageMove = true
+      console.log('[disposition] Skipping NR stage move — lead already in No Response', { contactId: attempt.contact_id })
+    }
+  }
+
+  if (targetStage && attempt.ghl_opportunity_id && !skipStageMove) {
+    console.log('[disposition] Moving GHL stage', { opportunityId: attempt.ghl_opportunity_id, targetStage })
+    await moveGHLStage(attempt.ghl_opportunity_id, attempt.pipeline_id, targetStage).catch(err =>
+      console.error('[disposition] GHL stage move failed', err)
+    )
+  } else if (targetStage && !attempt.ghl_opportunity_id) {
+    console.log('[disposition] Skipping GHL stage move — no opportunity ID', { contactId: attempt.contact_id, disposition })
   }
 
   // ── Firm-specific GHL tags ─────────────────────────────────────────────────
   const TAG_MAP: Record<string, Record<string, string>> = {
     lhp: {
-      'Qualified':     'lhp - chase',
+      'Qualified':     'lhp - c',
       'Not Qualified': 'lhp - nq',
-      'Callback':      'lhp - c',
+      'Callback':      'lhp - ap',
       'No Answer':     'lhp - nr',
       'Signed':        'lhp - ps',
     },
     fears: {
-      'Qualified':     'fl - chase',
+      'Qualified':     'fl - c',
       'Not Qualified': 'fl - nq',
-      'Callback':      'fl - c',
+      'Callback':      'fl - ap',
       'No Answer':     'fl - nr',
       'Signed':        'fl - ps',
     },
@@ -889,17 +912,94 @@ export async function applyDisposition(
 
   const tag = TAG_MAP[firm]?.[disposition]
   if (tag && attempt.contact_id) {
-    // tagGHLContact merges tags (deduplicates), so "No Answer" tag
-    // is only added if not already present
-    await tagGHLContact(attempt.contact_id, [tag]).catch(console.error)
+    await tagGHLContact(attempt.contact_id, [tag]).catch(err =>
+      console.error('[disposition] GHL tag failed', err)
+    )
+  } else if (!tag) {
+    console.log('[disposition] No tag mapping for', { firm, disposition })
   }
 
-  // Store NQ reason as a note tag if provided
-  if (disposition === 'Not Qualified' && opts.nqReason && attempt.contact_id) {
-    const reasonTag = firm === 'lhp'
-      ? `lhp - nq - ${opts.nqReason}`
-      : `fl - nq - ${opts.nqReason}`
-    await tagGHLContact(attempt.contact_id, [reasonTag]).catch(console.error)
+  // ── Turn off SMS bot on any real disposition ────────────────────────────
+  if (['Callback', 'Qualified', 'Not Qualified', 'Signed'].includes(disposition) && attempt.contact_id) {
+    await db.from('dialer_lead_state')
+      .update({ sms_drip_active: false, updated_at: now.toISOString() })
+      .eq('contact_id', attempt.contact_id)
+    // Cancel any pending drip messages
+    await db.from('dialer_drip_queue')
+      .update({ status: 'cancelled', updated_at: now.toISOString() })
+      .eq('contact_id', attempt.contact_id)
+      .eq('status', 'pending')
+    console.log('[disposition] SMS bot turned off', { contactId: attempt.contact_id, disposition })
+  }
+
+  // Store NQ reason as a tag + send Slack notification
+  if (disposition === 'Not Qualified' && attempt.contact_id) {
+    if (opts.nqReason) {
+      const reasonTag = firm === 'lhp'
+        ? `lhp - nq - ${opts.nqReason}`
+        : `fl - nq - ${opts.nqReason}`
+      await tagGHLContact(attempt.contact_id, [reasonTag]).catch(console.error)
+    }
+
+    // Slack notification for NQ disposition
+    const slackWebhook = (process.env.SLACK_WEBHOOK_URL || '').trim().replace(/\\n$/, '')
+    if (slackWebhook) {
+      const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
+      await fetch(slackWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `Not Qualified — ${attempt.contact_name} (${firmLabel})`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: [
+                  `*Not Qualified* — ${attempt.contact_name}`,
+                  `*Firm:* ${firmLabel}`,
+                  `*Phone:* ${attempt.phone}`,
+                  `*Rep:* ${opts.repIdentity}`,
+                  opts.nqReason ? `*Reason:* ${opts.nqReason}` : null,
+                  `*Stage:* ${attempt.stage_name || '—'}`,
+                ].filter(Boolean).join('\n'),
+              },
+            },
+          ],
+        }),
+      }).catch(err => console.error('[disposition] Slack NQ notification failed', err))
+    }
+  }
+
+  // Slack notification for Qualified/Signed
+  if (['Qualified', 'Signed'].includes(disposition) && attempt.contact_id) {
+    const slackWebhook = (process.env.SLACK_WEBHOOK_URL || '').trim().replace(/\\n$/, '')
+    if (slackWebhook) {
+      const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
+      const emoji = disposition === 'Signed' ? ':tada:' : ':white_check_mark:'
+      await fetch(slackWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text: `${disposition} — ${attempt.contact_name} (${firmLabel})`,
+          blocks: [
+            {
+              type: 'section',
+              text: {
+                type: 'mrkdwn',
+                text: [
+                  `${emoji} *${disposition}* — ${attempt.contact_name}`,
+                  `*Firm:* ${firmLabel}`,
+                  `*Phone:* ${attempt.phone}`,
+                  `*Rep:* ${opts.repIdentity}`,
+                  `*Stage:* ${attempt.stage_name || '—'}`,
+                ].filter(Boolean).join('\n'),
+              },
+            },
+          ],
+        }),
+      }).catch(err => console.error('[disposition] Slack notification failed', err))
+    }
   }
 }
 
@@ -936,19 +1036,36 @@ async function moveGHLStage(opportunityId: string, pipelineId: string, targetSta
     `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${LOCATION_ID}`,
     { headers }
   )
-  if (!pRes.ok) return
+  if (!pRes.ok) {
+    console.error('[moveGHLStage] Failed to fetch pipelines', pRes.status)
+    return
+  }
   const pData    = await pRes.json()
   const pipeline = (pData.pipelines ?? []).find((p: any) => p.id === pipelineId)
-  if (!pipeline) return
-  const stage    = (pipeline.stages ?? []).find(
+  if (!pipeline) {
+    console.error('[moveGHLStage] Pipeline not found', { pipelineId })
+    return
+  }
+  const stage = (pipeline.stages ?? []).find(
     (s: any) => s.name.toLowerCase() === targetStageName.toLowerCase()
   )
-  if (!stage) return
-  await fetch(`https://services.leadconnectorhq.com/opportunities/${opportunityId}`, {
+  if (!stage) {
+    console.error('[moveGHLStage] Stage not found', {
+      targetStageName,
+      availableStages: (pipeline.stages ?? []).map((s: any) => s.name),
+    })
+    return
+  }
+  const moveRes = await fetch(`https://services.leadconnectorhq.com/opportunities/${opportunityId}`, {
     method:  'PUT',
     headers,
     body:    JSON.stringify({ pipelineStageId: stage.id }),
   })
+  if (!moveRes.ok) {
+    console.error('[moveGHLStage] Move failed', moveRes.status, await moveRes.text().catch(() => ''))
+  } else {
+    console.log('[moveGHLStage] Moved opportunity', { opportunityId, stage: stage.name })
+  }
 }
 
 async function tagGHLContact(contactId: string, newTags: string[]) {

@@ -220,7 +220,9 @@ function DispositionModal({ lead, leadTimezone, firm, onSubmit }: {
         )}
 
         <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-800">
-          <button disabled={!selected} onClick={() => selected && onSubmit(selected, callbackTime, true, context, nqReason)}
+          <button
+            disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
+            onClick={() => selected && onSubmit(selected, callbackTime, true, context, nqReason)}
             className="flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30">
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><rect x="4" y="4" width="12" height="12" rx="1" /></svg>
             Stop
@@ -602,7 +604,7 @@ export default function AgentPage() {
     deviceReady, deviceError, callState, setCallState,
     currentLead, setCurrentLead, callDuration,
     muted, toggleMute, hangUp, sendDtmf, callerIdUsed,
-    placeCall: ctxPlaceCall, answerInbound: ctxAnswerInbound,
+    placeCall: ctxPlaceCall,
     identity, setIdentity,
   } = useCall()
 
@@ -636,127 +638,6 @@ export default function AgentPage() {
   const [dsAccidentDate,    setDsAccidentDate]    = useState('')
   const [dsAccidentCity,    setDsAccidentCity]    = useState('')
   const [dsDob,             setDsDob]             = useState('')
-
-  // ── Inbound call alert state ──
-  interface InboundCall {
-    id: string
-    call_sid: string
-    conference_name: string
-    caller_phone: string
-    contact_id: string | null
-    contact_name: string | null
-    firm: string | null
-    status: string
-    created_at: string
-  }
-  const [inboundCalls, setInboundCalls] = useState<InboundCall[]>([])
-  const [answeringInbound, setAnsweringInbound] = useState(false)
-
-  // Subscribe to inbound queue via Supabase Realtime
-  useEffect(() => {
-    const db = createClient()
-
-    // Fetch any currently ringing calls on mount
-    db.from('dialer_inbound_queue')
-      .select('*')
-      .eq('status', 'ringing')
-      .then(({ data }) => setInboundCalls(data ?? []))
-
-    const channel = db.channel('inbound-queue')
-      .on('postgres_changes', {
-        event: '*',
-        schema: 'public',
-        table: 'dialer_inbound_queue',
-      }, (payload) => {
-        const row = payload.new as InboundCall
-        if (!row?.call_sid) return
-        if (row.status === 'ringing') {
-          setInboundCalls(prev => {
-            if (prev.some(c => c.call_sid === row.call_sid)) return prev
-            return [...prev, row]
-          })
-        } else {
-          // answered, missed, or completed — remove from list
-          setInboundCalls(prev => prev.filter(c => c.call_sid !== row.call_sid))
-        }
-      })
-      .subscribe()
-
-    return () => { db.removeChannel(channel) }
-  }, [])
-
-  // Play ringtone when inbound calls are pending
-  const ringtoneRef = useRef<HTMLAudioElement | null>(null)
-  useEffect(() => {
-    if (inboundCalls.length > 0 && callState === 'idle') {
-      if (!ringtoneRef.current) {
-        // Use a simple oscillator-based ringtone via Web Audio API
-        try {
-          const ctx = new AudioContext()
-          const osc = ctx.createOscillator()
-          const gain = ctx.createGain()
-          osc.frequency.value = 440
-          osc.type = 'sine'
-          gain.gain.value = 0.15
-          osc.connect(gain).connect(ctx.destination)
-          osc.start()
-          // Pulse on/off every 1s
-          const pulse = setInterval(() => {
-            gain.gain.value = gain.gain.value > 0 ? 0 : 0.15
-          }, 1000)
-          ringtoneRef.current = { stop: () => { osc.stop(); ctx.close(); clearInterval(pulse) } } as any
-        } catch { /* ignore audio errors */ }
-      }
-    } else {
-      if (ringtoneRef.current) {
-        (ringtoneRef.current as any).stop?.()
-        ringtoneRef.current = null
-      }
-    }
-    return () => {
-      if (ringtoneRef.current) {
-        (ringtoneRef.current as any).stop?.()
-        ringtoneRef.current = null
-      }
-    }
-  }, [inboundCalls.length, callState])
-
-  // Answer inbound call handler
-  async function handleAnswerInbound(call: InboundCall) {
-    if (callState !== 'idle' || !deviceReady || answeringInbound) return
-    setAnsweringInbound(true)
-    try {
-      const res = await fetch('/api/dialer/call/answer-inbound', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callSid: call.call_sid, repIdentity: identity }),
-      })
-      const data = await res.json()
-      if (data.error) {
-        // Already answered by another rep
-        setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
-        return
-      }
-      // Build lead and join conference via device.connect()
-      const lead: Lead = {
-        id:           call.call_sid,
-        name:         data.contactName || data.callerPhone || 'Inbound call',
-        phone:        data.callerPhone,
-        email:        '',
-        company:      '',
-        source:       data.firm || 'inbound',
-        tags:         [],
-        lastActivity: new Date().toISOString(),
-        contactId:    data.contactId || '',
-      }
-      await ctxAnswerInbound(data.confName, lead)
-      setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
-    } catch (err) {
-      console.error('[inbound] answer error', err)
-    } finally {
-      setAnsweringInbound(false)
-    }
-  }
 
   // Track current queue item for disposition reporting (reps only)
   const currentQueueLead = useRef<QueueLead | null>(null)
@@ -1082,41 +963,6 @@ export default function AgentPage() {
           </div>
         )}
 
-        {/* Inbound call alerts */}
-        {inboundCalls.length > 0 && callState === 'idle' && (
-          <div className="w-full max-w-sm space-y-2">
-            {inboundCalls.map(ic => (
-              <div key={ic.call_sid} className="rounded-xl border-2 border-green-400 bg-green-50 px-4 py-3 shadow-lg animate-pulse dark:border-green-600 dark:bg-green-950/40">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="flex h-3 w-3 items-center justify-center">
-                        <span className="absolute h-3 w-3 rounded-full bg-green-400 animate-ping" />
-                        <span className="relative h-2 w-2 rounded-full bg-green-500" />
-                      </span>
-                      <p className="text-sm font-bold text-green-800 dark:text-green-300">Incoming Call</p>
-                    </div>
-                    <p className="mt-1 text-sm font-semibold text-gray-900 dark:text-white">
-                      {ic.contact_name || ic.caller_phone}
-                    </p>
-                    <p className="text-xs text-gray-500 font-mono">{ic.caller_phone}</p>
-                    {ic.firm && <p className="text-[10px] text-gray-400 uppercase">{ic.firm}</p>}
-                  </div>
-                  <button
-                    disabled={!deviceReady || status !== 'READY' || answeringInbound}
-                    onClick={() => handleAnswerInbound(ic)}
-                    className="rounded-full bg-green-600 p-3 text-white shadow-md transition-all hover:bg-green-500 hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
-                  >
-                    <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-                      <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* Status bar */}
         <div className="flex w-full max-w-sm items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
           <div>
@@ -1345,23 +1191,31 @@ export default function AgentPage() {
                         if (!cId) return
                         setDocusealSending(true)
                         try {
-                          const tag = firm === 'fears' ? 'fl - d' : 'lhp - d'
-                          const existing = contactDetail?.tags ?? []
-                          const merged = Array.from(new Set([...existing, tag]))
-                          const res = await fetch(`/api/dialer/contacts/${cId}/tags`, {
-                            method: 'PUT',
+                          const res = await fetch('/api/dialer/docuseal/send', {
+                            method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ tags: merged }),
+                            body: JSON.stringify({
+                              contactId:      cId,
+                              fullName:       displayName,
+                              phone:          displayPhone,
+                              email:          contactDetail?.email ?? '',
+                              dateOfAccident: dsAccidentDate,
+                              dateOfBirth:    dsDob,
+                              cityOfAccident: dsAccidentCity,
+                              firm:           firm,
+                              existingTags:   contactDetail?.tags ?? [],
+                            }),
                           })
-                          if (!res.ok) throw new Error(`Tag failed: ${res.status}`)
+                          const data = await res.json()
+                          if (!res.ok) throw new Error(data.error || 'Send failed')
                           // Update local contactDetail tags so UI reflects immediately
-                          if (contactDetail) setContactDetail({ ...contactDetail, tags: merged })
+                          if (contactDetail && data.tags) setContactDetail({ ...contactDetail, tags: data.tags })
                           setShowDocuseal(false)
                           setDocusealSent(true)
                           setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('')
                         } catch (e) {
-                          console.error('[Docuseal] tag error', e)
-                          alert('Failed to tag contact — check console')
+                          console.error('[Docuseal] send error', e)
+                          alert('Failed to send DocuSeal — check console')
                         } finally {
                           setDocusealSending(false)
                         }

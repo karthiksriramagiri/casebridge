@@ -31,15 +31,17 @@ export async function GET(_req: NextRequest) {
 
   // Build threads from messages (most recent per lead phone)
   const threads: Record<string, {
-    leadPhone:    string
-    contactId:    string
-    contactName:  string | null
-    firm:         string | null
-    lastMessage:  string | null
-    lastAt:       string
-    unreadCount:  number
-    direction:    string
-    hasMessages:  boolean
+    leadPhone:       string
+    contactId:       string
+    contactName:     string | null
+    firm:            string | null
+    lastMessage:     string | null
+    lastAt:          string
+    unreadCount:     number
+    direction:       string
+    hasMessages:     boolean
+    smsDisposition:  string | null
+    smsBotActive:    boolean
   }> = {}
 
   for (const msg of (messages ?? [])) {
@@ -57,6 +59,8 @@ export async function GET(_req: NextRequest) {
         unreadCount: 0,
         direction:   msg.direction,
         hasMessages: true,
+        smsDisposition: null,
+        smsBotActive:   false,
       }
     }
     if (!msg.read && msg.direction === 'inbound') {
@@ -81,6 +85,63 @@ export async function GET(_req: NextRequest) {
         unreadCount: 0,
         direction:   'outbound',
         hasMessages: false,
+        smsDisposition: null,
+        smsBotActive:   false,
+      }
+    }
+  }
+
+  // Backfill missing contact names from dialer_calls by contact_id or phone
+  const missingNames = Object.values(threads).filter(t => !t.contactName)
+  if (missingNames.length > 0) {
+    const contactIds = missingNames.map(t => t.contactId).filter(Boolean)
+    const phones     = missingNames.map(t => t.leadPhone).filter(Boolean)
+
+    // Look up names from calls
+    const { data: nameLookup } = await db
+      .from('dialer_calls')
+      .select('contact_id, contact_name, phone')
+      .not('contact_name', 'is', null)
+      .or(
+        [
+          contactIds.length ? `contact_id.in.(${contactIds.join(',')})` : null,
+          phones.length     ? `phone.in.(${phones.join(',')})` : null,
+        ].filter(Boolean).join(',')
+      )
+      .order('started_at', { ascending: false })
+      .limit(200)
+
+    if (nameLookup?.length) {
+      const nameByContactId = new Map<string, string>()
+      const nameByPhone     = new Map<string, string>()
+      for (const row of nameLookup) {
+        if (row.contact_id && row.contact_name && !nameByContactId.has(row.contact_id))
+          nameByContactId.set(row.contact_id, row.contact_name)
+        if (row.phone && row.contact_name && !nameByPhone.has(row.phone))
+          nameByPhone.set(row.phone, row.contact_name)
+      }
+      for (const t of missingNames) {
+        t.contactName = nameByContactId.get(t.contactId) ?? nameByPhone.get(t.leadPhone) ?? null
+      }
+    }
+  }
+
+  // Populate SMS disposition and bot status from dialer_lead_state
+  const allContactIds = Object.values(threads).map(t => t.contactId).filter(Boolean)
+  if (allContactIds.length > 0) {
+    const { data: leadStates } = await db
+      .from('dialer_lead_state')
+      .select('contact_id, sms_disposition, sms_drip_active')
+      .in('contact_id', allContactIds)
+
+    if (leadStates?.length) {
+      const stateMap = new Map(leadStates.map(s => [s.contact_id, s]))
+      for (const t of Object.values(threads)) {
+        const ls = stateMap.get(t.contactId)
+        if (ls) {
+          t.smsDisposition = ls.sms_disposition ?? null
+          t.smsBotActive   = ls.sms_drip_active ?? false
+        }
       }
     }
   }

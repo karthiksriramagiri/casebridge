@@ -2,19 +2,23 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '../../_context/auth'
+import { useCall } from '../../_context/call'
+import type { Lead } from '../../_types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
 interface Conversation {
-  leadPhone:   string
-  contactId:   string | null
-  contactName: string | null
-  firm:        string | null
-  lastMessage: string | null
-  lastAt:      string
-  unreadCount: number
-  direction:   string
-  hasMessages: boolean
+  leadPhone:       string
+  contactId:       string | null
+  contactName:     string | null
+  firm:            string | null
+  lastMessage:     string | null
+  lastAt:          string
+  unreadCount:     number
+  direction:       string
+  hasMessages:     boolean
+  smsDisposition:  string | null
+  smsBotActive:    boolean
 }
 
 interface Message {
@@ -191,6 +195,17 @@ function firstName(full: string | null | undefined): string {
   return full.split(' ')[0] || 'there'
 }
 
+// ── SMS Dispositions ──────────────────────────────────────────────────────────
+
+const SMS_DISPOSITIONS = [
+  { id: 'callback',        label: 'Callback Requested', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400' },
+  { id: 'not_interested',  label: 'Not Interested',     color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' },
+  { id: 'qualified',       label: 'Qualified',          color: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400' },
+  { id: 'wrong_number',    label: 'Wrong Number',       color: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400' },
+  { id: 'dnc',             label: 'Do Not Contact',     color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' },
+  { id: 'no_response',     label: 'No Response',        color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
+] as const
+
 const FIRM_PILL: Record<string, string> = {
   'Larry H. Parker': 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   'Fears Law':       'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
@@ -332,6 +347,7 @@ function NewConvoModal({ onClose, onStart }: {
 
 export default function MessagesPage() {
   const { name: authName, identity } = useAuth()
+  const { deviceReady, callState, placeCall } = useCall()
 
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [convoLoading, setConvoLoading]   = useState(true)
@@ -341,6 +357,8 @@ export default function MessagesPage() {
   const [draft, setDraft]                 = useState('')
   const [sending, setSending]             = useState(false)
   const [search, setSearch]               = useState('')
+  const [showDisposition, setShowDisposition] = useState(false)
+  const [savingSettings, setSavingSettings]   = useState(false)
   const [showNew, setShowNew]             = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
 
@@ -389,11 +407,19 @@ export default function MessagesPage() {
     try {
       const res  = await fetch(`/api/dialer/sms/thread?phone=${encodeURIComponent(convo.leadPhone)}`)
       const data = await res.json()
-      setMessages(data.messages ?? [])
-      // Mark as read in local state
+      const msgs = data.messages ?? [] as Message[]
+      setMessages(msgs)
+      // Resolve contact name from messages if missing
+      const resolvedName = convo.contactName || msgs.find((m: Message) => m.contact_name)?.contact_name || null
       setConversations(prev =>
-        prev.map(c => c.leadPhone === convo.leadPhone ? { ...c, unreadCount: 0 } : c)
+        prev.map(c => c.leadPhone === convo.leadPhone
+          ? { ...c, unreadCount: 0, contactName: resolvedName ?? c.contactName }
+          : c
+        )
       )
+      if (resolvedName && !convo.contactName) {
+        setSelected(s => s && s.leadPhone === convo.leadPhone ? { ...s, contactName: resolvedName } : s)
+      }
     } catch (err) {
       console.error('[messages] thread error', err)
     } finally {
@@ -404,15 +430,17 @@ export default function MessagesPage() {
   // Start a new conversation
   function startNew(phone: string, name: string, contactId: string, firm: string | null) {
     const convo: Conversation = {
-      leadPhone:   phone,
-      contactId:   contactId,
-      contactName: name || null,
-      firm:        firm ?? null,
-      lastMessage: null,
-      lastAt:      new Date().toISOString(),
-      unreadCount: 0,
-      direction:   'outbound',
-      hasMessages: false,
+      leadPhone:       phone,
+      contactId:       contactId,
+      contactName:     name || null,
+      firm:            firm ?? null,
+      lastMessage:     null,
+      lastAt:          new Date().toISOString(),
+      unreadCount:     0,
+      direction:       'outbound',
+      hasMessages:     false,
+      smsDisposition:  null,
+      smsBotActive:    false,
     }
     setConversations(prev => [convo, ...prev.filter(c => c.leadPhone !== phone)])
     setSelected(convo)
@@ -427,6 +455,32 @@ export default function MessagesPage() {
       .replace(/\{REP\}/g, repName)
     setDraft(filled)
     setShowTemplates(false)
+  }
+
+  // Save SMS disposition or bot toggle for the selected contact
+  async function updateLeadSettings(updates: { smsDisposition?: string | null; smsBotActive?: boolean }) {
+    if (!selected?.contactId) return
+    setSavingSettings(true)
+    try {
+      await fetch('/api/dialer/sms/lead-settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactId: selected.contactId, ...updates }),
+      })
+      // Update local state
+      const patch: Partial<Conversation> = {}
+      if (updates.smsDisposition !== undefined) patch.smsDisposition = updates.smsDisposition
+      if (updates.smsBotActive !== undefined) patch.smsBotActive = updates.smsBotActive
+      setSelected(s => s ? { ...s, ...patch } : s)
+      setConversations(prev =>
+        prev.map(c => c.contactId === selected.contactId ? { ...c, ...patch } : c)
+      )
+    } catch (err) {
+      console.error('[messages] save settings error', err)
+    } finally {
+      setSavingSettings(false)
+      setShowDisposition(false)
+    }
   }
 
   // Scroll to bottom when messages change
@@ -559,7 +613,7 @@ export default function MessagesPage() {
             const name     = convo.contactName || fmtPhone(convo.leadPhone)
             return (
               <button
-                key={convo.leadPhone}
+                key={convo.contactId || convo.leadPhone}
                 onClick={() => openThread(convo)}
                 className={`w-full border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:border-gray-800/40 dark:hover:bg-gray-900/60 ${
                   isActive ? 'border-l-2 border-l-cyan-500 bg-cyan-50/60 dark:bg-cyan-950/20' : ''
@@ -591,6 +645,19 @@ export default function MessagesPage() {
                           {convo.firm}
                         </span>
                       )}
+                      {convo.smsDisposition && (() => {
+                        const d = SMS_DISPOSITIONS.find(x => x.id === convo.smsDisposition)
+                        return d ? (
+                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${d.color}`}>
+                            {d.label}
+                          </span>
+                        ) : null
+                      })()}
+                      {convo.smsBotActive && (
+                        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">
+                          Bot
+                        </span>
+                      )}
                       {convo.unreadCount > 0 && (
                         <span className="rounded-full bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
                           {convo.unreadCount}
@@ -610,22 +677,131 @@ export default function MessagesPage() {
         {selected ? (
           <>
             {/* Thread header */}
-            <div className="flex items-center gap-3 border-b border-gray-200 px-5 py-3.5 dark:border-gray-800">
-              <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
-                {(selected.contactName || selected.leadPhone).charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {selected.contactName || fmtPhone(selected.leadPhone)}
-                </p>
-                <p className="text-xs font-mono text-gray-400">{fmtPhone(selected.leadPhone)}</p>
-              </div>
-              {selected.firm && (
-                <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${FIRM_PILL[selected.firm] ?? 'bg-gray-100 text-gray-500'}`}>
-                  {selected.firm}
-                </span>
-              )}
-            </div>
+            {(() => {
+              const resolvedName = selected.contactName
+                || messages.find(m => m.contact_name)?.contact_name
+                || null
+              const displayName = resolvedName || fmtPhone(selected.leadPhone)
+              const currentDisp = SMS_DISPOSITIONS.find(d => d.id === selected.smsDisposition)
+
+              return (
+                <div className="border-b border-gray-200 dark:border-gray-800">
+                  {/* Top row: name + actions */}
+                  <div className="flex items-center justify-between px-5 py-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                        {displayName.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                          {displayName}
+                        </p>
+                        {resolvedName && (
+                          <p className="text-xs font-mono text-gray-400">{fmtPhone(selected.leadPhone)}</p>
+                        )}
+                      </div>
+                      {selected.firm && (
+                        <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${FIRM_PILL[selected.firm] ?? 'bg-gray-100 text-gray-500'}`}>
+                          {selected.firm}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {/* Disposition button */}
+                      <div className="relative">
+                        <button
+                          onClick={() => setShowDisposition(v => !v)}
+                          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                            currentDisp
+                              ? `${currentDisp.color} border-transparent`
+                              : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                            <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                          </svg>
+                          {currentDisp ? currentDisp.label : 'Disposition'}
+                        </button>
+                        {showDisposition && (
+                          <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
+                            {SMS_DISPOSITIONS.map(d => (
+                              <button
+                                key={d.id}
+                                onClick={() => updateLeadSettings({ smsDisposition: d.id })}
+                                disabled={savingSettings}
+                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:hover:bg-gray-700 ${
+                                  selected.smsDisposition === d.id ? 'font-bold' : ''
+                                }`}
+                              >
+                                <span className={`h-2 w-2 rounded-full ${d.color.split(' ')[0]}`} />
+                                {d.label}
+                              </button>
+                            ))}
+                            {selected.smsDisposition && (
+                              <>
+                                <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
+                                <button
+                                  onClick={() => updateLeadSettings({ smsDisposition: null })}
+                                  disabled={savingSettings}
+                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
+                                >
+                                  Clear disposition
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bot toggle */}
+                      {selected.contactId && (
+                        <button
+                          onClick={() => updateLeadSettings({ smsBotActive: !selected.smsBotActive })}
+                          disabled={savingSettings}
+                          title={selected.smsBotActive ? 'Bot is ON — click to turn off' : 'Bot is OFF — click to turn on'}
+                          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                            selected.smsBotActive
+                              ? 'border-cyan-300 bg-cyan-50 text-cyan-700 dark:border-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-400'
+                              : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700'
+                          }`}
+                        >
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                            <path fillRule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clipRule="evenodd" />
+                          </svg>
+                          Bot {selected.smsBotActive ? 'ON' : 'OFF'}
+                        </button>
+                      )}
+
+                      {/* Call button */}
+                      <button
+                        disabled={!deviceReady || callState !== 'idle'}
+                        onClick={() => {
+                          const lead: Lead = {
+                            id:           selected.contactId || selected.leadPhone,
+                            name:         displayName,
+                            phone:        selected.leadPhone,
+                            email:        '',
+                            company:      '',
+                            source:       selected.firm || '',
+                            tags:         [],
+                            lastActivity: new Date().toISOString(),
+                            contactId:    selected.contactId || '',
+                          }
+                          placeCall(lead, { firm: selected.firm ?? undefined })
+                        }}
+                        title="Call this contact"
+                        className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-green-500 disabled:opacity-40 disabled:hover:bg-green-600"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
+                          <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                        </svg>
+                        Call
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
 
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">

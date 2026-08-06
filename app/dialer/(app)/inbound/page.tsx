@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect } from 'react'
 import { useCall } from '../../_context/call'
 import { useAuth } from '../../_context/auth'
+import { useInboundRingtone } from '../../_lib/ringtone'
 import { createClient } from '../../_lib/supabase'
 import type { Lead } from '../../_types'
 
@@ -66,8 +67,8 @@ export default function InboundCallsPage() {
   const [loading, setLoading]     = useState(true)
   const [answering, setAnswering] = useState<string | null>(null)
 
-  // Ringtone
-  const ringtoneRef = useRef<any>(null)
+  // Ringtone (suppressed when rep is on a call) + browser notifications
+  useInboundRingtone(ringing, callState)
 
   async function fetchData() {
     try {
@@ -102,35 +103,6 @@ export default function InboundCallsPage() {
       clearInterval(poll)
     }
   }, [])
-
-  // Play ringtone when calls are ringing
-  useEffect(() => {
-    if (ringing.length > 0) {
-      if (!ringtoneRef.current) {
-        try {
-          const ctx = new AudioContext()
-          const osc = ctx.createOscillator()
-          const gain = ctx.createGain()
-          osc.frequency.value = 440
-          osc.type = 'sine'
-          gain.gain.value = 0.12
-          osc.connect(gain).connect(ctx.destination)
-          osc.start()
-          const pulse = setInterval(() => {
-            gain.gain.value = gain.gain.value > 0 ? 0 : 0.12
-          }, 1000)
-          ringtoneRef.current = { stop: () => { osc.stop(); ctx.close(); clearInterval(pulse) } }
-        } catch { /* ignore */ }
-      }
-    } else {
-      ringtoneRef.current?.stop?.()
-      ringtoneRef.current = null
-    }
-    return () => {
-      ringtoneRef.current?.stop?.()
-      ringtoneRef.current = null
-    }
-  }, [ringing.length])
 
   async function handleAnswer(call: InboundCall) {
     if (callState !== 'idle' || !deviceReady || answering) return
