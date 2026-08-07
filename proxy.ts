@@ -37,7 +37,9 @@ export async function proxy(request: NextRequest) {
         .single()
 
       const dest = profile?.role === 'admin' ? '/teams/admin' : '/teams/dashboard'
-      return NextResponse.redirect(new URL(dest, request.url))
+      const res = NextResponse.redirect(new URL(dest, request.url))
+      supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+      return res
     }
     return supabaseResponse
   }
@@ -45,7 +47,9 @@ export async function proxy(request: NextRequest) {
   // Protect all /teams/* routes
   if (pathname.startsWith('/teams')) {
     if (!user) {
-      return NextResponse.redirect(new URL('/teams/login', request.url))
+      const res = NextResponse.redirect(new URL('/teams/login', request.url))
+      supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+      return res
     }
 
     const { data: profile } = await supabase
@@ -56,13 +60,17 @@ export async function proxy(request: NextRequest) {
 
     // Admin-only routes
     if (pathname.startsWith('/teams/admin') && profile?.role !== 'admin') {
-      return NextResponse.redirect(new URL('/teams/dashboard', request.url))
+      const res = NextResponse.redirect(new URL('/teams/dashboard', request.url))
+      supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+      return res
     }
 
     // Rep trying to access /teams root — redirect to dashboard
     if (pathname === '/teams') {
       const dest = profile?.role === 'admin' ? '/teams/admin' : '/teams/dashboard'
-      return NextResponse.redirect(new URL(dest, request.url))
+      const res = NextResponse.redirect(new URL(dest, request.url))
+      supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+      return res
     }
   }
 
@@ -81,18 +89,25 @@ export async function proxy(request: NextRequest) {
 
   if (isDialer && !isDialerLogin) {
     if (!user) {
-      return NextResponse.redirect(new URL('/dialer/login', request.url))
+      const res = NextResponse.redirect(new URL('/dialer/login', request.url))
+      // Carry refreshed auth cookies through redirects
+      supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+      return res
     }
     if (isDialerAdmin) {
       const role = user.user_metadata?.role ?? 'REP'
       if (role !== 'ADMIN') {
-        return NextResponse.redirect(new URL('/dialer/agent', request.url))
+        const res = NextResponse.redirect(new URL('/dialer/agent', request.url))
+        supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+        return res
       }
     }
   }
 
   if (isDialerLogin && user) {
-    return NextResponse.redirect(new URL('/dialer/agent', request.url))
+    const res = NextResponse.redirect(new URL('/dialer/agent', request.url))
+    supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+    return res
   }
 
   return supabaseResponse
