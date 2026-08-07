@@ -130,11 +130,12 @@ function DtmfPad({ onKey }: { onKey: (k: string) => void }) {
 
 // ── Disposition Modal ──────────────────────────────────────────────────────────
 
-function DispositionModal({ lead, leadTimezone, firm, onSubmit }: {
+function DispositionModal({ lead, leadTimezone, firm, onSubmit, onCallAgain }: {
   lead: Lead
   leadTimezone: string
   firm: string
   onSubmit: (d: Disposition, callbackAt: string, stop: boolean, context?: string, nqReason?: string) => void
+  onCallAgain: () => void
 }) {
   const [selected,     setSelected]     = useState<Disposition | null>(null)
   const [callbackTime, setCallbackTime] = useState('')
@@ -227,12 +228,20 @@ function DispositionModal({ lead, leadTimezone, firm, onSubmit }: {
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><rect x="4" y="4" width="12" height="12" rx="1" /></svg>
             Stop
           </button>
-          <button
-            disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
-            onClick={() => selected && onSubmit(selected, callbackTime, false, context, nqReason)}
-            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
-            Submit & Next
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onCallAgain}
+              className="flex items-center gap-1.5 rounded-lg border border-green-300 px-3 py-2 text-sm font-medium text-green-600 transition-colors hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30">
+              <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg>
+              Call Again
+            </button>
+            <button
+              disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
+              onClick={() => selected && onSubmit(selected, callbackTime, false, context, nqReason)}
+              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
+              Submit & Next
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1455,6 +1464,19 @@ export default function AgentPage() {
           leadTimezone={leadTimezone}
           firm={currentQueueLead.current?.firm ?? ''}
           onSubmit={handleDisposition}
+          onCallAgain={() => {
+            const lead = currentLead
+            const ql = currentQueueLead.current
+            setShowDisposition(false)
+            setCallState('idle')
+            if (lead) {
+              ctxPlaceCall(lead, ql ? {
+                firm:     ql.firm,
+                campaign: ql.stageName,
+                queueId:  ql.queueId,
+              } : undefined)
+            }
+          }}
         />
       )}
     </div>

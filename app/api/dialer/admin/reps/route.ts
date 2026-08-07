@@ -42,7 +42,8 @@ export async function POST(req: NextRequest) {
 
   // Check if auth user already exists (from a previous partial failure)
   const { data: existingList } = await db.auth.admin.listUsers()
-  const existing = existingList?.users?.find((u: any) => u.email?.toLowerCase() === email.toLowerCase())
+  const normalEmail = email.toLowerCase().trim()
+  const existing = existingList?.users?.find((u: any) => u.email?.toLowerCase() === normalEmail)
 
   let userId: string
   if (existing) {
@@ -54,7 +55,7 @@ export async function POST(req: NextRequest) {
     userId = existing.id
   } else {
     const { data: authData, error: authError } = await db.auth.admin.createUser({
-      email,
+      email: normalEmail,
       password,
       email_confirm: true,
       user_metadata: { name, role, twilio_identity: twilio_identity ?? '' },
@@ -67,12 +68,15 @@ export async function POST(req: NextRequest) {
   const { error: dbError } = await db.from('dialer_users').upsert({
     id:              userId,
     name,
-    email,
+    email:           email.toLowerCase().trim(),
     role,
-    twilio_identity: twilio_identity ?? null,
+    twilio_identity: (twilio_identity ?? '').toLowerCase().trim() || null,
     active:          true,
   }, { onConflict: 'id' })
-  if (dbError) return NextResponse.json({ error: dbError.message }, { status: 500 })
+  if (dbError) {
+    console.error('[admin/reps] DB error creating user', dbError)
+    return NextResponse.json({ error: `Database error: ${dbError.message}` }, { status: 500 })
+  }
 
   return NextResponse.json({ ok: true, id: userId })
 }
