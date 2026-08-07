@@ -38,9 +38,29 @@ export async function GET() {
   ])
 
   const users    = usersRes.data    ?? []
-  const sessions = sessionsRes.data ?? []
   const statuses = statusRes.data   ?? []
   const calls    = callsRes.data    ?? []
+
+  // Filter out stale active sessions (older than 4 hours — no real call lasts that long)
+  const STALE_SESSION_MS = 4 * 60 * 60 * 1000
+  const allSessions = sessionsRes.data ?? []
+  const sessions = allSessions.filter((s: any) => {
+    if (!s.started_at) return true
+    return Date.now() - new Date(s.started_at).getTime() < STALE_SESSION_MS
+  })
+
+  // Clean up stale session rows in the background (don't await)
+  const staleSessions = allSessions.filter((s: any) =>
+    s.started_at && Date.now() - new Date(s.started_at).getTime() >= STALE_SESSION_MS
+  )
+  if (staleSessions.length > 0) {
+    const staleIds = staleSessions.map((s: any) => s.rep_identity)
+    db.from('dialer_active_sessions')
+      .delete()
+      .in('rep_identity', staleIds)
+      .then(() => console.log(`[live-floor] Cleaned up ${staleIds.length} stale session(s):`, staleIds))
+      .catch(console.error)
+  }
 
   // Build rep list dynamically from dialer_users
   const repList = users.map((u: any) => {
@@ -66,11 +86,12 @@ export async function GET() {
 
     let status = presence?.status ?? 'OFFLINE'
     // If status hasn't been updated in 2+ minutes, treat as OFFLINE (stale session)
-    if (status !== 'OFFLINE' && presence?.updated_at) {
-      const staleMs = Date.now() - new Date(presence.updated_at).getTime()
-      if (staleMs > 2 * 60 * 1000) status = 'OFFLINE'
-    }
-    if (session) status = 'ON_CALL'
+    const isStalePresence = presence?.updated_at
+      ? Date.now() - new Date(presence.updated_at).getTime() > 2 * 60 * 1000
+      : false
+    if (status !== 'OFFLINE' && isStalePresence) status = 'OFFLINE'
+    // Only show ON_CALL if session exists AND rep presence isn't stale
+    if (session && !isStalePresence) status = 'ON_CALL'
 
     return {
       ...rep,
