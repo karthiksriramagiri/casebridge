@@ -670,6 +670,29 @@ export default function AgentPage() {
     // Do NOT call refill here — it races with disposition and causes double-assignment.
   }, [status, identity])
 
+  // Set OFFLINE when tab/browser closes
+  useEffect(() => {
+    if (!identity) return
+    function handleUnload() {
+      navigator.sendBeacon('/api/dialer/rep-status', JSON.stringify({ identity, status: 'OFFLINE' }))
+    }
+    window.addEventListener('beforeunload', handleUnload)
+    return () => window.removeEventListener('beforeunload', handleUnload)
+  }, [identity])
+
+  // Keepalive: refresh rep-status updated_at every 60s so live-floor knows we're alive
+  useEffect(() => {
+    if (!identity || status === 'OFFLINE') return
+    const interval = setInterval(() => {
+      fetch('/api/dialer/rep-status', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ identity, status }),
+      }).catch(() => {})
+    }, 60_000)
+    return () => clearInterval(interval)
+  }, [identity, status])
+
   // Detect call transitions
   useEffect(() => {
     if (prevCallState.current !== 'wrapup' && callState === 'wrapup') {

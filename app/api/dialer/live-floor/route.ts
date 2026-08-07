@@ -65,6 +65,11 @@ export async function GET() {
       : 0
 
     let status = presence?.status ?? 'OFFLINE'
+    // If status hasn't been updated in 2+ minutes, treat as OFFLINE (stale session)
+    if (status !== 'OFFLINE' && presence?.updated_at) {
+      const staleMs = Date.now() - new Date(presence.updated_at).getTime()
+      if (staleMs > 2 * 60 * 1000) status = 'OFFLINE'
+    }
     if (session) status = 'ON_CALL'
 
     return {

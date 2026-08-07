@@ -31,7 +31,7 @@ export async function GET(req: NextRequest) {
 // PUT /api/dialer/sms/lead-settings
 // Update SMS disposition and/or bot toggle
 export async function PUT(req: NextRequest) {
-  const { contactId, smsDisposition, smsBotActive } = await req.json()
+  const { contactId, smsDisposition, smsBotActive, nqReason, callbackAt, notes } = await req.json()
   if (!contactId) return NextResponse.json({ error: 'contactId required' }, { status: 400 })
 
   const db  = supabaseAdmin()
@@ -42,6 +42,48 @@ export async function PUT(req: NextRequest) {
   if (smsDisposition !== undefined) {
     updates.sms_disposition    = smsDisposition
     updates.sms_disposition_at = now
+  }
+
+  // Store NQ reason as a GHL tag
+  if (smsDisposition === 'Not Qualified' && nqReason) {
+    // Look up firm from lead state or attempts
+    const { data: ls } = await db.from('dialer_lead_state')
+      .select('contact_id')
+      .eq('contact_id', contactId)
+      .maybeSingle()
+
+    const { data: callRow } = await db.from('dialer_calls')
+      .select('firm')
+      .eq('contact_id', contactId)
+      .not('firm', 'is', null)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    const firm = callRow?.firm || ''
+    if (firm) {
+      const ghlKey = (process.env.GHL_API_KEY ?? '').trim()
+      const reasonTag = firm === 'lhp' ? `lhp - nq - ${nqReason}` : `fl - nq - ${nqReason}`
+      // Fetch existing tags then merge
+      try {
+        const cRes = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+          headers: { Authorization: `Bearer ${ghlKey}`, Version: '2021-07-28' },
+        })
+        if (cRes.ok) {
+          const cData = await cRes.json()
+          const existingTags: string[] = cData?.contact?.tags ?? []
+          const nqTag = firm === 'lhp' ? 'lhp - nq' : 'fl - nq'
+          const tags = Array.from(new Set([...existingTags, nqTag, reasonTag]))
+          await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+            method: 'PUT',
+            headers: { Authorization: `Bearer ${ghlKey}`, Version: '2021-07-28', 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tags }),
+          })
+        }
+      } catch (err) {
+        console.error('[lead-settings] NQ tag error', err)
+      }
+    }
   }
 
   if (smsBotActive !== undefined) {

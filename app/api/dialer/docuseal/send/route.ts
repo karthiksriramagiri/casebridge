@@ -36,8 +36,8 @@ export async function POST(req: NextRequest) {
     skipTag,
   } = await req.json()
 
-  if (!contactId || !fullName || !firm) {
-    return NextResponse.json({ error: 'contactId, fullName, and firm are required' }, { status: 400 })
+  if (!fullName || !firm) {
+    return NextResponse.json({ error: 'fullName and firm are required' }, { status: 400 })
   }
 
   const firmKey = firm.toLowerCase().includes('fear') ? 'fears'
@@ -61,13 +61,13 @@ export async function POST(req: NextRequest) {
   const todayFmt = `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`
   const submissionBody = {
     template_id: templateId,
-    send_email: true,
-    send_sms: !!phone,
+    send_email: !!email,
+    send_sms: !!phone && phone.replace(/\D/g, '').length >= 10,
     submitters: [
       {
         role: 'First Party',
         email: email || undefined,
-        phone: phone || undefined,
+        phone: phone && phone.replace(/\D/g, '').length >= 10 ? phone : undefined,
         name: fullName,
         values: {
           'Full Name':        fullName,
@@ -116,11 +116,11 @@ export async function POST(req: NextRequest) {
       const pBody = {
         template_id: templateId,
         send_email: false,
-        send_sms: !!p.phone && p.phone !== '+1',
+        send_sms: !!p.phone && p.phone.replace(/\D/g, '').length >= 10,
         submitters: [
           {
             role: 'First Party',
-            phone: p.phone && p.phone !== '+1' ? p.phone : undefined,
+            phone: p.phone && p.phone.replace(/\D/g, '').length >= 10 ? p.phone : undefined,
             name: p.name,
             values: {
               'Full Name':        p.name,

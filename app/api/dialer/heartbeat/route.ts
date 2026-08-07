@@ -35,6 +35,11 @@ export async function POST(req: NextRequest) {
   // Don't log heartbeats for offline reps (they're not using the app)
   if (repStatus === 'OFFLINE') return NextResponse.json({ ok: true })
 
+  // Touch updated_at so live-floor staleness check knows rep is alive
+  await db.from('dialer_rep_status')
+    .update({ updated_at: new Date().toISOString() })
+    .eq('rep_identity', identity)
+
   await db.from('dialer_rep_heartbeats').insert({
     rep_identity:  identity,
     device_type:   deviceType,

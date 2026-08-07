@@ -195,16 +195,19 @@ function firstName(full: string | null | undefined): string {
   return full.split(' ')[0] || 'there'
 }
 
-// ── SMS Dispositions ──────────────────────────────────────────────────────────
+// ── SMS Dispositions (matches call dispositions) ─────────────────────────────
 
-const SMS_DISPOSITIONS = [
-  { id: 'callback',        label: 'Callback Requested', color: 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400' },
-  { id: 'not_interested',  label: 'Not Interested',     color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' },
-  { id: 'qualified',       label: 'Qualified',          color: 'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400' },
-  { id: 'wrong_number',    label: 'Wrong Number',       color: 'bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-400' },
-  { id: 'dnc',             label: 'Do Not Contact',     color: 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400' },
-  { id: 'no_response',     label: 'No Response',        color: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400' },
-] as const
+import { DISPOSITIONS } from '../../_types'
+import type { Disposition } from '../../_types'
+
+const DISP_PILL_COLORS: Record<string, string> = {
+  'Qualified':     'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400',
+  'Not Qualified': 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  'Callback':      'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400',
+  'No Answer':     'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  'Signed':        'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  'DNC':           'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+}
 
 const FIRM_PILL: Record<string, string> = {
   'Larry H. Parker': 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
@@ -359,6 +362,10 @@ export default function MessagesPage() {
   const [search, setSearch]               = useState('')
   const [showDisposition, setShowDisposition] = useState(false)
   const [savingSettings, setSavingSettings]   = useState(false)
+  const [dispSelection,  setDispSelection]    = useState<Disposition | null>(null)
+  const [dispNqReason,   setDispNqReason]     = useState('')
+  const [dispCbTime,     setDispCbTime]       = useState('')
+  const [dispNotes,      setDispNotes]        = useState('')
   const [showNew, setShowNew]             = useState(false)
   const [showTemplates, setShowTemplates] = useState(false)
 
@@ -458,7 +465,7 @@ export default function MessagesPage() {
   }
 
   // Save SMS disposition or bot toggle for the selected contact
-  async function updateLeadSettings(updates: { smsDisposition?: string | null; smsBotActive?: boolean }) {
+  async function updateLeadSettings(updates: { smsDisposition?: string | null; smsBotActive?: boolean; nqReason?: string; callbackAt?: string; notes?: string }) {
     if (!selected?.contactId) return
     setSavingSettings(true)
     try {
@@ -480,6 +487,10 @@ export default function MessagesPage() {
     } finally {
       setSavingSettings(false)
       setShowDisposition(false)
+      setDispSelection(null)
+      setDispNqReason('')
+      setDispCbTime('')
+      setDispNotes('')
     }
   }
 
@@ -645,14 +656,11 @@ export default function MessagesPage() {
                           {convo.firm}
                         </span>
                       )}
-                      {convo.smsDisposition && (() => {
-                        const d = SMS_DISPOSITIONS.find(x => x.id === convo.smsDisposition)
-                        return d ? (
-                          <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${d.color}`}>
-                            {d.label}
-                          </span>
-                        ) : null
-                      })()}
+                      {convo.smsDisposition && (
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${DISP_PILL_COLORS[convo.smsDisposition] ?? 'bg-gray-100 text-gray-600'}`}>
+                          {convo.smsDisposition}
+                        </span>
+                      )}
                       {convo.smsBotActive && (
                         <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">
                           Bot
@@ -682,10 +690,87 @@ export default function MessagesPage() {
                 || messages.find(m => m.contact_name)?.contact_name
                 || null
               const displayName = resolvedName || fmtPhone(selected.leadPhone)
-              const currentDisp = SMS_DISPOSITIONS.find(d => d.id === selected.smsDisposition)
+              const currentDispColor = DISP_PILL_COLORS[selected.smsDisposition ?? ''] ?? ''
 
               return (
                 <div className="border-b border-gray-200 dark:border-gray-800">
+                  {/* Disposition modal */}
+                  {showDisposition && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
+                        <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-800">
+                          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Disposition</h2>
+                          <p className="mt-0.5 text-sm text-gray-500">{displayName} · {fmtPhone(selected.leadPhone)}</p>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 p-4">
+                          {DISPOSITIONS.map(d => (
+                            <button key={d.id} onClick={() => setDispSelection(d)}
+                              className={`rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-all ${d.color} ${dispSelection?.id === d.id ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-gray-900' : 'opacity-80 hover:opacity-100'}`}>
+                              {d.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Callback time picker */}
+                        {dispSelection?.category === 'CALLBACK' && (
+                          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
+                            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                              Callback time (your local time)
+                            </label>
+                            <input type="datetime-local" value={dispCbTime} onChange={e => setDispCbTime(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                            <input
+                              value={dispNotes} onChange={e => setDispNotes(e.target.value)}
+                              placeholder="Callback notes (optional)…"
+                              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                            />
+                          </div>
+                        )}
+
+                        {/* NQ reason */}
+                        {dispSelection?.requiresReason && (
+                          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
+                            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                              Reason for not qualifying
+                            </label>
+                            <input
+                              value={dispNqReason} onChange={e => setDispNqReason(e.target.value)}
+                              placeholder="Enter reason…"
+                              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                            />
+                          </div>
+                        )}
+
+                        <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+                          <button
+                            onClick={() => { setShowDisposition(false); setDispSelection(null); setDispNqReason(''); setDispCbTime(''); setDispNotes('') }}
+                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
+                            Cancel
+                          </button>
+                          {selected.smsDisposition && (
+                            <button
+                              onClick={() => updateLeadSettings({ smsDisposition: null })}
+                              disabled={savingSettings}
+                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+                              Clear
+                            </button>
+                          )}
+                          <button
+                            disabled={!dispSelection || (dispSelection.category === 'CALLBACK' && !dispCbTime) || (dispSelection.requiresReason && !dispNqReason.trim()) || savingSettings}
+                            onClick={() => dispSelection && updateLeadSettings({
+                              smsDisposition: dispSelection.label,
+                              nqReason: dispNqReason.trim() || undefined,
+                              callbackAt: dispCbTime ? new Date(dispCbTime).toISOString() : undefined,
+                              notes: dispNotes.trim() || undefined,
+                            })}
+                            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
+                            {savingSettings ? 'Saving…' : 'Submit'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Top row: name + actions */}
                   <div className="flex items-center justify-between px-5 py-3">
                     <div className="flex items-center gap-3">
@@ -708,50 +793,19 @@ export default function MessagesPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       {/* Disposition button */}
-                      <div className="relative">
-                        <button
-                          onClick={() => setShowDisposition(v => !v)}
-                          className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
-                            currentDisp
-                              ? `${currentDisp.color} border-transparent`
-                              : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
-                          }`}
-                        >
-                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
-                            <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
-                          </svg>
-                          {currentDisp ? currentDisp.label : 'Disposition'}
-                        </button>
-                        {showDisposition && (
-                          <div className="absolute right-0 top-full z-20 mt-1 w-48 rounded-lg border border-gray-200 bg-white py-1 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                            {SMS_DISPOSITIONS.map(d => (
-                              <button
-                                key={d.id}
-                                onClick={() => updateLeadSettings({ smsDisposition: d.id })}
-                                disabled={savingSettings}
-                                className={`flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-gray-50 dark:hover:bg-gray-700 ${
-                                  selected.smsDisposition === d.id ? 'font-bold' : ''
-                                }`}
-                              >
-                                <span className={`h-2 w-2 rounded-full ${d.color.split(' ')[0]}`} />
-                                {d.label}
-                              </button>
-                            ))}
-                            {selected.smsDisposition && (
-                              <>
-                                <div className="my-1 border-t border-gray-100 dark:border-gray-700" />
-                                <button
-                                  onClick={() => updateLeadSettings({ smsDisposition: null })}
-                                  disabled={savingSettings}
-                                  className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700"
-                                >
-                                  Clear disposition
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        )}
-                      </div>
+                      <button
+                        onClick={() => { setShowDisposition(true); setDispSelection(null); setDispNqReason(''); setDispCbTime(''); setDispNotes('') }}
+                        className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                          currentDispColor
+                            ? `${currentDispColor} border-transparent`
+                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                        }`}
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
+                          <path fillRule="evenodd" d="M17.707 9.293a1 1 0 010 1.414l-7 7a1 1 0 01-1.414 0l-7-7A.997.997 0 012 10V5a3 3 0 013-3h5c.256 0 .512.098.707.293l7 7zM5 6a1 1 0 100-2 1 1 0 000 2z" clipRule="evenodd" />
+                        </svg>
+                        {selected.smsDisposition || 'Disposition'}
+                      </button>
 
                       {/* Bot toggle */}
                       {selected.contactId && (

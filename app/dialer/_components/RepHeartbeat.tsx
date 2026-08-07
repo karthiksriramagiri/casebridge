@@ -5,10 +5,10 @@ import { useAuth } from '../_context/auth'
 
 // Sends a heartbeat every 30s so we can track device type + active/idle time per rep
 export function RepHeartbeat() {
-  const { identity } = useAuth()
+  const { identity, role } = useAuth()
 
   useEffect(() => {
-    if (!identity) return
+    if (!identity || role !== 'REP') return
 
     function sendHeartbeat() {
       fetch('/api/dialer/heartbeat', {

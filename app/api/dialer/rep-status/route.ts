@@ -6,7 +6,16 @@ function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+// POST handler for sendBeacon (tab close)
+export async function POST(req: NextRequest) {
+  return handleStatusUpdate(req)
+}
+
 export async function PUT(req: NextRequest) {
+  return handleStatusUpdate(req)
+}
+
+async function handleStatusUpdate(req: NextRequest) {
   const { identity, status } = await req.json()
   if (!identity || !status) return NextResponse.json({ error: 'identity and status required' }, { status: 400 })
 
