@@ -97,6 +97,7 @@ const STAGE_MAP: Record<string, StageLabel> = {
   chase:         'chase',
   appointment:   'appointment',
   contract_sent: 'contract_sent',
+  sent:          'contract_sent',    // webhook sometimes sends 'sent' instead of 'contract_sent'
   pending_send:  'pending_send',
   not_qualified: 'nq',
   mia:           'mia',
@@ -106,6 +107,7 @@ const STAGE_MAP: Record<string, StageLabel> = {
 
 // Fetch all opportunities for a pipeline and return per-ad NR/NQ/FU contact lists
 // Filters by createdAt within the invoice/date window
+// Unattributed leads (no UTM ad_id) are collected under '__unattributed__'
 async function fetchGHLPipelineBreakdown(
   pipelineId: string,
   start: string,
@@ -113,6 +115,8 @@ async function fetchGHLPipelineBreakdown(
 ): Promise<Record<string, PipelineAdLeads>> {
   if (!GHL_API_KEY) return {}
   const breakdown: Record<string, PipelineAdLeads> = {}
+  // Track unattributed contact IDs so we can try to resolve them later
+  const unattributedContacts: { contactId: string; label: StageLabel; contact: PipelineContact }[] = []
   let url: string | null =
     `https://services.leadconnectorhq.com/opportunities/search` +
     `?location_id=${GHL_LOCATION_ID}&pipeline_id=${pipelineId}&limit=100`
@@ -148,21 +152,55 @@ async function fetchGHLPipelineBreakdown(
       const created = opp.createdAt ? opp.createdAt.split('T')[0] : ''
       if (created < start || created > end) continue
 
-      // Get ad_id from first attribution
-      const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
-      const adId = attr?.utmAdId || attr?.utmContent || null
-      if (!adId) continue
-
-      if (!breakdown[adId]) breakdown[adId] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
-      breakdown[adId][label].push({
+      const contact: PipelineContact = {
         name:      opp.contact?.name || opp.name || null,
         phone:     opp.contact?.phone || null,
         email:     opp.contact?.email || null,
         createdAt: opp.createdAt || null,
-      })
+      }
+
+      // Get ad_id from first attribution
+      const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
+      const adId = attr?.utmAdId || attr?.utmContent || null
+      if (adId) {
+        if (!breakdown[adId]) breakdown[adId] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
+        breakdown[adId][label].push(contact)
+      } else {
+        // No UTM attribution — try to resolve via contact_id later
+        const cid = opp.contact?.id || opp.contactId || null
+        if (cid) {
+          unattributedContacts.push({ contactId: cid, label, contact })
+        } else {
+          // Truly unattributed — store under special key
+          if (!breakdown['__unattributed__']) breakdown['__unattributed__'] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
+          breakdown['__unattributed__'][label].push(contact)
+        }
+      }
     }
 
     url = data.meta?.nextPageUrl || null
+  }
+
+  // Resolve unattributed contacts by looking up their ad_id in ghl_leads
+  if (unattributedContacts.length > 0) {
+    const contactIds = [...new Set(unattributedContacts.map(c => c.contactId))]
+    const { data: signedRecords } = await supabase
+      .from('ghl_leads')
+      .select('contact_id, ad_id, ad_name')
+      .in('contact_id', contactIds)
+      .is('pipeline_stage', null)
+    const contactAdMap: Record<string, string | null> = {}
+    for (const sr of (signedRecords || [])) {
+      if (sr.contact_id) {
+        const hasRealAdId = sr.ad_id && !sr.ad_id.includes('{{')
+        contactAdMap[sr.contact_id] = hasRealAdId ? sr.ad_id : null
+      }
+    }
+    for (const { contactId, label, contact } of unattributedContacts) {
+      const resolvedAdId = contactAdMap[contactId] || '__unattributed__'
+      if (!breakdown[resolvedAdId]) breakdown[resolvedAdId] = { new_lead: [], nr: [], fu: [], chase: [], appointment: [], contract_sent: [], pending_send: [], nq: [], mia: [], qualified: [], closed: [] }
+      breakdown[resolvedAdId][label].push(contact)
+    }
   }
 
   return breakdown
@@ -871,6 +909,49 @@ export async function GET(request: NextRequest) {
     return b.spend - a.spend
   })
 
+  // Pipeline totals — sum across all ads + unattributed
+  const allPipelineKeys = Object.keys(ghlPipelineBreakdown)
+  const pipelineTotals = {
+    newLeadCount: 0, nrCount: 0, fuCount: 0, chaseCount: 0,
+    appointmentCount: 0, contractSentCount: 0, pendingSendCount: 0,
+    nqCount: 0, miaCount: 0, qualifiedCount: 0, closedCount: 0,
+    newLeadLeads: [] as PipelineContact[], nrLeads: [] as PipelineContact[],
+    fuLeads: [] as PipelineContact[], chaseLeads: [] as PipelineContact[],
+    appointmentLeads: [] as PipelineContact[], contractSentLeads: [] as PipelineContact[],
+    pendingSendLeads: [] as PipelineContact[], nqLeads: [] as PipelineContact[],
+    miaLeads: [] as PipelineContact[], qualifiedLeads: [] as PipelineContact[],
+    closedLeads: [] as PipelineContact[],
+  }
+  for (const key of allPipelineKeys) {
+    const p = ghlPipelineBreakdown[key]
+    pipelineTotals.newLeadCount      += p.new_lead.length;      pipelineTotals.newLeadLeads.push(...p.new_lead)
+    pipelineTotals.nrCount           += p.nr.length;            pipelineTotals.nrLeads.push(...p.nr)
+    pipelineTotals.fuCount           += p.fu.length;            pipelineTotals.fuLeads.push(...p.fu)
+    pipelineTotals.chaseCount        += p.chase.length;         pipelineTotals.chaseLeads.push(...p.chase)
+    pipelineTotals.appointmentCount  += p.appointment.length;   pipelineTotals.appointmentLeads.push(...p.appointment)
+    pipelineTotals.contractSentCount += p.contract_sent.length; pipelineTotals.contractSentLeads.push(...p.contract_sent)
+    pipelineTotals.pendingSendCount  += p.pending_send.length;  pipelineTotals.pendingSendLeads.push(...p.pending_send)
+    pipelineTotals.nqCount           += p.nq.length;            pipelineTotals.nqLeads.push(...p.nq)
+    pipelineTotals.miaCount          += p.mia.length;           pipelineTotals.miaLeads.push(...p.mia)
+    pipelineTotals.qualifiedCount    += p.qualified.length;     pipelineTotals.qualifiedLeads.push(...p.qualified)
+    pipelineTotals.closedCount       += p.closed.length;        pipelineTotals.closedLeads.push(...p.closed)
+  }
+  // Also merge ghlPipelineByName data into totals
+  for (const key of Object.keys(ghlPipelineByName)) {
+    const p = ghlPipelineByName[key]
+    pipelineTotals.newLeadCount      += p.new_lead.length;      pipelineTotals.newLeadLeads.push(...p.new_lead)
+    pipelineTotals.nrCount           += p.nr.length;            pipelineTotals.nrLeads.push(...p.nr)
+    pipelineTotals.fuCount           += p.fu.length;            pipelineTotals.fuLeads.push(...p.fu)
+    pipelineTotals.chaseCount        += p.chase.length;         pipelineTotals.chaseLeads.push(...p.chase)
+    pipelineTotals.appointmentCount  += p.appointment.length;   pipelineTotals.appointmentLeads.push(...p.appointment)
+    pipelineTotals.contractSentCount += p.contract_sent.length; pipelineTotals.contractSentLeads.push(...p.contract_sent)
+    pipelineTotals.pendingSendCount  += p.pending_send.length;  pipelineTotals.pendingSendLeads.push(...p.pending_send)
+    pipelineTotals.nqCount           += p.nq.length;            pipelineTotals.nqLeads.push(...p.nq)
+    pipelineTotals.miaCount          += p.mia.length;           pipelineTotals.miaLeads.push(...p.mia)
+    pipelineTotals.qualifiedCount    += p.qualified.length;     pipelineTotals.qualifiedLeads.push(...p.qualified)
+    pipelineTotals.closedCount       += p.closed.length;        pipelineTotals.closedLeads.push(...p.closed)
+  }
+
   // KPI targets — phase-aware (Initial / Scale / Pre-Max / Max)
   const phaseKey = phase.label.toLowerCase().replace('-', '_') as 'initial' | 'scale' | 'pre_max' | 'max'
   const targetDailySpend: number =
@@ -1033,5 +1114,6 @@ export async function GET(request: NextRequest) {
     } : null,
     daily: dailyWithCases,
     adBreakdown: adRows,
+    pipelineTotals,
   })
 }

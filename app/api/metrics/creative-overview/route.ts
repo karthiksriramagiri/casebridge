@@ -117,6 +117,7 @@ function emptyAdData(firmSlug: string | null = null, firmName: string | null = n
 
 // Fetch all opportunities for a pipeline and return per-adId breakdown
 // If start/end provided, filters by opp.createdAt date range
+// Unattributed leads (no UTM ad_id) are resolved via ghl_leads or stored under '__unattributed__'
 async function fetchPipelineBreakdown(
   pipelineId: string,
   start: string | null = null,
@@ -124,6 +125,7 @@ async function fetchPipelineBreakdown(
 ): Promise<Record<string, { label: StageLabel; contact: Lead }[]>> {
   if (!GHL_API_KEY) return {}
   const result: Record<string, { label: StageLabel; contact: Lead }[]> = {}
+  const unattributedContacts: { contactId: string; label: StageLabel; contact: Lead }[] = []
   let url: string | null =
     `https://services.leadconnectorhq.com/opportunities/search` +
     `?location_id=${GHL_LOCATION_ID}&pipeline_id=${pipelineId}&limit=100`
@@ -157,22 +159,54 @@ async function fetchPipelineBreakdown(
          stageName.includes('qualified lead') ? 'qualified' :
          stageName.includes('closed') ? 'closed' : undefined)
       if (!label) continue
+
+      const contact: Lead = {
+        name:      opp.contact?.name || opp.name || null,
+        phone:     opp.contact?.phone || null,
+        email:     opp.contact?.email || null,
+        createdAt: opp.createdAt || null,
+      }
+
       const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
       const adId = attr?.utmAdId || attr?.utmContent || null
-      if (!adId) continue
-      if (!result[adId]) result[adId] = []
-      result[adId].push({
-        label,
-        contact: {
-          name:      opp.contact?.name || opp.name || null,
-          phone:     opp.contact?.phone || null,
-          email:     opp.contact?.email || null,
-          createdAt: opp.createdAt || null,
-        },
-      })
+      if (adId) {
+        if (!result[adId]) result[adId] = []
+        result[adId].push({ label, contact })
+      } else {
+        const cid = opp.contact?.id || opp.contactId || null
+        if (cid) {
+          unattributedContacts.push({ contactId: cid, label, contact })
+        } else {
+          if (!result['__unattributed__']) result['__unattributed__'] = []
+          result['__unattributed__'].push({ label, contact })
+        }
+      }
     }
     url = data.meta?.nextPageUrl || null
   }
+
+  // Resolve unattributed contacts via ghl_leads
+  if (unattributedContacts.length > 0) {
+    const contactIds = [...new Set(unattributedContacts.map(c => c.contactId))]
+    const { data: signedRecords } = await supabase
+      .from('ghl_leads')
+      .select('contact_id, ad_id')
+      .in('contact_id', contactIds)
+      .is('pipeline_stage', null)
+    const contactAdMap: Record<string, string | null> = {}
+    for (const sr of (signedRecords || [])) {
+      if (sr.contact_id) {
+        const hasRealAdId = sr.ad_id && !sr.ad_id.includes('{{')
+        contactAdMap[sr.contact_id] = hasRealAdId ? sr.ad_id : null
+      }
+    }
+    for (const { contactId, label, contact } of unattributedContacts) {
+      const resolvedAdId = contactAdMap[contactId] || '__unattributed__'
+      if (!result[resolvedAdId]) result[resolvedAdId] = []
+      result[resolvedAdId].push({ label, contact })
+    }
+  }
+
   return result
 }
 

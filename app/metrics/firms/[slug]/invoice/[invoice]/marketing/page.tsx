@@ -1099,6 +1099,39 @@ export default function MarketingPage() {
         ))}
       </div>
 
+      {/* Pipeline Funnel */}
+      {kpi?.pipelineTotals && (() => {
+        const pt = kpi.pipelineTotals
+        const stages = [
+          { key: 'new_lead',      label: 'New Lead',  count: pt.newLeadCount,      color: 'text-sky-400',     bgHover: 'hover:bg-sky-900/30' },
+          { key: 'nr',            label: 'NR',        count: pt.nrCount,           color: 'text-gray-400',    bgHover: 'hover:bg-gray-800/30' },
+          { key: 'fu',            label: 'F/U',       count: pt.fuCount,           color: 'text-blue-400',    bgHover: 'hover:bg-blue-900/30' },
+          { key: 'chase',         label: 'Chase',     count: pt.chaseCount,        color: 'text-orange-400',  bgHover: 'hover:bg-orange-900/30' },
+          { key: 'appointment',   label: 'Appt',      count: pt.appointmentCount,  color: 'text-violet-400',  bgHover: 'hover:bg-violet-900/30' },
+          { key: 'contract_sent', label: 'Contract',  count: pt.contractSentCount, color: 'text-cyan-400',    bgHover: 'hover:bg-cyan-900/30' },
+          { key: 'pending_send',  label: 'Pending',   count: pt.pendingSendCount,  color: 'text-cyan-600',    bgHover: 'hover:bg-cyan-900/30' },
+          { key: 'nq',            label: 'NQ',        count: pt.nqCount,           color: 'text-red-400',     bgHover: 'hover:bg-red-900/30' },
+          { key: 'mia',           label: 'MIA',       count: pt.miaCount,          color: 'text-gray-500',    bgHover: 'hover:bg-gray-800/30' },
+        ]
+        const hasAny = stages.some(s => s.count > 0)
+        if (!hasAny) return null
+        return (
+          <div className="bg-gray-900 border border-gray-800 rounded-xl p-4">
+            <p className="text-xs text-gray-500 mb-3 font-medium uppercase tracking-wider">Lead Pipeline</p>
+            <div className="flex flex-wrap gap-2">
+              {stages.map(s => s.count > 0 && (
+                <button key={s.key}
+                  onClick={() => setPipelineModal({ ad: pt, stage: s.key })}
+                  className={`flex items-center gap-1.5 rounded-lg border border-gray-800 px-3 py-2 text-sm transition ${s.bgHover}`}>
+                  <span className={`font-bold ${s.color}`}>{s.count}</span>
+                  <span className="text-gray-500">{s.label}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )
+      })()}
+
       {/* Timeframe */}
       <div className="flex gap-1 flex-wrap">
         {TIMEFRAMES.map(tf => (
