@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
       leadState?.last_disposition ?? null,
       leadState?.assigned_caller_id ?? null,
       pool,
+      firm ?? null,
     )
   }
 

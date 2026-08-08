@@ -6,12 +6,18 @@ interface NumberInfo {
   phoneNumber:    string
   areaCode:       string
   state:          string | null
+  firm:           string | null
   totalCalls:     number
   connectedCalls: number
   connectRate:    number
   avgDuration:    number
   lastUsed:       string | null
 }
+
+const FIRMS = [
+  { slug: 'lhp',   label: 'LHP' },
+  { slug: 'fears', label: 'Fears Law' },
+]
 
 interface StateCoverage {
   state: string
@@ -63,6 +69,16 @@ export default function CallerIDsPage() {
   const [sortKey,       setSortKey]       = useState<SortKey>('totalCalls')
   const [sortAsc,       setSortAsc]       = useState(false)
   const [stateFilter,   setStateFilter]   = useState<string>('all')
+  const [firmFilter,    setFirmFilter]    = useState<string>('all')
+
+  async function assignFirm(phoneNumber: string, firm: string | null) {
+    setNumbers(prev => prev.map(n => n.phoneNumber === phoneNumber ? { ...n, firm } : n))
+    await fetch('/api/dialer/admin/numbers', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phoneNumber, firm }),
+    })
+  }
 
   async function fetchNumbers() {
     setLoading(true)
@@ -91,6 +107,11 @@ export default function CallerIDsPage() {
     if (stateFilter !== 'all') {
       list = list.filter(n => n.state === stateFilter)
     }
+    if (firmFilter !== 'all') {
+      list = firmFilter === 'unassigned'
+        ? list.filter(n => !n.firm)
+        : list.filter(n => n.firm === firmFilter)
+    }
     return [...list].sort((a, b) => {
       let cmp = 0
       switch (sortKey) {
@@ -103,7 +124,7 @@ export default function CallerIDsPage() {
       }
       return sortAsc ? cmp : -cmp
     })
-  }, [numbers, sortKey, sortAsc, stateFilter])
+  }, [numbers, sortKey, sortAsc, stateFilter, firmFilter])
 
   // Summary stats
   const totalCalls    = numbers.reduce((s, n) => s + n.totalCalls, 0)
@@ -180,6 +201,21 @@ export default function CallerIDsPage() {
         </div>
       )}
 
+      {/* Firm filter */}
+      <div className="flex items-center gap-2">
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Firm:</span>
+        {[{ slug: 'all', label: 'All' }, ...FIRMS, { slug: 'unassigned', label: 'Unassigned' }].map(f => (
+          <button key={f.slug} onClick={() => setFirmFilter(f.slug)}
+            className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
+              firmFilter === f.slug
+                ? 'bg-cyan-600 text-white'
+                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+            }`}>
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       {/* Numbers table */}
       <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
         <div className="overflow-x-auto">
@@ -202,18 +238,19 @@ export default function CallerIDsPage() {
                     {label}<SortArrow k={key} />
                   </th>
                 ))}
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Firm</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
+                  <td colSpan={7} className="px-4 py-12 text-center">
                     <p className="text-sm text-gray-400 animate-pulse">Fetching numbers from Twilio…</p>
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-4 py-12 text-center">
+                  <td colSpan={7} className="px-4 py-12 text-center">
                     <p className="text-sm text-gray-400">
                       {stateFilter !== 'all' ? `No numbers in ${STATE_NAMES[stateFilter] ?? stateFilter}` : 'No numbers found. Purchase numbers in your Twilio console.'}
                     </p>
@@ -265,6 +302,16 @@ export default function CallerIDsPage() {
                   </td>
                   <td className="px-4 py-3 text-sm text-gray-400">
                     {fmtDate(n.lastUsed)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <select
+                      value={n.firm ?? ''}
+                      onChange={e => assignFirm(n.phoneNumber, e.target.value || null)}
+                      className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                    >
+                      <option value="">—</option>
+                      {FIRMS.map(f => <option key={f.slug} value={f.slug}>{f.label}</option>)}
+                    </select>
                   </td>
                 </tr>
               ))}

@@ -1,4 +1,4 @@
-import { NextResponse } from 'next/server'
+import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getNumberPool } from '@/app/dialer/_lib/number-pool'
 
@@ -7,7 +7,7 @@ function supabaseAdmin() {
 }
 
 // GET /api/dialer/admin/numbers
-// Returns all purchased numbers with area code, state, and connection rate stats
+// Returns all purchased numbers with area code, state, firm, and connection rate stats
 export async function GET() {
   const [pool, stats] = await Promise.all([
     getNumberPool(),
@@ -22,6 +22,7 @@ export async function GET() {
       phoneNumber: n.phoneNumber,
       areaCode:    n.areaCode,
       state:       n.state,
+      firm:        n.firm,
       totalCalls:     s?.total   ?? 0,
       connectedCalls: s?.connected ?? 0,
       connectRate:    s?.total ? Math.round((s.connected / s.total) * 100) : 0,
@@ -47,6 +48,28 @@ export async function GET() {
     numbers,
     stateCoverage,
   })
+}
+
+// PATCH /api/dialer/admin/numbers — assign/unassign a number to a firm
+export async function PATCH(req: NextRequest) {
+  const { phoneNumber, firm } = await req.json()
+  if (!phoneNumber) return NextResponse.json({ error: 'phoneNumber required' }, { status: 400 })
+
+  const db = supabaseAdmin()
+
+  if (firm) {
+    // Assign number to firm
+    await db.from('dialer_number_firms').upsert(
+      { phone_number: phoneNumber, firm },
+      { onConflict: 'phone_number' }
+    )
+  } else {
+    // Unassign — remove from table
+    await db.from('dialer_number_firms').delete().eq('phone_number', phoneNumber)
+  }
+
+  // Bust the cache so next call picks up the change
+  return NextResponse.json({ ok: true })
 }
 
 interface CallerIdStat {
