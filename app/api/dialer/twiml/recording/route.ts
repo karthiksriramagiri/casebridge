@@ -99,6 +99,7 @@ export async function POST(req: NextRequest) {
   const dgParams = new URLSearchParams({
     model:        'nova-2',
     smart_format: 'true',
+    multichannel: 'true',
     utterances:   'true',
     punctuate:    'true',
     summarize:    'v2',
