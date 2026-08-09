@@ -52,6 +52,16 @@ export async function POST(req: NextRequest) {
     status:          'ringing',
   }, { onConflict: 'call_sid' })
 
+  // Slack notification — fire and forget
+  const INBOUND_SLACK_WEBHOOK = process.env.SLACK_INBOUND_CALL_WEBHOOK ?? ''
+  if (INBOUND_SLACK_WEBHOOK) fetch(INBOUND_SLACK_WEBHOOK, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      text: `📞 *Inbound Call*\nCaller: ${contactName ? `${contactName} · ` : ''}${from}\nCalling: ${to}${firm ? `\nFirm: ${firm}` : ''}`,
+    }),
+  }).catch(err => console.error('[inbound] Slack notification failed', err))
+
   // Write call record
   await db.from('dialer_calls').upsert({
     call_sid:     callSid,
