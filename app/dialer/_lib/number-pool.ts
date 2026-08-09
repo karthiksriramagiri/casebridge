@@ -79,8 +79,8 @@ export function selectCallerId(
 ): string {
   const fallback = process.env.TWILIO_CALLER_ID || '+12137344168'
 
-  // Rule 1: NR leads use their assigned persistent number
-  if (lastDisposition === 'No Answer' && assignedCallerId) {
+  // Rule 1: Reuse the persistent number if one is assigned (set on answer or NR)
+  if (assignedCallerId) {
     return assignedCallerId
   }
 
@@ -96,6 +96,13 @@ export function selectCallerId(
       firmPool = pool.filter(n => !n.firm)
       if (firmPool.length === 0) firmPool = pool
     }
+  }
+
+  // Hard state constraint: Fears → TX only, LHP → CA only
+  const FIRM_STATE: Record<string, string> = { fears: 'TX', lhp: 'CA' }
+  if (firm && FIRM_STATE[firm]) {
+    const stateFiltered = firmPool.filter(n => n.state === FIRM_STATE[firm])
+    if (stateFiltered.length > 0) firmPool = stateFiltered
   }
 
   if (firmPool.length === 0) return fallback

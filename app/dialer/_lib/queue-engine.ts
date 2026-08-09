@@ -730,6 +730,23 @@ export async function applyDisposition(
     updated_at:   now.toISOString(),
   }).eq('id', attemptId)
 
+  // ── Stamp disposition on dialer_calls for the most recent call ─────────
+  if (attempt.contact_id) {
+    const { data: recentCall } = await db.from('dialer_calls')
+      .select('call_sid')
+      .eq('contact_id', attempt.contact_id)
+      .eq('rep_identity', opts.repIdentity)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (recentCall) {
+      await db.from('dialer_calls').update({
+        disposition,
+        nq_reason: opts.nqReason?.trim() || null,
+      }).eq('call_sid', recentCall.call_sid)
+    }
+  }
+
   // ── Update lead state ────────────────────────────────────────────────────
   const stateUpdate: Record<string, unknown> = {
     last_dialed_at:   now.toISOString(),
@@ -831,10 +848,6 @@ export async function applyDisposition(
     case 'Qualified':
     case 'Signed':
       await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
-      // Clear NR caller ID assignment (lead is no longer in NR rotation)
-      await db.from('dialer_lead_state')
-        .update({ assigned_caller_id: null, updated_at: now.toISOString() })
-        .eq('contact_id', attempt.contact_id)
       break
 
     // Exhausted: lead won't appear in future syncs
@@ -845,6 +858,22 @@ export async function applyDisposition(
         { onConflict: 'contact_id' }
       )
       break
+  }
+
+  // ── Persist caller ID when the lead actually answered ──────────────────────
+  if (disposition !== 'No Answer' && attempt.contact_id) {
+    const { data: call } = await db.from('dialer_calls')
+      .select('caller_id_used')
+      .eq('contact_id', attempt.contact_id)
+      .eq('rep_identity', opts.repIdentity)
+      .order('started_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (call?.caller_id_used) {
+      await db.from('dialer_lead_state')
+        .update({ assigned_caller_id: call.caller_id_used, updated_at: now.toISOString() })
+        .eq('contact_id', attempt.contact_id)
+    }
   }
 
   // ── Update ownership on remaining attempts if ownership was just set ──────
@@ -949,7 +978,7 @@ export async function applyDisposition(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          text: `Not Qualified — ${attempt.contact_name} (${firmLabel})`,
+          text: `Not Qualified — ${attempt.contact_name} (${firmLabel})${opts.nqReason ? ` — Reason: ${opts.nqReason}` : ''}`,
           blocks: [
             {
               type: 'section',
@@ -1014,6 +1043,7 @@ async function cancelRemainingAttempts(
     .eq('contact_id', contactId)
     .eq('plan_date', planDate)
     .in('status', ['pending', 'buffered'])
+    .eq('is_callback', false)
     .neq('id', excludeAttemptId)
 }
 
@@ -1026,6 +1056,7 @@ export async function resetDay(): Promise<void> {
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('plan_date', today)
     .in('status', ['pending', 'buffered', 'leased', 'expired'])
+    .eq('is_callback', false)
 }
 
 // ─── GHL helpers ─────────────────────────────────────────────────────────────
