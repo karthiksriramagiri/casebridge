@@ -13,12 +13,13 @@ function baseUrl() {
 }
 
 export async function POST(req: NextRequest) {
-  const body     = await req.formData()
-  const event    = body.get('StatusCallbackEvent')?.toString()
-  const confName = body.get('FriendlyName')?.toString() ?? ''
-  const confSid  = body.get('ConferenceSid')?.toString() ?? ''
-  const callSid  = body.get('CallSid')?.toString() ?? ''
-  const label    = body.get('Label')?.toString() ?? ''
+  const rawBody  = await req.text()
+  const body     = new URLSearchParams(rawBody)
+  const event    = body.get('StatusCallbackEvent')
+  const confName = body.get('FriendlyName') ?? ''
+  const confSid  = body.get('ConferenceSid') ?? ''
+  const callSid  = body.get('CallSid') ?? ''
+  const label    = body.get('Label') ?? ''
 
   const db = supabaseAdmin()
 

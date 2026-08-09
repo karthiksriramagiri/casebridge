@@ -7,10 +7,11 @@ function supabaseAdmin() {
 
 // Called when the inbound caller's <Dial> action completes (caller hung up or timeout)
 export async function POST(req: NextRequest) {
-  const body    = await req.formData()
+  const rawBody = await req.text()
+  const body    = new URLSearchParams(rawBody)
   const q       = req.nextUrl.searchParams
-  const callSid = body.get('CallSid')?.toString() || q.get('CallSid') || ''
-  const dialStatus = body.get('DialCallStatus')?.toString() || ''
+  const callSid = body.get('CallSid') || q.get('CallSid') || ''
+  const dialStatus = body.get('DialCallStatus') || ''
 
   console.log('[dialer:inbound-status]', { callSid, dialStatus })
 

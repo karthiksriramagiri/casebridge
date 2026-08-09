@@ -87,7 +87,7 @@ export function InboundCallOverlay() {
       await fetch('/api/dialer/call/reject-inbound', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callSid: call.call_sid }),
+        body: JSON.stringify({ callSid: call.call_sid, callerPhone: call.caller_phone }),
       })
       setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
     } catch (err) {

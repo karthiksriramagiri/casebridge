@@ -13,15 +13,16 @@ function supabaseAdmin() {
 // Twilio POSTs here when a recording is ready — both direct-dial and conference recordings.
 // Conference recordings include ConferenceSid; direct-dial recordings include CallSid.
 export async function POST(req: NextRequest) {
-  const body = await req.formData()
+  const rawBody = await req.text()
+  const body    = new URLSearchParams(rawBody)
 
-  const recordingSid    = body.get('RecordingSid')?.toString()    ?? ''
-  const recordingUrl    = body.get('RecordingUrl')?.toString()    ?? ''
-  const recordingStatus = body.get('RecordingStatus')?.toString() ?? ''
-  const recordingChannels = parseInt(body.get('RecordingChannels')?.toString() ?? '1', 10)
-  const duration        = parseInt(body.get('RecordingDuration')?.toString() ?? '0', 10)
-  const conferenceSid   = body.get('ConferenceSid')?.toString()   ?? ''
-  const rawCallSid      = body.get('CallSid')?.toString()         ?? ''
+  const recordingSid    = body.get('RecordingSid')    ?? ''
+  const recordingUrl    = body.get('RecordingUrl')    ?? ''
+  const recordingStatus = body.get('RecordingStatus') ?? ''
+  const recordingChannels = parseInt(body.get('RecordingChannels') ?? '1', 10)
+  const duration        = parseInt(body.get('RecordingDuration') ?? '0', 10)
+  const conferenceSid   = body.get('ConferenceSid')   ?? ''
+  const rawCallSid      = body.get('CallSid')         ?? ''
 
   console.log('[dialer:recording]', { recordingSid, recordingStatus, conferenceSid, rawCallSid, duration, recordingChannels })
 

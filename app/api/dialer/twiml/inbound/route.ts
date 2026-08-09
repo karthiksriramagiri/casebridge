@@ -17,12 +17,24 @@ function baseUrl() {
 // Twilio POSTs here when someone calls our number.
 // We put the caller into a conference with hold music and alert all reps.
 export async function POST(req: NextRequest) {
-  const body = await req.formData()
-  const callSid = body.get('CallSid')?.toString() ?? ''
-  const from    = body.get('From')?.toString() ?? ''
-  const to      = body.get('To')?.toString() ?? ''
+  // Parse URL-encoded body reliably (formData() can silently drop fields)
+  const rawBody = await req.text()
+  const params  = new URLSearchParams(rawBody)
+  const callSid = params.get('CallSid') ?? ''
+  const from    = params.get('From') ?? ''
+  const to      = params.get('To') ?? ''
 
-  console.log('[dialer:inbound]', { callSid, from, to })
+  console.log('[dialer:inbound]', { callSid, from, to, rawKeys: Array.from(params.keys()) })
+
+  if (!callSid) {
+    console.error('[dialer:inbound] Missing CallSid — raw body:', rawBody.slice(0, 500))
+    const twiml = new VoiceResponse()
+    twiml.say('System error. Please try again.')
+    twiml.hangup()
+    return new NextResponse(twiml.toString(), {
+      headers: { 'Content-Type': 'text/xml' },
+    })
+  }
 
   const db   = supabaseAdmin()
   const base = baseUrl()

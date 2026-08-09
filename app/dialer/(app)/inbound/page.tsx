@@ -148,7 +148,7 @@ export default function InboundCallsPage() {
       await fetch('/api/dialer/call/reject-inbound', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ callSid: call.call_sid }),
+        body: JSON.stringify({ callSid: call.call_sid, callerPhone: call.caller_phone }),
       })
     } catch (err) {
       console.error('[inbound] reject error', err)

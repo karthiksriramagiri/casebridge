@@ -11,11 +11,12 @@ function supabaseAdmin() {
 // Twilio POSTs AMD (Answering Machine Detection) results here.
 // AnsweredBy: human | machine_start | machine_end_beep | machine_end_silence | machine_end_other | fax | unknown
 export async function POST(req: NextRequest) {
-  const body = await req.formData()
-  const q    = req.nextUrl.searchParams
+  const rawBody = await req.text()
+  const body    = new URLSearchParams(rawBody)
+  const q       = req.nextUrl.searchParams
 
-  const callSid    = body.get('CallSid')?.toString() || ''
-  const answeredBy = body.get('AnsweredBy')?.toString() || ''
+  const callSid    = body.get('CallSid') || ''
+  const answeredBy = body.get('AnsweredBy') || ''
   const contactId  = q.get('ContactId') || ''
   const repIdentity = q.get('RepIdentity') || ''
 

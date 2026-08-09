@@ -10,11 +10,12 @@ function supabaseAdmin() {
 
 // Twilio POSTs call status updates here (initiated → ringing → in-progress → completed)
 export async function POST(req: NextRequest) {
-  const body   = await req.formData()
-  const q      = req.nextUrl.searchParams
+  const rawBody = await req.text()
+  const body    = new URLSearchParams(rawBody)
+  const q       = req.nextUrl.searchParams
 
   // Helper: check form body first, fall back to URL query param
-  const p = (key: string) => body.get(key)?.toString() || q.get(key) || ''
+  const p = (key: string) => body.get(key) || q.get(key) || ''
 
   const callSid    = p('CallSid')
   const callStatus = p('CallStatus')

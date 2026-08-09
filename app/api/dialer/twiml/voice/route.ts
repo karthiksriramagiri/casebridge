@@ -15,11 +15,12 @@ function baseUrl() {
 }
 
 export async function POST(req: NextRequest) {
-  const body     = await req.formData()
-  const confName = body.get('ConferenceName')?.toString()
-  const mode     = body.get('Mode')?.toString() ?? 'barge'
-  const coachSid = body.get('CoachSid')?.toString()
-  const to       = body.get('To')?.toString() ?? ''
+  const rawBody  = await req.text()
+  const body     = new URLSearchParams(rawBody)
+  const confName = body.get('ConferenceName')
+  const mode     = body.get('Mode') ?? 'barge'
+  const coachSid = body.get('CoachSid')
+  const to       = body.get('To') ?? ''
 
   const twiml = new VoiceResponse()
   const base  = baseUrl()

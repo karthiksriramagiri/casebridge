@@ -54,14 +54,15 @@ async function lookupByPhone(
 
 // Twilio POSTs here when an SMS is received on our number
 export async function POST(req: NextRequest) {
-  const body = await req.formData()
+  const rawBody = await req.text()
+  const body    = new URLSearchParams(rawBody)
 
-  const messageSid = body.get('MessageSid')?.toString() ?? ''
-  const from       = body.get('From')?.toString()        ?? ''
-  const to         = body.get('To')?.toString()          ?? ''
-  const msgBody    = body.get('Body')?.toString()        ?? ''
-  const mediaUrl   = body.get('MediaUrl0')?.toString()   ?? null
-  const numMedia   = parseInt(body.get('NumMedia')?.toString() ?? '0', 10)
+  const messageSid = body.get('MessageSid') ?? ''
+  const from       = body.get('From')       ?? ''
+  const to         = body.get('To')         ?? ''
+  const msgBody    = body.get('Body')       ?? ''
+  const mediaUrl   = body.get('MediaUrl0') ?? null
+  const numMedia   = parseInt(body.get('NumMedia') ?? '0', 10)
 
   console.log('[dialer:sms:inbound]', { messageSid, from, to })
 
