@@ -138,7 +138,12 @@ function DispositionModal({ lead, leadTimezone, firm, onSubmit, onCallAgain }: {
   onCallAgain: () => void
 }) {
   const [selected,     setSelected]     = useState<Disposition | null>(null)
-  const [callbackTime, setCallbackTime] = useState('')
+  // Default callback to 2 hours from now (prevents accidental wrong-date entries)
+  const [callbackTime, setCallbackTime] = useState(() => {
+    const d = new Date(Date.now() + 2 * 3600 * 1000)
+    d.setMinutes(0, 0, 0)
+    return d.toISOString().slice(0, 16)   // "YYYY-MM-DDTHH:MM" for datetime-local
+  })
   const [context,      setContext]      = useState('')
   const [nqReason,     setNqReason]     = useState('')
 
