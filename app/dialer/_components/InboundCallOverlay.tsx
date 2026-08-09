@@ -11,6 +11,7 @@ interface InboundCall {
   call_sid: string
   conference_name: string
   caller_phone: string
+  dialed_number: string | null
   contact_id: string | null
   contact_name: string | null
   firm: string | null
@@ -25,6 +26,7 @@ export function InboundCallOverlay() {
 
   const [inboundCalls, setInboundCalls] = useState<InboundCall[]>([])
   const [answering, setAnswering] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<string | null>(null)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   // Poll inbound calls API (same source as DialerNav badge — always works)
@@ -79,6 +81,22 @@ export function InboundCallOverlay() {
     }
   }
 
+  async function handleReject(call: InboundCall) {
+    setRejecting(call.call_sid)
+    try {
+      await fetch('/api/dialer/call/reject-inbound', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callSid: call.call_sid }),
+      })
+      setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
+    } catch (err) {
+      console.error('[inbound-overlay] reject error', err)
+    } finally {
+      setRejecting(null)
+    }
+  }
+
   function handleDismiss(callSid: string) {
     setDismissed(prev => new Set(prev).add(callSid))
   }
@@ -115,15 +133,19 @@ export function InboundCallOverlay() {
               {call.firm && (
                 <p className="mt-1 text-xs text-gray-400">{FIRM_LABEL[call.firm] ?? call.firm}</p>
               )}
+              {call.dialed_number && (
+                <p className="mt-1 text-xs text-gray-400">Calling: <span className="font-mono">{call.dialed_number}</span></p>
+              )}
             </div>
 
             {/* Action buttons */}
             <div className="flex items-center gap-3">
               <button
-                onClick={() => handleDismiss(call.call_sid)}
-                className="flex-1 rounded-xl border border-gray-200 bg-gray-50 py-3 text-sm font-semibold text-gray-600 transition-colors hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                disabled={rejecting === call.call_sid}
+                onClick={() => handleReject(call)}
+                className="flex-1 rounded-xl border border-red-200 bg-red-50 py-3 text-sm font-semibold text-red-600 transition-colors hover:bg-red-100 dark:border-red-800 dark:bg-red-950/30 dark:text-red-400 dark:hover:bg-red-950/50 disabled:opacity-40"
               >
-                Dismiss
+                Reject
               </button>
               <button
                 disabled={!deviceReady || answering === call.call_sid}

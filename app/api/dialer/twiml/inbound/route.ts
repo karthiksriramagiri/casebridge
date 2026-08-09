@@ -46,6 +46,7 @@ export async function POST(req: NextRequest) {
     call_sid:        callSid,
     conference_name: confName,
     caller_phone:    from,
+    dialed_number:   to,
     contact_id:      contactId,
     contact_name:    contactName,
     firm,

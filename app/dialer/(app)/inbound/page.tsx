@@ -12,6 +12,7 @@ interface InboundCall {
   call_sid: string
   conference_name: string
   caller_phone: string
+  dialed_number: string | null
   contact_id: string | null
   contact_name: string | null
   firm: string | null
@@ -39,6 +40,7 @@ function StatusBadge({ status }: { status: string }) {
     ringing:   'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400',
     answered:  'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-400',
     missed:    'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400',
+    rejected:  'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400',
     completed: 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300',
   }
   return (
@@ -66,6 +68,7 @@ export default function InboundCallsPage() {
   const [history, setHistory]     = useState<InboundCall[]>([])
   const [loading, setLoading]     = useState(true)
   const [answering, setAnswering] = useState<string | null>(null)
+  const [rejecting, setRejecting] = useState<string | null>(null)
 
   // Ringtone (suppressed when rep is on a call) + browser notifications
   useInboundRingtone(ringing, callState)
@@ -139,6 +142,22 @@ export default function InboundCallsPage() {
     }
   }
 
+  async function handleReject(call: InboundCall) {
+    setRejecting(call.call_sid)
+    try {
+      await fetch('/api/dialer/call/reject-inbound', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ callSid: call.call_sid }),
+      })
+    } catch (err) {
+      console.error('[inbound] reject error', err)
+    } finally {
+      setRejecting(null)
+      fetchData()
+    }
+  }
+
   return (
     <div className="flex h-full flex-col overflow-auto bg-gray-50 dark:bg-gray-950">
       {/* Header */}
@@ -190,19 +209,33 @@ export default function InboundCallsPage() {
                       {call.firm && (
                         <p className="mt-1 text-xs text-gray-400">{FIRM_LABEL[call.firm] ?? call.firm}</p>
                       )}
+                      {call.dialed_number && (
+                        <p className="mt-1 text-xs text-gray-400">Calling: <span className="font-mono">{call.dialed_number}</span></p>
+                      )}
                       <p className="mt-2 text-xs text-gray-400">
                         Ringing for <LiveTimer created={call.created_at} />
                       </p>
                     </div>
-                    <button
-                      disabled={callState !== 'idle' || !deviceReady || answering === call.call_sid}
-                      onClick={() => handleAnswer(call)}
-                      className="rounded-full bg-green-600 p-4 text-white shadow-lg transition-all hover:bg-green-500 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
-                    >
-                      <svg viewBox="0 0 20 20" fill="currentColor" className="h-6 w-6">
-                        <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                      </svg>
-                    </button>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        disabled={callState !== 'idle' || !deviceReady || answering === call.call_sid}
+                        onClick={() => handleAnswer(call)}
+                        className="rounded-full bg-green-600 p-4 text-white shadow-lg transition-all hover:bg-green-500 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-6 w-6">
+                          <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                        </svg>
+                      </button>
+                      <button
+                        disabled={rejecting === call.call_sid}
+                        onClick={() => handleReject(call)}
+                        className="rounded-full bg-red-600 p-3 text-white shadow-lg transition-all hover:bg-red-500 hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                      >
+                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
+                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                        </svg>
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
