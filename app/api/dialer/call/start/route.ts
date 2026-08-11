@@ -71,7 +71,9 @@ export async function POST(req: NextRequest) {
   if (identity)    amdCallbackUrl.searchParams.set('RepIdentity', identity)
 
   // Dial the customer into the conference and start recording immediately
-  const participant = await client.conferences(confName).participants.create({
+  let participant: any
+  try {
+    participant = await client.conferences(confName).participants.create({
     to: phone,
     from: callerIdUsed,
     label: 'customer',
@@ -90,6 +92,10 @@ export async function POST(req: NextRequest) {
     asyncAmdStatusCallback: amdCallbackUrl.toString(),
     asyncAmdStatusCallbackMethod: 'POST',
   } as any)
+  } catch (err: any) {
+    console.error('[dialer:call/start] Twilio error:', err?.message ?? err)
+    return NextResponse.json({ error: err?.message ?? 'Failed to dial' }, { status: 502 })
+  }
 
   const now = new Date().toISOString()
 

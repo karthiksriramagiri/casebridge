@@ -125,6 +125,12 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
           queueId:     meta?.queueId,
         }),
       })
+      if (!res.ok) {
+        const text = await res.text()
+        let msg = 'Failed to create conference'
+        try { msg = JSON.parse(text)?.error || msg } catch {}
+        throw new Error(msg)
+      }
       const data = await res.json()
       if (!data.confName) throw new Error(data.error || 'Failed to create conference')
       if (data.callerIdUsed) setCallerIdUsed(data.callerIdUsed)
