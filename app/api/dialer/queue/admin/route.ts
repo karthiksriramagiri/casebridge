@@ -106,6 +106,22 @@ export async function GET(req: NextRequest) {
   return NextResponse.json({ items: data, total: count, summary })
 }
 
+// DELETE /api/dialer/queue/admin?id=<attempt_id>
+// Sets the attempt status to 'cancelled' so it won't be served.
+export async function DELETE(req: NextRequest) {
+  const id = req.nextUrl.searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
+
+  const db = supabaseAdmin()
+  const { error } = await db.from('dialer_attempts')
+    .update({ status: 'cancelled' })
+    .eq('id', id)
+    .in('status', ['pending', 'buffered', 'leased'])
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json({ ok: true })
+}
+
 function emptySummary() {
   return {
     uniqueLeads: 0, totalAttempts: 0, completed: 0, dueNow: 0,

@@ -549,8 +549,8 @@ export default function QueueAdminPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
               <tr>
-                {['#', 'Lead', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Owner', 'Assigned', 'Status', 'Disposition'].map(h => (
-                  <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                {['#', 'Lead', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Owner', 'Assigned', 'Status', 'Disposition', ''].map(h => (
+                  <th key={h || '_actions'} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -614,6 +614,25 @@ export default function QueueAdminPage() {
                     </td>
                     <td className="px-4 py-2.5 text-xs text-gray-500">
                       {item.disposition ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    </td>
+                    <td className="px-4 py-2.5">
+                      {isActive && (
+                        <button
+                          onClick={async () => {
+                            if (!confirm(`Remove ${item.contact_name} from queue?`)) return
+                            const res = await fetch(`/api/dialer/queue/admin?id=${item.id}`, { method: 'DELETE' })
+                            if (res.ok) {
+                              setItems(prev => prev.filter(i => i.id !== item.id))
+                            }
+                          }}
+                          className="rounded p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                          title="Remove from queue"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 )
