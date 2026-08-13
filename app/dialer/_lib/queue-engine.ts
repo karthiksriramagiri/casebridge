@@ -10,8 +10,9 @@ import { getNumberPool, assignRandomCallerId }         from './number-pool'
 
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const PIPELINES = [
-  { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp',   defaultTz: 'America/Los_Angeles' },
-  { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears', defaultTz: 'America/Chicago'     },
+  { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp',    defaultTz: 'America/Los_Angeles' },
+  { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears',  defaultTz: 'America/Chicago'     },
+  { id: '0tBzhg0eGSNKL870y3yV', firm: 'jm',  defaultTz: 'America/Los_Angeles' },
 ]
 // Stages synced into the queue (lower-cased for lookup)
 const INCLUDED_STAGES = new Set([
@@ -936,6 +937,13 @@ export async function applyDisposition(
       'Callback':      'fl - ap',
       'No Answer':     'fl - nr',
       'Signed':        'fl - ps',
+    },
+    jm: {
+      'Qualified':     'jm - c',
+      'Not Qualified': 'jm - nq',
+      'Callback':      'jm - ap',
+      'No Answer':     'jm - nr',
+      'Signed':        'jm - ps',
     },
   }
 

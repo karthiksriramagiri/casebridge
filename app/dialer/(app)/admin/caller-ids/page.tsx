@@ -15,8 +15,9 @@ interface NumberInfo {
 }
 
 const FIRMS = [
-  { slug: 'lhp',   label: 'LHP' },
-  { slug: 'fears', label: 'Fears Law' },
+  { slug: 'lhp',    label: 'LHP' },
+  { slug: 'fears',  label: 'Fears Law' },
+  { slug: 'jm', label: 'Jacoby & Meyers' },
 ]
 
 interface StateCoverage {

@@ -98,8 +98,9 @@ export async function GET(req: NextRequest) {
     buffered:      all.filter(r => r.status === 'buffered').length,
     leased:        all.filter(r => r.status === 'leased').length,
     byFirm: {
-      lhp:   all.filter(r => r.firm === 'lhp'   && !['cancelled','expired','merged'].includes(r.status)).length,
-      fears: all.filter(r => r.firm === 'fears' && !['cancelled','expired','merged'].includes(r.status)).length,
+      lhp:    all.filter(r => r.firm === 'lhp'    && !['cancelled','expired','merged'].includes(r.status)).length,
+      fears:  all.filter(r => r.firm === 'fears'  && !['cancelled','expired','merged'].includes(r.status)).length,
+      jm: all.filter(r => r.firm === 'jacoby' && !['cancelled','expired','merged'].includes(r.status)).length,
     },
   }
 
@@ -125,6 +126,6 @@ export async function DELETE(req: NextRequest) {
 function emptySummary() {
   return {
     uniqueLeads: 0, totalAttempts: 0, completed: 0, dueNow: 0,
-    callbacks: 0, buffered: 0, leased: 0, byFirm: { lhp: 0, fears: 0 },
+    callbacks: 0, buffered: 0, leased: 0, byFirm: { lhp: 0, fears: 0, jm: 0 },
   }
 }

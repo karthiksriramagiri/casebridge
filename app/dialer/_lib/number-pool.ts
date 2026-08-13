@@ -99,7 +99,7 @@ export function selectCallerId(
   }
 
   // Hard state constraint: Fears → TX only, LHP → CA only
-  const FIRM_STATE: Record<string, string> = { fears: 'TX', lhp: 'CA' }
+  const FIRM_STATE: Record<string, string> = { fears: 'TX', lhp: 'CA', jm: 'CA' }
   if (firm && FIRM_STATE[firm]) {
     const stateFiltered = firmPool.filter(n => n.state === FIRM_STATE[firm])
     if (stateFiltered.length > 0) firmPool = stateFiltered

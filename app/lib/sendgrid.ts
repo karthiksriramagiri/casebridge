@@ -131,4 +131,8 @@ export const FIRM_EMAIL_CONFIG: Record<string, { firmName: string; firmPhone: st
     firmName: 'Eisenberg Law Group PC',
     firmPhone: '(800) 350-8888',
   },
+  jm: {
+    firmName: 'Jacoby & Meyers',
+    firmPhone: '(800) 350-8888',
+  },
 }

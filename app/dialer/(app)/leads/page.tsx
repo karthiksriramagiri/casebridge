@@ -103,12 +103,14 @@ function callStatusColor(status: string | null) {
 }
 
 const FIRM_COLORS: Record<string, string> = {
-  'lhp':   'bg-blue-600',
-  'fears': 'bg-purple-600',
+  'lhp':    'bg-blue-600',
+  'fears':  'bg-purple-600',
+  'jm': 'bg-emerald-600',
 }
 const FIRM_PILL: Record<string, string> = {
-  'lhp':   'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
-  'fears': 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
+  'lhp':    'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  'fears':  'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
+  'jm': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────

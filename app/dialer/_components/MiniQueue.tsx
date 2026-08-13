@@ -14,7 +14,7 @@ interface Props {
   selectedId?:    string | null
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears' }
+const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
 
 function fmtTime(iso: string, timezone: string) {
   try {

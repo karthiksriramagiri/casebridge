@@ -33,8 +33,9 @@ interface RepInfo {
 const DROP_DURATION = 700
 
 const FIRM_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  lhp:   { bg: 'bg-amber-500/10', border: 'border-amber-500/20', text: 'text-amber-400', dot: 'bg-amber-400' },
-  fears: { bg: 'bg-cyan-500/10',   border: 'border-cyan-500/20',  text: 'text-cyan-400',  dot: 'bg-cyan-400' },
+  lhp:    { bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   dot: 'bg-amber-400' },
+  fears:  { bg: 'bg-cyan-500/10',    border: 'border-cyan-500/20',    text: 'text-cyan-400',    dot: 'bg-cyan-400' },
+  jm: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', dot: 'bg-emerald-400' },
 }
 
 // ── Lead card (compact, for inside jars) ─────────────────────────────────────────

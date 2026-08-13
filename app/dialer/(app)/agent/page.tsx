@@ -917,7 +917,7 @@ export default function AgentPage() {
   }
 
   const leadTimezone = contactDetail?.timezone
-    ?? (currentLead?.source === 'lhp' ? 'America/Los_Angeles' : 'America/Chicago')
+    ?? (['lhp', 'jm'].includes(currentLead?.source ?? '') ? 'America/Los_Angeles' : 'America/Chicago')
 
   return (
     <div className="flex h-full">

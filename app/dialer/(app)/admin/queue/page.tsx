@@ -41,10 +41,10 @@ interface Summary {
   callbacks:      number
   buffered:       number
   leased:         number
-  byFirm:         { lhp: number; fears: number }
+  byFirm:         { lhp: number; fears: number; jm: number }
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears' }
+const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
 
 const STATUS_BADGE: Record<string, { label: (a: Attempt) => string; cls: string }> = {
   pending:   { label: () => 'pending',                                    cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
@@ -408,7 +408,7 @@ export default function QueueAdminPage() {
             { label: 'Callbacks',      value: summary.callbacks, accent: summary.callbacks > 0 },
             { label: 'In Buffer',      value: summary.buffered },
             { label: 'On Call',        value: summary.leased },
-            { label: 'LHP / Fears',   value: `${summary.byFirm.lhp} / ${summary.byFirm.fears}` },
+            { label: 'LHP / Fears / J&M',   value: `${summary.byFirm.lhp} / ${summary.byFirm.fears} / ${summary.byFirm.jm}` },
           ].map(({ label, value, accent }) => (
             <div key={label} className="border-r border-gray-200 bg-white px-3 py-3 last:border-r-0 dark:border-gray-800 dark:bg-gray-950">
               <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
@@ -434,6 +434,7 @@ export default function QueueAdminPage() {
           <option value="">All firms</option>
           <option value="lhp">Larry H. Parker</option>
           <option value="fears">Fears Law</option>
+          <option value="jm">Jacoby &amp; Meyers</option>
         </select>
 
         <select value={block} onChange={e => setBlock(e.target.value)}

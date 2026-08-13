@@ -48,7 +48,7 @@ function elapsed(startedAt: string | null): number {
   return Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears' }
+const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 

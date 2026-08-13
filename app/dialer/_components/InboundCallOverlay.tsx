@@ -18,7 +18,7 @@ interface InboundCall {
   status: string
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears' }
+const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
 
 export function InboundCallOverlay() {
   const { deviceReady, callState, answerInbound } = useCall()
