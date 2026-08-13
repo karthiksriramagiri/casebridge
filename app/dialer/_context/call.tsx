@@ -154,7 +154,10 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   // Rep answers an inbound call by joining its conference
   const answerInbound = useCallback(async (confName: string, lead: Lead) => {
-    if (!deviceRef.current || !deviceReady) return
+    if (!deviceRef.current || !deviceReady) {
+      console.error('[call] answerInbound blocked: device not ready')
+      throw new Error('Twilio device not ready — refresh the page')
+    }
     setCurrentLead(lead)
     setCallState('ringing')
     try {

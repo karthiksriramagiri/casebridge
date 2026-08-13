@@ -28,6 +28,7 @@ export function InboundCallOverlay() {
   const [answering, setAnswering] = useState<string | null>(null)
   const [rejecting, setRejecting] = useState<string | null>(null)
   const [dismissed, setDismissed] = useState<Set<string>>(new Set())
+  const [error, setError] = useState<string | null>(null)
 
   // Poll inbound calls API (same source as DialerNav badge — always works)
   useEffect(() => {
@@ -48,17 +49,35 @@ export function InboundCallOverlay() {
   useInboundRingtone(activeCalls, callState)
 
   async function handleAnswer(call: InboundCall) {
-    if (callState !== 'idle' || !deviceReady || answering) return
+    if (callState !== 'idle' || !deviceReady || answering) {
+      setError(`Cannot answer: ${!deviceReady ? 'device not ready' : callState !== 'idle' ? 'already on call' : 'already answering'}`)
+      return
+    }
+    if (!identity) { setError('Not signed in — refresh the page'); return }
     setAnswering(call.call_sid)
+    setError(null)
     try {
       const res = await fetch('/api/dialer/call/answer-inbound', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ callSid: call.call_sid, repIdentity: identity }),
       })
+      if (!res.ok) {
+        const text = await res.text()
+        let msg = `Server error (${res.status})`
+        try { msg = JSON.parse(text)?.error || msg } catch {}
+        setError(msg)
+        setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
+        return
+      }
       const data = await res.json()
       if (data.error) {
+        setError(data.error)
         setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
+        return
+      }
+      if (!data.confName) {
+        setError('No conference name returned — call may have ended')
         return
       }
       const lead: Lead = {
@@ -74,8 +93,9 @@ export function InboundCallOverlay() {
       }
       await answerInbound(data.confName, lead)
       setInboundCalls(prev => prev.filter(c => c.call_sid !== call.call_sid))
-    } catch (err) {
+    } catch (err: any) {
       console.error('[inbound-overlay] answer error', err)
+      setError(err?.message || String(err))
     } finally {
       setAnswering(null)
     }
@@ -103,11 +123,17 @@ export function InboundCallOverlay() {
 
   // Only show overlay for non-dismissed calls when rep is idle
   const visible = activeCalls.filter(() => callState === 'idle')
-  if (visible.length === 0) return null
+  if (visible.length === 0 && !error) return null
 
   return (
     <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/40 backdrop-blur-sm">
       <div className="flex flex-col gap-4 w-full max-w-md px-4">
+        {error && (
+          <div className="rounded-xl border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400">
+            {error}
+            <button onClick={() => setError(null)} className="ml-2 underline">dismiss</button>
+          </div>
+        )}
         {visible.map(call => (
           <div
             key={call.call_sid}
