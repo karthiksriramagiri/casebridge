@@ -95,7 +95,9 @@ export async function proxy(request: NextRequest) {
       return res
     }
     if (isDialerAdmin) {
-      const role = (user.user_metadata?.role ?? 'REP').toUpperCase()
+      const rawRole = user.user_metadata?.role
+      const role = (rawRole ?? 'REP').toUpperCase()
+      console.log('[proxy] admin check', { pathname, rawRole, role, email: user.email, metadata: JSON.stringify(user.user_metadata) })
       if (role !== 'ADMIN') {
         const res = NextResponse.redirect(new URL('/dialer/agent', request.url))
         supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
