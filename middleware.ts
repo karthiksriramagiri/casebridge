@@ -1,4 +1,7 @@
-import { proxy, config } from './proxy'
+import { proxy } from './proxy'
 
 export const middleware = proxy
-export { config }
+
+export const config = {
+  matcher: ['/teams/:path*', '/metrics/:path*', '/dialer/:path*'],
+}
