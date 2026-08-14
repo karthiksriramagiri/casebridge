@@ -389,6 +389,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   const [editingCloser, setEditingCloser] = useState<{ id: string; value: string } | null>(null)
   const [editingSecondCloser, setEditingSecondCloser] = useState<{ id: string; value: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  const [confirmReplaceId, setConfirmReplaceId] = useState<string | null>(null)
 
   useEffect(() => { setLocalPcs(pcs) }, [pcs])
 
@@ -431,6 +432,21 @@ export function PcTable({ pcs }: { pcs: any[] }) {
       const res = await fetch('/api/metrics/case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: pc.id, is_ot_close: !pc.isOtClose }) })
       if (!res.ok) throw new Error('Update failed')
       setLocalPcs(prev => prev.map(p => p.id === pc.id ? { ...p, isOtClose: !pc.isOtClose } : p))
+    } finally { setBusy(false) }
+  }
+
+  async function handleReplace(pc: any) {
+    if (confirmReplaceId !== pc.id) { setConfirmReplaceId(pc.id); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/metrics/case', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pc.id, case_status: 'replacement' }),
+      })
+      if (!res.ok) throw new Error('Replace failed')
+      setLocalPcs(prev => prev.map(p => p.id === pc.id ? { ...p, caseStatus: 'replacement' } : p))
+      setConfirmReplaceId(null)
     } finally { setBusy(false) }
   }
 
@@ -706,6 +722,25 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center gap-1 justify-end">
                           <CopyRowButton pc={pc} selected={copyPending.includes(pc.id)} onToggle={toggleCopySelect} />
+                          {!isReplacement && (
+                            confirmReplaceId === pc.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px]" style={{ color: '#92400E' }}>Replace?</span>
+                                <button onClick={() => handleReplace(pc)} disabled={busy}
+                                  className="text-[10px] font-semibold disabled:opacity-40" style={{ color: '#92400E' }}>Yes</button>
+                                <button onClick={() => setConfirmReplaceId(null)} className="text-[10px]" style={{ color: MUTED }}>No</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => handleReplace(pc)}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded border transition"
+                                style={{ color: '#D1D5DB', borderColor: '#E5E7EB' }}
+                                title="Mark as replacement"
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#92400E'; (e.currentTarget as HTMLElement).style.borderColor = '#FDBA74' }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#D1D5DB'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB' }}>
+                                Replace
+                              </button>
+                            )
+                          )}
                           {confirmDeleteId === pc.id ? (
                             <div className="flex items-center gap-1.5">
                               <span className="text-[10px]" style={{ color: '#B91C1C' }}>Delete?</span>

@@ -19,7 +19,7 @@ export async function DELETE(request: NextRequest) {
 }
 
 // PATCH /api/metrics/case
-// Updates fields on a ghl_leads row: closer, second_closer, second_closer_profile_id, is_ot_close
+// Updates fields on a ghl_leads row: closer, second_closer, second_closer_profile_id, is_ot_close, case_status
 export async function PATCH(request: NextRequest) {
   const body = await request.json()
   const { id } = body
@@ -30,6 +30,7 @@ export async function PATCH(request: NextRequest) {
   if ('second_closer' in body) update.second_closer = body.second_closer || null
   if ('second_closer_profile_id' in body) update.second_closer_profile_id = body.second_closer_profile_id || null
   if ('is_ot_close' in body) update.is_ot_close = body.is_ot_close === true
+  if ('case_status' in body) update.case_status = body.case_status
 
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'no fields to update' }, { status: 400 })
 
@@ -38,5 +39,17 @@ export async function PATCH(request: NextRequest) {
     .update(update)
     .eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // When marking as replacement, also update the matching rep_cases row
+  if (update.case_status === 'replacement') {
+    const { data: lead } = await supabase.from('ghl_leads').select('contact_name').eq('id', id).single()
+    if (lead?.contact_name) {
+      await supabase
+        .from('rep_cases')
+        .update({ status: 'replacement' })
+        .ilike('contact_name', lead.contact_name)
+    }
+  }
+
   return NextResponse.json({ ok: true })
 }
