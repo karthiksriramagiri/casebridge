@@ -4,7 +4,7 @@ import { createClient as adminClient } from '@supabase/supabase-js'
 import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
   billableHoursForDay, recentPayDates,
-  COMMISSION_PER_CLOSED_NEW,
+  tierCommission,
   DEFAULT_REPLACEMENT_WINDOW_DAYS,
   PERIOD_START_OVERRIDES,
 } from '@/lib/pay'
@@ -111,17 +111,17 @@ export async function GET() {
 
   const { sessions: dailySessions, totalHours } = buildDailySessions(timeRes.data || [])
 
-  // --- Classify cases — rate depends on qualified_at vs cutoff ---
-  type CaseEntry = { id: string; name: string; date: string; eligibleAt: Date; commission: number }
-  const allSignedCases: CaseEntry[] = []
+  // --- Classify cases with tier-based commission (resets monthly) ---
+  type CaseEntry = { id: string; name: string; date: string; eligibleAt: Date; commission: number; tier: number; closeNumber: number }
   const caseSeen = new Set<string>()
 
+  // First pass: collect all non-replacement signed cases
+  const rawCases: { id: string; name: string; date: string; eligibleAt: Date; monthKey: string }[] = []
   for (const c of casesRes.data || []) {
     if (!c.qualified_at) continue
     const isReplacement = (c.case_status || '').toLowerCase() === 'replacement'
-    if (isReplacement) continue // replacements earn $0 — skip entirely
+    if (isReplacement) continue
 
-    // Deduplicate by contact name + date
     const dedupeKey = `${(c.contact_name || '').toLowerCase()}|${c.qualified_at.slice(0, 10)}`
     if (caseSeen.has(dedupeKey)) continue
     caseSeen.add(dedupeKey)
@@ -129,14 +129,24 @@ export async function GET() {
     const qualifiedAt = new Date(c.qualified_at)
     const windowDays = (c.firms as any)?.replacement_window_days ?? DEFAULT_REPLACEMENT_WINDOW_DAYS
     const eligibleAt = new Date(qualifiedAt.getTime() + windowDays * 24 * 60 * 60 * 1000)
-    allSignedCases.push({
+    rawCases.push({
       id: c.id,
       name: c.contact_name || 'Unknown',
       date: c.qualified_at.slice(0, 10),
       eligibleAt,
-      commission: COMMISSION_PER_CLOSED_NEW,
+      monthKey: c.qualified_at.slice(0, 7), // YYYY-MM
     })
   }
+
+  // Sort by sign date to assign close numbers within each month
+  rawCases.sort((a, b) => a.date.localeCompare(b.date))
+  const monthCounts: Record<string, number> = {}
+  const allSignedCases: CaseEntry[] = rawCases.map(c => {
+    monthCounts[c.monthKey] = (monthCounts[c.monthKey] || 0) + 1
+    const closeNumber = monthCounts[c.monthKey]
+    const { tier, rate } = tierCommission(closeNumber)
+    return { ...c, commission: rate, tier, closeNumber }
+  })
 
   // Current period: became eligible after last paycheck (periodStart) and on/before today
   // This captures cases signed in ANY past period whose 28-day window cleared during this period
@@ -182,7 +192,7 @@ export async function GET() {
       commission: periodCommission,
       total: periodTotal,
       dailySessions: periodDailySessions,
-      eligibleCases: eligibleInPeriod.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
+      eligibleCases: eligibleInPeriod.map(({ id, name, date, commission, tier, closeNumber }) => ({ id, name, date, commission, tier, closeNumber })),
     }
   }).reverse() // Most recent first
 
@@ -197,8 +207,8 @@ export async function GET() {
       dailySessions,
     },
     cases: {
-      eligibleThisPeriod: eligibleThisPeriod.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
-      pending: signedPending.map(({ id, name, date, commission }) => ({ id, name, date, commission })),
+      eligibleThisPeriod: eligibleThisPeriod.map(({ id, name, date, commission, tier, closeNumber }) => ({ id, name, date, commission, tier, closeNumber })),
+      pending: signedPending.map(({ id, name, date, commission, tier, closeNumber }) => ({ id, name, date, commission, tier, closeNumber })),
     },
     pay: {
       hourlyRate: HOURLY_RATE,

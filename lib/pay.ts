@@ -16,6 +16,16 @@ export const COMMISSION_PER_CLOSED_NEW = 30
 export const COMMISSION_PER_REPLACEMENT_NEW = 0  // replacements no longer earn commission
 export const COMMISSION_OT_CLOSE = 50            // OT close flat commission (overrides per-close rate)
 
+// Tier-based commission (resets every calendar month)
+// Tier 1: closes 1–15  → $30 each
+// Tier 2: closes 16–25 → $40 each
+// Tier 3: closes 26+   → $50 each
+export function tierCommission(closeNumber: number): { tier: number; rate: number } {
+  if (closeNumber <= 15) return { tier: 1, rate: 30 }
+  if (closeNumber <= 25) return { tier: 2, rate: 40 }
+  return { tier: 3, rate: 50 }
+}
+
 export const DEFAULT_REPLACEMENT_WINDOW_DAYS = 28
 
 // Bi-weekly anchor: confirmed pay date Fri Jul 17, 2026

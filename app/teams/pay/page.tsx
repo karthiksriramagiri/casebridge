@@ -7,7 +7,7 @@ import { format, parseISO } from 'date-fns'
 import TeamsShell from '../dashboard/TeamsShell'
 import TimeclockWidget from '../dashboard/TimeclockWidget'
 
-interface CaseEntry { id: string; name: string; date: string; commission: number }
+interface CaseEntry { id: string; name: string; date: string; commission: number; tier?: number; closeNumber?: number }
 interface Session { id: string; clock_in: string; clock_out: string | null; hours: number; pay: number }
 interface DaySession { date: string; totalHours: number; totalPay: number; sessions: Session[] }
 
@@ -35,6 +35,12 @@ interface PayData {
 
 function fmt$(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+function ordinal(n: number): string {
+  const s = ['th', 'st', 'nd', 'rd']
+  const v = n % 100
+  return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
 function fmtTime(iso: string) {
@@ -110,7 +116,14 @@ function CommissionBreakdown({ eligibleCases, commission }: { eligibleCases: Cas
           {eligibleCases.map(c => (
             <div key={c.id} className="flex items-center justify-between px-5 py-3">
               <div>
-                <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                <p className="text-sm font-semibold text-gray-900">
+                  {c.name}
+                  {c.tier != null && c.closeNumber != null && (
+                    <span className="ml-1.5 text-xs font-normal text-gray-400">
+                      (Tier {c.tier}, {ordinal(c.closeNumber)} Close)
+                    </span>
+                  )}
+                </p>
                 <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
               </div>
               <div className="flex items-center gap-2">
@@ -248,7 +261,14 @@ export default function PayPage() {
                   {cases.pending.map(c => (
                     <div key={c.id} className="flex items-center justify-between px-5 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-yellow-900">{c.name}</p>
+                        <p className="text-sm font-semibold text-yellow-900">
+                          {c.name}
+                          {c.tier != null && c.closeNumber != null && (
+                            <span className="ml-1.5 text-xs font-normal text-yellow-700">
+                              (Tier {c.tier}, {ordinal(c.closeNumber)} Close)
+                            </span>
+                          )}
+                        </p>
                         <p className="text-xs text-yellow-700">
                           Signed {c.date ? format(parseISO(c.date), 'MMM d') : '—'}
                         </p>
