@@ -34,7 +34,8 @@ const METRIC_CFG: Record<string, {
   ctr:           { label: 'CTR',         fmt: v => v.toFixed(2) + '%',   color: '#06b6d4', warnAbove: 10 },
   clickToLeadPct:{ label: 'Click→Lead',  fmt: v => v.toFixed(2) + '%',   color: '#10b981', killBelow: 0.5 },
   lpvToLeadPct:  { label: 'LPV→Lead',   fmt: v => v.toFixed(2) + '%',   color: '#a78bfa' },
-  cpq:           { label: 'CPQ',         fmt: fmt$,                      color: '#22c55e', killAbove: 2000, warnAbove: 1200 },
+  cpa:           { label: 'CPA',         fmt: fmt$,                      color: '#22c55e', killAbove: 2000, warnAbove: 1200 },
+  cpq:           { label: 'CPQ',         fmt: fmt$,                      color: '#14b8a6' },
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -47,13 +48,13 @@ function convPct(signed: number, leads: number) {
 
 // Phase 1/2/3 kill decision logic
 // Phase 1 (< $600): floor — protect new angles; only kill if CPL already > $300
-// Phase 2 ($600+, 5-10 leads): read & decide; kill if CPL > $300 AND CPQ > $1200 AND 0 signed
-// Phase 3 (8+ leads, 2+ signed, healthy CPL/CPQ): scale to CBO
+// Phase 2 ($600+, 5-10 leads): read & decide; kill if CPL > $300 AND CPA > $1200 AND 0 signed
+// Phase 3 (8+ leads, 2+ signed, healthy CPL/CPA): scale to CBO
 function alertLevel(ad: any): 'kill' | 'watch' | 'floor' | 'read_decide' | 'scale' | null {
   const spend = ad.spend ?? 0
   const leads = ad.metaLeads ?? 0
   const cpl   = ad.cpl   ?? null
-  const cpq   = ad.cpq   ?? null
+  const cpa   = ad.cpa   ?? null
   const signed = ad.signedCases ?? 0
 
   // Phase 1 — floor protection: < $600 spent
@@ -67,21 +68,21 @@ function alertLevel(ad: any): 'kill' | 'watch' | 'floor' | 'read_decide' | 'scal
   if (leads === 0) return 'kill'
 
   // Phase 3 — scale: 8+ leads, 2+ signed, healthy metrics
-  if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpq == null || cpq <= 1200)) {
+  if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpa == null || cpa <= 1200)) {
     return 'scale'
   }
 
-  // Phase 2 — hard kill: CPL > $300 AND CPQ > $1200 AND no signed cases
-  if (cpl != null && cpl > 300 && cpq != null && cpq > 1200 && signed === 0) return 'kill'
+  // Phase 2 — hard kill: CPL > $300 AND CPA > $1200 AND no signed cases
+  if (cpl != null && cpl > 300 && cpa != null && cpa > 1200 && signed === 0) return 'kill'
 
-  // Phase 2 — watch: CPL > $300 but CPQ still ok (keep until CPQ goes up)
+  // Phase 2 — watch: CPL > $300 but CPA still ok (keep until CPA goes up)
   if (cpl != null && cpl > 300) return 'watch'
 
   // Phase 2 — read & decide: 5+ leads, CPL $220-$300
   if (leads >= 5 && cpl != null && cpl > 220) return 'read_decide'
 
-  // Watch: CPQ > $1200
-  if (cpq != null && cpq > 1200) return 'watch'
+  // Watch: CPA > $1200
+  if (cpa != null && cpa > 1200) return 'watch'
 
   // Watch: CPL $220-$300
   if (cpl != null && cpl > 220) return 'watch'
@@ -309,7 +310,7 @@ function CreativeTrendModal({ ad, initialMetric, timeframe, invoiceCode, slug, o
                   onClick={() => setMetric(s.key)} role="button" tabIndex={0}
                   onKeyDown={e => e.key === 'Enter' && setMetric(s.key)}
                   className={`rounded-lg p-3 cursor-pointer transition ${metric === s.key ? 'ring-1' : 'bg-gray-800 hover:bg-gray-700/80'}`}
-                  style={metric === s.key ? { backgroundColor: s.cfg.color + '22', ringColor: s.cfg.color + '66' } : {}}>
+                  style={metric === s.key ? { backgroundColor: s.cfg.color + '22', ringColor: s.cfg.color + '66' } as React.CSSProperties : undefined}>
                   <p className="text-[10px] text-gray-400 mb-1">{s.cfg.label}</p>
                   <p className="text-sm font-semibold" style={{ color: s.cfg.color }}>{s.cfg.fmt(s.avg)}</p>
                   <p className="text-[10px] text-gray-400 mt-0.5">avg · last {s.cfg.fmt(s.last)}</p>
@@ -436,7 +437,8 @@ function CreativeChartCard({ ad, maxes, isActive, onClickMetric, onClickCases, o
       <div className="space-y-1.5">
         <MetricBar label="Spend" value={ad.spend} max={maxes.spend} fmt={fmt$} color={METRIC_CFG.spend.color} onClick={() => onClickMetric('spend')} />
         <MetricBar label="CPL" value={ad.cpl} max={maxes.cpl} warnAbove={220} killAbove={300} fmt={fmt$} color={METRIC_CFG.cpl.color} onClick={() => onClickMetric('cpl')} />
-        <MetricBar label="CPQ" value={ad.cpq} max={Math.max(maxes.cpq, 1200)} warnAbove={1200} killAbove={2000} fmt={fmt$} color={METRIC_CFG.cpq.color} />
+        <MetricBar label="CPA" value={ad.cpa} max={Math.max(maxes.cpa, 1200)} warnAbove={1200} killAbove={2000} fmt={fmt$} color={METRIC_CFG.cpa.color} />
+        <MetricBar label="CPQ" value={ad.cpq} max={Math.max(maxes.cpq, 1200)} fmt={fmt$} color={METRIC_CFG.cpq.color} />
         <MetricBar label="CPC" value={ad.cpc || null} max={maxes.cpc} fmt={fmt$} color={METRIC_CFG.cpc.color} onClick={() => onClickMetric('cpc')} />
         <MetricBar label="CTR" value={ad.ctr || null} max={maxes.ctr} warnAbove={10} fmt={v => v.toFixed(2) + '%'} color={METRIC_CFG.ctr.color} onClick={() => onClickMetric('ctr')} />
         <MetricBar label="Click→Lead" value={ad.clickToLeadPct} max={Math.max(maxes.clickToLeadPct, 5)} killBelow={0.5} fmt={v => v.toFixed(2) + '%'} color={METRIC_CFG.clickToLeadPct.color} onClick={() => onClickMetric('clickToLeadPct')} />
@@ -1036,6 +1038,7 @@ export default function MarketingPage() {
     ctr: Math.max(...ads.map(a => a.ctr ?? 0), 1),
     clickToLeadPct: Math.max(...ads.map(a => a.clickToLeadPct ?? 0), 1),
     lpvToLeadPct: Math.max(...ads.map(a => a.lpvToLeadPct ?? 0), 1),
+    cpa: Math.max(...ads.map(a => a.cpa ?? 0), 1),
     cpq: Math.max(...ads.map(a => a.cpq ?? 0), 1),
   }
 
@@ -1043,11 +1046,12 @@ export default function MarketingPage() {
   const adsetMap: Record<string, any> = {}
   for (const a of rawAds) {
     const key = a.adsetId || a.adsetName || '—'
-    if (!adsetMap[key]) adsetMap[key] = { id: a.adsetId, name: a.adsetName || '—', spend: 0, metaLeads: 0, signedCases: 0, impressions: 0, adCount: 0 }
+    if (!adsetMap[key]) adsetMap[key] = { id: a.adsetId, name: a.adsetName || '—', spend: 0, metaLeads: 0, signedCases: 0, impressions: 0, chaseCount: 0, adCount: 0 }
     adsetMap[key].spend += a.spend
     adsetMap[key].metaLeads += a.metaLeads
     adsetMap[key].signedCases += a.signedCases
     adsetMap[key].impressions += a.impressions
+    adsetMap[key].chaseCount += (a.chaseCount ?? 0)
     adsetMap[key].adCount += 1
   }
   const adsets = Object.values(adsetMap).sort((a, b) => b.spend - a.spend)
@@ -1056,11 +1060,12 @@ export default function MarketingPage() {
   const campMap: Record<string, any> = {}
   for (const a of rawAds) {
     const key = a.campaignId || a.campaignName || '—'
-    if (!campMap[key]) campMap[key] = { id: a.campaignId, name: a.campaignName || '—', spend: 0, metaLeads: 0, signedCases: 0, impressions: 0, adCount: 0 }
+    if (!campMap[key]) campMap[key] = { id: a.campaignId, name: a.campaignName || '—', spend: 0, metaLeads: 0, signedCases: 0, impressions: 0, chaseCount: 0, adCount: 0 }
     campMap[key].spend += a.spend
     campMap[key].metaLeads += a.metaLeads
     campMap[key].signedCases += a.signedCases
     campMap[key].impressions += a.impressions
+    campMap[key].chaseCount += (a.chaseCount ?? 0)
     campMap[key].adCount += 1
   }
   const campaigns = Object.values(campMap).sort((a, b) => b.spend - a.spend)
@@ -1198,7 +1203,7 @@ export default function MarketingPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-800">
-                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'New Lead', 'NR', 'F/U', 'Chase', 'Appt', 'Contract', 'Pending', 'NQ', 'MIA', 'Qualified', 'Closed', 'Signed', 'CPQ'].map(c => (
+                      {['', 'Creative', 'Ad Set', 'Spend', 'Leads', 'CPL', 'CPC', 'CTR', 'Click→Lead', 'LPV→Lead', 'New Lead', 'NR', 'F/U', 'Chase', 'Appt', 'Contract', 'Pending', 'NQ', 'MIA', 'Qualified', 'Closed', 'Signed', 'CPA', 'CPQ'].map(c => (
                         <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
                       ))}
                     </tr>
@@ -1305,8 +1310,13 @@ export default function MarketingPage() {
                               : <span className="text-gray-600">0</span>}
                           </td>
                           <td className="py-3 px-4">
+                            {a.cpa != null
+                              ? <span className={a.cpa <= 1200 ? 'text-green-400 font-semibold' : a.cpa > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(a.cpa)}</span>
+                              : <span className="text-gray-600">—</span>}
+                          </td>
+                          <td className="py-3 px-4">
                             {a.cpq != null
-                              ? <span className={a.cpq <= 1200 ? 'text-green-400 font-semibold' : a.cpq > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(a.cpq)}</span>
+                              ? <span className="text-teal-400 font-semibold">{fmt$(a.cpq)}</span>
                               : <span className="text-gray-600">—</span>}
                           </td>
                         </tr>
@@ -1330,7 +1340,7 @@ export default function MarketingPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    {['Ad Set', 'Spend', 'Impressions', 'Leads', 'Signed', 'Conv %', 'CPQ', 'Ads'].map(c => (
+                    {['Ad Set', 'Spend', 'Impressions', 'Leads', 'Signed', 'Conv %', 'CPA', 'CPQ', 'Ads'].map(c => (
                       <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
                     ))}
                   </tr>
@@ -1349,8 +1359,13 @@ export default function MarketingPage() {
                       <td className="py-3 px-4 text-gray-400">{convPct(a.signedCases, a.metaLeads)}</td>
                       <td className="py-3 px-4">
                         {a.signedCases > 0
-                          ? (() => { const cpq = a.spend / a.signedCases; return <span className={cpq <= 1200 ? 'text-green-400 font-semibold' : cpq > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(cpq)}</span> })()
+                          ? (() => { const cpa = a.spend / a.signedCases; return <span className={cpa <= 1200 ? 'text-green-400 font-semibold' : cpa > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(cpa)}</span> })()
                           : <span className="text-gray-600">—</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        {(() => { const qual = (a.chaseCount ?? 0) + a.signedCases; return qual > 0
+                          ? <span className="text-teal-400 font-semibold">{fmt$(a.spend / qual)}</span>
+                          : <span className="text-gray-600">—</span> })()}
                       </td>
                       <td className="py-3 px-4 text-gray-500">{a.adCount}</td>
                     </tr>
@@ -1373,7 +1388,7 @@ export default function MarketingPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-800">
-                    {['Campaign', 'Spend', 'Impressions', 'Leads', 'Signed', 'Conv %', 'CPQ', 'Ads'].map(c => (
+                    {['Campaign', 'Spend', 'Impressions', 'Leads', 'Signed', 'Conv %', 'CPA', 'CPQ', 'Ads'].map(c => (
                       <th key={c} className="text-left text-xs text-gray-500 font-medium py-3 px-4 uppercase tracking-wider whitespace-nowrap">{c}</th>
                     ))}
                   </tr>
@@ -1392,8 +1407,13 @@ export default function MarketingPage() {
                       <td className="py-3 px-4 text-gray-400">{convPct(c.signedCases, c.metaLeads)}</td>
                       <td className="py-3 px-4">
                         {c.signedCases > 0
-                          ? (() => { const cpq = c.spend / c.signedCases; return <span className={cpq <= 1200 ? 'text-green-400 font-semibold' : cpq > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(cpq)}</span> })()
+                          ? (() => { const cpa = c.spend / c.signedCases; return <span className={cpa <= 1200 ? 'text-green-400 font-semibold' : cpa > 2000 ? 'text-red-400 font-semibold' : 'text-yellow-400 font-semibold'}>{fmt$(cpa)}</span> })()
                           : <span className="text-gray-600">—</span>}
+                      </td>
+                      <td className="py-3 px-4">
+                        {(() => { const qual = (c.chaseCount ?? 0) + c.signedCases; return qual > 0
+                          ? <span className="text-teal-400 font-semibold">{fmt$(c.spend / qual)}</span>
+                          : <span className="text-gray-600">—</span> })()}
                       </td>
                       <td className="py-3 px-4 text-gray-500">{c.adCount}</td>
                     </tr>

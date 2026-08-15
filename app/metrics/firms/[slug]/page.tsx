@@ -245,7 +245,7 @@ export default function FirmInvoicesHome() {
                 { label: 'Clicks', value: fmtNum(meta.clicks) },
                 { label: 'Meta Leads', value: fmtNum(meta.leads) },
                 { label: 'CPL', value: meta.cpl != null ? fmt(meta.cpl, 2) : '—' },
-                { label: 'CPQ', value: totalCases > 0 ? fmt(meta.spend / totalCases, 2) : '—' },
+                { label: 'CPA', value: totalCases > 0 ? fmt(meta.spend / totalCases, 2) : '—' },
                 { label: 'CTR', value: meta.ctrPct != null ? meta.ctrPct.toFixed(2) + '%' : '—' },
               ].map(c => (
                 <div key={c.label} className="rounded-xl p-4" style={{ background: CARD, border: `1px solid ${BORDER}` }}>

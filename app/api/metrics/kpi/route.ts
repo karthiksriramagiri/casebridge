@@ -684,7 +684,7 @@ export async function GET(request: NextRequest) {
 
   // Weekly signed cases — last 7 days across ALL invoices (cross-invoice KPI tracking)
   const weeklySignedCases = weeklySignedRes.count ?? 0
-  const weeklyCpq = weeklySignedCases > 0 ? weeklySpend / weeklySignedCases : null
+  const weeklyCpa = weeklySignedCases > 0 ? weeklySpend / weeklySignedCases : null
 
   const allCloserIds = [
     ...new Set([
@@ -801,14 +801,14 @@ export async function GET(request: NextRequest) {
   }, 0)
 
   // Financial KPIs
-  // CPQ and revenue use only original cases — replacements don't count toward revenue
+  // CPA (Cost Per Acquisition) uses only original signed cases — replacements don't count
   // Cases with custom_case_value (e.g. minors at $500) use their override; excluded_from_payment
-  // cases still contribute revenue at their custom value but are excluded from CPQ denominator
-  const inWindowOriginalsForCpq = leads.filter((l: any) =>
+  // cases still contribute revenue at their custom value but are excluded from CPA denominator
+  const inWindowOriginalsForCpa = leads.filter((l: any) =>
     (l.case_status || 'e_signed').toLowerCase() !== 'replacement' && !isExcludedFromPayment(l)
   ).length
-  const cpq = inWindowOriginalsForCpq > 0 ? totalSpend / inWindowOriginalsForCpq : null
-  const adjustedCpq = totalVictims > 0 ? totalSpend / totalVictims : null
+  const cpa = inWindowOriginalsForCpa > 0 ? totalSpend / inWindowOriginalsForCpa : null
+  const adjustedCpa = totalVictims > 0 ? totalSpend / totalVictims : null
   // Revenue sums per-case values (respects custom_case_value overrides)
   const grossRevenue = leads
     .filter((l: any) => (l.case_status || 'e_signed').toLowerCase() !== 'replacement')
@@ -837,7 +837,7 @@ export async function GET(request: NextRequest) {
     signedCases: leadsByDate[d.date] || 0,
   }))
 
-  // Creative CPQ breakdown
+  // Creative CPA / CPQ breakdown
   const adRows = adInsights.map((a: any) => {
     const adSpend = parseFloat(a.spend || 0)
     const adMetaLeads = getLeads(a.actions)
@@ -872,8 +872,9 @@ export async function GET(request: NextRequest) {
       lpvToLeadPct: adLpvs > 0 ? (adMetaLeads / adLpvs) * 100 : null,
       clickToLeadPct: adClicks > 0 ? (adMetaLeads / adClicks) * 100 : null,
       signedCases: adSignedCases,
-      cpq: adSignedCases > 0 ? adSpend / adSignedCases : null,
-      adjustedCpq: adVictims > 0 ? adSpend / adVictims : null,
+      cpa: adSignedCases > 0 ? adSpend / adSignedCases : null,
+      adjustedCpa: adVictims > 0 ? adSpend / adVictims : null,
+      cpq: (() => { const q = (pipeline.chase?.length || 0) + (pipeline.contract_sent?.length || 0) + (pipeline.pending_send?.length || 0) + adSignedCases; return q > 0 ? adSpend / q : null })(),
       ctr: parseFloat(a.ctr || 0),
       impressions: parseInt(a.impressions || 0),
       // Pipeline breakdown — live from GHL (contacts + counts)
@@ -902,10 +903,10 @@ export async function GET(request: NextRequest) {
       closedCount:       pipeline.closed.length,
     }
   }).sort((a: any, b: any) => {
-    // Sort: ads with signed cases first (by CPQ asc), then by spend desc
-    if (a.cpq !== null && b.cpq !== null) return a.cpq - b.cpq
-    if (a.cpq !== null) return -1
-    if (b.cpq !== null) return 1
+    // Sort: ads with signed cases first (by CPA asc), then by spend desc
+    if (a.cpa !== null && b.cpa !== null) return a.cpa - b.cpa
+    if (a.cpa !== null) return -1
+    if (b.cpa !== null) return 1
     return b.spend - a.spend
   })
 
@@ -952,6 +953,10 @@ export async function GET(request: NextRequest) {
     pipelineTotals.closedCount       += p.closed.length;        pipelineTotals.closedLeads.push(...p.closed)
   }
 
+  // CPQ (Cost Per Qualified) = spend / (chase + signed/sent leads from GHL)
+  const cpqQualifiedCount = pipelineTotals.chaseCount + pipelineTotals.contractSentCount + pipelineTotals.pendingSendCount + signedCases
+  const cpq = cpqQualifiedCount > 0 ? totalSpend / cpqQualifiedCount : null
+
   // KPI targets — phase-aware (Initial / Scale / Pre-Max / Max)
   const phaseKey = phase.label.toLowerCase().replace('-', '_') as 'initial' | 'scale' | 'pre_max' | 'max'
   const targetDailySpend: number =
@@ -964,7 +969,7 @@ export async function GET(request: NextRequest) {
     : phaseKey === 'scale'  ? (firm.target_scale_daily_leads    ?? firm.target_daily_leads ?? 5)
     : phaseKey === 'pre_max'? (firm.target_pre_max_daily_leads  ?? firm.target_max_daily_leads ?? firm.target_daily_leads ?? 5)
     : (firm.target_max_daily_leads ?? firm.target_daily_leads ?? 5)
-  const targetCpq = firm.target_cpq ?? (firm.case_value > 0 ? firm.case_value * 0.4 : 800)
+  const targetCpa = firm.target_cpq ?? (firm.case_value > 0 ? firm.case_value * 0.4 : 800)
   const targetGrossMargin = firm.target_gross_margin ?? 60
 
   const targetWeeklyCpl = targetDailyLeads > 0 ? (targetDailySpend * 7) / (targetDailyLeads * 7) : null
@@ -972,12 +977,13 @@ export async function GET(request: NextRequest) {
   const targets = {
     dailySpend: targetDailySpend,
     dailyLeads: targetDailyLeads,
-    cpq: targetCpq,
+    cpa: targetCpa,
+    cpq: targetCpa,
     grossMargin: targetGrossMargin,
     weeklySpend: targetDailySpend * 7,
     weeklyLeads: targetDailyLeads * 7,
     weeklyCpl: targetWeeklyCpl,
-    weeklyCpq: targetCpq,
+    weeklyCpa: targetCpa,
   }
 
   // KPI status — how actual vs targets
@@ -1000,11 +1006,11 @@ export async function GET(request: NextRequest) {
       pct: targets.weeklyLeads > 0 ? (weeklyMetaLeads / targets.weeklyLeads) * 100 : null,
       status: weeklyMetaLeads >= targets.weeklyLeads * 0.9 ? 'on_track' : weeklyMetaLeads >= targets.weeklyLeads * 0.5 ? 'behind' : 'far_behind',
     },
-    cpq: cpq !== null ? {
-      actual: cpq,
-      target: targets.cpq,
-      pct: targets.cpq > 0 ? (cpq / targets.cpq) * 100 : null,
-      status: cpq <= targets.cpq * 1.1 ? 'on_track' : cpq <= targets.cpq * 1.5 ? 'behind' : 'far_behind',
+    cpa: cpa !== null ? {
+      actual: cpa,
+      target: targets.cpa,
+      pct: targets.cpa > 0 ? (cpa / targets.cpa) * 100 : null,
+      status: cpa <= targets.cpa * 1.1 ? 'on_track' : cpa <= targets.cpa * 1.5 ? 'behind' : 'far_behind',
     } : null,
     weeklyCpl: weeklyCpl !== null && targets.weeklyCpl !== null ? {
       actual: weeklyCpl,
@@ -1013,12 +1019,12 @@ export async function GET(request: NextRequest) {
       // lower is better
       status: weeklyCpl <= targets.weeklyCpl! * 1.1 ? 'on_track' : weeklyCpl <= targets.weeklyCpl! * 1.5 ? 'behind' : 'far_behind',
     } : null,
-    weeklyCpq: weeklyCpq !== null ? {
-      actual: weeklyCpq,
-      target: targets.weeklyCpq,
-      pct: targets.weeklyCpq > 0 ? (weeklyCpq / targets.weeklyCpq) * 100 : null,
+    weeklyCpa: weeklyCpa !== null ? {
+      actual: weeklyCpa,
+      target: targets.weeklyCpa,
+      pct: targets.weeklyCpa > 0 ? (weeklyCpa / targets.weeklyCpa) * 100 : null,
       // lower is better
-      status: weeklyCpq <= targets.weeklyCpq * 1.1 ? 'on_track' : weeklyCpq <= targets.weeklyCpq * 1.5 ? 'behind' : 'far_behind',
+      status: weeklyCpa <= targets.weeklyCpa * 1.1 ? 'on_track' : weeklyCpa <= targets.weeklyCpa * 1.5 ? 'behind' : 'far_behind',
     } : null,
     grossMargin: grossMargin !== null ? {
       actual: grossMargin,
@@ -1036,7 +1042,7 @@ export async function GET(request: NextRequest) {
 
   // Overall health — critical if any key metric is far_behind, warning if any behind
   // Weekly spend excluded from health — running below full budget during initial test is expected
-  const statuses = [kpiStatus.weeklyLeads.status, kpiStatus.cpq?.status, kpiStatus.grossMargin?.status].filter(Boolean)
+  const statuses = [kpiStatus.weeklyLeads.status, kpiStatus.cpa?.status, kpiStatus.grossMargin?.status].filter(Boolean)
   const overallHealth =
     statuses.some(s => s === 'far_behind') ? 'critical' :
     statuses.some(s => s === 'behind') ? 'warning' : 'healthy'
@@ -1087,8 +1093,9 @@ export async function GET(request: NextRequest) {
       inWindowOriginals,
       outOfWindowCases,
       totalVictims,
+      cpa,
+      adjustedCpa,
       cpq,
-      adjustedCpq,
       caseValue: firm.case_value * (1 - feePct),
       grossRevenue,
       grossProfit,

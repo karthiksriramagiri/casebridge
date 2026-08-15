@@ -18,7 +18,8 @@ export async function POST(request: NextRequest) {
       name: a.adName,
       spend: `$${a.spend.toFixed(0)}`,
       signedCases: a.signedCases,
-      cpq: a.cpq ? `$${a.cpq.toFixed(0)}` : 'no conversions',
+      cpa: a.cpa ? `$${a.cpa.toFixed(0)}` : 'no conversions',
+      cpq: a.cpq ? `$${a.cpq.toFixed(0)}` : '—',
       metaLeads: a.metaLeads,
       cpl: a.cpl ? `$${a.cpl.toFixed(0)}` : '—',
     }))
@@ -32,8 +33,9 @@ PHASE: ${phase.label} (weekly spend: $${body.weeklySpend?.toFixed(0) || 0})
 FINANCIAL KPIs:
 - Total Ad Spend: $${summary.spend.toFixed(2)}
 - Signed Cases: ${summary.signedCases}
-- CPQ (Cost Per Qualified): ${summary.cpq ? '$' + summary.cpq.toFixed(2) : 'N/A — no conversions'}
-- Adjusted CPQ (multi-victim): ${summary.adjustedCpq ? '$' + summary.adjustedCpq.toFixed(2) : 'N/A'}
+- CPA (Cost Per Signed): ${summary.cpa ? '$' + summary.cpa.toFixed(2) : 'N/A — no conversions'}
+- Adjusted CPA (multi-victim): ${summary.adjustedCpa ? '$' + summary.adjustedCpa.toFixed(2) : 'N/A'}
+- CPQ (Cost Per Qualified): ${summary.cpq ? '$' + summary.cpq.toFixed(2) : 'N/A'}
 - Case Value: $${summary.caseValue.toLocaleString()} per case
 - Gross Revenue: $${summary.grossRevenue.toLocaleString()}
 - Gross Profit: $${summary.grossProfit.toFixed(2)}
@@ -49,7 +51,7 @@ ${topAds.length > 0 ? JSON.stringify(topAds, null, 2) : 'No creative data availa
 Your job:
 1. Identify the single biggest performance leak right now (be specific — name it)
 2. Give 3–5 key findings, each with a diagnosis and a recommended action
-3. Flag any numbers that look off (high CPQ, low margin, no conversions on high-spend creatives)
+3. Flag any numbers that look off (high CPA, low margin, no conversions on high-spend creatives)
 4. Be direct and actionable — no filler, no generic advice
 
 Respond in this exact JSON format:
@@ -64,7 +66,7 @@ Respond in this exact JSON format:
     }
   ],
   "benchmarks": {
-    "cpq_assessment": "good | high | very_high | no_data",
+    "cpa_assessment": "good | high | very_high | no_data",
     "margin_assessment": "healthy | tight | negative | no_data",
     "spend_efficiency": "efficient | wasteful | mixed | no_data"
   }

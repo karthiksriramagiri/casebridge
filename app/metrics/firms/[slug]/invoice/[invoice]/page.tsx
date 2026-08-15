@@ -155,7 +155,7 @@ export default function FirmInvoiceDashboard() {
                   { label: 'Weekly Leads', ...ks.weeklyLeads, fmt: (v: number) => v.toFixed(1), higherBetter: true },
                   { label: 'Weekly CPL', actual: ks.weeklyCpl?.actual ?? null, target: ks.weeklyCpl?.target ?? null, pct: ks.weeklyCpl?.pct ?? null, status: ks.weeklyCpl?.status ?? null, fmt: fmt$, higherBetter: false },
                   { label: 'Weekly Signed', actual: ks.weeklySignedCases?.actual ?? null, target: ks.weeklySignedCases?.target ?? null, pct: ks.weeklySignedCases?.pct ?? null, status: ks.weeklySignedCases?.status ?? null, fmt: (v: number) => String(Math.round(v)), higherBetter: true },
-                  { label: 'CPQ (period)', ...ks.cpq, fmt: fmt$, higherBetter: false },
+                  { label: 'CPA (period)', ...ks.cpa, fmt: fmt$, higherBetter: false },
                   { label: 'Gross Margin', ...ks.grossMargin, fmt: fmtPct, higherBetter: true },
                 ].filter(r => r.actual !== undefined || r.target != null)
 
@@ -211,8 +211,9 @@ export default function FirmInvoiceDashboard() {
                       if (s.replacementCases > 0) parts.push(`${s.replacementCases} replacement`)
                       return parts.length > 1 ? parts.join(' · ') : 'in invoice window'
                     })()} />
-                  <KPICard label="CPQ" value={fmt$(s.cpq)} sub="Cost per case" highlight={s.cpq && s.cpq > 3000 ? 'red' : s.cpq ? 'green' : undefined} />
-                  <KPICard label="Adjusted CPQ" value={fmt$(s.adjustedCpq)} sub="Multi-victim adj." />
+                  <KPICard label="CPA" value={fmt$(s.cpa)} sub="Cost per acquisition" highlight={s.cpa && s.cpa > 3000 ? 'red' : s.cpa ? 'green' : undefined} />
+                  <KPICard label="Adjusted CPA" value={fmt$(s.adjustedCpa)} sub="Multi-victim adj." />
+                  <KPICard label="CPQ" value={fmt$(s.cpq)} sub="Cost per qualified (chase + signed)" />
                   {kpiData?.sanguine?.rate > 0 && (
                     <KPICard label="Sanguine Payout" value={fmt$(kpiData.sanguine.total)}
                       sub={`(${kpiData.sanguine.eligibleCases} signed case${kpiData.sanguine.eligibleCases !== 1 ? 's' : ''})`}
@@ -310,15 +311,15 @@ export default function FirmInvoiceDashboard() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr style={{ borderBottom: `1px solid ${BORDER}` }}>
-                        {['Creative', 'Ad Set', 'Spend', 'Meta Leads', 'CPL', 'Signed Cases', 'CPQ', 'Adj. CPQ', 'CTR'].map(col => (
+                        {['Creative', 'Ad Set', 'Spend', 'Meta Leads', 'CPL', 'Signed Cases', 'CPA', 'Adj. CPA', 'CPQ', 'CTR'].map(col => (
                           <th key={col} className={thCls} style={{ color: MUTED }}>{col}</th>
                         ))}
                       </tr>
                     </thead>
                     <tbody>
                       {(kpiData.adBreakdown || []).map((a: any, i: number) => {
-                        const cpqGood = a.cpq !== null && a.cpq < 2000
-                        const cpqBad = a.cpq !== null && a.cpq > 4000
+                        const cpaGood = a.cpa !== null && a.cpa < 2000
+                        const cpaBad = a.cpa !== null && a.cpa > 4000
                         const noConvert = a.spend > 500 && a.signedCases === 0
                         return (
                           <tr key={i} style={{ borderBottom: `1px solid ${BORDER}`, opacity: noConvert ? 0.65 : 1 }}
@@ -332,20 +333,21 @@ export default function FirmInvoiceDashboard() {
                               <span className="font-semibold" style={{ color: a.signedCases > 0 ? '#15803D' : '#D1D5DB' }}>{a.signedCases}</span>
                             </td>
                             <td className="py-3 px-4">
-                              {a.cpq !== null ? (
-                                <span className="font-semibold" style={{ color: cpqGood ? '#15803D' : cpqBad ? '#B91C1C' : '#92400E' }}>{fmt$(a.cpq)}</span>
+                              {a.cpa !== null ? (
+                                <span className="font-semibold" style={{ color: cpaGood ? '#15803D' : cpaBad ? '#B91C1C' : '#92400E' }}>{fmt$(a.cpa)}</span>
                               ) : (
                                 <span className="text-xs" style={{ color: noConvert ? '#B91C1C' : MUTED }}>{noConvert ? 'no conversions' : '—'}</span>
                               )}
                             </td>
-                            <td className="py-3 px-4" style={{ color: MUTED }}>{a.adjustedCpq ? fmt$(a.adjustedCpq) : '—'}</td>
+                            <td className="py-3 px-4" style={{ color: MUTED }}>{a.adjustedCpa ? fmt$(a.adjustedCpa) : '—'}</td>
+                            <td className="py-3 px-4" style={{ color: MUTED }}>{a.cpq != null ? fmt$(a.cpq) : '—'}</td>
                             <td className="py-3 px-4" style={{ color: MUTED }}>{a.ctr ? a.ctr.toFixed(2) + '%' : '—'}</td>
                           </tr>
                         )
                       })}
                       {(!kpiData.adBreakdown || kpiData.adBreakdown.length === 0) && (
                         <tr>
-                          <td colSpan={9} className="py-12 px-4 text-center text-sm" style={{ color: MUTED }}>No ad data for this invoice period.</td>
+                          <td colSpan={10} className="py-12 px-4 text-center text-sm" style={{ color: MUTED }}>No ad data for this invoice period.</td>
                         </tr>
                       )}
                     </tbody>

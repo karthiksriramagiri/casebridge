@@ -177,7 +177,7 @@ type AngleStat = {
   chaseLeads: PipelineLead[]
   adCount: number     // how many distinct ads use this angle
   cpl: number | null
-  cpq: number | null
+  cpa: number | null
   conversionRate: number | null   // signedCases / leads
 }
 
@@ -332,7 +332,7 @@ export async function GET(req: NextRequest) {
     }
 
     function addTo(map: Record<string, AngleStat>, code: string, name: string) {
-      if (!map[code]) map[code] = { code, name, spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adCount: 0, cpl: null, cpq: null, conversionRate: null }
+      if (!map[code]) map[code] = { code, name, spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adCount: 0, cpl: null, cpa: null, conversionRate: null }
       map[code].spend       += spend
       map[code].leads       += leads
       map[code].signedCases += signedCases
@@ -354,7 +354,7 @@ export async function GET(req: NextRequest) {
       const comboKey = `${visualCode}+${verbalCode}`
       if (!comboMap[comboKey]) comboMap[comboKey] = {
         code: comboKey, name: `${visualCode} × ${verbalCode}`, visualCode, verbalCode,
-        spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adCount: 0, cpl: null, cpq: null, conversionRate: null,
+        spend: 0, leads: 0, signedCases: 0, nrCount: 0, nqCount: 0, fuCount: 0, chaseCount: 0, nrLeads: [], nqLeads: [], fuLeads: [], chaseLeads: [], adCount: 0, cpl: null, cpa: null, conversionRate: null,
       }
       const c = comboMap[comboKey]
       c.spend += spend; c.leads += leads; c.signedCases += signedCases
@@ -368,7 +368,7 @@ export async function GET(req: NextRequest) {
   // Finalize CPL/CPQ/conversionRate
   function finalize(stat: AngleStat) {
     stat.cpl            = stat.leads       > 0 ? stat.spend / stat.leads        : null
-    stat.cpq            = stat.signedCases > 0 ? stat.spend / stat.signedCases  : null
+    stat.cpa            = stat.signedCases > 0 ? stat.spend / stat.signedCases  : null
     stat.conversionRate = stat.leads       > 0 ? (stat.signedCases / stat.leads) * 100 : null
   }
 
@@ -379,17 +379,17 @@ export async function GET(req: NextRequest) {
   for (const s of [...visualStats, ...verbalStats, ...comboStats]) finalize(s)
 
   // Sort by spend descending for base tables
-  const sortByCpq = (a: AngleStat, b: AngleStat) => {
-    // Put angles with signed cases first (sorted by CPQ asc), then rest by spend desc
-    if (a.signedCases > 0 && b.signedCases > 0) return (a.cpq ?? 9999) - (b.cpq ?? 9999)
+  const sortByCpa = (a: AngleStat, b: AngleStat) => {
+    // Put angles with signed cases first (sorted by CPA asc), then rest by spend desc
+    if (a.signedCases > 0 && b.signedCases > 0) return (a.cpa ?? 9999) - (b.cpa ?? 9999)
     if (a.signedCases > 0) return -1
     if (b.signedCases > 0) return 1
     return b.spend - a.spend
   }
 
-  visualStats.sort(sortByCpq)
-  verbalStats.sort(sortByCpq)
-  comboStats.sort(sortByCpq)
+  visualStats.sort(sortByCpa)
+  verbalStats.sort(sortByCpa)
+  comboStats.sort(sortByCpa)
 
   // ─── AI analysis ──────────────────────────────────────────────────────────
   let aiAnalysis: string | null = null
@@ -398,7 +398,7 @@ export async function GET(req: NextRequest) {
     const client = new Anthropic({ apiKey: ANTHROPIC_KEY })
 
     const fmtStat = (s: AngleStat) =>
-      `${s.code} (${s.name}): spend=$${s.spend.toFixed(0)} leads=${s.leads} CPL=${s.cpl ? '$' + s.cpl.toFixed(0) : '—'} signed=${s.signedCases} CPQ=${s.cpq ? '$' + s.cpq.toFixed(0) : '—'} NR=${s.nrCount} NQ=${s.nqCount} FU=${s.fuCount} ads=${s.adCount}`
+      `${s.code} (${s.name}): spend=$${s.spend.toFixed(0)} leads=${s.leads} CPL=${s.cpl ? '$' + s.cpl.toFixed(0) : '—'} signed=${s.signedCases} CPA=${s.cpa ? '$' + s.cpa.toFixed(0) : '—'} NR=${s.nrCount} NQ=${s.nqCount} FU=${s.fuCount} ads=${s.adCount}`
 
     const prompt = `You are an expert digital advertising analyst for a personal injury law firm lead generation business. Analyze the following Facebook/Meta ad performance data segmented by "angle codes" — the creative hooks used in each ad.
 
@@ -419,7 +419,7 @@ ${Object.entries(VERBAL_HOOKS).map(([k, v]) => `  ${k} [${ANGLE_TYPE_BY_PREFIX[k
 
 KEY METRICS:
 - CPL = Cost Per Lead (lower is better, target <$150)
-- CPQ = Cost Per Qualified Case (lower is better, target <$800)
+- CPA = Cost Per Signed Case (lower is better, target <$800)
 - NR = No Response (leads that didn't pick up)
 - NQ = Not Qualified (leads that don't meet criteria)
 - FU = Follow Up (active pipeline)
@@ -436,13 +436,13 @@ ${comboStats.slice(0, 20).map(fmtStat).join('\n')}
 
 Please provide a structured deep-dive analysis covering:
 
-1. **VISUAL HOOK WINNERS & LOSERS** — Which A codes are working best (lowest CPQ, best conversion rate) and which should be cut. Be specific with numbers.
+1. **VISUAL HOOK WINNERS & LOSERS** — Which A codes are working best (lowest CPA, best conversion rate) and which should be cut. Be specific with numbers.
 
 2. **VERBAL HOOK WINNERS & LOSERS** — Same for B codes. Which messages resonate most with auto accident victims?
 
 3. **BEST COMBINATIONS** — Which A+B pairings are the strongest? Any surprising synergies?
 
-4. **IMMEDIATE CUT LIST** — Which hooks have enough spend to call (>$500 spent) but zero conversions or very poor CPQ? These should be paused.
+4. **IMMEDIATE CUT LIST** — Which hooks have enough spend to call (>$500 spent) but zero conversions or very poor CPA? These should be paused.
 
 5. **SCALE RECOMMENDATIONS** — Which hooks/combos should get more budget based on efficiency?
 

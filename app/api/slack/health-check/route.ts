@@ -34,14 +34,14 @@ function fmt$(n: number) {
 }
 
 // ─── Alert level — mirrors main dashboard logic ───────────────────────────────
-function alertLevel(spend: number, leads: number, cpl: number | null, cpq: number | null, signed: number): string {
+function alertLevel(spend: number, leads: number, cpl: number | null, cpa: number | null, signed: number): string {
   if (spend < 600) { if (cpl != null && cpl > 300) return 'kill'; return 'floor' }
   if (leads === 0) return 'kill'
-  if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpq == null || cpq <= 1200)) return 'scale'
-  if (cpl != null && cpl > 300 && cpq != null && cpq > 1200 && signed === 0) return 'kill'
+  if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpa == null || cpa <= 1200)) return 'scale'
+  if (cpl != null && cpl > 300 && cpa != null && cpa > 1200 && signed === 0) return 'kill'
   if (cpl != null && cpl > 300) return 'watch'
   if (leads >= 5 && cpl != null && cpl > 220) return 'read_decide'
-  if (cpq != null && cpq > 1200) return 'watch'
+  if (cpa != null && cpa > 1200) return 'watch'
   if (cpl != null && cpl > 220) return 'watch'
   return 'active'
 }
@@ -267,7 +267,7 @@ export async function GET(req: NextRequest) {
       const invSpend    = (invPeriodAdMeta.data || [])
         .filter((a: any) => adBelongsToFirm(a.ad_name || ''))
         .reduce((sum: number, a: any) => sum + parseFloat(a.spend || '0'), 0)
-      const invCpq      = invSigned > 0 ? invSpend / invSigned : null
+      const invCpa      = invSigned > 0 ? invSpend / invSigned : null
 
       // Pace: cases / days elapsed
       const startDate     = new Date(latestInv.period_start + 'T00:00:00Z')
@@ -282,7 +282,7 @@ export async function GET(req: NextRequest) {
       invBlock = [
         `\n*Invoice Progress*`,
         `• *${latestInv.code}*${invTitle} · ${invSigned} signed${invRepl > 0 ? ` + ${invRepl} repl` : ''} · Pace: ${pace.toFixed(1)}/day → projected ${projMonth}/month`,
-        `• ${daysRemaining} days remaining${invCpq ? ` · CPQ: ${fmt$(invCpq)}` : ''}`,
+        `• ${daysRemaining} days remaining${invCpa ? ` · CPA: ${fmt$(invCpa)}` : ''}`,
       ].join('\n')
     }
 
@@ -329,8 +329,8 @@ export async function GET(req: NextRequest) {
       const invSpend  = (invPeriodAdMeta.data || [])
         .filter((a: any) => adBelongsToFirm(a.ad_name || ''))
         .reduce((sum: number, a: any) => sum + parseFloat(a.spend || '0'), 0)
-      const invCpq    = invSigned > 0 ? invSpend / invSigned : null
-      periodStr = ` · Period: ${invSigned} signed${invRepl > 0 ? ` + ${invRepl} repl` : ''}${invCpq ? ` · CPQ: ${fmt$(invCpq)}` : ''}`
+      const invCpa    = invSigned > 0 ? invSpend / invSigned : null
+      periodStr = ` · Period: ${invSigned} signed${invRepl > 0 ? ` + ${invRepl} repl` : ''}${invCpa ? ` · CPA: ${fmt$(invCpa)}` : ''}`
     }
 
     return [

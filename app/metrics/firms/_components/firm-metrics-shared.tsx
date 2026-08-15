@@ -144,7 +144,7 @@ export function InsightsPanel({ data, loading, onGenerate }: {
           {data.benchmarks && (
             <div className="flex gap-3 flex-wrap pt-1">
               {[
-                { label: 'CPQ', value: data.benchmarks.cpq_assessment },
+                { label: 'CPA', value: data.benchmarks.cpa_assessment },
                 { label: 'Margin', value: data.benchmarks.margin_assessment },
                 { label: 'Spend', value: data.benchmarks.spend_efficiency },
               ].map(b => {

@@ -44,14 +44,14 @@ function DarkCard({ label, value, sub, terracotta }: { label: string; value: str
 // ─── Phase / alert helpers ───────────────────────────────────────────────────
 function alertLevel(ad: any): 'kill' | 'watch' | 'floor' | 'read_decide' | 'scale' | null {
   const spend = ad.spend ?? 0, leads = ad.metaLeads ?? ad.leads ?? 0
-  const cpl = ad.cpl ?? null, cpq = ad.cpq != null ? parseFloat(ad.cpq) : null, signed = ad.signedCases ?? 0
+  const cpl = ad.cpl ?? null, cpa = ad.cpa != null ? parseFloat(ad.cpa) : null, signed = ad.signedCases ?? 0
   if (spend < 600) { if (cpl != null && cpl > 300) return 'kill'; return 'floor' }
   if (leads === 0) return 'kill'
-  if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpq == null || cpq <= 1200)) return 'scale'
-  if (cpl != null && cpl > 300 && cpq != null && cpq > 1200 && signed === 0) return 'kill'
+  if (leads >= 8 && signed >= 2 && (cpl == null || cpl <= 300) && (cpa == null || cpa <= 1200)) return 'scale'
+  if (cpl != null && cpl > 300 && cpa != null && cpa > 1200 && signed === 0) return 'kill'
   if (cpl != null && cpl > 300) return 'watch'
   if (leads >= 5 && cpl != null && cpl > 220) return 'read_decide'
-  if (cpq != null && cpq > 1200) return 'watch'
+  if (cpa != null && cpa > 1200) return 'watch'
   if (cpl != null && cpl > 220) return 'watch'
   return null
 }
@@ -109,7 +109,9 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
   const totalQualified   = ads.reduce((s, a) => s + (a.qualifiedCount   ?? 0), 0)
   const totalClosed      = ads.reduce((s, a) => s + (a.closedCount      ?? 0), 0)
   const cpl  = totalLeads  > 0 ? totalSpend / totalLeads  : null
-  const cpq  = totalSigned > 0 ? totalSpend / totalSigned : null
+  const cpa  = totalSigned > 0 ? totalSpend / totalSigned : null
+  const totalQualifiedForCpq = totalChase + totalSigned
+  const cpq  = totalQualifiedForCpq > 0 ? totalSpend / totalQualifiedForCpq : null
   const phase = campaignPhase(ads)
 
   const TH = ({ children, right }: { children: React.ReactNode; right?: boolean }) => (
@@ -138,6 +140,7 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
           <span><span style={{ color: '#FFF', fontWeight: 700 }}>{fmt$(totalSpend)}</span> spend</span>
           <span><span style={{ color: '#FFF', fontWeight: 700 }}>{totalLeads}</span> leads</span>
           <span>CPL <span style={{ color: ACCENT, fontWeight: 700 }}>{fmt$(cpl)}</span></span>
+          <span>CPA <span style={{ color: ACCENT, fontWeight: 700 }}>{fmt$(cpa)}</span></span>
           <span>CPQ <span style={{ color: ACCENT, fontWeight: 700 }}>{fmt$(cpq)}</span></span>
           {totalSigned > 0 && <span>SIGNED <span style={{ color: '#4ADE80', fontWeight: 700 }}>{totalSigned}</span></span>}
         </div>
@@ -170,6 +173,7 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
               <TH>Qualified</TH>
               <TH>Closed</TH>
               <TH>Signed</TH>
+              <TH>CPA</TH>
               <TH>CPQ</TH>
             </tr>
           </thead>
@@ -177,6 +181,7 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
             {ads.map((ad, i) => {
               const level  = alertLevel(ad)
               const cplVal = ad.cpl != null ? parseFloat(String(ad.cpl)) : null
+              const cpaVal = ad.cpa != null ? parseFloat(String(ad.cpa)) : null
               const cpqVal = ad.cpq != null ? parseFloat(String(ad.cpq)) : null
               const leads  = ad.metaLeads ?? ad.leads ?? 0
               const c2l    = ad.clickToLeadPct != null ? parseFloat(String(ad.clickToLeadPct)) : null
@@ -310,6 +315,11 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
                     {(ad.signedCases ?? 0) > 0 ? ad.signedCases : '—'}
                   </td>
 
+                  {/* CPA */}
+                  <td style={{ padding: '8px 10px', fontWeight: cpaVal != null ? 700 : 400, color: cpaVal == null ? dim : cpaVal <= 1200 ? '#15803D' : cpaVal > 2000 ? '#B91C1C' : '#92400E' }}>
+                    {cpaVal != null ? fmt$(cpaVal) : '—'}
+                  </td>
+
                   {/* CPQ */}
                   <td style={{ padding: '8px 10px', fontWeight: cpqVal != null ? 700 : 400, color: cpqVal == null ? dim : cpqVal <= 1200 ? '#15803D' : cpqVal > 2000 ? '#B91C1C' : '#92400E' }}>
                     {cpqVal != null ? fmt$(cpqVal) : '—'}
@@ -340,6 +350,7 @@ function CampaignSection({ name, ads, onClickStage, onClickLeads }: {
               <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalQualified || '—'}</td>
               <td style={{ padding: '9px 10px', color: '#9CA3AF' }}>{totalClosed || '—'}</td>
               <td style={{ padding: '9px 10px', color: totalSigned > 0 ? '#4ADE80' : '#9CA3AF', fontWeight: 700 }}>{totalSigned || '—'}</td>
+              <td style={{ padding: '9px 10px', color: ACCENT, fontWeight: 700 }}>{fmt$(cpa)}</td>
               <td style={{ padding: '9px 10px', color: ACCENT, fontWeight: 700 }}>{fmt$(cpq)}</td>
               <td></td>
             </tr>
@@ -551,19 +562,25 @@ export default function MetricsPage() {
   const totalImpressions = metaData?.summary?.impressions ?? 0
   const totalClicks = metaData?.summary?.clicks ?? 0
 
-  // Build ad-level attribution first so CPQ uses the same signed-case source
+  // Build ad-level attribution first so CPA/CPQ use the same signed-case source
   const adsWithAttribution = (metaData?.ads || []).map((ad: any) => {
     const ov = creativeOverview[ad.id] || {}
     const pl = pipelineOverview[ad.id] || {}
     const signedCases = ov.signedCases || 0
-    const adCpq = signedCases > 0 ? ad.spend / signedCases : null
-    return { ...ad, signedCases, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, latestInvoice: ov.latestInvoice || null, newLeadCount: pl.newLeadCount || 0, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: pl.chaseCount || 0, appointmentCount: pl.appointmentCount || 0, contractSentCount: pl.contractSentCount || 0, pendingSendCount: pl.pendingSendCount || 0, miaCount: pl.miaCount || 0, qualifiedCount: pl.qualifiedCount || 0, closedCount: pl.closedCount || 0, newLeadLeads: pl.newLeadLeads || [], nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [], appointmentLeads: pl.appointmentLeads || [], contractSentLeads: pl.contractSentLeads || [], pendingSendLeads: pl.pendingSendLeads || [], miaLeads: pl.miaLeads || [], qualifiedLeads: pl.qualifiedLeads || [], closedLeads: pl.closedLeads || [] }
+    const chaseCount = pl.chaseCount || 0
+    const adCpa = signedCases > 0 ? ad.spend / signedCases : null
+    const qualifiedForCpq = chaseCount + signedCases
+    const adCpq = qualifiedForCpq > 0 ? ad.spend / qualifiedForCpq : null
+    return { ...ad, signedCases, cpa: adCpa, cpq: adCpq, isActive: ad.spend > 0, firmSlug: ov.firmSlug || null, firmName: ov.firmName || null, latestInvoice: ov.latestInvoice || null, newLeadCount: pl.newLeadCount || 0, nrCount: pl.nrCount || 0, nqCount: pl.nqCount || 0, fuCount: pl.fuCount || 0, chaseCount: chaseCount, appointmentCount: pl.appointmentCount || 0, contractSentCount: pl.contractSentCount || 0, pendingSendCount: pl.pendingSendCount || 0, miaCount: pl.miaCount || 0, qualifiedCount: pl.qualifiedCount || 0, closedCount: pl.closedCount || 0, newLeadLeads: pl.newLeadLeads || [], nrLeads: pl.nrLeads || [], nqLeads: pl.nqLeads || [], fuLeads: pl.fuLeads || [], chaseLeads: pl.chaseLeads || [], appointmentLeads: pl.appointmentLeads || [], contractSentLeads: pl.contractSentLeads || [], pendingSendLeads: pl.pendingSendLeads || [], miaLeads: pl.miaLeads || [], qualifiedLeads: pl.qualifiedLeads || [], closedLeads: pl.closedLeads || [] }
   }).sort((a: any, b: any) => b.spend - a.spend)
 
-  // CPQ = total spend / total signed cases (both from the same date-filtered Meta + attribution data)
+  // CPA = total spend / total signed cases; CPQ = total spend / (chase + signed)
   const totalSignedCases = adsWithAttribution.reduce((s: number, ad: any) => s + (ad.signedCases || 0), 0)
+  const totalChaseCases  = adsWithAttribution.reduce((s: number, ad: any) => s + (ad.chaseCount || 0), 0)
   const cpl = totalLeads > 0 ? (spend / totalLeads) : null
-  const cpq = totalSignedCases > 0 ? (spend / totalSignedCases) : null
+  const cpa = totalSignedCases > 0 ? (spend / totalSignedCases) : null
+  const totalQualifiedCases = totalChaseCases + totalSignedCases
+  const cpq = totalQualifiedCases > 0 ? (spend / totalQualifiedCases) : null
 
   // Group ads by campaign for Ops Dashboard view
   const campaignGroups: Record<string, { name: string; ads: any[] }> = {}
@@ -661,16 +678,17 @@ export default function MetricsPage() {
                   </h1>
                 </div>
                 <p style={{ fontSize: 13, color: MUTED, marginBottom: 28, marginTop: 6 }}>
-                  {fmt$(spend)} spent &nbsp;·&nbsp; {totalLeads} leads &nbsp;·&nbsp; CPQ {cpq ? fmt$(cpq) : '—'} &nbsp;·&nbsp; {totalSignedCases} signed cases
+                  {fmt$(spend)} spent &nbsp;·&nbsp; {totalLeads} leads &nbsp;·&nbsp; CPA {cpa ? fmt$(cpa) : '—'} &nbsp;·&nbsp; CPQ {cpq ? fmt$(cpq) : '—'} &nbsp;·&nbsp; {totalSignedCases} signed cases
                 </p>
 
-                {/* Stat cards — 2 dark (CPL + CPQ) */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(8, 1fr)', gap: 10, marginBottom: 32 }}>
+                {/* Stat cards — 3 dark (CPL + CPA + CPQ) */}
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(9, 1fr)', gap: 10, marginBottom: 32 }}>
                   <LightCard label="Total Spend"   value={fmt$(spend)} />
                   <LightCard label="Impressions"   value={(totalImpressions || 0).toLocaleString()} />
                   <LightCard label="Clicks"        value={(totalClicks || 0).toLocaleString()} />
                   <LightCard label="Leads"         value={totalLeads} />
                   <DarkCard  label="CPL"           value={cpl ? fmt$(cpl) : '—'}  sub="Cost per lead" />
+                  <DarkCard  label="CPA"           value={cpa ? fmt$(cpa) : '—'}  sub="Cost per acquisition" terracotta />
                   <DarkCard  label="CPQ"           value={cpq ? fmt$(cpq) : '—'}  sub="Cost per qualified" terracotta />
                   <LightCard label="CTR"           value={metaData?.summary?.ctr ? `${metaData.summary.ctr}%` : '—'} />
                   <LightCard label="Signed Cases"  value={totalSignedCases} sub={`${attribution?.totals?.notQualified || 0} NQ`} />
