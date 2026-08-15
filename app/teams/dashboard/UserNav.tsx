@@ -59,6 +59,9 @@ export default function UserNav({ timeclockEnabled, teamType, phase = 3 }: Props
           <Link href="/teams/commissions" className={tabClass(pathname === '/teams/commissions')}>
             Commissions
           </Link>
+          <Link href="/teams/pay" className={tabClass(pathname === '/teams/pay')}>
+            Pay
+          </Link>
         </>
       ) : (
         <>

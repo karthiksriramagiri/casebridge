@@ -33,6 +33,22 @@ interface PayData {
   todayEntries: { id: string; clock_in: string; clock_out: string | null }[]
 }
 
+// Creative pay types
+interface CreativeCaseEntry { id: string; name: string; date: string }
+interface CreativePreviousPeriod {
+  start: string; end: string; payDate: string
+  salary: number; cases: number; commission: number; total: number
+  caseList: CreativeCaseEntry[]
+}
+interface CreativePayData {
+  period: { start: string; end: string; nextPayDate: string }
+  salary: number
+  commissionPerCase: number
+  cases: { thisPeriod: CreativeCaseEntry[] }
+  pay: { salary: number; commission: number; totalEstimated: number }
+  previousPeriods: CreativePreviousPeriod[]
+}
+
 function fmt$(n: number) {
   return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
@@ -138,12 +154,170 @@ function CommissionBreakdown({ eligibleCases, commission }: { eligibleCases: Cas
   )
 }
 
+// ─── Creative Pay View ────────────────────────────────────────────────────────
+
+function CreativePayView({ data, teamType, timeclockEnabled }: {
+  data: CreativePayData; teamType: string; timeclockEnabled: boolean
+}) {
+  const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null)
+  const { period, pay, cases, commissionPerCase, previousPeriods } = data
+
+  return (
+    <div className="min-h-screen bg-gray-50">
+      <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
+      <main className="max-w-3xl mx-auto px-6 py-8">
+
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold text-gray-900">Pay</h1>
+          <p className="text-gray-500 mt-1">
+            Period: {format(parseISO(period.start), 'MMM d')} – {format(parseISO(period.end), 'MMM d, yyyy')} · Next paycheck: <span className="font-semibold text-gray-700">{period.nextPayDate}</span>
+          </p>
+        </div>
+
+        {/* Estimated paycheck */}
+        <div className="bg-[#0f1e3c] rounded-xl px-6 py-5 mb-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <p className="text-blue-300 text-xs font-semibold uppercase tracking-wide mb-1">Estimated Next Paycheck</p>
+              <p className="text-4xl font-bold text-white">{fmt$(pay.totalEstimated)}</p>
+              <p className="text-blue-300 text-xs mt-1">{period.nextPayDate}</p>
+            </div>
+            <div className="text-right space-y-1.5 shrink-0">
+              <p className="text-sm text-blue-200">
+                Salary: <span className="text-white font-semibold">{fmt$(pay.salary)}</span>
+              </p>
+              <p className="text-sm text-blue-200">
+                <span className="text-white font-semibold">{cases.thisPeriod.length}</span> case{cases.thisPeriod.length !== 1 ? 's' : ''} × ${commissionPerCase} =
+                <span className="text-white font-semibold ml-1">{fmt$(pay.commission)}</span>
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Breakdown */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          {/* Salary card */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <h2 className="font-semibold text-gray-900">Salary</h2>
+              <span className="text-sm font-bold text-gray-700">{fmt$(pay.salary)}</span>
+            </div>
+            <div className="px-5 py-6 text-center">
+              <p className="text-3xl font-bold text-gray-900">{fmt$(pay.salary)}</p>
+              <p className="text-xs text-gray-400 mt-1">Bi-weekly fixed salary</p>
+            </div>
+          </div>
+
+          {/* Commission card */}
+          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="font-semibold text-gray-900">Commission</h2>
+                <p className="text-xs text-gray-400 mt-0.5">${commissionPerCase} per signed case</p>
+              </div>
+              <span className="text-sm font-bold text-green-700">{fmt$(pay.commission)}</span>
+            </div>
+            {cases.thisPeriod.length === 0 ? (
+              <p className="px-5 py-6 text-center text-sm text-gray-400">No cases this period.</p>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {cases.thisPeriod.map(c => (
+                  <div key={c.id} className="flex items-center justify-between px-5 py-3">
+                    <div>
+                      <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                      <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Signed</span>
+                      <span className="text-sm font-bold text-green-700">+{fmt$(commissionPerCase)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between text-sm">
+              <span className="text-gray-500">{cases.thisPeriod.length} case{cases.thisPeriod.length !== 1 ? 's' : ''} × ${commissionPerCase}</span>
+              <span className="font-bold text-gray-900">{fmt$(pay.commission)}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Previous Paychecks */}
+        {previousPeriods.length > 0 && (
+          <div className="mt-10">
+            <h2 className="text-lg font-bold text-gray-900 mb-3">Previous Paychecks</h2>
+            <div className="space-y-3">
+              {previousPeriods.map(p => {
+                const isOpen = expandedPeriod === p.start
+                return (
+                  <div key={p.start} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <button
+                      className="w-full text-left px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      onClick={() => setExpandedPeriod(isOpen ? null : p.start)}
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">{p.payDate}</p>
+                        <p className="text-xs text-gray-400 mt-0.5">
+                          {format(parseISO(p.start), 'MMM d')} – {format(parseISO(p.end), 'MMM d, yyyy')}
+                        </p>
+                        <div className="flex gap-4 mt-1 text-xs text-gray-500">
+                          <span>Salary: <span className="font-semibold text-gray-700">{fmt$(p.salary)}</span></span>
+                          {p.cases > 0 && (
+                            <span>{p.cases} case{p.cases !== 1 ? 's' : ''} = <span className="font-semibold text-gray-700">{fmt$(p.commission)}</span></span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <p className="text-xl font-bold text-gray-900">{fmt$(p.total)}</p>
+                        <svg
+                          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                          fill="none" stroke="currentColor" viewBox="0 0 24 24"
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                        </svg>
+                      </div>
+                    </button>
+
+                    {isOpen && (
+                      <div className="border-t border-gray-100">
+                        {p.caseList.length === 0 ? (
+                          <p className="px-5 py-6 text-center text-sm text-gray-400">No cases this period.</p>
+                        ) : (
+                          <div className="divide-y divide-gray-50">
+                            {p.caseList.map(c => (
+                              <div key={c.id} className="flex items-center justify-between px-5 py-3">
+                                <div>
+                                  <p className="text-sm font-semibold text-gray-900">{c.name}</p>
+                                  <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
+                                </div>
+                                <span className="text-sm font-bold text-green-700">+{fmt$(commissionPerCase)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+      </main>
+      </TeamsShell>
+    </div>
+  )
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function PayPage() {
   const router = useRouter()
   const [profileId, setProfileId] = useState<string | null>(null)
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
   const [teamType, setTeamType] = useState('intake')
   const [data, setData] = useState<PayData | null>(null)
+  const [creativeData, setCreativeData] = useState<CreativePayData | null>(null)
   const [loading, setLoading] = useState(true)
   const [expandedPeriod, setExpandedPeriod] = useState<string | null>(null)
 
@@ -161,23 +335,41 @@ export default function PayPage() {
 
       if (!prof || !prof.nda_signed) { router.push('/teams/onboarding'); return }
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
-      if (prof.team_type === 'creative') { router.push('/teams/dashboard'); return }
 
       setProfileId(prof.id)
       setTimeclockEnabled(!!prof.timeclock_enabled)
       setTeamType(prof.team_type ?? 'intake')
 
-      const res = await fetch('/api/teams/pay')
-      if (res.ok) setData(await res.json())
+      if (prof.team_type === 'creative') {
+        const res = await fetch('/api/teams/pay/creative')
+        if (res.ok) setCreativeData(await res.json())
+      } else {
+        const res = await fetch('/api/teams/pay')
+        if (res.ok) setData(await res.json())
+      }
       setLoading(false)
     }
     load()
   }, [])
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <p className="text-gray-400">Loading...</p>
+      </div>
+    )
+  }
+
+  // Creative team view
+  if (teamType === 'creative' && creativeData) {
+    return <CreativePayView data={creativeData} teamType={teamType} timeclockEnabled={timeclockEnabled} />
+  }
+
+  // Intake team view
+  if (!data) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-400">Unable to load pay data.</p>
       </div>
     )
   }
