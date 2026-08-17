@@ -390,6 +390,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   const [editingSecondCloser, setEditingSecondCloser] = useState<{ id: string; value: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [confirmReplaceId, setConfirmReplaceId] = useState<string | null>(null)
+  const [confirmMiaId, setConfirmMiaId] = useState<string | null>(null)
 
   useEffect(() => { setLocalPcs(pcs) }, [pcs])
 
@@ -447,6 +448,21 @@ export function PcTable({ pcs }: { pcs: any[] }) {
       if (!res.ok) throw new Error('Replace failed')
       setLocalPcs(prev => prev.map(p => p.id === pc.id ? { ...p, caseStatus: 'replacement' } : p))
       setConfirmReplaceId(null)
+    } finally { setBusy(false) }
+  }
+
+  async function handleMia(pc: any) {
+    if (confirmMiaId !== pc.id) { setConfirmMiaId(pc.id); return }
+    setBusy(true)
+    try {
+      const res = await fetch('/api/metrics/case', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pc.id, case_status: 'mia' }),
+      })
+      if (!res.ok) throw new Error('MIA failed')
+      setLocalPcs(prev => prev.map(p => p.id === pc.id ? { ...p, caseStatus: 'mia' } : p))
+      setConfirmMiaId(null)
     } finally { setBusy(false) }
   }
 
@@ -738,6 +754,25 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                                 onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#92400E'; (e.currentTarget as HTMLElement).style.borderColor = '#FDBA74' }}
                                 onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#D1D5DB'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB' }}>
                                 Replace
+                              </button>
+                            )
+                          )}
+                          {!isReplacement && (pc.caseStatus || '').toLowerCase() !== 'mia' && (
+                            confirmMiaId === pc.id ? (
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px]" style={{ color: '#7C3AED' }}>MIA?</span>
+                                <button onClick={() => handleMia(pc)} disabled={busy}
+                                  className="text-[10px] font-semibold disabled:opacity-40" style={{ color: '#7C3AED' }}>Yes</button>
+                                <button onClick={() => setConfirmMiaId(null)} className="text-[10px]" style={{ color: MUTED }}>No</button>
+                              </div>
+                            ) : (
+                              <button onClick={() => handleMia(pc)}
+                                className="text-[10px] font-semibold px-2 py-0.5 rounded border transition"
+                                style={{ color: '#D1D5DB', borderColor: '#E5E7EB' }}
+                                title="Mark as MIA"
+                                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#7C3AED'; (e.currentTarget as HTMLElement).style.borderColor = '#C4B5FD' }}
+                                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = '#D1D5DB'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB' }}>
+                                MIA
                               </button>
                             )
                           )}

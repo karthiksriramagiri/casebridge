@@ -38,9 +38,10 @@ export interface Disposition {
 }
 
 export const DISPOSITIONS: Disposition[] = [
-  { id: 'd1', label: 'Qualified',     category: 'POSITIVE',  color: 'bg-green-600',   ghlStageMove: null },
-  { id: 'd2', label: 'Not Qualified', category: 'NEGATIVE',  color: 'bg-red-700',     ghlStageMove: 'Not Qualified', requiresReason: true },
-  { id: 'd3', label: 'Callback',      category: 'CALLBACK',  color: 'bg-blue-600',    ghlStageMove: null },
-  { id: 'd4', label: 'No Answer',     category: 'NEGATIVE',  color: 'bg-gray-500',    ghlStageMove: null },
-  { id: 'd5', label: 'Signed',        category: 'POSITIVE',  color: 'bg-emerald-600', ghlStageMove: null },
+  { id: 'd1', label: 'Qualified',        category: 'POSITIVE',  color: 'bg-green-600',   ghlStageMove: null },
+  { id: 'd2', label: 'Not Qualified',    category: 'NEGATIVE',  color: 'bg-red-700',     ghlStageMove: 'Not Qualified', requiresReason: true },
+  { id: 'd3', label: 'Callback',         category: 'CALLBACK',  color: 'bg-blue-600',    ghlStageMove: null },
+  { id: 'd4', label: 'No Answer',        category: 'NEGATIVE',  color: 'bg-gray-500',    ghlStageMove: null },
+  { id: 'd5', label: 'Signed',           category: 'POSITIVE',  color: 'bg-emerald-600', ghlStageMove: null },
+  { id: 'd6', label: 'MIA Reconnected',  category: 'POSITIVE',  color: 'bg-teal-600',    ghlStageMove: null },
 ]

@@ -130,10 +130,11 @@ function DtmfPad({ onKey }: { onKey: (k: string) => void }) {
 
 // ── Disposition Modal ──────────────────────────────────────────────────────────
 
-function DispositionModal({ lead, leadTimezone, firm, onSubmit, onCallAgain }: {
+function DispositionModal({ lead, leadTimezone, firm, stageName, onSubmit, onCallAgain }: {
   lead: Lead
   leadTimezone: string
   firm: string
+  stageName: string
   onSubmit: (d: Disposition, callbackAt: string, stop: boolean, context?: string, nqReason?: string) => void
   onCallAgain: () => void
 }) {
@@ -178,7 +179,11 @@ function DispositionModal({ lead, leadTimezone, firm, onSubmit, onCallAgain }: {
           <p className="mt-0.5 text-sm text-gray-500">{lead.name} · {lead.phone}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 p-4">
-          {DISPOSITIONS.map(d => (
+          {DISPOSITIONS.filter(d => {
+            const isMIA = stageName.toLowerCase() === 'mia'
+            if (d.label === 'MIA Reconnected') return isMIA
+            return true
+          }).map(d => (
             <button key={d.id} onClick={() => setSelected(d)}
               className={`rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-all ${d.color} ${selected?.id === d.id ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-gray-900' : 'opacity-80 hover:opacity-100'}`}>
               {d.label}
@@ -1468,6 +1473,7 @@ export default function AgentPage() {
           lead={currentLead}
           leadTimezone={leadTimezone}
           firm={currentQueueLead.current?.firm ?? ''}
+          stageName={currentQueueLead.current?.stageName ?? ''}
           onSubmit={handleDisposition}
           onCallAgain={() => {
             const lead = currentLead

@@ -378,7 +378,7 @@ export default function ReportsPage() {
               </div>
             </Card>
 
-            <Card title="Hourly Distribution (UTC)">
+            <Card title="Hourly Distribution (EST)">
               <div className="flex items-end gap-1 h-32">
                 {data.trends.hourly.map((count, h) => {
                   const maxH = Math.max(...data.trends.hourly, 1)
@@ -447,7 +447,7 @@ export default function ReportsPage() {
 
               {/* Hourly heatmap */}
               <div>
-                <p className="text-xs text-gray-400 mb-1">Calls by hour (UTC)</p>
+                <p className="text-xs text-gray-400 mb-1">Calls by hour (EST)</p>
                 <div className="flex gap-0.5">
                   {rep.hourly.map((count, h) => {
                     const maxH = Math.max(...rep.hourly, 1)

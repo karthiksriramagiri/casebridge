@@ -16,7 +16,7 @@ const PIPELINES = [
 ]
 // Stages synced into the queue (lower-cased for lookup)
 const INCLUDED_STAGES = new Set([
-  'contract sent', 'chase', 'follow up required', 'no response',
+  'contract sent', 'chase', 'follow up required', 'no response', 'mia',
 ])
 
 function supabaseAdmin() {
@@ -848,6 +848,7 @@ export async function applyDisposition(
     // Terminal: remove from calling pool
     case 'Qualified':
     case 'Signed':
+    case 'MIA Reconnected':
       await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
       break
 
@@ -892,11 +893,12 @@ export async function applyDisposition(
 
   // ── GHL stage move ────────────────────────────────────────────────────────
   const GHL_STAGE_MAP: Record<string, string> = {
-    'Not Qualified': 'Not Qualified',
-    'Qualified':     'Chase',
-    'Callback':      'Follow Up Required',
-    'Signed':        'Signed/Sent',
-    'No Answer':     'No Response',
+    'Not Qualified':    'Not Qualified',
+    'Qualified':        'Chase',
+    'Callback':         'Follow Up Required',
+    'Signed':           'Signed/Sent',
+    'No Answer':        'No Response',
+    'MIA Reconnected':  'Signed/Sent',
   }
   const targetStage = GHL_STAGE_MAP[disposition]
 
@@ -925,25 +927,28 @@ export async function applyDisposition(
   // ── Firm-specific GHL tags ─────────────────────────────────────────────────
   const TAG_MAP: Record<string, Record<string, string>> = {
     lhp: {
-      'Qualified':     'lhp - c',
-      'Not Qualified': 'lhp - nq',
-      'Callback':      'lhp - ap',
-      'No Answer':     'lhp - nr',
-      'Signed':        'lhp - ps',
+      'Qualified':        'lhp - c',
+      'Not Qualified':    'lhp - nq',
+      'Callback':         'lhp - ap',
+      'No Answer':        'lhp - nr',
+      'Signed':           'lhp - ps',
+      'MIA Reconnected':  'lhp - ps',
     },
     fears: {
-      'Qualified':     'fl - c',
-      'Not Qualified': 'fl - nq',
-      'Callback':      'fl - ap',
-      'No Answer':     'fl - nr',
-      'Signed':        'fl - ps',
+      'Qualified':        'fl - c',
+      'Not Qualified':    'fl - nq',
+      'Callback':         'fl - ap',
+      'No Answer':        'fl - nr',
+      'Signed':           'fl - ps',
+      'MIA Reconnected':  'fl - ps',
     },
     jm: {
-      'Qualified':     'jm - c',
-      'Not Qualified': 'jm - nq',
-      'Callback':      'jm - ap',
-      'No Answer':     'jm - nr',
-      'Signed':        'jm - ps',
+      'Qualified':        'jm - c',
+      'Not Qualified':    'jm - nq',
+      'Callback':         'jm - ap',
+      'No Answer':        'jm - nr',
+      'Signed':           'jm - ps',
+      'MIA Reconnected':  'jm - ps',
     },
   }
 
@@ -957,7 +962,7 @@ export async function applyDisposition(
   }
 
   // ── Turn off SMS bot on any real disposition ────────────────────────────
-  if (['Callback', 'Qualified', 'Not Qualified', 'Signed'].includes(disposition) && attempt.contact_id) {
+  if (['Callback', 'Qualified', 'Not Qualified', 'Signed', 'MIA Reconnected'].includes(disposition) && attempt.contact_id) {
     await db.from('dialer_lead_state')
       .update({ sms_drip_active: false, updated_at: now.toISOString() })
       .eq('contact_id', attempt.contact_id)
@@ -972,9 +977,8 @@ export async function applyDisposition(
   // Store NQ reason as a tag + send Slack notification
   if (disposition === 'Not Qualified' && attempt.contact_id) {
     if (opts.nqReason) {
-      const reasonTag = firm === 'lhp'
-        ? `lhp - nq - ${opts.nqReason}`
-        : `fl - nq - ${opts.nqReason}`
+      const prefix = firm === 'lhp' ? 'lhp' : firm === 'jm' ? 'jm' : 'fl'
+      const reasonTag = `${prefix} - nq - ${opts.nqReason}`
       await tagGHLContact(attempt.contact_id, [reasonTag]).catch(console.error)
     }
 

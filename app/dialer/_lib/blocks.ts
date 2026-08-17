@@ -23,6 +23,7 @@ export const BLOCKS_BY_COUNT: Record<number, BlockName[]> = {
   2: ['morning', 'evening'],
   3: ['morning', 'afternoon', 'evening'],
   4: ['morning', 'afternoon', 'evening', 'night'],
+  6: ['morning', 'morning', 'afternoon', 'afternoon', 'evening', 'night'],
 }
 
 // Convert a wall-clock time in `timezone` on `localDateStr` (YYYY-MM-DD)
@@ -89,6 +90,7 @@ export function blockWindows(
 
 // Priority by stage (higher = called sooner)
 export const STAGE_PRIORITY: Record<string, number> = {
+  'mia':                  500,
   'contract sent':        400,
   'chase':                300,
   'follow up required':   200,

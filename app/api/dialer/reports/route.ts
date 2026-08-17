@@ -5,6 +5,13 @@ function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
+function estHour(date: Date): number {
+  const h = parseInt(
+    new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', hour: 'numeric', hour12: false }).format(date)
+  )
+  return h === 24 ? 0 : h
+}
+
 function isConnected(c: any): boolean {
   const dur = c.duration ?? 0
   if (dur <= 0) return false
@@ -127,11 +134,10 @@ export async function GET(req: NextRequest) {
       dispositions[d] = (dispositions[d] || 0) + 1
     }
 
-    // Calls per hour
+    // Calls per hour (EST)
     const hourly: number[] = new Array(24).fill(0)
     for (const c of repCalls) {
-      const h = new Date(c.started_at).getUTCHours()
-      hourly[h]++
+      hourly[estHour(new Date(c.started_at))]++
     }
 
     return {
@@ -326,11 +332,10 @@ export async function GET(req: NextRequest) {
     if (isConnected(c)) dayOfWeekMap[d].connected++
   }
 
-  // Hourly aggregate (all reps)
+  // Hourly aggregate (all reps, EST)
   const hourlyAll: number[] = new Array(24).fill(0)
   for (const c of outboundCalls) {
-    const h = new Date(c.started_at).getUTCHours()
-    hourlyAll[h]++
+    hourlyAll[estHour(new Date(c.started_at))]++
   }
 
   // ── 10. Leaderboard ────────────────────────────────────────────────────
