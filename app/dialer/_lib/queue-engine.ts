@@ -10,9 +10,10 @@ import { getNumberPool, assignRandomCallerId }         from './number-pool'
 
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const PIPELINES = [
-  { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp',    defaultTz: 'America/Los_Angeles' },
-  { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears',  defaultTz: 'America/Chicago'     },
-  { id: '0tBzhg0eGSNKL870y3yV', firm: 'jm',  defaultTz: 'America/Los_Angeles' },
+  { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp',   lang: 'en', defaultTz: 'America/Los_Angeles' },
+  { id: 'r1AsAtC7lzwO9ybtkQlA', firm: 'lhp',   lang: 'es', defaultTz: 'America/Los_Angeles' },
+  { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears', lang: 'en', defaultTz: 'America/Chicago'     },
+  { id: '0tBzhg0eGSNKL870y3yV', firm: 'jm',    lang: 'en', defaultTz: 'America/Los_Angeles' },
 ]
 // Stages synced into the queue (lower-cased for lookup)
 const INCLUDED_STAGES = new Set([
@@ -69,6 +70,7 @@ export interface Attempt {
   is_callback:        boolean
   callback_at:        string | null
   owner_rep:          string | null
+  lang:               string
   created_at:         string
   updated_at:         string
 }
@@ -256,6 +258,7 @@ export async function syncGHLToQueue(): Promise<{
             day_ends_at:        win.dayEndsAt.toISOString(),
             priority,
             owner_rep:          ownerRep,
+            lang:               pipeline.lang,
           })
           created++
         }
@@ -333,10 +336,11 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
 
   // Whitelist: only active REP users can receive leads
   const { data: user } = await db.from('dialer_users')
-    .select('role, active')
+    .select('role, active, spanish')
     .eq('twilio_identity', repIdentity)
     .maybeSingle()
   if (!user || user.role !== 'REP' || !user.active) return []
+  const repSpeaksSpanish = user.spanish === true
 
   // ── Force-buffer due callbacks owned by this rep (bypass buffer limit) ──
   const { data: dueCallbacks } = await db.from('dialer_attempts')
@@ -402,11 +406,13 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     }
   }
 
-  // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
+  // Filter: active contacts + sequential constraint + callback ownership + language (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
     // Callbacks are exclusive to their owner rep — don't assign to anyone else
     if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
+    // Spanish leads only go to Spanish-capable reps
+    if (a.lang === 'es' && !repSpeaksSpanish) return false
     if (!a.is_callback) {
       const nums = pendingByContact.get(a.contact_id) ?? []
       if (a.attempt_number !== Math.min(...nums)) return false
@@ -443,10 +449,13 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // This excludes ADMIN users AND phantom identities like "agent" that aren't real users
   const [{ data: repStatuses }, { data: users }] = await Promise.all([
     db.from('dialer_rep_status').select('rep_identity, status').eq('status', 'READY'),
-    db.from('dialer_users').select('twilio_identity, role, active'),
+    db.from('dialer_users').select('twilio_identity, role, active, spanish'),
   ])
   const validRepIds = new Set(
     (users ?? []).filter(u => u.role === 'REP' && u.active).map(u => u.twilio_identity)
+  )
+  const spanishReps = new Set(
+    (users ?? []).filter(u => u.role === 'REP' && u.active && u.spanish).map(u => u.twilio_identity)
   )
   const readyReps = (repStatuses ?? [])
     .map(r => r.rep_identity)
@@ -550,14 +559,19 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     remainingEligible.push(a)
   }
 
-  // Pass 2: regular round-robin for non-callback leads
-  let idx = 0
+  // Pass 2: language-aware round-robin for non-callback leads
+  // Spanish leads only go to Spanish-capable reps
+  const assigned = new Set<number>()
   for (const { rep } of repsNeedingLeads) {
     let left = repNeeds.get(rep) ?? 0
-    while (left > 0 && idx < remainingEligible.length) {
-      toUpdate.push({ id: remainingEligible[idx].id, rep })
+    const canSpanish = spanishReps.has(rep)
+    for (let i = 0; i < remainingEligible.length && left > 0; i++) {
+      if (assigned.has(i)) continue
+      const a = remainingEligible[i]
+      if (a.lang === 'es' && !canSpanish) continue
+      toUpdate.push({ id: a.id, rep })
+      assigned.add(i)
       left--
-      idx++
     }
   }
   if (toUpdate.length === 0) return {}

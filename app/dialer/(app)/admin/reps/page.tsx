@@ -9,6 +9,7 @@ interface Rep {
   role:            'REP' | 'ADMIN'
   twilio_identity: string | null
   active:          boolean
+  spanish:         boolean
   created_at:      string
 }
 
@@ -223,6 +224,17 @@ export default function RepsPage() {
     setUpdating(null)
   }
 
+  async function toggleSpanish(rep: Rep) {
+    setUpdating(rep.id)
+    await fetch('/api/dialer/admin/reps', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: rep.id, spanish: !rep.spanish }),
+    })
+    await fetchReps()
+    setUpdating(null)
+  }
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -245,7 +257,7 @@ export default function RepsPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-100 dark:border-gray-800">
-                {['Name', 'Email', 'Role', 'Twilio Identity', 'Status', ''].map(h => (
+                {['Name', 'Email', 'Role', 'Twilio Identity', 'Spanish', 'Status', ''].map(h => (
                   <th key={h} className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                 ))}
               </tr>
@@ -276,6 +288,19 @@ export default function RepsPage() {
                       ? <span className="text-gray-500">{rep.twilio_identity}</span>
                       : <span className="text-amber-500 font-semibold">not set</span>
                     }
+                  </td>
+                  <td className="px-5 py-3.5">
+                    <button
+                      onClick={() => toggleSpanish(rep)}
+                      disabled={updating === rep.id}
+                      className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-40 ${
+                        rep.spanish
+                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
+                          : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+                      }`}
+                    >
+                      {rep.spanish ? 'ES' : '—'}
+                    </button>
                   </td>
                   <td className="px-5 py-3.5">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${rep.active ? 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-100 text-gray-500'}`}>
