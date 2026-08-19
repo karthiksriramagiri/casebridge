@@ -71,7 +71,7 @@ function attemptToLead(a: Attempt) {
     is_callback:      a.is_callback,
     callback_at:      a.callback_at,
     callbackAt:       a.callback_at,
-    callbackContext:  null,
+    callbackContext:  (a as any).callback_context ?? null,
     ownerRepIdentity: a.owner_rep,
     owner_rep:        a.owner_rep,
     priority:         a.priority,

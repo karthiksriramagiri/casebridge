@@ -854,6 +854,7 @@ export async function applyDisposition(
         priority:           500,   // callbacks are top priority
         is_callback:        true,
         callback_at:        cbAt.toISOString(),
+        callback_context:   opts.callbackContext ?? null,
         owner_rep:          callbackOwner,
       })
       break
