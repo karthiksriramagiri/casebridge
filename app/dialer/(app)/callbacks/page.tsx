@@ -28,10 +28,38 @@ interface ContactResult {
 }
 
 const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+const FIRM_TZ: Record<string, string> = { lhp: 'America/Los_Angeles', fears: 'America/Chicago', jm: 'America/Los_Angeles' }
+const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', fears: 'CT', jm: 'PT' }
 
-function fmtTime(iso: string) {
+// Convert a datetime-local value (YYYY-MM-DDTHH:MM) treated as wall-clock in `tz` to a UTC ISO string
+function wallClockToUTC(localStr: string, tz: string): string {
+  const probe = new Date(localStr + ':00Z')
+  const fmt = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+  })
+  const parts = fmt.formatToParts(probe)
+  const get = (t: string) => parts.find(p => p.type === t)?.value ?? '0'
+  const probeLocal = new Date(Date.UTC(+get('year'), +get('month') - 1, +get('day'), +(get('hour') === '24' ? '0' : get('hour')), +get('minute'), +get('second')))
+  const offsetMs = probe.getTime() - probeLocal.getTime()
+  return new Date(probe.getTime() + offsetMs).toISOString()
+}
+
+// Get current wall-clock time + 2h in a timezone as YYYY-MM-DDTHH:MM
+function nowPlusTwoInTz(tz: string): string {
+  const future = new Date(Date.now() + 2 * 3600 * 1000)
+  const fmt = new Intl.DateTimeFormat('en-CA', {
+    timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  })
+  const s = fmt.format(future).replace(', ', 'T').replace(/\s/g, '')
+  return s.slice(0, 16)
+}
+
+function fmtTime(iso: string, firm?: string) {
+  const tz = firm ? (FIRM_TZ[firm] ?? 'America/New_York') : 'America/New_York'
   return new Date(iso).toLocaleString('en-US', {
-    timeZone: 'America/New_York',
+    timeZone: tz,
     month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
   })
@@ -58,11 +86,7 @@ export default function CallbacksPage() {
   const [results, setResults] = useState<ContactResult[]>([])
   const [searching, setSearching] = useState(false)
   const [selectedContact, setSelectedContact] = useState<ContactResult | null>(null)
-  const [cbTime, setCbTime] = useState(() => {
-    const d = new Date(Date.now() + 2 * 3600 * 1000)
-    d.setMinutes(0, 0, 0)
-    return d.toISOString().slice(0, 16)
-  })
+  const [cbTime, setCbTime] = useState(() => nowPlusTwoInTz('America/Los_Angeles'))
   const [cbNotes, setCbNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const searchTimeout = useRef<NodeJS.Timeout>()
@@ -93,12 +117,14 @@ export default function CallbacksPage() {
   async function submitCallback() {
     if (!selectedContact || !cbTime) return
     setSubmitting(true)
+    const firmTz = FIRM_TZ[selectedContact.firm ?? 'lhp'] ?? 'America/Los_Angeles'
+    const utcIso = wallClockToUTC(cbTime, firmTz)
     await fetch('/api/dialer/callbacks', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contact_id: selectedContact.id,
-        callback_at: new Date(cbTime).toISOString(),
+        callback_at: utcIso,
         callback_context: cbNotes || null,
         rep_identity: identity || null,
       }),
@@ -107,11 +133,7 @@ export default function CallbacksPage() {
     setSelectedContact(null)
     setSearch('')
     setCbNotes('')
-    setCbTime(() => {
-      const d = new Date(Date.now() + 2 * 3600 * 1000)
-      d.setMinutes(0, 0, 0)
-      return d.toISOString().slice(0, 16)
-    })
+    setCbTime(nowPlusTwoInTz('America/Los_Angeles'))
     setSubmitting(false)
     fetchCallbacks()
   }
@@ -160,7 +182,7 @@ export default function CallbacksPage() {
                   {results.map(c => (
                     <button
                       key={c.id}
-                      onClick={() => { setSelectedContact(c); setSearch(''); setResults([]) }}
+                      onClick={() => { setSelectedContact(c); setSearch(''); setResults([]); setCbTime(nowPlusTwoInTz(FIRM_TZ[c.firm ?? 'lhp'] ?? 'America/Los_Angeles')) }}
                       className="w-full px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between"
                     >
                       <div>
@@ -198,7 +220,9 @@ export default function CallbacksPage() {
           {/* Time + Notes */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Callback Time (your local time)</label>
+              <label className="block text-xs font-medium text-gray-500 mb-1">
+                Callback Time ({FIRM_TZ_LABEL[selectedContact?.firm ?? 'lhp'] ?? 'PT'})
+              </label>
               <input
                 type="datetime-local"
                 value={cbTime}
@@ -273,7 +297,7 @@ export default function CallbacksPage() {
                           <span className={`text-xs font-medium ${isPast ? 'text-red-500' : 'text-cyan-600 dark:text-cyan-400'}`}>
                             {fmtRelative(cb.callback_at)}
                           </span>
-                          <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at)} ET</p>
+                          <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at, cb.firm)} {FIRM_TZ_LABEL[cb.firm] ?? 'PT'}</p>
                         </div>
                       )}
                     </td>
@@ -321,8 +345,8 @@ export default function CallbacksPage() {
                   <td className="px-5 py-3">
                     <span className="text-[10px] font-semibold uppercase text-gray-400">{FIRM_LABEL[cb.firm] ?? cb.firm}</span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.callback_at ? fmtTime(cb.callback_at) : '—'}</td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_at ? fmtTime(cb.completed_at) : '—'}</td>
+                  <td className="px-5 py-3 text-xs text-gray-500">{cb.callback_at ? `${fmtTime(cb.callback_at, cb.firm)} ${FIRM_TZ_LABEL[cb.firm] ?? 'PT'}` : '—'}</td>
+                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_at ? `${fmtTime(cb.completed_at, cb.firm)} ${FIRM_TZ_LABEL[cb.firm] ?? 'PT'}` : '—'}</td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
                       cb.disposition === 'Qualified' ? 'bg-green-100 text-green-700'
