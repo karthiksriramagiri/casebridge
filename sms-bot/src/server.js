@@ -1769,6 +1769,29 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
+    if (req.method === "POST" && req.url === "/webhooks/ghl/disposition-es") {
+      const payload = await readJson(req);
+      const auth = requireWebhookSecret(req, payload);
+      if (!auth.ok) {
+        send(res, 401, { ok: false, error: auth.reason });
+        return;
+      }
+      const dedupe = await dedupeWebhook(req, payload, "disposition-es");
+      if (dedupe.duplicate) {
+        send(res, 200, { ok: true, duplicate: true, eventId: dedupe.id });
+        return;
+      }
+      payload.language = "es";
+      if (!isNoResponseSignal(payload)) {
+        console.log("[disposition-es] IGNORED - payload keys:", Object.keys(payload), "tags:", payload.tags, "tag:", payload.tag, "customData:", JSON.stringify(payload.customData));
+        send(res, 202, { ok: true, ignored: true, reason: "payload did not include no response disposition or NR tag" });
+        return;
+      }
+      const contact = await bot.startFromNoResponseDisposition(payload);
+      send(res, 200, { ok: true, contact, language: "es" });
+      return;
+    }
+
     if (req.method === "POST" && req.url === "/webhooks/ghl/inbound-sms") {
       const payload = await readJson(req);
       const auth = requireWebhookSecret(req, payload);

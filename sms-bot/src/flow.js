@@ -177,6 +177,7 @@ function normalizePayload(payload, config) {
       source.assigned_user,
       source.user
     ].map(textValue).find(Boolean),
+    language: payload.language || source.language,
     leadSource: payload.leadSource || payload.source || payload.lead_source || payload["contact.source"] || source.leadSource || source.source || source.lead_source,
     ghlContactLink: payload.ghlContactLink || payload.contactLink,
     tags: payload.tags || payload.contactTags || payload.tag || source.tags,
