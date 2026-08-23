@@ -22,6 +22,7 @@ const GHL_PIPELINES: Record<string, string> = {
   mca:         '6Ku9EwTtMFk51o7Re9x0',
   fears:       'Jj4DCdu5duYDgI87ERbx',
   levine:      'JPyMNjGGAIxUv0FWW7Cg',
+  jm:          '0tBzhg0eGSNKL870y3yV',
 }
 
 type StageLabel = 'new_lead' | 'nr' | 'fu' | 'chase' | 'appointment' | 'contract_sent' | 'pending_send' | 'nq' | 'mia' | 'qualified' | 'closed'
