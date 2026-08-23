@@ -100,7 +100,7 @@ export async function GET(req: NextRequest) {
     byFirm: {
       lhp:    all.filter(r => r.firm === 'lhp'    && !['cancelled','expired','merged'].includes(r.status)).length,
       fears:  all.filter(r => r.firm === 'fears'  && !['cancelled','expired','merged'].includes(r.status)).length,
-      jm: all.filter(r => r.firm === 'jacoby' && !['cancelled','expired','merged'].includes(r.status)).length,
+      jm: all.filter(r => r.firm === 'jm' && !['cancelled','expired','merged'].includes(r.status)).length,
     },
   }
 

@@ -57,6 +57,19 @@ const MicIcon   = () => <svg viewBox="0 0 20 20" fill="currentColor" className="
 const PhoneIcon = () => <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg>
 const PhoneOffIcon = () => <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><path fillRule="evenodd" d="M3.28 2.22a.75.75 0 00-1.06 1.06L6.25 7.3A10.19 10.19 0 002 16.5a.75.75 0 001.5 0 8.69 8.69 0 013.7-7.17l1.95 1.95A6.74 6.74 0 008 14.5a.75.75 0 001.5 0c0-1.23.33-2.38.91-3.37l1.56 1.56A5.23 5.23 0 0011 14.5a.75.75 0 001.5 0c0-.76.15-1.48.43-2.14l2.33 2.33A.75.75 0 0016.5 16H18a.75.75 0 00.75-.75v-1.5a.75.75 0 00-.75-.75h-.58L3.28 2.22zM18 5.5a.75.75 0 00-1.5 0 8.69 8.69 0 01-2.09 5.64l1.08 1.08A10.18 10.18 0 0018 5.5z" clipRule="evenodd" /></svg>
 
+// ── PST clock hook ───────────────────────────────────────────────────────────
+
+function usePSTClock() {
+  const fmt = () => new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: 'America/Los_Angeles' })
+  const [time, setTime] = useState(fmt)
+  useEffect(() => {
+    setTime(fmt())
+    const t = setInterval(() => setTime(fmt()), 1000)
+    return () => clearInterval(t)
+  }, [])
+  return time
+}
+
 // ── Live timer hook ────────────────────────────────────────────────────────────
 
 function useLiveElapsed(startedAt: string | null, running: boolean) {
@@ -323,6 +336,7 @@ interface RepCall {
 
 export default function LiveFloorPage() {
   const { deviceReady, joinConference, hangUp, callState } = useCall()
+  const pstClock = usePSTClock()
 
   const [reps,       setReps]       = useState<RepData[]>([])
   const [stats,      setStats]      = useState<FloorStats | null>(null)
@@ -398,10 +412,13 @@ export default function LiveFloorPage() {
       <div className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-950">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Live Floor</h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Live Floor</h1>
+              <span className="font-mono text-sm font-semibold text-gray-600 dark:text-gray-300 tabular-nums">{pstClock} <span className="text-[10px] font-medium text-gray-400">PT</span></span>
+            </div>
             <p className="text-xs text-gray-400">
               {mockMode ? <span className="text-amber-500 font-medium">Preview mode — mock data</span> : lastUpdate
-                ? `Updated ${lastUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit' })}`
+                ? `Updated ${lastUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: 'America/Los_Angeles' })} PT`
                 : 'Connecting…'}
               {!mockMode && ' · auto-refreshes every 5s'}
             </p>
@@ -559,7 +576,7 @@ export default function LiveFloorPage() {
                                   {repCalls.map(c => (
                                     <tr key={c.callSid} className="border-b border-gray-100 dark:border-gray-800/50">
                                       <td className="px-3 py-1.5 text-gray-500 tabular-nums">
-                                        {new Date(c.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                        {new Date(c.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })}
                                       </td>
                                       <td className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300 max-w-[140px] truncate">{c.contactName}</td>
                                       <td className="px-3 py-1.5 font-mono text-gray-500">{c.phone}</td>

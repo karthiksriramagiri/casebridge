@@ -833,7 +833,7 @@ export default function AgentPage() {
     setTodayDisps(prev => [{
       lead:   disposedLead?.name ?? '—',
       result: d.label,
-      time:   new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }),
+      time:   new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' }),
       color:  d.category === 'POSITIVE' ? 'text-green-600 dark:text-green-400'
             : d.category === 'CALLBACK' ? 'text-blue-600 dark:text-blue-400'
             : 'text-red-600 dark:text-red-400',

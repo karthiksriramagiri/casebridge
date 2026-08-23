@@ -179,14 +179,14 @@ function fmtTime(iso: string) {
   const d = new Date(iso)
   const now = new Date()
   const isToday = d.toDateString() === now.toDateString()
-  if (isToday) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+  if (isToday) return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })
   const isThisYear = d.getFullYear() === now.getFullYear()
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(!isThisYear ? { year: 'numeric' } : {}) })
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: 'America/Los_Angeles', ...(!isThisYear ? { year: 'numeric' } : {}) })
 }
 
 function fmtFull(iso: string) {
   return new Date(iso).toLocaleString('en-US', {
-    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+    month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles',
   })
 }
 

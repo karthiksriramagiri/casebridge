@@ -33,7 +33,7 @@ export default function FirmInvoicePcsPage() {
       </p>
       {loading && <p className="text-gray-500">Loading...</p>}
       {err && <p className="text-red-400">{err}</p>}
-      {!loading && !err && <PcTable pcs={pcs} />}
+      {!loading && !err && <PcTable pcs={pcs} firmSlug={slug} />}
     </div>
   )
 }

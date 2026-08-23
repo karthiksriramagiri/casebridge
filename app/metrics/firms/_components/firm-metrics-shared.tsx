@@ -378,7 +378,7 @@ const GROUP_PALETTE = [
   { border: '#ec4899', bg: 'rgba(236,72,153,0.08)', text: '#9D174D' },
 ]
 
-export function PcTable({ pcs }: { pcs: any[] }) {
+export function PcTable({ pcs, firmSlug }: { pcs: any[]; firmSlug?: string }) {
   const [localPcs, setLocalPcs] = useState<any[]>(pcs)
   const [linkMode, setLinkMode] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -391,6 +391,47 @@ export function PcTable({ pcs }: { pcs: any[] }) {
   const [busy, setBusy] = useState(false)
   const [confirmReplaceId, setConfirmReplaceId] = useState<string | null>(null)
   const [confirmMiaId, setConfirmMiaId] = useState<string | null>(null)
+
+  // ── Route Invoice state ──
+  const [routeMode, setRouteMode] = useState(false)
+  const [routeSelected, setRouteSelected] = useState<Set<string>>(new Set())
+  const [routeTarget, setRouteTarget] = useState('')
+  const [invoiceOptions, setInvoiceOptions] = useState<{ code: string; title?: string }[]>([])
+  const [routing, setRouting] = useState(false)
+  const [routeDone, setRouteDone] = useState(false)
+
+  useEffect(() => {
+    if (!routeMode || !firmSlug) return
+    fetch(`/api/metrics/firm-invoices?firm=${encodeURIComponent(firmSlug)}`)
+      .then(r => r.json())
+      .then(d => setInvoiceOptions((d.invoices ?? []).map((inv: any) => ({ code: inv.code, title: inv.title }))))
+      .catch(() => {})
+  }, [routeMode, firmSlug])
+
+  function toggleRouteSelect(id: string) {
+    setRouteSelected(prev => { const next = new Set(prev); next.has(id) ? next.delete(id) : next.add(id); return next })
+  }
+
+  function selectAllRoute() {
+    if (routeSelected.size === localPcs.length) setRouteSelected(new Set())
+    else setRouteSelected(new Set(localPcs.map(p => p.id)))
+  }
+
+  async function handleRoute() {
+    if (!routeTarget || routeSelected.size === 0) return
+    setRouting(true)
+    try {
+      await Promise.all([...routeSelected].map(id =>
+        fetch('/api/metrics/case', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id, invoice_code: routeTarget }) })
+      ))
+      const movedIds = routeSelected
+      setLocalPcs(prev => prev.map(p => movedIds.has(p.id) ? { ...p, invoiceCode: routeTarget } : p))
+      setRouteDone(true)
+      setTimeout(() => {
+        setRouteMode(false); setRouteSelected(new Set()); setRouteTarget(''); setRouteDone(false)
+      }, 1500)
+    } finally { setRouting(false) }
+  }
 
   useEffect(() => { setLocalPcs(pcs) }, [pcs])
 
@@ -510,7 +551,8 @@ export function PcTable({ pcs }: { pcs: any[] }) {
     setLocalPcs(prev => prev.map(p => p.id === id ? { ...p, accidentGroupId: null } : p))
   }
 
-  const cols = linkMode
+  const anySelectMode = linkMode || routeMode
+  const cols = anySelectMode
     ? ['', 'Client', 'Invoice', 'Status', 'Signed', 'Replacement Window', 'Creative', 'Closer', '2nd Rep', 'OT']
     : ['Client', 'Invoice', 'Status', 'Signed', 'Replacement Window', 'Value', 'Creative', 'Closer', '2nd Rep', 'OT', 'Accident', '']
 
@@ -545,7 +587,31 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                   className="text-xs px-2 py-1.5 transition" style={{ color: MUTED }}>Clear</button>
               </>
             )}
-            {linkMode ? (
+            {routeMode ? (
+              <>
+                <span className="text-xs" style={{ color: MUTED }}>{routeSelected.size} selected</span>
+                <button onClick={selectAllRoute}
+                  className="text-xs px-2 py-1.5 rounded-lg transition"
+                  style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>
+                  {routeSelected.size === localPcs.length ? 'Deselect all' : 'Select all'}
+                </button>
+                <select value={routeTarget} onChange={e => setRouteTarget(e.target.value)}
+                  className="text-xs rounded-lg px-2 py-1.5 focus:outline-none"
+                  style={{ background: '#F5F0E8', border: `1px solid ${BORDER}`, color: TEXT }}>
+                  <option value="">Target invoice…</option>
+                  {invoiceOptions.map(inv => (
+                    <option key={inv.code} value={inv.code}>{inv.code}{inv.title ? ` — ${inv.title}` : ''}</option>
+                  ))}
+                </select>
+                <button onClick={handleRoute} disabled={routeSelected.size === 0 || !routeTarget || routing}
+                  className="text-xs px-3 py-1.5 rounded-lg transition disabled:opacity-40"
+                  style={{ background: routeDone ? '#15803D' : ACCENT, color: '#FFF' }}>
+                  {routeDone ? `Routed ${routeSelected.size}!` : routing ? 'Routing...' : `Route ${routeSelected.size} PC${routeSelected.size !== 1 ? 's' : ''}`}
+                </button>
+                <button onClick={() => { setRouteMode(false); setRouteSelected(new Set()); setRouteTarget('') }}
+                  className="text-xs px-2 py-1.5 transition" style={{ color: MUTED }}>Cancel</button>
+              </>
+            ) : linkMode ? (
               <>
                 <span className="text-xs" style={{ color: MUTED }}>{selected.size} selected</span>
                 <button onClick={handleLink} disabled={selected.size < 2 || linking}
@@ -557,14 +623,26 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                   className="text-xs px-2 py-1.5 transition" style={{ color: MUTED }}>Cancel</button>
               </>
             ) : (
-              <button onClick={() => setLinkMode(true)}
-                className="text-xs px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
-                style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
-                </svg>
-                Link Accident
-              </button>
+              <>
+                {firmSlug && (
+                  <button onClick={() => setRouteMode(true)}
+                    className="text-xs px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                    style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>
+                    <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M7 16V4m0 0L3 8m4-4l4 4m6 0v12m0 0l4-4m-4 4l-4-4" />
+                    </svg>
+                    Route Invoice
+                  </button>
+                )}
+                <button onClick={() => setLinkMode(true)}
+                  className="text-xs px-3 py-1.5 rounded-lg transition flex items-center gap-1.5"
+                  style={{ background: '#F5F0E8', color: MUTED, border: `1px solid ${BORDER}` }}>
+                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1" />
+                  </svg>
+                  Link Accident
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -582,15 +660,21 @@ export function PcTable({ pcs }: { pcs: any[] }) {
               {localPcs.map((pc: any) => {
                 const isReplacement = (pc.caseStatus || '').toLowerCase() === 'replacement'
                 const isSelected = selected.has(pc.id)
+                const isRouteSelected = routeSelected.has(pc.id)
                 const color = pc.accidentGroupId ? groupColor(pc.accidentGroupId) : null
                 const groupNum = pc.accidentGroupId ? groupOrder.indexOf(pc.accidentGroupId) + 1 : null
-                const rowBg = isSelected ? '#EFF6FF' : isReplacement ? '#FFFBEB' : 'transparent'
+                const rowBg = isRouteSelected ? '#FFF7ED' : isSelected ? '#EFF6FF' : isReplacement ? '#FFFBEB' : 'transparent'
 
                 return (
                   <tr key={pc.id}
-                    onClick={linkMode ? () => toggleSelect(pc.id) : undefined}
-                    className={`transition ${linkMode ? 'cursor-pointer' : ''}`}
+                    onClick={routeMode ? () => toggleRouteSelect(pc.id) : linkMode ? () => toggleSelect(pc.id) : undefined}
+                    className={`transition ${anySelectMode ? 'cursor-pointer' : ''}`}
                     style={{ borderBottom: `1px solid ${BORDER}`, background: rowBg, borderLeft: color ? `3px solid ${color.border}` : '3px solid transparent' }}>
+                    {routeMode && (
+                      <td className="py-3 px-3 w-8">
+                        <input type="checkbox" readOnly checked={isRouteSelected} className="w-4 h-4 pointer-events-none" style={{ accentColor: ACCENT }} />
+                      </td>
+                    )}
                     {linkMode && (
                       <td className="py-3 px-3 w-8">
                         <input type="checkbox" readOnly checked={isSelected} className="w-4 h-4 pointer-events-none" style={{ accentColor: ACCENT }} />
@@ -632,7 +716,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                         </>
                       )}
                     </td>
-                    {!linkMode && (
+                    {!anySelectMode && (
                       <td className="py-3 px-4 text-xs whitespace-nowrap">
                         {pc.customCaseValue != null ? (
                           <span className="font-semibold" style={{ color: '#7E22CE' }}>${pc.customCaseValue.toLocaleString()}</span>
@@ -654,11 +738,11 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                           <button onClick={() => setEditingCloser(null)} className="text-[10px]" style={{ color: MUTED }}>×</button>
                         </div>
                       ) : (
-                        <button onClick={linkMode ? undefined : () => setEditingCloser({ id: pc.id, value: pc.workerName || pc.closer || '' })}
-                          className={`group flex items-center gap-1 transition ${!linkMode ? 'cursor-pointer' : 'cursor-default'}`}
+                        <button onClick={anySelectMode ? undefined : () => setEditingCloser({ id: pc.id, value: pc.workerName || pc.closer || '' })}
+                          className={`group flex items-center gap-1 transition ${!anySelectMode ? 'cursor-pointer' : 'cursor-default'}`}
                           style={{ color: MUTED }}>
                           <span>{pc.workerName || pc.closer || <span className="italic" style={{ color: '#D1D5DB' }}>Add closer</span>}</span>
-                          {!linkMode && (
+                          {!anySelectMode && (
                             <svg className="w-3 h-3 opacity-0 group-hover:opacity-60 transition shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-2.828 0L9 13z" />
                             </svg>
@@ -681,17 +765,17 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                           <button onClick={() => setEditingSecondCloser(null)} className="text-[10px]" style={{ color: MUTED }}>×</button>
                         </div>
                       ) : pc.secondWorkerName || pc.secondCloser ? (
-                        <button onClick={linkMode ? undefined : () => setEditingSecondCloser({ id: pc.id, value: pc.secondWorkerName || pc.secondCloser || '' })}
-                          className={`group flex items-center gap-1 transition ${!linkMode ? 'cursor-pointer' : 'cursor-default'}`}
+                        <button onClick={anySelectMode ? undefined : () => setEditingSecondCloser({ id: pc.id, value: pc.secondWorkerName || pc.secondCloser || '' })}
+                          className={`group flex items-center gap-1 transition ${!anySelectMode ? 'cursor-pointer' : 'cursor-default'}`}
                           style={{ color: MUTED }}>
                           <span>{pc.secondWorkerName || pc.secondCloser}</span>
-                          {!linkMode && (
+                          {!anySelectMode && (
                             <svg className="w-3 h-3 opacity-0 group-hover:opacity-60 transition shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 012.828 2.828L11.828 15.828a2 2 0 01-2.828 0L9 13z" />
                             </svg>
                           )}
                         </button>
-                      ) : !linkMode ? (
+                      ) : !anySelectMode ? (
                         <button onClick={() => setEditingSecondCloser({ id: pc.id, value: '' })}
                           className="flex items-center gap-0.5 transition"
                           style={{ color: '#D1D5DB' }}
@@ -706,20 +790,20 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                     {/* OT Close */}
                     <td className="py-3 px-4">
                       <button
-                        onClick={linkMode ? undefined : () => handleToggleOt(pc)}
-                        disabled={busy || linkMode}
+                        onClick={anySelectMode ? undefined : () => handleToggleOt(pc)}
+                        disabled={busy || anySelectMode}
                         title={pc.isOtClose ? 'OT Close ($50) — click to remove' : 'Mark as OT Close ($50 commission)'}
                         className="text-[10px] font-semibold px-2 py-0.5 rounded border transition disabled:opacity-40"
                         style={pc.isOtClose
                           ? { background: '#FFF7ED', color: '#C2410C', borderColor: '#FDBA74' }
                           : { color: '#D1D5DB', borderColor: '#E5E7EB' }}
-                        onMouseEnter={e => { if (!pc.isOtClose && !linkMode) { (e.currentTarget as HTMLElement).style.color = '#C2410C'; (e.currentTarget as HTMLElement).style.borderColor = '#FDBA74' } }}
-                        onMouseLeave={e => { if (!pc.isOtClose && !linkMode) { (e.currentTarget as HTMLElement).style.color = '#D1D5DB'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB' } }}
+                        onMouseEnter={e => { if (!pc.isOtClose && !anySelectMode) { (e.currentTarget as HTMLElement).style.color = '#C2410C'; (e.currentTarget as HTMLElement).style.borderColor = '#FDBA74' } }}
+                        onMouseLeave={e => { if (!pc.isOtClose && !anySelectMode) { (e.currentTarget as HTMLElement).style.color = '#D1D5DB'; (e.currentTarget as HTMLElement).style.borderColor = '#E5E7EB' } }}
                       >
                         OT
                       </button>
                     </td>
-                    {!linkMode && (
+                    {!anySelectMode && (
                       <td className="py-3 px-4">
                         {color && groupNum ? (
                           <div className="flex items-center gap-1.5">
@@ -734,7 +818,7 @@ export function PcTable({ pcs }: { pcs: any[] }) {
                         ) : <span className="text-xs" style={{ color: '#E5E7EB' }}>—</span>}
                       </td>
                     )}
-                    {!linkMode && (
+                    {!anySelectMode && (
                       <td className="py-3 px-3 text-right">
                         <div className="flex items-center gap-1 justify-end">
                           <CopyRowButton pc={pc} selected={copyPending.includes(pc.id)} onToggle={toggleCopySelect} />

@@ -41,6 +41,7 @@ export async function PATCH(request: NextRequest) {
   if ('second_closer_profile_id' in body) update.second_closer_profile_id = body.second_closer_profile_id || null
   if ('is_ot_close' in body) update.is_ot_close = body.is_ot_close === true
   if ('case_status' in body) update.case_status = body.case_status
+  if ('invoice_code' in body) update.invoice_code = body.invoice_code || null
 
   if (Object.keys(update).length === 0) return NextResponse.json({ error: 'no fields to update' }, { status: 400 })
 
