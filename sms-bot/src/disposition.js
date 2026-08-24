@@ -6,7 +6,7 @@ const ELIGIBLE_NR_TAGS = new Set(["lhp_nr", "lhp_s_nr", "eb_nr", "thl_nr", "jll_
 // Any tag outside this set means the contact has been assigned another status — do not send.
 const FIRM_ALLOWED_TAGS = {
   lhp_nr:    new Set(["lhp",    "lhp_nr"]),
-  lhp_s_nr:  new Set(["lhp_s", "lhp_s_nr"]),
+  lhp_s_nr:  new Set(["lhp", "lhp_s", "lhp_s_nr"]),
   eb_nr:     new Set(["eb",     "eb_nr"]),
   thl_nr:    new Set(["thl",    "thl_nr"]),
   jll_nr:    new Set(["jll",    "jll_nr"]),
