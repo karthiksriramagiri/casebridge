@@ -95,7 +95,8 @@ export async function POST(request: NextRequest) {
         if (latest) {
           taskId = latest.id
           title = latest.title || 'Untitled Task'
-          body = latest.body || latest.description || null
+          const rawBody = latest.body || latest.description || null
+          body = rawBody ? rawBody.replace(/<[^>]*>/g, '').trim() : null
           const dueDateRaw = latest.dueDate || latest.due_date
           if (dueDateRaw) dueDate = new Date(dueDateRaw)
         }

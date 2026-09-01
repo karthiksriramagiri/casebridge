@@ -64,6 +64,10 @@ function nowPlusTwoInTz(tz: string): string {
   return s.slice(0, 16)
 }
 
+function stripHtml(str: string): string {
+  return str.replace(/<[^>]*>/g, '').trim()
+}
+
 function fmtTime(iso: string, firm?: string | null) {
   const tz = firm ? (FIRM_TZ[firm] ?? 'America/New_York') : 'America/New_York'
   return new Date(iso).toLocaleString('en-US', {
@@ -349,7 +353,7 @@ export default function CallbacksPage() {
                         <span className={`text-xs font-medium ${isPast ? 'text-red-500' : 'text-cyan-600 dark:text-cyan-400'}`}>
                           {fmtRelative(cb.callback_at)}
                         </span>
-                        <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'PT') : 'PT'}</p>
+                        <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</p>
                       </div>
                     </td>
                     <td className="px-5 py-3">
@@ -358,7 +362,7 @@ export default function CallbacksPage() {
                       </span>
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-500 max-w-[200px] truncate">
-                      {cb.callback_context || '—'}
+                      {cb.callback_context ? stripHtml(cb.callback_context) : '—'}
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-500">{cb.owner_rep || '—'}</td>
                     <td className="px-5 py-3">
@@ -411,7 +415,7 @@ export default function CallbacksPage() {
                   <td className="px-5 py-3">
                     <span className="text-[10px] font-semibold uppercase text-gray-400">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'PT') : 'PT'}</td>
+                  <td className="px-5 py-3 text-xs text-gray-500">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${SOURCE_PILL[cb.source] ?? SOURCE_PILL.manual}`}>
                       {SOURCE_LABEL[cb.source] ?? cb.source}
