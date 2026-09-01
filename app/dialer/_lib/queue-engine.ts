@@ -388,14 +388,12 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
 
   // Query with DB-side ORDER BY — matches admin queue display exactly
-  // due_from <= now: keeps leads paused until their block opens (e.g. LHP at 8:30 AM PST)
-  // No due_from in sort: once both blocks are active, firms interleave by priority
+  // Queue is always active — no due_from gate
   // stage_changed_at DESC: within same priority, newest NR leads come first
   let q = db.from('dialer_attempts')
     .select('*')
     .eq('status', 'pending')
     .eq('plan_date', today)
-    .lte('due_from', now.toISOString())
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
@@ -519,13 +517,12 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
 
   // Query with DB-side ORDER BY — matches admin queue display exactly
-  // due_from <= now: keeps leads paused until their block opens (e.g. LHP at 8:30 AM PST)
+  // Queue is always active — no due_from gate
   // stage_changed_at DESC: within same priority, newest NR leads come first
   let pendingQ = db.from('dialer_attempts')
     .select('*')
     .eq('status', 'pending')
     .eq('plan_date', today)
-    .lte('due_from', now.toISOString())
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
