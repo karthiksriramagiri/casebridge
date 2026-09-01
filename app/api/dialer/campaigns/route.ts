@@ -6,6 +6,7 @@ const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const PIPELINES = [
   { id: 'yMqNixSnChC5lcGQXA1g', firm: 'Larry H. Parker', firmSlug: 'lhp' },
   { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'Fears Law',       firmSlug: 'fears' },
+  { id: '0tBzhg0eGSNKL870y3yV', firm: 'J&M',             firmSlug: 'jm' },
 ]
 
 function ghlHeaders() {

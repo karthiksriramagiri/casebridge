@@ -3,9 +3,14 @@ import { resetDay, syncGHLToQueue } from '@/app/dialer/_lib/queue-engine'
 
 export const maxDuration = 120
 
-// POST /api/dialer/queue/reset
-// Cancels all of today's non-completed attempts, then re-syncs from GHL.
-// Requires an explicit confirm from the UI (confirm dialog) — no accidental resets.
+// GET /api/dialer/queue/reset — called by Vercel Cron at 4 AM PST daily
+export async function GET() {
+  await resetDay()
+  const result = await syncGHLToQueue()
+  return NextResponse.json({ ok: true, ...result })
+}
+
+// POST /api/dialer/queue/reset — manual reset from admin UI
 export async function POST() {
   await resetDay()
   const result = await syncGHLToQueue()

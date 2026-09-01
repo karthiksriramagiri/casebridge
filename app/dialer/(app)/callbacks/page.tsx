@@ -2,21 +2,24 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../_context/auth'
+import { useCall } from '../../_context/call'
+import type { Lead } from '../../_types'
 
 interface Callback {
   id: string
   contact_id: string
   contact_name: string
   phone: string
-  firm: string
-  stage_name: string
-  callback_at: string | null
+  firm: string | null
+  stage_name: string | null
+  callback_at: string
   callback_context: string | null
+  source: string
   owner_rep: string | null
   status: string
   completed_at: string | null
+  completed_by: string | null
   disposition: string | null
-  plan_date: string
   created_at: string
 }
 
@@ -31,7 +34,13 @@ const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&
 const FIRM_TZ: Record<string, string> = { lhp: 'America/Los_Angeles', fears: 'America/Chicago', jm: 'America/Los_Angeles' }
 const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', fears: 'CT', jm: 'PT' }
 
-// Convert a datetime-local value (YYYY-MM-DDTHH:MM) treated as wall-clock in `tz` to a UTC ISO string
+const SOURCE_LABEL: Record<string, string> = { ghl: 'GHL', disposition: 'Dialer', manual: 'Manual' }
+const SOURCE_PILL: Record<string, string> = {
+  ghl:         'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400',
+  disposition: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-400',
+  manual:      'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+}
+
 function wallClockToUTC(localStr: string, tz: string): string {
   const probe = new Date(localStr + ':00Z')
   const fmt = new Intl.DateTimeFormat('en-US', {
@@ -45,7 +54,6 @@ function wallClockToUTC(localStr: string, tz: string): string {
   return new Date(probe.getTime() + offsetMs).toISOString()
 }
 
-// Get current wall-clock time + 2h in a timezone as YYYY-MM-DDTHH:MM
 function nowPlusTwoInTz(tz: string): string {
   const future = new Date(Date.now() + 2 * 3600 * 1000)
   const fmt = new Intl.DateTimeFormat('en-CA', {
@@ -56,7 +64,7 @@ function nowPlusTwoInTz(tz: string): string {
   return s.slice(0, 16)
 }
 
-function fmtTime(iso: string, firm?: string) {
+function fmtTime(iso: string, firm?: string | null) {
   const tz = firm ? (FIRM_TZ[firm] ?? 'America/New_York') : 'America/New_York'
   return new Date(iso).toLocaleString('en-US', {
     timeZone: tz,
@@ -77,6 +85,7 @@ function fmtRelative(iso: string) {
 
 export default function CallbacksPage() {
   const { identity } = useAuth()
+  const { deviceReady, placeCall, callState } = useCall()
   const [callbacks, setCallbacks] = useState<Callback[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -89,7 +98,7 @@ export default function CallbacksPage() {
   const [cbTime, setCbTime] = useState(() => nowPlusTwoInTz('America/Los_Angeles'))
   const [cbNotes, setCbNotes] = useState('')
   const [submitting, setSubmitting] = useState(false)
-  const searchTimeout = useRef<NodeJS.Timeout>()
+  const searchTimeout = useRef<NodeJS.Timeout>(null)
 
   async function fetchCallbacks() {
     const res = await fetch('/api/dialer/callbacks')
@@ -100,10 +109,16 @@ export default function CallbacksPage() {
 
   useEffect(() => { fetchCallbacks() }, [])
 
+  // Auto-refresh every 30s
+  useEffect(() => {
+    const t = setInterval(fetchCallbacks, 30_000)
+    return () => clearInterval(t)
+  }, [])
+
   // Debounced contact search
   useEffect(() => {
     if (!search.trim() || search.length < 2) { setResults([]); return }
-    clearTimeout(searchTimeout.current)
+    if (searchTimeout.current) clearTimeout(searchTimeout.current)
     searchTimeout.current = setTimeout(async () => {
       setSearching(true)
       const res = await fetch(`/api/dialer/contacts/search?q=${encodeURIComponent(search.trim())}`)
@@ -111,7 +126,7 @@ export default function CallbacksPage() {
       setResults(data.contacts ?? [])
       setSearching(false)
     }, 300)
-    return () => clearTimeout(searchTimeout.current)
+    return () => { if (searchTimeout.current) clearTimeout(searchTimeout.current) }
   }, [search])
 
   async function submitCallback() {
@@ -138,8 +153,47 @@ export default function CallbacksPage() {
     fetchCallbacks()
   }
 
+  function handleCall(cb: Callback) {
+    if (!deviceReady || callState !== 'idle' || !cb.phone) return
+    const lead: Lead = {
+      id:           cb.id,
+      name:         cb.contact_name,
+      phone:        cb.phone,
+      email:        '',
+      company:      '',
+      source:       cb.firm ?? '',
+      tags:         [],
+      lastActivity: new Date().toISOString(),
+      contactId:    cb.contact_id,
+    }
+    placeCall(lead, {
+      firm:     cb.firm ?? undefined,
+      campaign: cb.stage_name ?? 'Callback',
+    })
+    // Mark as completed
+    fetch('/api/dialer/callbacks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        id: cb.id,
+        status: 'completed',
+        completed_by: identity,
+        disposition: 'Called',
+      }),
+    }).then(() => fetchCallbacks()).catch(console.error)
+  }
+
+  async function cancelCallback(id: string) {
+    await fetch('/api/dialer/callbacks', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, status: 'cancelled', completed_by: identity }),
+    })
+    fetchCallbacks()
+  }
+
   const now = Date.now()
-  const pending = callbacks.filter(c => c.status === 'pending' || c.status === 'buffered' || c.status === 'leased')
+  const pending = callbacks.filter(c => c.status === 'pending')
   const completed = callbacks.filter(c => c.status === 'completed' || c.status === 'cancelled')
 
   return (
@@ -147,7 +201,7 @@ export default function CallbacksPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-white">Callbacks</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{pending.length} upcoming · {completed.length} completed today</p>
+          <p className="text-sm text-gray-500 mt-0.5">{pending.length} upcoming · {completed.length} completed</p>
         </div>
         <button
           onClick={() => setShowForm(!showForm)}
@@ -275,45 +329,57 @@ export default function CallbacksPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-50 dark:border-gray-800">
-                {['Lead', 'Phone', 'Firm', 'Stage', 'Scheduled', 'Notes', 'Assigned To', 'Status'].map(h => (
+                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Notes', 'Assigned To', ''].map(h => (
                   <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
               {pending.map(cb => {
-                const isPast = cb.callback_at && new Date(cb.callback_at).getTime() < now
+                const isPast = new Date(cb.callback_at).getTime() < now
                 return (
                   <tr key={cb.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
                     <td className="px-5 py-3 font-medium text-gray-900 dark:text-white">{cb.contact_name}</td>
                     <td className="px-5 py-3 text-gray-500 font-mono text-xs">{cb.phone}</td>
                     <td className="px-5 py-3">
-                      <span className="text-[10px] font-semibold uppercase text-gray-400">{FIRM_LABEL[cb.firm] ?? cb.firm}</span>
+                      <span className="text-[10px] font-semibold uppercase text-gray-400">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
                     </td>
-                    <td className="px-5 py-3 text-gray-500 text-xs">{cb.stage_name}</td>
                     <td className="px-5 py-3">
-                      {cb.callback_at && (
-                        <div>
-                          <span className={`text-xs font-medium ${isPast ? 'text-red-500' : 'text-cyan-600 dark:text-cyan-400'}`}>
-                            {fmtRelative(cb.callback_at)}
-                          </span>
-                          <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at, cb.firm)} {FIRM_TZ_LABEL[cb.firm] ?? 'PT'}</p>
-                        </div>
-                      )}
+                      <div>
+                        <span className={`text-xs font-medium ${isPast ? 'text-red-500' : 'text-cyan-600 dark:text-cyan-400'}`}>
+                          {fmtRelative(cb.callback_at)}
+                        </span>
+                        <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'PT') : 'PT'}</p>
+                      </div>
+                    </td>
+                    <td className="px-5 py-3">
+                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${SOURCE_PILL[cb.source] ?? SOURCE_PILL.manual}`}>
+                        {SOURCE_LABEL[cb.source] ?? cb.source}
+                      </span>
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-500 max-w-[200px] truncate">
                       {cb.callback_context || '—'}
                     </td>
                     <td className="px-5 py-3 text-xs text-gray-500">{cb.owner_rep || '—'}</td>
                     <td className="px-5 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        cb.status === 'leased' ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
-                        : cb.status === 'buffered' ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'
-                        : isPast ? 'bg-red-100 text-red-700 dark:bg-red-950/50 dark:text-red-300'
-                        : 'bg-gray-100 text-gray-500'
-                      }`}>
-                        {cb.status === 'leased' ? 'On Call' : cb.status === 'buffered' ? 'Buffered' : isPast ? 'Overdue' : 'Scheduled'}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          onClick={() => handleCall(cb)}
+                          disabled={!deviceReady || callState !== 'idle'}
+                          className="flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
+                            <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
+                          </svg>
+                          Call
+                        </button>
+                        <button
+                          onClick={() => cancelCallback(cb.id)}
+                          className="rounded-lg border border-gray-200 px-2 py-1.5 text-[11px] text-gray-400 hover:border-red-300 hover:text-red-500 dark:border-gray-700 dark:hover:border-red-800 dark:hover:text-red-400"
+                        >
+                          Cancel
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 )
@@ -327,12 +393,12 @@ export default function CallbacksPage() {
       {completed.length > 0 && (
         <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
           <div className="border-b border-gray-100 px-5 py-3 dark:border-gray-800">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Completed Today</h3>
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Completed</h3>
           </div>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-50 dark:border-gray-800">
-                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Completed', 'Disposition', 'Rep'].map(h => (
+                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Completed', 'Result', 'Rep'].map(h => (
                   <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                 ))}
               </tr>
@@ -343,21 +409,23 @@ export default function CallbacksPage() {
                   <td className="px-5 py-3 font-medium text-gray-900 dark:text-white">{cb.contact_name}</td>
                   <td className="px-5 py-3 text-gray-500 font-mono text-xs">{cb.phone}</td>
                   <td className="px-5 py-3">
-                    <span className="text-[10px] font-semibold uppercase text-gray-400">{FIRM_LABEL[cb.firm] ?? cb.firm}</span>
+                    <span className="text-[10px] font-semibold uppercase text-gray-400">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.callback_at ? `${fmtTime(cb.callback_at, cb.firm)} ${FIRM_TZ_LABEL[cb.firm] ?? 'PT'}` : '—'}</td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_at ? `${fmtTime(cb.completed_at, cb.firm)} ${FIRM_TZ_LABEL[cb.firm] ?? 'PT'}` : '—'}</td>
+                  <td className="px-5 py-3 text-xs text-gray-500">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'PT') : 'PT'}</td>
                   <td className="px-5 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      cb.disposition === 'Qualified' ? 'bg-green-100 text-green-700'
-                      : cb.disposition === 'Signed' ? 'bg-emerald-100 text-emerald-700'
-                      : cb.status === 'cancelled' ? 'bg-gray-100 text-gray-500'
-                      : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {cb.status === 'cancelled' ? 'Cancelled' : cb.disposition ?? '—'}
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${SOURCE_PILL[cb.source] ?? SOURCE_PILL.manual}`}>
+                      {SOURCE_LABEL[cb.source] ?? cb.source}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.owner_rep || '—'}</td>
+                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_at ? fmtTime(cb.completed_at, cb.firm) : '—'}</td>
+                  <td className="px-5 py-3">
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      cb.status === 'cancelled' ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                    }`}>
+                      {cb.status === 'cancelled' ? 'Cancelled' : cb.disposition ?? 'Called'}
+                    </span>
+                  </td>
+                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_by || cb.owner_rep || '—'}</td>
                 </tr>
               ))}
             </tbody>

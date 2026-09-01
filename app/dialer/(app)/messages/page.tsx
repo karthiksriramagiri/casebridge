@@ -212,6 +212,7 @@ const DISP_PILL_COLORS: Record<string, string> = {
 const FIRM_PILL: Record<string, string> = {
   'Larry H. Parker': 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
   'Fears Law':       'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
+  'J&M':             'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────

@@ -396,7 +396,6 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     .eq('status', 'pending')
     .eq('plan_date', today)
     .lte('due_from', now.toISOString())
-    .gt('day_ends_at', now.toISOString())
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
@@ -527,7 +526,6 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     .eq('status', 'pending')
     .eq('plan_date', today)
     .lte('due_from', now.toISOString())
-    .gt('day_ends_at', now.toISOString())
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
@@ -846,7 +844,7 @@ export async function applyDisposition(
     }
 
     case 'Callback': {
-      // Cancel remaining attempts today, create a callback attempt
+      // Cancel remaining attempts today
       await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
 
       const cbAt = opts.callbackAt ? new Date(opts.callbackAt) : new Date(now.getTime() + 4 * 3600 * 1000)
@@ -856,28 +854,17 @@ export async function applyDisposition(
         .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
       const callbackOwner = ls?.owner_rep ?? opts.repIdentity
 
-      await db.from('dialer_attempts').insert({
-        contact_id:         attempt.contact_id,
-        contact_name:       attempt.contact_name,
-        phone:              attempt.phone,
-        firm:               attempt.firm,
-        pipeline_id:        attempt.pipeline_id,
-        stage_id:           attempt.stage_id,
-        stage_name:         attempt.stage_name,
-        ghl_opportunity_id: attempt.ghl_opportunity_id,
-        plan_date:          today,
-        attempt_number:     99,  // sentinel for callback
-        attempts_total:     attempt.attempts_total,
-        block:              'morning',     // placeholder
-        lead_timezone:      attempt.lead_timezone,
-        due_from:           cbAt.toISOString(),
-        due_until:          cbAt.toISOString(),
-        day_ends_at:        attempt.day_ends_at,  // same day
-        priority:           500,   // callbacks are top priority
-        is_callback:        true,
-        callback_at:        cbAt.toISOString(),
-        callback_context:   opts.callbackContext ?? null,
-        owner_rep:          callbackOwner,
+      // Add to dialer_callbacks (rep manually calls from Callbacks page)
+      await db.from('dialer_callbacks').insert({
+        contact_id:       attempt.contact_id,
+        contact_name:     attempt.contact_name,
+        phone:            attempt.phone,
+        firm:             attempt.firm,
+        stage_name:       attempt.stage_name,
+        callback_at:      cbAt.toISOString(),
+        callback_context: opts.callbackContext ?? null,
+        source:           'disposition',
+        owner_rep:        callbackOwner,
       })
       break
     }

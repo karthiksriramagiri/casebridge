@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
+import { useCall } from '../../_context/call'
+import type { Lead as CallLead } from '../../_types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -208,11 +210,15 @@ function LeadDetail({
   firmSlug,
   stageName,
   onClose,
+  onCall,
+  calling,
 }: {
   lead: Lead
   firmSlug: string
   stageName: string
   onClose: () => void
+  onCall: () => void
+  calling: boolean
 }) {
   const [contact, setContact]       = useState<ContactDetail | null>(null)
   const [calls, setCalls]           = useState<CallRecord[]>([])
@@ -258,7 +264,7 @@ function LeadDetail({
               {contact?.name ?? lead.name}
             </h2>
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${FIRM_PILL[firmSlug] ?? 'bg-gray-100 text-gray-600'}`}>
-              {firmSlug === 'lhp' ? 'Larry H. Parker' : 'Fears Law'}
+              {firmSlug === 'lhp' ? 'Larry H. Parker' : firmSlug === 'jm' ? 'J&M' : 'Fears Law'}
             </span>
             <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
               {stageName}
@@ -276,9 +282,19 @@ function LeadDetail({
             </div>
           )}
         </div>
-        <button onClick={onClose} className="ml-3 shrink-0 rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200">
-          <XIcon />
-        </button>
+        <div className="ml-3 flex items-center gap-1.5 shrink-0">
+          <button
+            onClick={onCall}
+            disabled={calling || !lead.phone}
+            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <PhoneIcon />
+            {calling ? 'Calling…' : 'Call'}
+          </button>
+          <button onClick={onClose} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+            <XIcon />
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto">
@@ -454,9 +470,10 @@ function StageSection({
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function LeadsPage() {
+  const { deviceReady, placeCall, callState } = useCall()
   const [campaigns, setCampaigns]       = useState<Campaign[]>([])
   const [campsLoading, setCampsLoading] = useState(true)
-  const [openFirms, setOpenFirms]       = useState<Set<string>>(new Set(['lhp', 'fears']))
+  const [openFirms, setOpenFirms]       = useState<Set<string>>(new Set(['lhp', 'fears', 'jm']))
   const [selectedStage, setSelectedStage] = useState<Campaign | null>(null)
   const [leads, setLeads]               = useState<Lead[]>([])
   const [leadsLoading, setLeadsLoading] = useState(false)
@@ -701,6 +718,26 @@ export default function LeadsPage() {
             firmSlug={selectedStage.firmSlug}
             stageName={selectedStage.stageName}
             onClose={() => setSelectedLead(null)}
+            calling={callState !== 'idle'}
+            onCall={() => {
+              if (!deviceReady || callState !== 'idle' || !selectedLead.phone) return
+              const callLead: CallLead = {
+                id:           selectedLead.id,
+                name:         selectedLead.name,
+                phone:        selectedLead.phone,
+                email:        selectedLead.email,
+                company:      selectedLead.company,
+                source:       selectedStage.firmSlug,
+                tags:         selectedLead.tags,
+                lastActivity: selectedLead.lastActivity,
+                contactId:    selectedLead.contactId,
+              }
+              placeCall(callLead, {
+                firm:       selectedStage.firmSlug,
+                campaign:   selectedStage.stageName,
+                campaignId: selectedStage.stageId,
+              })
+            }}
           />
         </div>
       )}

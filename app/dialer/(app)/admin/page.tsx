@@ -330,6 +330,7 @@ interface RepCall {
   answeredBy:  string | null
   connected:   boolean
   disposition: string | null
+  endedBy:     string | null
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
@@ -567,7 +568,7 @@ export default function LiveFloorPage() {
                               <table className="w-full text-xs">
                                 <thead>
                                   <tr className="border-b border-gray-200 dark:border-gray-700">
-                                    {['Time', 'Contact', 'Phone', 'Firm', 'Status', 'Duration', 'Connected', 'Disposition'].map(h => (
+                                    {['Time', 'Contact', 'Phone', 'Firm', 'Status', 'Duration', 'Hung Up', 'Connected', 'Disposition'].map(h => (
                                       <th key={h} className="px-3 py-1.5 text-left text-[9px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                                     ))}
                                   </tr>
@@ -592,6 +593,15 @@ export default function LiveFloorPage() {
                                         </span>
                                       </td>
                                       <td className="px-3 py-1.5 tabular-nums text-gray-700 dark:text-gray-300">{fmtDuration(c.duration)}</td>
+                                      <td className="px-3 py-1.5">
+                                        {c.endedBy === 'contact' ? (
+                                          <span className="text-amber-600 dark:text-amber-400 font-medium text-[10px]">PC @ {fmtDuration(c.duration)}</span>
+                                        ) : c.endedBy === 'rep' ? (
+                                          <span className="text-gray-500 dark:text-gray-400 text-[10px]">Rep @ {fmtDuration(c.duration)}</span>
+                                        ) : (
+                                          <span className="text-gray-400 text-[10px]">—</span>
+                                        )}
+                                      </td>
                                       <td className="px-3 py-1.5">
                                         {c.connected ? (
                                           <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-semibold">

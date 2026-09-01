@@ -18,10 +18,13 @@ export async function GET(req: NextRequest) {
   if (!rep) return NextResponse.json({ calls: [] })
 
   const db    = supabaseAdmin()
-  const today = new Date(); today.setHours(0, 0, 0, 0)
+  // "Today" = 12:00 AM – 11:59 PM Eastern (handles EST/EDT automatically)
+  const etDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const isDST  = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }).includes('EDT')
+  const today  = new Date(`${etDate}T00:00:00${isDST ? '-04:00' : '-05:00'}`)
 
   const { data: callsData } = await db.from('dialer_calls')
-    .select('call_sid, contact_id, contact_name, phone, call_status, duration, started_at, ended_at, firm, stage_name, answered_by, disposition')
+    .select('call_sid, contact_id, contact_name, phone, call_status, duration, started_at, ended_at, firm, stage_name, answered_by, disposition, ended_by')
     .eq('rep_identity', rep)
     .gte('started_at', today.toISOString())
     .order('started_at', { ascending: false })
@@ -39,6 +42,7 @@ export async function GET(req: NextRequest) {
     answeredBy:  c.answered_by,
     connected:   isConnected(c),
     disposition: c.disposition ?? null,
+    endedBy:     c.ended_by ?? null,
   }))
 
   return NextResponse.json({ calls })

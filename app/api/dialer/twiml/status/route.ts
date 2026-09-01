@@ -59,5 +59,13 @@ export async function POST(req: NextRequest) {
     ...(answeredBy ? { answered_by: answeredBy } : {}),
   }, { onConflict: 'call_sid' })
 
+  // If call completed and ended_by wasn't already set by rep hangup → contact hung up
+  if (callStatus === 'completed') {
+    await db.from('dialer_calls')
+      .update({ ended_by: 'contact' })
+      .eq('call_sid', callSid)
+      .is('ended_by', null)
+  }
+
   return new NextResponse(null, { status: 204 })
 }

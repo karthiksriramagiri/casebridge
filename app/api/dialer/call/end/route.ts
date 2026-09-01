@@ -68,6 +68,7 @@ export async function POST(req: NextRequest) {
       call_status: 'completed',
       ...(!alreadyHasDuration ? { duration: 0 } : {}),
       ended_at: new Date().toISOString(),
+      ended_by: 'rep',
     }).eq('call_sid', session.customer_call_sid)
   }
 

@@ -21,7 +21,10 @@ export async function GET() {
     .lt('created_at', staleThreshold)
 
   // Fetch ringing calls + today's inbound history
-  const today = new Date(); today.setHours(0, 0, 0, 0)
+  // "Today" = 12:00 AM – 11:59 PM Eastern (handles EST/EDT automatically)
+  const etDate = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+  const isDST  = new Date().toLocaleTimeString('en-US', { timeZone: 'America/New_York', timeZoneName: 'short' }).includes('EDT')
+  const today  = new Date(`${etDate}T00:00:00${isDST ? '-04:00' : '-05:00'}`)
 
   const [ringingRes, historyRes] = await Promise.all([
     db.from('dialer_inbound_queue')
