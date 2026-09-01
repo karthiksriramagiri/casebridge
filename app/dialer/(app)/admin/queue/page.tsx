@@ -323,6 +323,10 @@ export default function QueueAdminPage() {
       if (a.is_callback !== b.is_callback) return a.is_callback ? -1 : 1
       if (a.is_carryover !== b.is_carryover) return a.is_carryover ? -1 : 1
       if (a.priority !== b.priority) return b.priority - a.priority
+      // Within same priority, newest NR leads first (most recent stage change)
+      const scA = (a as any).stage_changed_at ?? ''
+      const scB = (b as any).stage_changed_at ?? ''
+      if (scA !== scB) return scB < scA ? -1 : 1
       if (a.attempt_number !== b.attempt_number) return a.attempt_number - b.attempt_number
       if (a.created_at !== b.created_at) return (a.created_at ?? '') < (b.created_at ?? '') ? -1 : 1
       return a.id < b.id ? -1 : 1

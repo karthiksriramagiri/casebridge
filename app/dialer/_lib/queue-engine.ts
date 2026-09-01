@@ -71,6 +71,7 @@ export interface Attempt {
   callback_at:        string | null
   owner_rep:          string | null
   lang:               string
+  stage_changed_at:   string | null
   created_at:         string
   updated_at:         string
 }
@@ -90,6 +91,10 @@ export async function syncGHLToQueue(): Promise<{
   const db      = supabaseAdmin()
   const headers = ghlHeaders()
   const today   = todayEastern()  // YYYY-MM-DD
+
+  // ── Check if stage_changed_at column exists (safe migration gate) ────────
+  const { error: colCheck } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
+  const hasStageChangedAt = !colCheck
 
   // ── Batch-load reference data upfront (no per-lead queries) ──────────────
   const [rulesRes, stateRes, existingAttemptsRes] = await Promise.all([
@@ -239,7 +244,7 @@ export async function syncGHLToQueue(): Promise<{
             continue
           }
 
-          toInsert.push({
+          const row: Record<string, any> = {
             contact_id:         opp.contactId,
             contact_name:       opp.name ?? contact.name ?? 'Unknown',
             phone,
@@ -259,7 +264,11 @@ export async function syncGHLToQueue(): Promise<{
             priority,
             owner_rep:          ownerRep,
             lang:               pipeline.lang,
-          })
+          }
+          if (hasStageChangedAt) {
+            row.stage_changed_at = opp.lastStageChangeAt ?? opp.updatedAt ?? null
+          }
+          toInsert.push(row)
           created++
         }
       }
@@ -381,7 +390,8 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   // Query with DB-side ORDER BY — matches admin queue display exactly
   // due_from <= now: keeps leads paused until their block opens (e.g. LHP at 8:30 AM PST)
   // No due_from in sort: once both blocks are active, firms interleave by priority
-  const { data: pending } = await db.from('dialer_attempts')
+  // stage_changed_at DESC: within same priority, newest NR leads come first
+  let q = db.from('dialer_attempts')
     .select('*')
     .eq('status', 'pending')
     .eq('plan_date', today)
@@ -390,6 +400,12 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
+  // Check column existence for safe migration rollout
+  const { error: colErr } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
+  if (!colErr) {
+    q = q.order('stage_changed_at', { ascending: false, nullsFirst: false })
+  }
+  const { data: pending } = await q
     .order('attempt_number', { ascending: true })
     .order('created_at',     { ascending: true })
     .order('id',             { ascending: true })
@@ -505,7 +521,8 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
 
   // Query with DB-side ORDER BY — matches admin queue display exactly
   // due_from <= now: keeps leads paused until their block opens (e.g. LHP at 8:30 AM PST)
-  const { data: pending } = await db.from('dialer_attempts')
+  // stage_changed_at DESC: within same priority, newest NR leads come first
+  let pendingQ = db.from('dialer_attempts')
     .select('*')
     .eq('status', 'pending')
     .eq('plan_date', today)
@@ -514,6 +531,11 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
+  const { error: colErr2 } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
+  if (!colErr2) {
+    pendingQ = pendingQ.order('stage_changed_at', { ascending: false, nullsFirst: false })
+  }
+  const { data: pending } = await pendingQ
     .order('attempt_number', { ascending: true })
     .order('created_at',     { ascending: true })
     .order('id',             { ascending: true })
