@@ -622,7 +622,7 @@ export default function AgentPage() {
   const {
     deviceReady, deviceError, callState, setCallState,
     currentLead, setCurrentLead, callDuration,
-    muted, toggleMute, hangUp, sendDtmf, callerIdUsed,
+    muted, toggleMute, hangUp, sendDtmf, callerIdUsed, customerCallSid,
     placeCall: ctxPlaceCall,
     identity, setIdentity,
   } = useCall()
@@ -949,6 +949,19 @@ export default function AgentPage() {
             firm: firmLabel,
             stage,
             duration: callDuration,
+          }),
+        }).catch(console.error)
+      }
+      // Persist checklist to DB
+      if (customerCallSid && currentLead?.contactId) {
+        fetch('/api/dialer/call-checklist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            callSid: customerCallSid,
+            contactId: currentLead.contactId,
+            repIdentity: authIdentity || identity,
+            checklist: next,
           }),
         }).catch(console.error)
       }

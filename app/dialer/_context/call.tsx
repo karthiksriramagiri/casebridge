@@ -11,6 +11,7 @@ interface CallContextValue {
   callDuration:   number
   muted:          boolean
   callerIdUsed:   string | null
+  customerCallSid: string | null
   identity:       string
   setIdentity:    (id: string) => void
   placeCall:      (lead: Lead, meta?: { firm?: string; campaign?: string; campaignId?: string; queueId?: string }) => Promise<void>
@@ -32,7 +33,8 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
   const [currentLead,  setCurrentLead]  = useState<Lead | null>(null)
   const [callDuration, setCallDuration] = useState(0)
   const [muted,        setMuted]        = useState(false)
-  const [callerIdUsed, setCallerIdUsed] = useState<string | null>(null)
+  const [callerIdUsed,   setCallerIdUsed]   = useState<string | null>(null)
+  const [customerCallSid, setCustomerCallSid] = useState<string | null>(null)
   const [identity,     setIdentity_]    = useState('agent')
   function setIdentity(id: string) { setIdentity_(id); identityRef.current = id }
 
@@ -108,6 +110,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
     setCurrentLead(lead)
     setCallState('ringing')
     setCallerIdUsed(null)
+    setCustomerCallSid(null)
 
     try {
       // Create conference and dial customer
@@ -134,6 +137,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
       const data = await res.json()
       if (!data.confName) throw new Error(data.error || 'Failed to create conference')
       if (data.callerIdUsed) setCallerIdUsed(data.callerIdUsed)
+      if (data.customerCallSid) setCustomerCallSid(data.customerCallSid)
 
       // Rep joins the conference
       const call = await deviceRef.current.connect({
@@ -216,7 +220,7 @@ export function CallProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <CallContext.Provider value={{
-      deviceReady, deviceError, callState, currentLead, callDuration, muted, callerIdUsed,
+      deviceReady, deviceError, callState, currentLead, callDuration, muted, callerIdUsed, customerCallSid,
       identity, setIdentity, placeCall, answerInbound, joinConference, hangUp, toggleMute, sendDtmf,
       setCurrentLead, setCallState,
     }}>

@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 
 const GHL_BASE = 'https://services.leadconnectorhq.com'
 const DOCUSEAL_API = 'https://api.docuseal.com'
 const DOCUSEAL_TOKEN = 'zvu1bLa36Qt21BMw7e3RS7ELUxEmQGTVmii5TCcSzJb'
+
+function supabaseAdmin() {
+  return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
+}
 
 // Template IDs per firm
 const TEMPLATE_IDS: Record<string, number> = {
@@ -34,19 +39,31 @@ export async function POST(req: NextRequest) {
     existingTags,
     passengers,
     skipTag,
+    templateId: explicitTemplateId,
+    templateName,
+    sentBy,
   } = await req.json()
 
-  if (!fullName || !firm) {
-    return NextResponse.json({ error: 'fullName and firm are required' }, { status: 400 })
+  if (!fullName) {
+    return NextResponse.json({ error: 'fullName is required' }, { status: 400 })
   }
 
-  const firmKey = firm.toLowerCase().includes('fear') ? 'fears'
-    : firm.toLowerCase().includes('parker') || firm.toLowerCase() === 'lhp' ? 'lhp'
-    : firm.toLowerCase()
+  // Resolve template: explicit templateId takes priority, then firm-based lookup
+  let templateId = explicitTemplateId ? Number(explicitTemplateId) : null
+  let firmKey = ''
 
-  const templateId = TEMPLATE_IDS[firmKey]
+  if (firm) {
+    firmKey = firm.toLowerCase().includes('fear') ? 'fears'
+      : firm.toLowerCase().includes('parker') || firm.toLowerCase() === 'lhp' ? 'lhp'
+      : firm.toLowerCase()
+  }
+
+  if (!templateId && firmKey) {
+    templateId = TEMPLATE_IDS[firmKey] ?? null
+  }
+
   if (!templateId) {
-    return NextResponse.json({ error: `No DocuSeal template for firm: ${firm}` }, { status: 400 })
+    return NextResponse.json({ error: 'templateId or firm is required' }, { status: 400 })
   }
 
   // Format YYYY-MM-DD → MM/DD/YY
@@ -173,6 +190,28 @@ export async function POST(req: NextRequest) {
     } catch (err) {
       console.error('[docuseal] GHL tag error', err)
     }
+  }
+
+  // 4. Store submission record in DB
+  try {
+    const db = supabaseAdmin()
+    await db.from('dialer_docuseal_submissions').insert({
+      submission_id:   submissionId,
+      template_id:     templateId,
+      template_name:   templateName ?? null,
+      contact_id:      contactId ?? null,
+      contact_name:    fullName,
+      phone:           phone ?? null,
+      email:           email ?? null,
+      firm:            firm ?? null,
+      date_of_loss:    dateOfAccident ?? null,
+      date_of_birth:   dateOfBirth ?? null,
+      city_of_accident: cityOfAccident ?? null,
+      passenger_count: passengerIds.length,
+      sent_by:         sentBy ?? null,
+    })
+  } catch (err) {
+    console.error('[docuseal] DB insert error (non-fatal):', err)
   }
 
   return NextResponse.json({ ok: true, submissionId, passengerIds, tag, tags })

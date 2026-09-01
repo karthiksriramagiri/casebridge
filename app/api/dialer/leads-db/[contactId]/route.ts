@@ -17,10 +17,11 @@ export async function GET(
   const { contactId } = await params
   const db = supabaseAdmin()
 
-  // Fetch calls, transcripts, and AI summary in parallel
+  // Fetch calls, transcripts, AI summary, and checklists in parallel
   const [
     { data: calls, error: callsErr },
     { data: aiRow },
+    { data: checklists },
   ] = await Promise.all([
     db
       .from('dialer_calls')
@@ -32,6 +33,10 @@ export async function GET(
       .select('summary, updated_at')
       .eq('contact_id', contactId)
       .single(),
+    db
+      .from('dialer_call_checklist')
+      .select('call_sid, checklist, rep_identity, updated_at')
+      .eq('contact_id', contactId),
   ])
 
   if (callsErr) {
@@ -57,9 +62,16 @@ export async function GET(
     txBySid[tx.call_sid].push(tx)
   }
 
+  // Index checklists by call_sid
+  const clBySid: Record<string, any> = {}
+  for (const cl of (checklists ?? [])) {
+    clBySid[cl.call_sid] = cl.checklist
+  }
+
   const callsWithTranscripts = (calls ?? []).map(c => ({
     ...c,
     transcripts: txBySid[c.call_sid] ?? [],
+    checklist: clBySid[c.call_sid] ?? null,
   }))
 
   return NextResponse.json({

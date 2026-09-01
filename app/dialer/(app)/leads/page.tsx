@@ -30,6 +30,10 @@ interface Lead {
   contactId:    string
 }
 
+interface ChecklistRecord {
+  [key: string]: boolean
+}
+
 interface CallRecord {
   call_sid:      string
   call_status:   string | null
@@ -42,6 +46,7 @@ interface CallRecord {
   firm:          string | null
   stage_name:    string | null
   transcripts:   TranscriptRecord[]
+  checklist:     ChecklistRecord | null
 }
 
 interface TranscriptRecord {
@@ -73,6 +78,15 @@ interface ContactDetail {
   tags:              string[]
   attributionSource: string
   customFields:      Array<{ label: string; value: string }>
+}
+
+const CHECKLIST_LABELS: Record<string, string> = {
+  connected: 'Connected',
+  accident:  'Asked how accident happened',
+  fault:     'Asked who is at fault',
+  insurance: 'Asked about insurance',
+  pains:     'Asked if PC has pains',
+  treat:     'Asked if PC willing to treat (TX)',
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -355,6 +369,36 @@ function LeadDetail({
             </div>
           )}
 
+          {/* Call Checklists */}
+          {!loading && (() => {
+            const callsWithChecklist = calls.filter(c => c.checklist && Object.keys(c.checklist).length > 0)
+            if (callsWithChecklist.length === 0) return null
+            return (
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20">
+                <p className="border-b border-emerald-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
+                  Call Checklists ({callsWithChecklist.length})
+                </p>
+                <div className="px-4 py-3 space-y-3">
+                  {callsWithChecklist.map(call => (
+                    <div key={call.call_sid}>
+                      <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                        {fmtTime(call.started_at)}{call.rep_identity ? ` · ${call.rep_identity}` : ''}
+                      </p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-1">
+                        {Object.entries(call.checklist!).map(([key, val]) => (
+                          <span key={key} className={`flex items-center gap-1.5 text-xs ${val ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                            {val ? '✓' : '✗'}
+                            <span className={val ? '' : 'line-through'}>{CHECKLIST_LABELS[key] ?? key}</span>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Case Info (GHL custom fields) */}
           {!loading && contact && contact.customFields.length > 0 && (
             <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
@@ -407,6 +451,17 @@ function LeadDetail({
                         <p className="border-t border-gray-100 px-4 py-1.5 text-[10px] capitalize text-gray-400 dark:border-gray-800">
                           Rep: {call.rep_identity}
                         </p>
+                      )}
+                      {call.checklist && Object.keys(call.checklist).length > 0 && (
+                        <div className="border-t border-gray-100 px-4 py-2 dark:border-gray-800">
+                          <div className="flex flex-wrap gap-x-3 gap-y-1">
+                            {Object.entries(call.checklist).map(([key, val]) => (
+                              <span key={key} className={`flex items-center gap-1 text-[11px] ${val ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                                {val ? '✓' : '✗'} {CHECKLIST_LABELS[key] ?? key}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
                       )}
                       {call.recording_url && (
                         <div className="border-t border-gray-100 px-4 py-2 dark:border-gray-800">

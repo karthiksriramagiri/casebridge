@@ -272,12 +272,72 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ── GHL SMS No-Reply: alert if outbound SMS unreplied after 5 min ──────────
+  const SMS_NO_REPLY_SLACK = process.env.SLACK_SMS_NO_REPLY
+  const smsNoReplyResults: string[] = []
+
+  if (!SMS_NO_REPLY_SLACK) {
+    smsNoReplyResults.push('⚠ SLACK_SMS_NO_REPLY not set')
+  } else {
+    const fiveAgo = new Date(now.getTime() - 5 * 60 * 1000).toISOString()
+
+    const { data: unreplied } = await supabase
+      .from('ghl_sms_tracking')
+      .select('id, contact_id, contact_name, phone, body, sent_at')
+      .eq('direction', 'outbound')
+      .eq('replied', false)
+      .eq('notified', false)
+      .lte('sent_at', fiveAgo)
+
+    for (const msg of unreplied ?? []) {
+      const sentTime = new Date(msg.sent_at).toLocaleTimeString('en-US', {
+        hour: 'numeric', minute: '2-digit', hour12: true,
+        timeZone: 'America/Los_Angeles',
+      })
+      const preview = (msg.body ?? '').slice(0, 100) + ((msg.body?.length ?? 0) > 100 ? '…' : '')
+
+      const message = {
+        blocks: [
+          {
+            type: 'section',
+            text: {
+              type: 'mrkdwn',
+              text: `:warning: *No SMS Reply (5+ min)*\n\n*${msg.contact_name ?? 'Unknown'}*\n${msg.phone ?? ''}\n_"${preview}"_`,
+            },
+          },
+          {
+            type: 'context',
+            elements: [{ type: 'mrkdwn', text: `Sent at *${sentTime}* PT` }],
+          },
+        ],
+      }
+
+      try {
+        const slackRes = await fetch(SMS_NO_REPLY_SLACK, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(message),
+        })
+        if (slackRes.ok) {
+          await supabase.from('ghl_sms_tracking').update({ notified: true }).eq('id', msg.id)
+          smsNoReplyResults.push(`✓ no-reply alert → ${msg.contact_name ?? msg.phone}`)
+        } else {
+          smsNoReplyResults.push(`✗ no-reply alert → ${msg.contact_name ?? msg.phone} (slack ${slackRes.status})`)
+        }
+      } catch {
+        smsNoReplyResults.push(`✗ no-reply alert → ${msg.contact_name ?? msg.phone} (fetch error)`)
+      }
+    }
+  }
+
   return NextResponse.json({
     slackSent: results.length,
     snippetsSent: snippetResults.length,
     callbackNotifications: callbackResults.length,
+    smsNoReplyAlerts: smsNoReplyResults.length,
     results,
     snippetResults,
     callbackResults,
+    smsNoReplyResults,
   })
 }
