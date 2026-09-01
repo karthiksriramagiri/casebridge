@@ -111,6 +111,7 @@ const FIRM_COLORS: Record<string, string> = {
 }
 const FIRM_PILL: Record<string, string> = {
   'lhp':    'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
+  'lhp_s':  'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400',
   'fears':  'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
   'jm': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
 }
@@ -264,7 +265,7 @@ function LeadDetail({
               {contact?.name ?? lead.name}
             </h2>
             <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${FIRM_PILL[firmSlug] ?? 'bg-gray-100 text-gray-600'}`}>
-              {firmSlug === 'lhp' ? 'Larry H. Parker' : firmSlug === 'jm' ? 'J&M' : 'Fears Law'}
+              {firmSlug === 'lhp' ? 'Larry H. Parker' : firmSlug === 'lhp_s' ? 'LHP (Spanish)' : firmSlug === 'jm' ? 'J&M' : 'Fears Law'}
             </span>
             <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
               {stageName}
@@ -473,7 +474,7 @@ export default function LeadsPage() {
   const { deviceReady, placeCall, callState } = useCall()
   const [campaigns, setCampaigns]       = useState<Campaign[]>([])
   const [campsLoading, setCampsLoading] = useState(true)
-  const [openFirms, setOpenFirms]       = useState<Set<string>>(new Set(['lhp', 'fears', 'jm']))
+  const [openFirms, setOpenFirms]       = useState<Set<string>>(new Set(['lhp', 'lhp_s', 'fears', 'jm']))
   const [selectedStage, setSelectedStage] = useState<Campaign | null>(null)
   const [leads, setLeads]               = useState<Lead[]>([])
   const [leadsLoading, setLeadsLoading] = useState(false)

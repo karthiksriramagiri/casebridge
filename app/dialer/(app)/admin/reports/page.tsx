@@ -313,7 +313,7 @@ export default function ReportsPage() {
                   <tbody>
                     {data.firmComparison.map(f => (
                       <tr key={f.firm} className="border-b border-gray-50 dark:border-gray-800/50">
-                        <td className="py-2 pr-4 font-medium text-gray-900 dark:text-white">{f.firm === 'lhp' ? 'LHP' : f.firm === 'jm' ? 'J&M' : 'Fears'}</td>
+                        <td className="py-2 pr-4 font-medium text-gray-900 dark:text-white">{f.firm === 'lhp' ? 'LHP' : f.firm === 'lhp_s' ? 'LHP (ES)' : f.firm === 'jm' ? 'J&M' : 'Fears'}</td>
                         <td className="py-2 pr-4 text-right">{f.totalDials}</td>
                         <td className="py-2 pr-4 text-right">{f.connected}</td>
                         <td className="py-2 pr-4 text-right">{f.connectRate}%</td>

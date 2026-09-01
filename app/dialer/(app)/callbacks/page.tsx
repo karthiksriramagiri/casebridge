@@ -30,9 +30,9 @@ interface ContactResult {
   firm: string | null
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
-const FIRM_TZ: Record<string, string> = { lhp: 'America/Los_Angeles', fears: 'America/Chicago', jm: 'America/Los_Angeles' }
-const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', fears: 'CT', jm: 'PT' }
+const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', lhp_s: 'LHP (ES)', fears: 'Fears', jm: 'J&M' }
+const FIRM_TZ: Record<string, string> = { lhp: 'America/Los_Angeles', lhp_s: 'America/Los_Angeles', fears: 'America/Chicago', jm: 'America/Los_Angeles' }
+const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', lhp_s: 'PT', fears: 'CT', jm: 'PT' }
 
 const SOURCE_LABEL: Record<string, string> = { ghl: 'GHL', disposition: 'Dialer', manual: 'Manual' }
 const SOURCE_PILL: Record<string, string> = {
