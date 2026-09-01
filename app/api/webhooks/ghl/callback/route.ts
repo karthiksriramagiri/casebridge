@@ -8,12 +8,11 @@ function supabaseAdmin() {
   )
 }
 
-const GHL_API_KEY = process.env.GHL_API_KEY
-
 // POST /api/webhooks/ghl/callback
 // Add this URL to a GHL workflow automation to create dialer callbacks from tasks.
 // Payload: { contact_id, full_name?, phone?, due_date?, title?, body? }
-// If contact_id is provided, it fetches the latest task + contact details from GHL.
+// Pulls due date from ghl_task_reminders first (already populated by the task webhook),
+// then falls back to payload fields, then GHL API, then defaults to 2h from now.
 export async function POST(req: NextRequest) {
   let payload: any
   try {
@@ -37,7 +36,6 @@ export async function POST(req: NextRequest) {
 
   const db = supabaseAdmin()
 
-  // Resolve contact details + task due date from GHL
   let resolvedName  = contactName
   let resolvedPhone = phone
   let resolvedFirm  = firm
@@ -45,53 +43,26 @@ export async function POST(req: NextRequest) {
   let dueDate: Date | null = rawDueDate ? new Date(rawDueDate) : null
   let ghlTaskId: string | null = null
 
-  if (GHL_API_KEY) {
-    const headers = { Authorization: `Bearer ${GHL_API_KEY.trim()}`, Version: '2021-07-28' }
+  // 1. Try ghl_task_reminders first — the task webhook already stored the due date
+  const { data: taskReminder } = await db.from('ghl_task_reminders')
+    .select('task_id, contact_name, due_date, title, body')
+    .eq('contact_id', contactId)
+    .order('due_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-    const [contactRes, tasksRes] = await Promise.allSettled([
-      fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, { headers, cache: 'no-store' }),
-      fetch(`https://services.leadconnectorhq.com/contacts/${contactId}/tasks`, { headers, cache: 'no-store' }),
-    ])
-
-    // Fill in contact details
-    if (contactRes.status === 'fulfilled' && contactRes.value.ok) {
-      try {
-        const data = await contactRes.value.json()
-        const c = data.contact ?? data
-        if (!resolvedName)  resolvedName  = c.name || c.contactName
-        if (!resolvedPhone) resolvedPhone = c.phone || (c.phones?.[0]?.number)
-      } catch { /* keep what we have */ }
+  if (taskReminder) {
+    ghlTaskId = taskReminder.task_id
+    if (!resolvedName) resolvedName = taskReminder.contact_name
+    if (!dueDate) {
+      dueDate = new Date(taskReminder.due_date)
     }
-
-    // Get latest incomplete task for due date
-    if (tasksRes.status === 'fulfilled' && tasksRes.value.ok) {
-      try {
-        const data = await tasksRes.value.json()
-        const tasks: any[] = data.tasks || []
-        const latest = tasks
-          .filter((t: any) => !t.completed)
-          .sort((a: any, b: any) =>
-            new Date(b.createdAt || b.dateAdded || 0).getTime() -
-            new Date(a.createdAt || a.dateAdded || 0).getTime()
-          )[0]
-
-        if (latest) {
-          ghlTaskId = latest.id
-          if (!dueDate) {
-            const raw = latest.dueDate || latest.due_date
-            if (raw) dueDate = new Date(raw)
-          }
-          // Use task body/title as notes if none provided in payload
-          if (!notes) {
-            const taskNotes = latest.body || latest.title
-            if (taskNotes) resolvedNotes = taskNotes
-          }
-        }
-      } catch { /* ignore */ }
+    if (!resolvedNotes) {
+      resolvedNotes = taskReminder.body || taskReminder.title || null
     }
   }
 
-  // Fallback: look up from dialer data if still missing
+  // 2. Fallback: look up contact info from dialer data
   if (!resolvedName || !resolvedPhone) {
     const { data: call } = await db.from('dialer_calls')
       .select('contact_name, phone, firm')
@@ -106,15 +77,37 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Also try dialer_attempts for firm/stage info
-  if (!resolvedFirm) {
+  if (!resolvedName || !resolvedPhone) {
     const { data: attempt } = await db.from('dialer_attempts')
-      .select('firm, stage_name')
+      .select('contact_name, phone, firm, stage_name')
       .eq('contact_id', contactId)
       .order('created_at', { ascending: false })
       .limit(1)
       .maybeSingle()
-    if (attempt) resolvedFirm = attempt.firm
+    if (attempt) {
+      if (!resolvedName)  resolvedName  = attempt.contact_name
+      if (!resolvedPhone) resolvedPhone = attempt.phone
+      if (!resolvedFirm)  resolvedFirm  = attempt.firm
+    }
+  }
+
+  // 3. Last resort for contact info: GHL API (may be rate limited)
+  if (!resolvedName || !resolvedPhone) {
+    const GHL_API_KEY = process.env.GHL_API_KEY
+    if (GHL_API_KEY) {
+      try {
+        const res = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
+          headers: { Authorization: `Bearer ${GHL_API_KEY.trim()}`, Version: '2021-07-28' },
+          cache: 'no-store',
+        })
+        if (res.ok) {
+          const data = await res.json()
+          const c = data.contact ?? data
+          if (!resolvedName)  resolvedName  = c.name || c.contactName
+          if (!resolvedPhone) resolvedPhone = c.phone || (c.phones?.[0]?.number)
+        }
+      } catch { /* keep what we have */ }
+    }
   }
 
   if (!resolvedName || !resolvedPhone) {

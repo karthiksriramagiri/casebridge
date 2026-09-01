@@ -57,6 +57,7 @@ export async function POST(request: NextRequest) {
   let body: string | null = null
   let dueDate: Date | null = null
   let contactTimezone = 'America/Los_Angeles' // default
+  let ghlPhone: string | null = null
 
   if (GHL_API_KEY) {
     // Fetch tasks and contact details in parallel
@@ -71,12 +72,14 @@ export async function POST(request: NextRequest) {
       }),
     ])
 
-    // Pull timezone from contact
+    // Pull timezone + phone from contact
     if (contactRes.status === 'fulfilled' && contactRes.value.ok) {
       try {
         const contactData = await contactRes.value.json()
-        const tz = contactData.contact?.timezone || contactData.timezone
+        const c = contactData.contact ?? contactData
+        const tz = c.timezone
         if (tz) contactTimezone = tz
+        ghlPhone = c.phone || (c.phones?.[0]?.number) || null
       } catch { /* keep default */ }
     }
 
@@ -156,6 +159,55 @@ export async function POST(request: NextRequest) {
   if (error) {
     console.error('[task-webhook] Supabase error:', error)
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  // Also create a dialer callback so reps can call from the Callbacks page
+  // Look up phone from dialer data
+  let cbPhone: string | null = null
+  let cbFirm: string | null = null
+  const { data: call } = await supabase.from('dialer_calls')
+    .select('phone, firm')
+    .eq('contact_id', contactId)
+    .order('started_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (call) {
+    cbPhone = call.phone
+    cbFirm = call.firm
+  }
+  if (!cbPhone) {
+    const { data: attempt } = await supabase.from('dialer_attempts')
+      .select('phone, firm')
+      .eq('contact_id', contactId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (attempt) {
+      cbPhone = attempt.phone
+      if (!cbFirm) cbFirm = attempt.firm
+    }
+  }
+  // Try GHL contact phone if still missing
+  if (!cbPhone && ghlPhone) cbPhone = ghlPhone
+
+  if (cbPhone && contactName) {
+    // Avoid duplicates — check if callback already exists for this task
+    const { data: existingCb } = await supabase.from('dialer_callbacks')
+      .select('id').eq('ghl_task_id', taskId).maybeSingle()
+    if (!existingCb) {
+      const { error: cbErr } = await supabase.from('dialer_callbacks').insert({
+        contact_id:       contactId,
+        contact_name:     contactName,
+        phone:            cbPhone,
+        firm:             cbFirm,
+        callback_at:      dueDate.toISOString(),
+        callback_context: body || title,
+        source:           'ghl',
+        ghl_task_id:      taskId,
+      })
+      if (cbErr) console.error('[task-webhook] callback insert error:', cbErr)
+      else console.log('[task-webhook] created dialer callback', { contactId, dueDate: dueDate!.toISOString() })
+    }
   }
 
   return NextResponse.json({
