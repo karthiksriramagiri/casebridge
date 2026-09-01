@@ -921,8 +921,43 @@ export default function AgentPage() {
     } catch { /* queue empty or error — just stop */ }
   }
 
+  // ── Call checklist state ──
+  const [checklist, setChecklist] = useState<Record<string, boolean>>({})
+
+  // Reset checklist when a new call starts
+  useEffect(() => {
+    if (callState === 'ringing') {
+      setChecklist({})
+    }
+  }, [callState])
+
+  function toggleCheck(key: string) {
+    setChecklist(prev => {
+      const next = { ...prev, [key]: !prev[key] }
+      // Send Slack notification when "Connected" is checked
+      if (key === 'connected' && next.connected) {
+        const firm = currentQueueLead.current?.firm ?? currentLead?.source ?? ''
+        const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'lhp_s' ? 'LHP (ES)' : firm === 'jm' ? 'J&M' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
+        const stage = currentQueueLead.current?.stageName ?? ''
+        fetch('/api/dialer/slack-connected', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            repName: authName,
+            leadName: currentLead?.name ?? 'Unknown',
+            phone: currentLead?.phone ?? '',
+            firm: firmLabel,
+            stage,
+            duration: callDuration,
+          }),
+        }).catch(console.error)
+      }
+      return next
+    })
+  }
+
   const leadTimezone = contactDetail?.timezone
-    ?? (['lhp', 'jm'].includes(currentLead?.source ?? '') ? 'America/Los_Angeles' : 'America/Chicago')
+    ?? (['lhp', 'lhp_s', 'jm'].includes(currentLead?.source ?? '') ? 'America/Los_Angeles' : 'America/Chicago')
 
   return (
     <div className="flex h-full">
@@ -1079,6 +1114,35 @@ export default function AgentPage() {
                   </div>
                 )}
               </div>
+
+              {/* ── Call Checklist ── */}
+              {callState !== 'wrapup' && (
+                <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Call Checklist</p>
+                  <div className="space-y-1.5">
+                    {[
+                      { key: 'connected', label: 'Connected' },
+                      { key: 'accident', label: 'Did you ask how the accident happened?' },
+                      { key: 'fault', label: 'Did you ask who is at fault?' },
+                      { key: 'insurance', label: 'Did you ask about insurance?' },
+                      { key: 'pains', label: 'Did you ask if the PC has pains?' },
+                      ...((currentLead?.source === 'fears') ? [{ key: 'treat', label: 'Did you ask if the PC is willing to treat? (TX only)' }] : []),
+                    ].map(item => (
+                      <label key={item.key} className="flex items-start gap-2 cursor-pointer group">
+                        <input
+                          type="checkbox"
+                          checked={!!checklist[item.key]}
+                          onChange={() => toggleCheck(item.key)}
+                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 dark:border-gray-600 dark:bg-gray-800"
+                        />
+                        <span className={`text-xs transition-colors ${checklist[item.key] ? 'text-green-600 dark:text-green-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>
+                          {item.label}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {callState !== 'wrapup' && (
                 <div className="px-5 py-4">
