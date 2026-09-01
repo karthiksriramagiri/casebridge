@@ -17,6 +17,7 @@ create table if not exists public.dialer_callbacks (
   completed_by      text,
   disposition       text,
   ghl_task_id       text,
+  notified          boolean not null default false,
   created_at        timestamptz default now()
 );
 

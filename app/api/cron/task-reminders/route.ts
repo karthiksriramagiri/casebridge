@@ -208,10 +208,76 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  // ── Dialer Callbacks: Slack 5 min before ───────────────────────────────────
+  const CALLBACK_SLACK = process.env.SLACK_CALLBACK_REMINDERS
+  const callbackResults: string[] = []
+  const fiveFromNow = new Date(now.getTime() + 5 * 60 * 1000).toISOString()
+
+  if (!CALLBACK_SLACK) {
+    callbackResults.push('⚠ SLACK_CALLBACK_REMINDERS not set')
+  }
+
+  const { data: pendingCallbacks } = CALLBACK_SLACK ? await supabase
+    .from('dialer_callbacks')
+    .select('id, contact_id, contact_name, phone, firm, callback_at, callback_context, owner_rep')
+    .eq('status', 'pending')
+    .eq('notified', false)
+    .lte('callback_at', fiveFromNow)
+    .gte('callback_at', graceIso) : { data: null }
+
+  for (const cb of pendingCallbacks ?? []) {
+    const dueTime = new Date(cb.callback_at).toLocaleTimeString('en-US', {
+      hour: 'numeric', minute: '2-digit', hour12: true,
+      timeZone: 'America/Los_Angeles',
+    })
+    const dueDay = new Date(cb.callback_at).toLocaleDateString('en-US', {
+      weekday: 'short', month: 'short', day: 'numeric',
+      timeZone: 'America/Los_Angeles',
+    })
+
+    const firmLabel = cb.firm === 'lhp' ? 'LHP' : cb.firm === 'jm' ? 'J&M' : cb.firm === 'fears' ? 'Fears' : cb.firm ?? ''
+    const notesLine = cb.callback_context ? `*Notes:* ${cb.callback_context.replace(/<[^>]*>/g, '').trim()}` : ''
+    const repLine = cb.owner_rep ? `*Assigned:* ${cb.owner_rep}` : ''
+
+    const message = {
+      blocks: [
+        {
+          type: 'section',
+          text: {
+            type: 'mrkdwn',
+            text: `:phone: *Dialer Callback in 5 Minutes*\n\n*${cb.contact_name}*${firmLabel ? ` (${firmLabel})` : ''}\n${cb.phone}\n${[notesLine, repLine].filter(Boolean).join('\n')}`,
+          },
+        },
+        {
+          type: 'context',
+          elements: [{ type: 'mrkdwn', text: `Scheduled for *${dueTime}* on ${dueDay}` }],
+        },
+      ],
+    }
+
+    try {
+      const slackRes = await fetch(CALLBACK_SLACK!, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(message),
+      })
+      if (slackRes.ok) {
+        await supabase.from('dialer_callbacks').update({ notified: true }).eq('id', cb.id)
+        callbackResults.push(`✓ callback ${cb.contact_name}`)
+      } else {
+        callbackResults.push(`✗ callback ${cb.contact_name} (slack ${slackRes.status})`)
+      }
+    } catch {
+      callbackResults.push(`✗ callback ${cb.contact_name} (fetch error)`)
+    }
+  }
+
   return NextResponse.json({
     slackSent: results.length,
     snippetsSent: snippetResults.length,
+    callbackNotifications: callbackResults.length,
     results,
     snippetResults,
+    callbackResults,
   })
 }
