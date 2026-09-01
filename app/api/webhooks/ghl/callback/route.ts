@@ -29,6 +29,7 @@ export async function POST(req: NextRequest) {
   const phone       = payload.phone || payload.contact?.phone
   const firm        = payload.firm || null
   const notes       = payload.body || payload.title || payload.notes || payload.callback_context || null
+  const rawDueDate  = payload.due_date || payload.dueDate || payload.callback_at || payload.task?.dueDate || payload.task?.due_date || null
 
   if (!contactId) {
     return NextResponse.json({ error: 'contact_id required' }, { status: 400 })
@@ -40,7 +41,8 @@ export async function POST(req: NextRequest) {
   let resolvedName  = contactName
   let resolvedPhone = phone
   let resolvedFirm  = firm
-  let dueDate: Date | null = payload.due_date ? new Date(payload.due_date) : null
+  let resolvedNotes = notes
+  let dueDate: Date | null = rawDueDate ? new Date(rawDueDate) : null
   let ghlTaskId: string | null = null
 
   if (GHL_API_KEY) {
@@ -79,8 +81,10 @@ export async function POST(req: NextRequest) {
             const raw = latest.dueDate || latest.due_date
             if (raw) dueDate = new Date(raw)
           }
-          if (!notes && (latest.body || latest.title)) {
-            // already set above
+          // Use task body/title as notes if none provided in payload
+          if (!notes) {
+            const taskNotes = latest.body || latest.title
+            if (taskNotes) resolvedNotes = taskNotes
           }
         }
       } catch { /* ignore */ }
@@ -128,7 +132,7 @@ export async function POST(req: NextRequest) {
     phone:            resolvedPhone,
     firm:             resolvedFirm,
     callback_at:      dueDate.toISOString(),
-    callback_context: notes,
+    callback_context: resolvedNotes,
     source:           'ghl',
     ghl_task_id:      ghlTaskId,
   })
