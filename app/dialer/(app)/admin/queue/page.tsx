@@ -194,7 +194,7 @@ export default function QueueAdminPage() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   const fetchData = useCallback(async () => {
-    const params = new URLSearchParams({ limit: '1000' })
+    const params = new URLSearchParams({ limit: '10000' })
     if (firm)   params.set('firm', firm)
     if (status) params.set('status', status)
     if (block)  params.set('block', block)

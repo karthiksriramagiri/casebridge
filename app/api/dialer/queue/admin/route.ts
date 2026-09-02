@@ -19,7 +19,7 @@ export async function GET(req: NextRequest) {
   const status  = sp.get('status')  ?? ''
   const block   = sp.get('block')   ?? ''
   const exhausted = sp.get('exhausted')
-  const limit   = parseInt(sp.get('limit')  ?? '500', 10)
+  const limit   = parseInt(sp.get('limit')  ?? '10000', 10)
   const offset  = parseInt(sp.get('offset') ?? '0',   10)
 
   const db    = supabaseAdmin()
@@ -68,39 +68,42 @@ export async function GET(req: NextRequest) {
   const { data, count, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // ── Summary stats across all of today's attempts ──────────────────────────
-  const { data: allStats } = await db.from('dialer_attempts')
-    .select('status, firm, is_callback, buffered_for, leased_by')
-    .eq('plan_date', today)
-
-  const all = allStats ?? []
+  // ── Summary stats via count queries (no row-limit cap) ───────────────────
   const now = new Date()
+  const baseQ = () => db.from('dialer_attempts').select('*', { count: 'exact', head: true }).eq('plan_date', today)
+  const activeFilter = (q: any) => q.not('status', 'in', '(cancelled,expired,merged)')
 
-  // Unique leads (distinct contact_ids)
-  const uniqueLeads = new Set(
-    (data ?? []).map((r: any) => r.contact_id)
-  ).size
+  const [
+    totalRes, completedRes, bufferedRes, leasedRes,
+    callbacksRes, dueNowRes,
+    lhpRes, fearsRes, jmRes,
+  ] = await Promise.all([
+    baseQ(),
+    baseQ().eq('status', 'completed'),
+    baseQ().eq('status', 'buffered'),
+    baseQ().eq('status', 'leased'),
+    baseQ().eq('is_callback', true).not('status', 'in', '(completed,cancelled)'),
+    baseQ().eq('status', 'pending').lte('due_from', now.toISOString()).gt('day_ends_at', now.toISOString()),
+    activeFilter(baseQ().eq('firm', 'lhp')),
+    activeFilter(baseQ().eq('firm', 'fears')),
+    activeFilter(baseQ().eq('firm', 'jm')),
+  ])
 
-  // Due right now = pending + block is open
-  const { data: dueNow } = await db.from('dialer_attempts')
-    .select('id')
-    .eq('plan_date', today)
-    .eq('status', 'pending')
-    .lte('due_from', now.toISOString())
-    .gt('day_ends_at', now.toISOString())
+  // Unique leads from the current page of results
+  const uniqueLeads = new Set((data ?? []).map((r: any) => r.contact_id)).size
 
   const summary = {
     uniqueLeads,
-    totalAttempts: all.length,
-    completed:     all.filter(r => r.status === 'completed').length,
-    dueNow:        dueNow?.length ?? 0,
-    callbacks:     all.filter(r => r.is_callback && r.status !== 'completed' && r.status !== 'cancelled').length,
-    buffered:      all.filter(r => r.status === 'buffered').length,
-    leased:        all.filter(r => r.status === 'leased').length,
+    totalAttempts: totalRes.count ?? 0,
+    completed:     completedRes.count ?? 0,
+    dueNow:        dueNowRes.count ?? 0,
+    callbacks:     callbacksRes.count ?? 0,
+    buffered:      bufferedRes.count ?? 0,
+    leased:        leasedRes.count ?? 0,
     byFirm: {
-      lhp:    all.filter(r => r.firm === 'lhp'    && !['cancelled','expired','merged'].includes(r.status)).length,
-      fears:  all.filter(r => r.firm === 'fears'  && !['cancelled','expired','merged'].includes(r.status)).length,
-      jm: all.filter(r => r.firm === 'jm' && !['cancelled','expired','merged'].includes(r.status)).length,
+      lhp:   lhpRes.count ?? 0,
+      fears: fearsRes.count ?? 0,
+      jm:    jmRes.count ?? 0,
     },
   }
 

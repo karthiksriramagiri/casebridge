@@ -11,8 +11,13 @@ function supabaseAdmin() {
 
 // Template IDs per firm
 const TEMPLATE_IDS: Record<string, number> = {
-  lhp:   3788644, // Larry H. Parker Contingency Agreement
-  fears: 4119907, // Fears Dudley Contingency Agreement
+  lhp:       3788644, // Larry H. Parker Contingency Agreement
+  lhp_s:     3810063, // Larry H. Parker Contingency Agreement - Spanish
+  jm:        5422865, // Jacoby & Meyers Agreement
+  cowen:     5496003, // Cowen Law Agreement
+  fears:     4119907, // Fears Dudley Contingency Agreement
+  bernard:   5622399, // Bernard Law Agreement
+  eb:        4070689, // EMB - Full Agreement - English
 }
 
 function ghlHeaders() {

@@ -654,6 +654,7 @@ export default function AgentPage() {
   const [showDocuseal,      setShowDocuseal]      = useState(false)
   const [docusealSending,   setDocusealSending]   = useState(false)
   const [docusealSent,      setDocusealSent]      = useState(false)
+  const [dsFirm,            setDsFirm]            = useState('')
   const [dsAccidentDate,    setDsAccidentDate]    = useState('')
   const [dsAccidentCity,    setDsAccidentCity]    = useState('')
   const [dsDob,             setDsDob]             = useState('')
@@ -1264,7 +1265,7 @@ export default function AgentPage() {
               {/* ── Send Docuseal ── */}
               {!showDocuseal && !docusealSent && (
                 <button
-                  onClick={() => { setShowDocuseal(true); setDocusealSent(false) }}
+                  onClick={() => { setShowDocuseal(true); setDocusealSent(false); setDsFirm('') }}
                   className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700">
                   Send Docuseal
                 </button>
@@ -1274,9 +1275,41 @@ export default function AgentPage() {
                   <p className="text-xs font-medium text-green-700 dark:text-green-400">Docuseal sent &amp; tagged</p>
                 </div>
               )}
-              {showDocuseal && !docusealSent && (
+              {showDocuseal && !docusealSent && !dsFirm && (
+                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2 dark:border-indigo-900 dark:bg-indigo-950/20">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Select Firm</p>
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {([
+                      { key: 'lhp',     label: 'Larry H. Parker' },
+                      { key: 'lhp_s',   label: 'LHP Spanish' },
+                      { key: 'jm',      label: 'Jacoby & Meyers' },
+                      { key: 'cowen',   label: 'Cowen Law' },
+                      { key: 'fears',   label: 'Fears Law' },
+                      { key: 'bernard', label: 'Bernard Law' },
+                      { key: 'eb',      label: 'EB Agreement' },
+                    ] as const).map(f => (
+                      <button key={f.key} onClick={() => setDsFirm(f.key)}
+                        className="rounded-md border border-gray-300 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-indigo-950/30 dark:hover:border-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                        {f.label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => { setShowDocuseal(false); setDsFirm('') }}
+                    className="w-full rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 mt-1">
+                    Cancel
+                  </button>
+                </div>
+              )}
+              {showDocuseal && !docusealSent && dsFirm && (
                 <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2.5 dark:border-indigo-900 dark:bg-indigo-950/20">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Docuseal Details</p>
+                  <div className="flex items-center justify-between">
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Docuseal Details</p>
+                    <button onClick={() => setDsFirm('')} className="text-[10px] text-indigo-500 hover:text-indigo-400">Change firm</button>
+                  </div>
+                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                    {({ lhp: 'Larry H. Parker', lhp_s: 'LHP Spanish', jm: 'Jacoby & Meyers', cowen: 'Cowen Law', fears: 'Fears Law', bernard: 'Bernard Law', eb: 'EB Agreement' } as Record<string, string>)[dsFirm] ?? dsFirm}
+                  </p>
                   <div>
                     <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Accident</label>
                     <input
@@ -1307,7 +1340,7 @@ export default function AgentPage() {
                   </div>
                   <div className="flex gap-2 pt-1">
                     <button
-                      onClick={() => { setShowDocuseal(false); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('') }}
+                      onClick={() => { setShowDocuseal(false); setDsFirm(''); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('') }}
                       className="flex-1 rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
                       Cancel
                     </button>
@@ -1315,7 +1348,6 @@ export default function AgentPage() {
                       disabled={!dsAccidentDate || !dsAccidentCity || !dsDob || docusealSending}
                       onClick={async () => {
                         const cId = currentLead?.contactId ?? selectedQueueLead?.contactId
-                        const firm = displayFirm.toLowerCase()
                         if (!cId) return
                         setDocusealSending(true)
                         try {
@@ -1330,17 +1362,17 @@ export default function AgentPage() {
                               dateOfAccident: dsAccidentDate,
                               dateOfBirth:    dsDob,
                               cityOfAccident: dsAccidentCity,
-                              firm:           firm,
+                              firm:           dsFirm,
                               existingTags:   contactDetail?.tags ?? [],
+                              sentBy:         authIdentity || authName || '',
                             }),
                           })
                           const data = await res.json()
                           if (!res.ok) throw new Error(data.error || 'Send failed')
-                          // Update local contactDetail tags so UI reflects immediately
                           if (contactDetail && data.tags) setContactDetail({ ...contactDetail, tags: data.tags })
                           setShowDocuseal(false)
                           setDocusealSent(true)
-                          setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('')
+                          setDsFirm(''); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('')
                         } catch (e) {
                           console.error('[Docuseal] send error', e)
                           alert('Failed to send DocuSeal — check console')
