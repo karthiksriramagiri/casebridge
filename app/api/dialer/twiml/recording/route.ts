@@ -96,15 +96,17 @@ export async function POST(req: NextRequest) {
 
   const callbackUrl = `${baseUrl}/api/dialer/twiml/transcript-callback?transcriptId=${transcriptRow?.id ?? ''}&callSid=${callSid}`
 
+  const isStereo = recordingChannels >= 2
   const dgParams = new URLSearchParams({
-    model:        'nova-2',
-    smart_format: 'true',
-    multichannel: 'true',
-    utterances:   'true',
-    punctuate:    'true',
-    summarize:    'v2',
-    language:     'en-US',
-    callback:     callbackUrl,
+    model:          'nova-2',
+    smart_format:   'true',
+    multichannel:   isStereo ? 'true' : 'false',
+    diarize:        isStereo ? 'false' : 'true',
+    utterances:     'true',
+    punctuate:      'true',
+    summarize:      'v2',
+    detect_language: 'true',
+    callback:       callbackUrl,
   })
 
   const dgRes = await fetch(`${DEEPGRAM_URL}?${dgParams}`, {

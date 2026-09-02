@@ -41,7 +41,7 @@ export async function POST(req: NextRequest) {
 
     // 3. Start dual-channel conference recording via REST API.
     //    TwiML-based recording can't request two channels; REST API can.
-    //    Channel 0 = outbound leg (customer), Channel 1 = inbound leg (rep).
+    //    Channel 0 = rep (first participant), Channel 1 = customer (joins second).
     const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
     const base   = baseUrl()
     try {

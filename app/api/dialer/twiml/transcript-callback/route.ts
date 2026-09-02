@@ -18,31 +18,41 @@ export async function POST(req: NextRequest) {
   const data = await req.json()
   console.log('[dialer:transcript-callback] received for callSid', callSid)
 
-  // Build utterances from multichannel results
-  // Deepgram multichannel: results.channels[n].alternatives[0].words
-  // We flatten all words across channels into utterances sorted by start time,
-  // labelling channel 0 as "Agent" and channel 1 as "Lead"
+  // Build utterances from Deepgram results.
+  // Dual-channel (conference recordings): channels[0] = Agent (rep), channels[1] = Lead (customer)
+  // Mono (fallback with diarize): words have speaker IDs, mapped to Agent/Lead
   const channels: any[] = data?.results?.channels ?? []
-  const LABELS: Record<number, string> = { 0: 'Agent', 1: 'Lead' }
+  const isMultichannel = channels.length >= 2
 
-  // Build word-level array across all channels
-  const allWords: Array<{ start: number; end: number; word: string; channel: number }> = []
-  channels.forEach((ch: any, idx: number) => {
-    const words = ch?.alternatives?.[0]?.words ?? []
-    words.forEach((w: any) => {
-      allWords.push({ start: w.start, end: w.end, word: w.punctuated_word ?? w.word, channel: idx })
+  const CHANNEL_LABELS: Record<number, string> = { 0: 'Agent', 1: 'Lead' }
+
+  const allWords: Array<{ start: number; end: number; word: string; speaker: string }> = []
+
+  if (isMultichannel) {
+    // Multichannel: words come from separate channels
+    channels.forEach((ch: any, idx: number) => {
+      const words = ch?.alternatives?.[0]?.words ?? []
+      words.forEach((w: any) => {
+        allWords.push({ start: w.start, end: w.end, word: w.punctuated_word ?? w.word, speaker: CHANNEL_LABELS[idx] ?? `Channel ${idx}` })
+      })
     })
-  })
+  } else {
+    // Mono with diarization: words have speaker IDs (0, 1, ...)
+    const words = channels[0]?.alternatives?.[0]?.words ?? []
+    words.forEach((w: any) => {
+      const spkId = w.speaker ?? 0
+      allWords.push({ start: w.start, end: w.end, word: w.punctuated_word ?? w.word, speaker: spkId === 0 ? 'Agent' : 'Lead' })
+    })
+  }
   allWords.sort((a, b) => a.start - b.start)
 
-  // Group consecutive words from the same channel into utterances
+  // Group consecutive words from the same speaker into utterances
   const utterances: Array<{ speaker: string; start: number; end: number; transcript: string }> = []
   let current: typeof utterances[0] | null = null
   for (const w of allWords) {
-    const speaker = LABELS[w.channel] ?? `Channel ${w.channel}`
-    if (!current || current.speaker !== speaker || w.start - current.end > 1.5) {
+    if (!current || current.speaker !== w.speaker || w.start - current.end > 1.5) {
       if (current) utterances.push(current)
-      current = { speaker, start: w.start, end: w.end, transcript: w.word }
+      current = { speaker: w.speaker, start: w.start, end: w.end, transcript: w.word }
     } else {
       current.transcript += ' ' + w.word
       current.end = w.end

@@ -70,7 +70,9 @@ export async function POST(req: NextRequest) {
   if (contactId)   amdCallbackUrl.searchParams.set('ContactId',   contactId)
   if (identity)    amdCallbackUrl.searchParams.set('RepIdentity', identity)
 
-  // Dial the customer into the conference and start recording immediately
+  // Dial the customer into the conference
+  // Recording is handled at the conference level (conference-status/route.ts)
+  // with dual channels — do NOT set record:true here (creates a duplicate mono recording)
   let participant: any
   try {
     participant = await client.conferences(confName).participants.create({
@@ -80,9 +82,6 @@ export async function POST(req: NextRequest) {
     earlyMedia: true,
     startConferenceOnEnter: false,
     endConferenceOnExit: true,
-    record: true,
-    recordingStatusCallback: recordingCallbackUrl.toString(),
-    recordingStatusCallbackMethod: 'POST',
     statusCallback: statusUrl.toString(),
     statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     statusCallbackMethod: 'POST',
