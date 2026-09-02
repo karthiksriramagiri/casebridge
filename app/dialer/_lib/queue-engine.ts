@@ -1004,10 +1004,10 @@ export async function applyDisposition(
     }
 
     // Slack notification for NQ disposition
-    const slackWebhook = (process.env.SLACK_WEBHOOK_URL || '').trim().replace(/\\n$/, '')
-    if (slackWebhook) {
+    const nqWebhook = (process.env.SLACK_NQ_WEBHOOK || '').trim().replace(/\\n$/, '')
+    if (nqWebhook) {
       const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
-      await fetch(slackWebhook, {
+      await fetch(nqWebhook, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
