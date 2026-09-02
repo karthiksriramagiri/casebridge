@@ -388,12 +388,13 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
 
   // Query with DB-side ORDER BY — matches admin queue display exactly
-  // Queue is always active — no due_from gate
-  // stage_changed_at DESC: within same priority, newest NR leads come first
+  // Gate: only serve attempts whose time block is open (due_from <= now)
+  // This prevents cycling the same lead through all 3 attempts back-to-back
   let q = db.from('dialer_attempts')
     .select('*')
     .eq('status', 'pending')
     .eq('plan_date', today)
+    .lte('due_from', now.toISOString())
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
@@ -517,12 +518,12 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
 
   // Query with DB-side ORDER BY — matches admin queue display exactly
-  // Queue is always active — no due_from gate
-  // stage_changed_at DESC: within same priority, newest NR leads come first
+  // Gate: only serve attempts whose time block is open (due_from <= now)
   let pendingQ = db.from('dialer_attempts')
     .select('*')
     .eq('status', 'pending')
     .eq('plan_date', today)
+    .lte('due_from', now.toISOString())
     .order('is_callback',    { ascending: false })
     .order('is_carryover',   { ascending: false })
     .order('priority',       { ascending: false })
