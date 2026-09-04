@@ -7,7 +7,7 @@ const DOCUSEAL_TOKEN = 'zvu1bLa36Qt21BMw7e3RS7ELUxEmQGTVmii5TCcSzJb'
 // Returns all DocuSeal templates available for sending
 export async function GET() {
   try {
-    const res = await fetch(`${DOCUSEAL_API}/templates`, {
+    const res = await fetch(`${DOCUSEAL_API}/templates?limit=100`, {
       headers: { 'X-Auth-Token': DOCUSEAL_TOKEN },
     })
 
