@@ -387,26 +387,34 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     .in('status', ['buffered', 'leased'])
   const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
 
-  // Query with DB-side ORDER BY — matches admin queue display exactly
-  // Gate: only serve attempts whose time block is open (due_from <= now)
-  // This prevents cycling the same lead through all 3 attempts back-to-back
-  let q = db.from('dialer_attempts')
-    .select('*')
-    .eq('status', 'pending')
-    .eq('plan_date', today)
-    .lte('due_from', now.toISOString())
-    .order('is_callback',    { ascending: false })
-    .order('is_carryover',   { ascending: false })
-    .order('priority',       { ascending: false })
-  // Check column existence for safe migration rollout
+  // Query pending leads — prefer those whose time block is open (due_from <= now)
+  // to prevent cycling the same lead through all 3 attempts back-to-back.
+  // Fallback: if NO leads are due (current block exhausted), serve next block.
   const { error: colErr } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
-  if (!colErr) {
-    q = q.order('stage_changed_at', { ascending: false, nullsFirst: false })
+  const hasStageCol = !colErr
+
+  function buildPendingQuery(useDueGate: boolean) {
+    let q2 = db.from('dialer_attempts')
+      .select('*')
+      .eq('status', 'pending')
+      .eq('plan_date', today)
+    if (useDueGate) q2 = q2.lte('due_from', now.toISOString())
+    q2 = q2.order('is_callback',  { ascending: false })
+      .order('is_carryover',      { ascending: false })
+      .order('priority',          { ascending: false })
+    if (hasStageCol) q2 = q2.order('stage_changed_at', { ascending: false, nullsFirst: false })
+    return q2.order('attempt_number', { ascending: true })
+      .order('due_from',          { ascending: true })
+      .order('created_at',        { ascending: true })
+      .order('id',                { ascending: true })
   }
-  const { data: pending } = await q
-    .order('attempt_number', { ascending: true })
-    .order('created_at',     { ascending: true })
-    .order('id',             { ascending: true })
+
+  let { data: pending } = await buildPendingQuery(true)
+  if (!pending?.length) {
+    // Current block exhausted — fall back to all pending (next block)
+    const res = await buildPendingQuery(false)
+    pending = res.data
+  }
 
   if (!pending?.length) return []
 
@@ -517,24 +525,32 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     .in('status', ['buffered', 'leased'])
   const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
 
-  // Query with DB-side ORDER BY — matches admin queue display exactly
-  // Gate: only serve attempts whose time block is open (due_from <= now)
-  let pendingQ = db.from('dialer_attempts')
-    .select('*')
-    .eq('status', 'pending')
-    .eq('plan_date', today)
-    .lte('due_from', now.toISOString())
-    .order('is_callback',    { ascending: false })
-    .order('is_carryover',   { ascending: false })
-    .order('priority',       { ascending: false })
+  // Prefer leads whose time block is open (due_from <= now).
+  // Fallback: if current block is exhausted, serve next block.
   const { error: colErr2 } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
-  if (!colErr2) {
-    pendingQ = pendingQ.order('stage_changed_at', { ascending: false, nullsFirst: false })
+  const hasStageCol2 = !colErr2
+
+  function buildPendingQ2(useDueGate: boolean) {
+    let q2 = db.from('dialer_attempts')
+      .select('*')
+      .eq('status', 'pending')
+      .eq('plan_date', today)
+    if (useDueGate) q2 = q2.lte('due_from', now.toISOString())
+    q2 = q2.order('is_callback',  { ascending: false })
+      .order('is_carryover',      { ascending: false })
+      .order('priority',          { ascending: false })
+    if (hasStageCol2) q2 = q2.order('stage_changed_at', { ascending: false, nullsFirst: false })
+    return q2.order('attempt_number', { ascending: true })
+      .order('due_from',          { ascending: true })
+      .order('created_at',        { ascending: true })
+      .order('id',                { ascending: true })
   }
-  const { data: pending } = await pendingQ
-    .order('attempt_number', { ascending: true })
-    .order('created_at',     { ascending: true })
-    .order('id',             { ascending: true })
+
+  let { data: pending } = await buildPendingQ2(true)
+  if (!pending?.length) {
+    const res = await buildPendingQ2(false)
+    pending = res.data
+  }
 
   if (!pending?.length) return {}
 
