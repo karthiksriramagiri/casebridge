@@ -70,9 +70,10 @@ export async function POST(req: NextRequest) {
   if (contactId)   amdCallbackUrl.searchParams.set('ContactId',   contactId)
   if (identity)    amdCallbackUrl.searchParams.set('RepIdentity', identity)
 
-  // Dial the customer into the conference
-  // Recording is handled at the conference level (conference-status/route.ts)
-  // with dual channels — do NOT set record:true here (creates a duplicate mono recording)
+  // Dial the customer into the conference.
+  // Dual-channel conference recording is started by conference-status/route.ts.
+  // Participant-level record:true is a mono fallback in case conference recording fails.
+  const conferenceStatusUrl = `${base}/api/dialer/twiml/conference-status`
   let participant: any
   try {
     participant = await client.conferences(confName).participants.create({
@@ -82,9 +83,15 @@ export async function POST(req: NextRequest) {
     earlyMedia: true,
     startConferenceOnEnter: false,
     endConferenceOnExit: true,
+    record: true,
+    recordingStatusCallback: recordingCallbackUrl.toString(),
+    recordingStatusCallbackMethod: 'POST',
     statusCallback: statusUrl.toString(),
     statusCallbackEvent: ['initiated', 'ringing', 'answered', 'completed'],
     statusCallbackMethod: 'POST',
+    conferenceStatusCallback: conferenceStatusUrl,
+    conferenceStatusCallbackEvent: ['start', 'end', 'join', 'leave'],
+    conferenceStatusCallbackMethod: 'POST',
     timeout: 30,
     machineDetection: 'Enable',
     asyncAmd: 'true',
