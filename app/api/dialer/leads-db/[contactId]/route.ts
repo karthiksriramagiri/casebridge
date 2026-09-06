@@ -43,23 +43,42 @@ export async function GET(
     return NextResponse.json({ error: callsErr.message }, { status: 500 })
   }
 
-  // Fetch transcripts for all calls
+  // Fetch transcripts by call_sid AND by contact_id (fallback for mismatched call_sids)
   const callSids = (calls ?? []).map(c => c.call_sid)
-  let transcripts: any[] = []
-  if (callSids.length > 0) {
-    const { data: txData } = await db
-      .from('dialer_transcripts')
+  const [txByCallSid, txByContact] = await Promise.all([
+    callSids.length > 0
+      ? db.from('dialer_transcripts')
+          .select('id, call_sid, status, full_text, summary, utterances, completed_at, provider')
+          .in('call_sid', callSids)
+          .order('completed_at', { ascending: false })
+      : Promise.resolve({ data: [] as any[] }),
+    db.from('dialer_transcripts')
       .select('id, call_sid, status, full_text, summary, utterances, completed_at, provider')
-      .in('call_sid', callSids)
-      .order('completed_at', { ascending: false })
-    transcripts = txData ?? []
+      .eq('contact_id', contactId)
+      .order('completed_at', { ascending: false }),
+  ])
+
+  // Merge and deduplicate transcripts
+  const seenIds = new Set<string>()
+  const transcripts: any[] = []
+  for (const tx of [...(txByCallSid.data ?? []), ...(txByContact.data ?? [])]) {
+    if (!seenIds.has(tx.id)) {
+      seenIds.add(tx.id)
+      transcripts.push(tx)
+    }
   }
 
   // Group transcripts by call_sid
   const txBySid: Record<string, any[]> = {}
+  const orphanTx: any[] = []
+  const callSidSet = new Set(callSids)
   for (const tx of transcripts) {
-    if (!txBySid[tx.call_sid]) txBySid[tx.call_sid] = []
-    txBySid[tx.call_sid].push(tx)
+    if (callSidSet.has(tx.call_sid)) {
+      if (!txBySid[tx.call_sid]) txBySid[tx.call_sid] = []
+      txBySid[tx.call_sid].push(tx)
+    } else {
+      orphanTx.push(tx)
+    }
   }
 
   // Index checklists by call_sid
@@ -76,6 +95,7 @@ export async function GET(
 
   return NextResponse.json({
     calls: callsWithTranscripts,
+    orphanTranscripts: orphanTx,
     aiSummary: aiRow?.summary ?? null,
     aiUpdatedAt: aiRow?.updated_at ?? null,
   })

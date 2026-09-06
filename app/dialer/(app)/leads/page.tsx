@@ -237,6 +237,7 @@ function LeadDetail({
 }) {
   const [contact, setContact]       = useState<ContactDetail | null>(null)
   const [calls, setCalls]           = useState<CallRecord[]>([])
+  const [orphanTx, setOrphanTx]     = useState<TranscriptRecord[]>([])
   const [aiSummary, setAiSummary]   = useState<string | null>(null)
   const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null)
   const [loading, setLoading]       = useState(true)
@@ -245,6 +246,7 @@ function LeadDetail({
     setLoading(true)
     setAiSummary(null)
     setAiUpdatedAt(null)
+    setOrphanTx([])
 
     if (lead.contactId) {
       Promise.all([
@@ -253,6 +255,7 @@ function LeadDetail({
         fetch(`/api/dialer/leads-db/${lead.contactId}`)
           .then(r => r.json()).then(d => {
             setCalls(d.calls ?? [])
+            setOrphanTx(d.orphanTranscripts ?? [])
             setAiSummary(d.aiSummary ?? null)
             setAiUpdatedAt(d.aiUpdatedAt ?? null)
           }),
@@ -265,7 +268,7 @@ function LeadDetail({
   const totalCalls     = calls.length
   const connected      = calls.filter(c => c.call_status === 'completed').length
   const totalSec       = calls.reduce((s, c) => s + (c.duration ?? 0), 0)
-  const txCount        = calls.reduce((s, c) => s + c.transcripts.filter(t => t.status === 'completed').length, 0)
+  const txCount        = calls.reduce((s, c) => s + c.transcripts.filter(t => t.status === 'completed').length, 0) + orphanTx.filter(t => t.status === 'completed').length
 
   const displayTags = contact?.tags ?? lead.tags ?? []
 
@@ -399,13 +402,17 @@ function LeadDetail({
             )
           })()}
 
-          {/* Transcripts — aggregated from all calls */}
+          {/* Transcripts — aggregated from all calls + orphan transcripts */}
           {!loading && (() => {
-            const allTx = calls.flatMap(c =>
+            const callTx = calls.flatMap(c =>
               c.transcripts
-                .filter(t => t.status === 'completed' && t.utterances && t.utterances.length > 0)
+                .filter(t => t.status === 'completed' && (t.full_text || (t.utterances && t.utterances.length > 0)))
                 .map(t => ({ ...t, rep: c.rep_identity, startedAt: c.started_at, disposition: c.disposition }))
             )
+            const orphaned = orphanTx
+              .filter(t => t.status === 'completed' && (t.full_text || (t.utterances && t.utterances.length > 0)))
+              .map(t => ({ ...t, rep: null as string | null, startedAt: t.completed_at, disposition: null as string | null }))
+            const allTx = [...callTx, ...orphaned]
             if (allTx.length === 0) return null
             return (
               <div className="rounded-lg border border-violet-200 bg-violet-50/60 dark:border-violet-900 dark:bg-violet-950/20">
@@ -414,24 +421,28 @@ function LeadDetail({
                 </p>
                 <div className="px-4 py-3 space-y-4 max-h-[500px] overflow-y-auto">
                   {allTx.map(tx => (
-                    <div key={tx.id}>
+                    <div key={tx.id} className="border-b border-violet-100 pb-3 last:border-0 last:pb-0 dark:border-violet-900/50">
                       <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-2">
                         {fmtTime(tx.startedAt)}{tx.rep ? ` · ${tx.rep}` : ''}{tx.disposition ? ` · ${tx.disposition}` : ''}
                       </p>
-                      <div className="space-y-1.5">
-                        {(tx.utterances ?? []).map((u, i) => (
-                          <div key={i} className={`flex gap-2 text-xs ${u.speaker !== 'Agent' ? 'flex-row-reverse' : ''}`}>
-                            <span className={`shrink-0 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${
-                              u.speaker === 'Agent'
-                                ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400'
-                                : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
-                            }`}>{u.speaker}</span>
-                            <p className={`flex-1 leading-relaxed text-gray-700 dark:text-gray-300 ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
-                              {u.transcript}
-                            </p>
-                          </div>
-                        ))}
-                      </div>
+                      {(tx.utterances ?? []).length > 0 ? (
+                        <div className="space-y-1.5">
+                          {(tx.utterances ?? []).map((u, i) => (
+                            <div key={i} className={`flex gap-2 text-xs ${u.speaker !== 'Agent' ? 'flex-row-reverse' : ''}`}>
+                              <span className={`shrink-0 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                                u.speaker === 'Agent'
+                                  ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400'
+                                  : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                              }`}>{u.speaker}</span>
+                              <p className={`flex-1 leading-relaxed text-gray-700 dark:text-gray-300 ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
+                                {u.transcript}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="whitespace-pre-wrap text-xs text-gray-600 dark:text-gray-400">{tx.full_text}</p>
+                      )}
                     </div>
                   ))}
                 </div>
