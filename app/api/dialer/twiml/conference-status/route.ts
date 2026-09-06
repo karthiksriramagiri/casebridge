@@ -39,17 +39,35 @@ export async function POST(req: NextRequest) {
         .eq('call_sid', session.customer_call_sid)
     }
 
-    // 3. Start dual-channel conference recording via REST API.
-    //    TwiML-based recording can't request two channels; REST API can.
-    //    Channel 0 = rep (first participant), Channel 1 = customer (joins second).
-    const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!)
-    const base   = baseUrl()
+    // 3. Start dual-channel conference recording via Twilio REST API directly.
+    //    The twilio SDK v6 doesn't expose conferences().recordings.create(),
+    //    so we call the REST endpoint with fetch() instead.
+    const accountSid = process.env.TWILIO_ACCOUNT_SID!.trim()
+    const authToken  = process.env.TWILIO_AUTH_TOKEN!.trim()
+    const base       = baseUrl()
+    const twilioAuth = Buffer.from(`${accountSid}:${authToken}`).toString('base64')
     try {
-      await (client.conferences(confSid).recordings as any).create({
-        recordingChannels: 'two',
-        recordingStatusCallback: `${base}/api/dialer/twiml/recording`,
-        recordingStatusCallbackMethod: 'POST',
-      })
+      const recRes = await fetch(
+        `https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Conferences/${confSid}/Recordings.json`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Basic ${twilioAuth}`,
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams({
+            RecordingChannels: 'two',
+            RecordingStatusCallback: `${base}/api/dialer/twiml/recording`,
+            RecordingStatusCallbackMethod: 'POST',
+          }).toString(),
+        }
+      )
+      if (!recRes.ok) {
+        const errText = await recRes.text()
+        console.error('[dialer:conference-status] Twilio recording API error', recRes.status, errText)
+      } else {
+        console.log('[dialer:conference-status] dual-channel recording started for', confSid)
+      }
     } catch (err) {
       console.error('[dialer:conference-status] failed to start recording', err)
     }
