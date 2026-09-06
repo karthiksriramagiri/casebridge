@@ -33,10 +33,12 @@ export async function POST(req: NextRequest) {
   const db = supabaseAdmin()
 
   // Resolve which dialer_calls row this recording belongs to.
-  // Conference recordings: look up by conference_sid.
+  // Conference recordings: look up by conference_sid on dialer_calls first,
+  // then fall back to dialer_active_sessions (in case conference_sid wasn't stamped yet).
   // Direct-dial recordings: call_sid IS the customer's call SID.
   let callSid = rawCallSid
   if (conferenceSid) {
+    // Primary: look up dialer_calls by conference_sid
     const { data: callRow } = await db
       .from('dialer_calls')
       .select('call_sid')
@@ -46,7 +48,23 @@ export async function POST(req: NextRequest) {
     if (callRow?.call_sid) {
       callSid = callRow.call_sid
     } else {
-      console.warn('[dialer:recording] no dialer_calls row found for conference', conferenceSid)
+      // Fallback: look up the active session by conference_sid to get customer_call_sid
+      const { data: session } = await db
+        .from('dialer_active_sessions')
+        .select('customer_call_sid')
+        .eq('conference_sid', conferenceSid)
+        .maybeSingle()
+
+      if (session?.customer_call_sid) {
+        callSid = session.customer_call_sid
+        // Stamp conference_sid on dialer_calls so future lookups work
+        await db.from('dialer_calls')
+          .update({ conference_sid: conferenceSid })
+          .eq('call_sid', callSid)
+        console.log('[dialer:recording] resolved call_sid via active_sessions fallback', callSid)
+      } else {
+        console.warn('[dialer:recording] no dialer_calls row found for conference', conferenceSid)
+      }
     }
   }
 

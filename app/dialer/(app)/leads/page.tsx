@@ -399,6 +399,46 @@ function LeadDetail({
             )
           })()}
 
+          {/* Transcripts — aggregated from all calls */}
+          {!loading && (() => {
+            const allTx = calls.flatMap(c =>
+              c.transcripts
+                .filter(t => t.status === 'completed' && t.utterances && t.utterances.length > 0)
+                .map(t => ({ ...t, rep: c.rep_identity, startedAt: c.started_at, disposition: c.disposition }))
+            )
+            if (allTx.length === 0) return null
+            return (
+              <div className="rounded-lg border border-violet-200 bg-violet-50/60 dark:border-violet-900 dark:bg-violet-950/20">
+                <p className="border-b border-violet-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-violet-700 dark:border-violet-900 dark:text-violet-400">
+                  Transcripts ({allTx.length})
+                </p>
+                <div className="px-4 py-3 space-y-4 max-h-[500px] overflow-y-auto">
+                  {allTx.map(tx => (
+                    <div key={tx.id}>
+                      <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-2">
+                        {fmtTime(tx.startedAt)}{tx.rep ? ` · ${tx.rep}` : ''}{tx.disposition ? ` · ${tx.disposition}` : ''}
+                      </p>
+                      <div className="space-y-1.5">
+                        {(tx.utterances ?? []).map((u, i) => (
+                          <div key={i} className={`flex gap-2 text-xs ${u.speaker !== 'Agent' ? 'flex-row-reverse' : ''}`}>
+                            <span className={`shrink-0 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${
+                              u.speaker === 'Agent'
+                                ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400'
+                                : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                            }`}>{u.speaker}</span>
+                            <p className={`flex-1 leading-relaxed text-gray-700 dark:text-gray-300 ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
+                              {u.transcript}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )
+          })()}
+
           {/* Case Info (GHL custom fields) */}
           {!loading && contact && contact.customFields.length > 0 && (
             <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
