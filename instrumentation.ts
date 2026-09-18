@@ -20,7 +20,21 @@ export async function register() {
         : input instanceof URL ? input.href
         : input?.url ?? ''
       if (typeof url === 'string' && url.includes('leadconnectorhq.com')) {
-        bumpGhlUsage(attributeCaller(new Error().stack))
+        // Attribute by GHL endpoint. Stack frames point at bundled chunks in a
+        // production build, so source-file attribution is unreliable there;
+        // the endpoint always survives and still identifies the caller when
+        // read against the code.
+        let endpoint = 'unknown'
+        try {
+          const u = new URL(url)
+          endpoint = u.pathname
+            .replace(/\/[0-9a-zA-Z]{18,}(?=\/|$)/g, '/{id}')
+            .replace(/\/\d+(?=\/|$)/g, '/{n}')
+        } catch {}
+        const caller = attributeCaller(new Error().stack)
+        bumpGhlUsage(caller === 'unattributed' || caller === 'unknown'
+          ? endpoint
+          : `${endpoint} <- ${caller}`)
       }
     } catch {
       // never let accounting break a request

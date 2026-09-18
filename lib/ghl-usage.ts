@@ -5,11 +5,11 @@
 // Counts are aggregated in-process and flushed in batches — one DB write per
 // ~25 calls rather than per call.
 
-const FLUSH_AT_COUNT = 25
-const FLUSH_EVERY_MS = 10_000
-
+// Writes go out per call rather than buffered. Serverless instances freeze
+// between requests, so any buffered count on a short-lived instance is simply
+// lost — which is exactly what happened on the first deploy (15k calls/hour
+// recorded as 1).
 const buffer = new Map<string, number>()
-let lastFlush = Date.now()
 let flushing: Promise<void> | null = null
 
 export function trackingEnabled(): boolean {
@@ -36,12 +36,7 @@ export function attributeCaller(stack: string | undefined): string {
 
 export function bumpGhlUsage(source: string): void {
   buffer.set(source, (buffer.get(source) ?? 0) + 1)
-
-  let total = 0
-  for (const v of buffer.values()) total += v
-  if (total >= FLUSH_AT_COUNT || Date.now() - lastFlush >= FLUSH_EVERY_MS) {
-    void flushGhlUsage()
-  }
+  void flushGhlUsage()
 }
 
 export async function flushGhlUsage(): Promise<void> {
@@ -50,7 +45,6 @@ export async function flushGhlUsage(): Promise<void> {
 
   const pending = [...buffer.entries()]
   buffer.clear()
-  lastFlush = Date.now()
 
   flushing = (async () => {
     try {
