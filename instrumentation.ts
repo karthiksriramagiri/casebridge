@@ -3,10 +3,16 @@
 // draining the quota that call-site auditing failed to find.
 
 export async function register() {
+  console.log('[ghl-usage] register() called, runtime =', process.env.NEXT_RUNTIME,
+              'tracking =', process.env.GHL_USAGE_TRACKING)
   if (process.env.NEXT_RUNTIME !== 'nodejs') return
 
   const { trackingEnabled, bumpGhlUsage, attributeCaller } = await import('./lib/ghl-usage')
-  if (!trackingEnabled()) return
+  if (!trackingEnabled()) {
+    console.log('[ghl-usage] tracking disabled — GHL_USAGE_TRACKING is not "1"')
+    return
+  }
+  console.log('[ghl-usage] patching global fetch')
 
   const g = globalThis as typeof globalThis & { __ghlUsagePatched?: boolean }
   if (g.__ghlUsagePatched) return
@@ -31,6 +37,7 @@ export async function register() {
             .replace(/\/[0-9a-zA-Z]{18,}(?=\/|$)/g, '/{id}')
             .replace(/\/\d+(?=\/|$)/g, '/{n}')
         } catch {}
+        console.log('[ghl-usage] GHL call', endpoint)
         const caller = attributeCaller(new Error().stack)
         bumpGhlUsage(caller === 'unattributed' || caller === 'unknown'
           ? endpoint

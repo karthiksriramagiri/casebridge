@@ -50,7 +50,10 @@ export async function flushGhlUsage(): Promise<void> {
     try {
       const url = process.env.NEXT_PUBLIC_SUPABASE_URL
       const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-      if (!url || !key) return
+      if (!url || !key) {
+        console.error('[ghl-usage] missing SUPABASE_URL / SERVICE_ROLE_KEY in this runtime')
+        return
+      }
       const { createClient } = await import('@supabase/supabase-js')
       const db = createClient(url, key)
       const day = new Date().toISOString().slice(0, 10)
@@ -59,9 +62,10 @@ export async function flushGhlUsage(): Promise<void> {
           db.rpc('ghl_call_bump', { p_day: day, p_source: source, p_n: n })
         )
       )
-    } catch {
-      // Accounting must never break a request, and losing a batch is fine —
-      // we only need the shape of the traffic, not exact totals.
+    } catch (err) {
+      // Accounting must never break a request, but silence here is what hid
+      // the first failure — log it.
+      console.error('[ghl-usage] flush failed', err)
     } finally {
       flushing = null
     }
