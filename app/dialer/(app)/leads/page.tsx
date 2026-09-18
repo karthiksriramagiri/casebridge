@@ -580,6 +580,7 @@ export default function LeadsPage() {
   const { deviceReady, placeCall, callState } = useCall()
   const [campaigns, setCampaigns]       = useState<Campaign[]>([])
   const [campsLoading, setCampsLoading] = useState(true)
+  const [campsError, setCampsError]     = useState<string | null>(null)
   const [openFirms, setOpenFirms]       = useState<Set<string>>(new Set(['lhp', 'lhp_s', 'fears', 'jm']))
   const [selectedStage, setSelectedStage] = useState<Campaign | null>(null)
   const [leads, setLeads]               = useState<Lead[]>([])
@@ -595,15 +596,25 @@ export default function LeadsPage() {
   // Load campaigns
   useEffect(() => {
     fetch('/api/dialer/campaigns')
-      .then(r => r.json())
-      .then(d => {
+      .then(async r => ({ ok: r.ok, d: await r.json() }))
+      .then(({ ok, d }) => {
+        if (!ok || d.error) {
+          // Without this the page rendered an empty stage list on a GHL rate
+          // limit, which looks identical to "no leads" — and every reload
+          // spent ~26 more GHL calls making the outage worse.
+          const reset = d.resetInSeconds
+            ? ` Resets in ~${Math.round(d.resetInSeconds / 3600)}h.`
+            : ''
+          setCampsError(`${d.error ?? 'Failed to load stages'}${reset}`)
+          return
+        }
         const list: Campaign[] = d.campaigns ?? []
         list.sort((a, b) => a.position - b.position)
         setCampaigns(list)
         const first = list.find(c => c.leadCount > 0)
         if (first) setSelectedStage(first)
       })
-      .catch(console.error)
+      .catch(err => { console.error(err); setCampsError(String(err)) })
       .finally(() => setCampsLoading(false))
   }, [])
 
@@ -680,6 +691,14 @@ export default function LeadsPage() {
         {campsLoading && (
           <div className="p-3 space-y-2">
             {[1,2,3,4,5].map(i => <div key={i} className="h-6 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
+          </div>
+        )}
+
+        {campsError && (
+          <div className="m-2 rounded-md border border-red-300 bg-red-50 p-3 text-[11px] leading-relaxed text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+            <p className="font-semibold">Can't load stages from GHL</p>
+            <p className="mt-1">{campsError}</p>
+            <p className="mt-1 opacity-80">Reloading won't help — it spends more quota.</p>
           </div>
         )}
 

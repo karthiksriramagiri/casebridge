@@ -7,6 +7,7 @@ import { resolveTimezone }                            from './area-codes'
 import { BLOCKS_BY_COUNT, blockWindows, stagePriority } from './blocks'
 import type { BlockName } from './blocks'
 import { getNumberPool, assignRandomCallerId }         from './number-pool'
+import { getPipelines }                               from '@/lib/ghl-pipelines'
 
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const PIPELINES = [
@@ -1080,6 +1081,27 @@ export async function applyDisposition(
       }).catch(err => console.error('[disposition] Slack notification failed', err))
     }
   }
+
+  // ── Schedule auto intake-fill 1 hour after Signed/MIA Reconnected ────────
+  if (['Signed', 'MIA Reconnected'].includes(disposition) && attempt.contact_id) {
+    const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour from now
+    try {
+      await db.from('intake_fill_jobs').upsert({
+        contact_id:   attempt.contact_id,
+        contact_name: attempt.contact_name,
+        firm:         firm || null,
+        status:       'pending',
+        scheduled_at: scheduledAt,
+        created_at:   now.toISOString(),
+      }, { onConflict: 'contact_id' })
+    } catch (err) {
+      console.error('[disposition] Failed to schedule intake fill', err)
+    }
+    console.log('[disposition] Scheduled intake fill for', {
+      contactId: attempt.contact_id,
+      scheduledAt,
+    })
+  }
 }
 
 async function cancelRemainingAttempts(
@@ -1113,16 +1135,17 @@ export async function resetDay(): Promise<void> {
 
 async function moveGHLStage(opportunityId: string, pipelineId: string, targetStageName: string) {
   const headers = ghlHeaders()
-  const pRes = await fetch(
-    `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${LOCATION_ID}`,
-    { headers }
-  )
-  if (!pRes.ok) {
-    console.error('[moveGHLStage] Failed to fetch pipelines', pRes.status)
+  // Cached schema read. This used to pull the entire location-wide pipeline
+  // list on EVERY disposition — two GHL calls per rep action, one of which
+  // belongs in cache.
+  let allPipelines
+  try {
+    allPipelines = await getPipelines()
+  } catch (err) {
+    console.error('[moveGHLStage] Failed to fetch pipelines', err)
     return
   }
-  const pData    = await pRes.json()
-  const pipeline = (pData.pipelines ?? []).find((p: any) => p.id === pipelineId)
+  const pipeline = allPipelines.find((p) => p.id === pipelineId)
   if (!pipeline) {
     console.error('[moveGHLStage] Pipeline not found', { pipelineId })
     return

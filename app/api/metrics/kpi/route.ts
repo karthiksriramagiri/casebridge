@@ -123,11 +123,14 @@ async function fetchGHLPipelineBreakdown(
     `?location_id=${GHL_LOCATION_ID}&pipeline_id=${pipelineId}&limit=100`
 
   let pages = 0
+  console.log('[metrics:kpi] GHL sweep start', { pipelineId })
   while (url && pages < 20) {
     pages++
     const res: Response = await fetch(url, {
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
-      cache: 'no-store',
+      // 5-min shared cache: this sweep costs ~42 GHL calls per dashboard load
+      // and was uncached on every request. Metrics minutes-stale are fine.
+      next: { revalidate: 300 },
     })
     if (!res.ok) break
     const data: any = await res.json()

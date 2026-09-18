@@ -1,5 +1,7 @@
 import { NextResponse } from 'next/server'
 
+import { GhlQuotaError, getPipelines } from '@/lib/ghl-pipelines'
+
 const GHL_BASE = 'https://services.leadconnectorhq.com'
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 
@@ -22,19 +24,30 @@ function ghlHeaders() {
 export async function GET() {
   const headers = ghlHeaders()
 
-  // Fetch pipeline stage data for both pipelines in parallel
-  const results = await Promise.all(
-    PIPELINES.map(async (p) => {
-      const res = await fetch(
-        `${GHL_BASE}/opportunities/pipelines?locationId=${LOCATION_ID}`,
-        { headers, cache: 'no-store' }
+  // One cached schema read for every pipeline. This used to fetch the whole
+  // location-wide pipeline list once PER pipeline with cache:'no-store', and a
+  // 429 on that fetch returned [] with HTTP 200 — so the leads page rendered
+  // empty with no error, reps reloaded, and each reload spent ~26 more calls.
+  let allPipelines
+  try {
+    allPipelines = await getPipelines()
+  } catch (err) {
+    if (err instanceof GhlQuotaError) {
+      console.error('[dialer:campaigns]', err.message)
+      return NextResponse.json(
+        {
+          error: err.message,
+          dailyRemaining: err.dailyRemaining,
+          resetInSeconds: err.resetMs ? Math.round(Number(err.resetMs) / 1000) : null,
+        },
+        { status: err.status === 429 ? 429 : 502 }
       )
-      if (!res.ok) {
-        console.error('[dialer:campaigns] GHL error', res.status, await res.text())
-        return []
-      }
-      const data = await res.json()
-      const pipeline = (data.pipelines ?? []).find((pl: any) => pl.id === p.id)
+    }
+    throw err
+  }
+
+  const results = PIPELINES.map((p) => {
+      const pipeline = allPipelines.find((pl) => pl.id === p.id)
       if (!pipeline) return []
 
       return (pipeline.stages ?? []).map((stage: any) => ({
@@ -50,8 +63,7 @@ export async function GET() {
         leadCount: 0,
         status: 'paused' as const,
       }))
-    })
-  )
+  })
 
   const campaigns = results.flat()
 
@@ -61,7 +73,11 @@ export async function GET() {
       try {
         const res = await fetch(
           `${GHL_BASE}/opportunities/search?location_id=${LOCATION_ID}&pipeline_id=${c.pipelineId}&pipeline_stage_id=${c.stageId}&limit=1`,
-          { headers, cache: 'no-store' }
+          // 5-min shared cache: these ~22 counts are the bulk of this route's
+          // cost and only feed a badge. At 60s a continuously-used page still
+          // costs ~32k calls/day; at 300s it's ~6k. Lower it if the badges
+          // need to feel live and the quota allows.
+          { headers, next: { revalidate: 300 } }
         )
         if (res.ok) {
           const d = await res.json()

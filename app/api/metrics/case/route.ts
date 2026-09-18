@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { getPipelines } from '@/lib/ghl-pipelines'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -96,16 +97,13 @@ export async function PATCH(request: NextRequest) {
             'Content-Type': 'application/json',
           }
 
-          // Fetch pipeline stages to find MIA stage ID
-          const pRes = await fetch(
-            `${GHL_API_BASE}/opportunities/pipelines?locationId=${GHL_LOCATION_ID}`,
-            { headers }
-          )
-          if (pRes.ok) {
-            const pData = await pRes.json()
-            const pl = (pData.pipelines ?? []).find((p: any) => p.id === pipeline.id)
+          // Pipeline stages come from the shared cache — this used to refetch
+          // the entire schema list once per lead.
+          const pipelineList = await getPipelines()
+          {
+            const pl = pipelineList.find(p => p.id === pipeline.id)
             const miaStage = (pl?.stages ?? []).find(
-              (s: any) => s.name.toLowerCase() === 'mia'
+              s => s.name.toLowerCase() === 'mia'
             )
 
             if (miaStage) {

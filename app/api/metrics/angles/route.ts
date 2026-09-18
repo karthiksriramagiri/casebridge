@@ -224,9 +224,15 @@ export async function GET(req: NextRequest) {
           const out: Record<string, GHLEntry[]> = {}
           let url: string | null = `https://services.leadconnectorhq.com/opportunities/search?location_id=${GHL_LOCATION_ID}&pipeline_id=${pid}&limit=100`
           let p = 0
+          console.log('[metrics:angles] GHL sweep', { pipelineId: pid })
           while (url && p < 20) {
             p++
-            const r = await fetch(url, { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' }, cache: 'no-store' })
+            // 5-min shared cache: this sweep costs ~42 GHL calls per dashboard
+            // load and was uncached on every request. Minutes-stale is fine.
+            const r = await fetch(url, {
+              headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
+              next: { revalidate: 300 },
+            })
             if (!r.ok) break
             const d: any = await r.json()
             for (const opp of (d.opportunities || [])) {
