@@ -1,0 +1,18 @@
+# Railway only builds the sms-bot service from this repo. Without this the CLI
+# tried to upload 1.8G (node_modules, .next, .git, media) and the connection died.
+node_modules
+**/node_modules
+.next
+**/.next
+.git
+.vercel
+.claude
+dist
+**/dist
+public/nuances
+lib/AccidentSupportDeskLander_Spanish
+*.log
+*.mp3
+*.wav
+*.mp4
+tsconfig.tsbuildinfo
