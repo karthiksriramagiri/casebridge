@@ -281,7 +281,13 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
 
   let parsed: Record<string, any>
   try {
-    const client = new Anthropic({ apiKey: anthropicKey })
+    // An org-level key (one not scoped to a workspace) must name a workspace on
+    // every request or the API 400s. A workspace-scoped key needs nothing here.
+    const workspace = (process.env.ANTHROPIC_WORKSPACE_ID ?? '').trim()
+    const client = new Anthropic({
+      apiKey: anthropicKey,
+      ...(workspace ? { defaultHeaders: { 'anthropic-workspace-id': workspace } } : {}),
+    })
 
     // Photos the client texted in — damage shots, police reports, insurance
     // cards. Fetched as base64 because the model needs the bytes, and a URL
