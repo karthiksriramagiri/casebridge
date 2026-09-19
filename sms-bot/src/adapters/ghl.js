@@ -1,3 +1,24 @@
+// ── GHL call accounting ─────────────────────────────────────────────────────
+// Every GHL request in this service goes through ghlGet/ghlSearch/ghlRequest,
+// so counting here captures the bot's full API footprint. Logged once a minute
+// so the Railway logs answer "what is spending the quota" directly.
+const __ghlCalls = new Map();
+let __ghlWindowStart = Date.now();
+function __countGhl(method, path, status) {
+  const key = `${method} ${String(path).replace(/\/[0-9a-zA-Z]{18,}(?=\/|$)/g, "/{id}")}`;
+  __ghlCalls.set(key, (__ghlCalls.get(key) || 0) + 1);
+  const elapsed = Date.now() - __ghlWindowStart;
+  if (elapsed >= 60000) {
+    let total = 0;
+    for (const v of __ghlCalls.values()) total += v;
+    const top = [...__ghlCalls.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8);
+    console.log(`[ghl-count] ${total} calls in ${Math.round(elapsed / 1000)}s -> ${Math.round(total / (elapsed / 3600000))}/hr | ` +
+      top.map(([k, v]) => `${k}=${v}`).join(" "));
+    __ghlCalls.clear();
+    __ghlWindowStart = Date.now();
+  }
+}
+
 function ghlHeaders(config) {
   return {
     Authorization: `Bearer ${config.ghl.token}`,
@@ -14,6 +35,7 @@ async function ghlGet(config, path) {
     method: "GET",
     headers: ghlHeaders(config)
   });
+  __countGhl("GET", path, response.status);
   const text = await response.text();
   let data = {};
   try {
@@ -36,6 +58,7 @@ async function ghlSearch(config, path, body) {
     headers: ghlHeaders(config),
     body: JSON.stringify(body)
   });
+  __countGhl("POST", path, response.status);
   const text = await response.text();
   let data = {};
   try {
@@ -58,6 +81,7 @@ async function ghlRequest(config, path, body, method = "POST") {
     headers: ghlHeaders(config),
     body: JSON.stringify(body)
   });
+  __countGhl(method, path, response.status);
   const text = await response.text();
   let data = {};
   try {
