@@ -85,6 +85,39 @@ ${constraints ? `\nFIELD FORMAT RULES — values outside these are rejected and 
 Respond with ONLY a raw JSON object. No markdown fences, no commentary, no explanation.`
 }
 
+
+/**
+ * Pull the first complete JSON object out of a model response.
+ *
+ * Stripping code fences isn't enough — a response can carry a preamble or
+ * trailing commentary, which made JSON.parse fail with "Unexpected
+ * non-whitespace character after JSON" and lose the whole extraction. Walk the
+ * braces instead, ignoring any that sit inside strings.
+ */
+function extractJsonObject(raw: string): string | null {
+  const text = raw.replace(/```json?\s*|```/g, '')
+  const start = text.indexOf('{')
+  if (start === -1) return null
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+
+  for (let i = start; i < text.length; i++) {
+    const ch = text[i]
+    if (escaped) { escaped = false; continue }
+    if (ch === '\\') { escaped = true; continue }
+    if (ch === '"') { inString = !inString; continue }
+    if (inString) continue
+    if (ch === '{') depth++
+    else if (ch === '}') {
+      depth--
+      if (depth === 0) return text.slice(start, i + 1)
+    }
+  }
+  return null
+}
+
 // ── Gather all available data for a contact ─────────────────────────────────
 
 async function gatherData(contactId: string) {
@@ -358,7 +391,10 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
     if (msg.stop_reason === 'max_tokens') {
       throw new Error('response hit max_tokens — JSON would be truncated')
     }
-    const cleaned = text.replace(/```json?\n?|```/g, '').trim()
+    const cleaned = extractJsonObject(text)
+    if (!cleaned) {
+      throw new Error(`no JSON object in response (${text.length} chars, starts: ${text.slice(0, 80)})`)
+    }
     parsed = JSON.parse(cleaned)
   } catch (err: any) {
     result.error = `Claude extraction failed: ${err.message}`
