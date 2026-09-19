@@ -179,12 +179,25 @@ function buildContext(
     const txText = transcripts.map((tx, i) => {
       const date = tx.completed_at ? new Date(tx.completed_at).toLocaleDateString() : 'unknown date'
       if (tx.utterances && Array.isArray(tx.utterances) && tx.utterances.length > 0) {
-        const lines = tx.utterances.map((u: any) =>
-          `${u.speaker === 0 ? 'Agent' : 'Lead'}: ${u.text}`
-        ).join('\n')
-        return `Call ${i + 1} (${date}):\n${lines}`
+        // Deepgram rows store { speaker, transcript, start, end } — `speaker` is
+        // a label like "Agent"/"Customer", not an index. Reading u.text and
+        // comparing u.speaker === 0 rendered every line as "Lead: undefined",
+        // silently discarding whole call transcripts.
+        const lines = tx.utterances
+          .map((u: any) => {
+            const said = String(u.transcript ?? u.text ?? '').trim()
+            if (!said) return ''
+            const who =
+              typeof u.speaker === 'number'
+                ? (u.speaker === 0 ? 'Agent' : 'Lead')
+                : String(u.speaker ?? 'Speaker')
+            return `${who}: ${said}`
+          })
+          .filter(Boolean)
+          .join('\n')
+        if (lines) return `Call ${i + 1} (${date}):\n${lines}`
       }
-      return `Call ${i + 1} (${date}):\n${tx.full_text}`
+      return `Call ${i + 1} (${date}):\n${tx.full_text ?? ''}`
     }).join('\n\n')
     sections.push(`CALL TRANSCRIPTS:\n${txText}`)
   }
@@ -397,5 +410,43 @@ async function saveResult(db: ReturnType<typeof supabaseAdmin>, result: IntakeFi
     }, { onConflict: 'contact_id' })
   } catch (err) {
     console.error('[intake-fill] Failed to save result', err)
+  }
+}
+
+/**
+ * Inspect what intake-fill would actually read for a contact, without calling
+ * Claude. Answers "is it seeing the dialer transcript AND the GHL one?"
+ */
+export async function previewIntakeEvidence(contactId: string) {
+  const { contact, transcripts, messages, ghlCalls, images } = await gatherData(contactId)
+  const { custom: existing, dob: existingDob } = getExistingValues(contact)
+  const context = buildContext(
+    contact, existing, existingDob, transcripts, messages, ghlCalls, images.length
+  )
+  const name =
+    contact?.contactName ??
+    [contact?.firstName, contact?.lastName].filter(Boolean).join(' ') ??
+    null
+
+  return {
+    contactId,
+    contactName: name,
+    sources: {
+      dialerTranscripts: {
+        count: transcripts.length,
+        totalChars: transcripts.reduce((n: number, t: any) => n + (t.full_text?.length ?? 0), 0),
+        dates: transcripts.map((t: any) => String(t.completed_at ?? '').slice(0, 10)),
+      },
+      dialerMessages: { count: messages.length },
+      ghlCallTranscripts: {
+        count: ghlCalls.length,
+        totalChars: ghlCalls.reduce((n, c) => n + c.text.length, 0),
+        dates: ghlCalls.map((c) => String(c.dateAdded ?? '').slice(0, 10)),
+      },
+      photos: { count: images.length, urls: images.map((i) => i.url) },
+    },
+    existingFieldCount: Object.keys(existing).length,
+    contextChars: context.length,
+    contextPreview: context.slice(0, 4000),
   }
 }
