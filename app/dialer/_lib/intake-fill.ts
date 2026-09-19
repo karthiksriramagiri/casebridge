@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk'
 import { createClient } from '@supabase/supabase-js'
 import { GHL_BASE, ghlHeaders, INTAKE_FIELDS } from './ghl-fields'
 import { getConversationData, fetchImageAsBase64 } from './ghl-conversations'
+import { getFieldDefs, coerceValue, describeConstraints } from './ghl-field-types'
 
 function supabaseAdmin() {
   return createClient(
@@ -29,7 +30,7 @@ export interface IntakeFillResult {
 
 // ── Build the Claude system prompt ──────────────────────────────────────────
 
-function buildSystemPrompt(): string {
+function buildSystemPrompt(constraints = ''): string {
   const fieldLines = Object.entries(INTAKE_FIELDS).map(([id, { label, hint }]) =>
     `- "${id}" (${label}): ${hint}`
   ).join('\n')
@@ -48,6 +49,18 @@ EXTRACTION RULES:
 7. For insurance fields, just put the company name (e.g. "State Farm", "GEICO", "Liability only").
 8. For Police Report #, include the report number AND department if both mentioned (e.g. "Report #24-12345, La Habra PD").
 9. For Driver's License, include the number AND state (e.g. "D1234567, CA").
+
+COVERAGE — work every field:
+- Go through the field list one at a time and search all the evidence for it before
+  deciding nothing is there. Most "missing" fields are actually answered somewhere in
+  a call, a text, or a photo.
+- Answer from context when the context genuinely settles it. "I drove myself to the ER"
+  answers Ambulance Involved as "No". "I was by myself" answers Passengers as "None".
+- If a partial answer exists, give the partial answer rather than null — "Pending, report
+  not yet released" is far more useful to a reviewer than an empty field.
+- Only use null when the evidence truly says nothing about that field, and add a flag
+  saying what still needs to be asked.
+- Never invent a fact to fill a field. A wrong value is worse than a gap.
 
 PHOTOS:
 - Photos are attached as images at the start of the message when the client sent any.
@@ -68,6 +81,7 @@ ALSO INCLUDE:
 - "_summary": A 4-6 sentence plain-English intake summary a paralegal can read in 15 seconds to decide if this case is ready to send to the firm.
 - "_flags": An array of short strings for anything needing human attention: missing critical info (date of accident, injuries, fault), inconsistent dates, possible red flags, statute of limitations concerns, prior attorney involvement, etc.
 
+${constraints ? `\nFIELD FORMAT RULES — values outside these are rejected and the field stays empty:\n${constraints}\n` : ''}
 Respond with ONLY a raw JSON object. No markdown fences, no commentary, no explanation.`
 }
 
@@ -142,7 +156,8 @@ function buildContext(
   transcripts: any[],
   messages: any[],
   ghlCalls: { text: string; dateAdded: string | null; direction: string | null }[] = [],
-  imageCount = 0
+  imageCount = 0,
+  overwrite = false
 ): string {
   const sections: string[] = []
 
@@ -162,7 +177,16 @@ function buildContext(
     filledLines.push(`${label}: ${val}`)
   }
   if (filledLines.length > 0) {
-    sections.push(`EXISTING INTAKE FIELDS (already filled — do not re-extract these):\n${filledLines.join('\n')}`)
+    // In overwrite mode these are a starting point to verify and improve, not a
+    // no-go list. Telling the model "already filled, do not re-extract" made it
+    // return almost nothing on a second pass over the same contact.
+    sections.push(
+      overwrite
+        ? `CURRENT INTAKE FIELD VALUES (extract every field fresh from the evidence; ` +
+          `correct these where the evidence supports a better or fuller answer, and ` +
+          `repeat them when they are already right):\n${filledLines.join('\n')}`
+        : `EXISTING INTAKE FIELDS (already filled — do not re-extract these):\n${filledLines.join('\n')}`
+    )
   }
 
   if (imageCount > 0) {
@@ -267,8 +291,12 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
 
   // 2. Build existing values + context
   const { custom: existing, dob: existingDob } = getExistingValues(contact)
+  const OVERWRITE_MODE = process.env.INTAKE_FILL_OVERWRITE !== '0'
+  // GHL silently drops values that don't fit a field's type, so we need the
+  // definitions both to instruct the model and to validate before writing.
+  const fieldDefs = await getFieldDefs()
   const context = buildContext(
-    contact, existing, existingDob, transcripts, messages, ghlCalls, images.length
+    contact, existing, existingDob, transcripts, messages, ghlCalls, images.length, OVERWRITE_MODE
   )
 
   // 3. Call Claude
@@ -306,7 +334,7 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
     const msg = await client.messages.create({
       model:      'claude-opus-5',
       max_tokens: 8000,
-      system:     buildSystemPrompt(),
+      system:     buildSystemPrompt(describeConstraints(fieldDefs, Object.keys(INTAKE_FIELDS))),
       messages: [{
         role: 'user',
         content: [...imageBlocks, { type: 'text', text: context }],
@@ -342,17 +370,30 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
   result.summary = parsed._summary ?? ''
   result.flags = Array.isArray(parsed._flags) ? parsed._flags : []
 
-  // 5. Merge logic — only write fields that are empty in GHL
+  // 5. Merge logic
+  //
+  // OVERWRITE=true replaces existing GHL values with what was extracted. The
+  // reviewer sees every field reasoned from the full evidence rather than a
+  // mix of old and new. Set INTAKE_FILL_OVERWRITE=0 to go back to fill-blanks.
+  //
+  // FILL_EVERY_FIELD writes an explicit marker where the evidence genuinely
+  // said nothing, so a blank field means "not yet processed" rather than
+  // "nobody knows". It never invents a fact — the marker IS the absence.
+  const OVERWRITE = process.env.INTAKE_FILL_OVERWRITE !== '0'
+  const FILL_EVERY_FIELD = process.env.INTAKE_FILL_EVERY !== '0'
+  const NOT_FOUND = process.env.INTAKE_FILL_PLACEHOLDER ?? 'Not discussed — needs follow-up'
+
   const toWrite: Array<{ id: string; field_value: string }> = []
   const standardUpdates: Record<string, string> = {}
 
   // Handle DOB (standard GHL field, not custom)
-  if (parsed.dateOfBirth && !existingDob) {
-    const dob = String(parsed.dateOfBirth).trim()
-    if (dob && dob !== 'null') {
-      standardUpdates.dateOfBirth = dob
-      result.extracted['Date of Birth'] = dob
-      result.written['Date of Birth'] = dob
+  const dobExtracted = parsed.dateOfBirth ? String(parsed.dateOfBirth).trim() : ''
+  if (dobExtracted && dobExtracted !== 'null' && (OVERWRITE || !existingDob)) {
+    standardUpdates.dateOfBirth = dobExtracted
+    result.extracted['Date of Birth'] = dobExtracted
+    result.written['Date of Birth'] = dobExtracted
+    if (existingDob && existingDob !== dobExtracted) {
+      result.flags.push(`Date of Birth overwritten: "${existingDob}" -> "${dobExtracted}"`)
     }
   } else if (existingDob) {
     result.skipped['Date of Birth'] = existingDob
@@ -362,20 +403,53 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
   for (const fieldId of Object.keys(INTAKE_FIELDS)) {
     const extracted = parsed[fieldId]
     const label = INTAKE_FIELDS[fieldId].label
+    const isEmpty =
+      extracted === null ||
+      extracted === undefined ||
+      String(extracted).trim() === '' ||
+      String(extracted).trim() === 'null'
 
-    if (extracted === null || extracted === undefined || String(extracted).trim() === '' || String(extracted).trim() === 'null') {
+    if (isEmpty) {
       result.extracted[label] = null
+      // Nothing in the evidence. Mark the gap rather than leaving it blank,
+      // but never overwrite a real value a human put there with a placeholder.
+      const def = fieldDefs[fieldId]
+      const constrained =
+        !!def && (def.options.length > 0 || ['NUMERICAL', 'DATE'].includes(def.dataType))
+      if (FILL_EVERY_FIELD && !existing[fieldId] && !constrained) {
+        // Only free-text fields can hold the marker; a RADIO or NUMERICAL
+        // field would reject it and stay blank anyway.
+        toWrite.push({ id: fieldId, field_value: NOT_FOUND })
+        result.written[label] = NOT_FOUND
+      } else if (FILL_EVERY_FIELD && !existing[fieldId] && constrained) {
+        result.flags.push(`${label} left blank — no evidence, and the field only accepts ${def!.options.length ? def!.options.join(' / ') : def!.dataType.toLowerCase()}`)
+      } else if (existing[fieldId]) {
+        result.skipped[label] = existing[fieldId]
+      }
       continue
     }
 
-    const value = String(extracted).trim()
-    result.extracted[label] = value
+    const rawValue = String(extracted).trim()
+    result.extracted[label] = rawValue
 
-    if (existing[fieldId]) {
+    // Fit it to the field's type. Writing something GHL will reject would
+    // report success while leaving the field blank.
+    const coerced = coerceValue(fieldDefs[fieldId], rawValue)
+    if (!coerced.ok) {
+      result.flags.push(`${label} not written — ${coerced.reason}`)
+      if (existing[fieldId]) result.skipped[label] = existing[fieldId]
+      continue
+    }
+    const value = coerced.value!
+
+    if (existing[fieldId] && !OVERWRITE) {
       result.skipped[label] = existing[fieldId]
     } else {
       toWrite.push({ id: fieldId, field_value: value })
       result.written[label] = value
+      if (existing[fieldId] && existing[fieldId] !== value) {
+        result.flags.push(`${label} overwritten: "${existing[fieldId].slice(0, 40)}" -> "${value.slice(0, 40)}"`)
+      }
     }
   }
 
@@ -410,7 +484,29 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
   // 7. Save result to Supabase for monitoring
   await saveResult(db, result)
 
+  if (!result.error && Object.keys(result.written).length > 0) {
+    await notifySlack(result)
+  }
+
   return result
+}
+
+
+/** Ping Slack when a case's intake is filled and ready for review. */
+async function notifySlack(result: IntakeFillResult): Promise<void> {
+  const url = (process.env.SLACK_INTAKE_WEBHOOK ?? '').trim()
+  if (!url) return
+  const name = result.contactName || result.contactId
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text: `Hi Karthik, I've completed the intake fields for ${name}` }),
+    })
+  } catch (err) {
+    // A failed notification must never fail the fill.
+    console.error('[intake-fill] Slack notify failed', err)
+  }
 }
 
 // ── Persist result for the /sendcase monitoring page ────────────────────────
@@ -443,7 +539,8 @@ export async function previewIntakeEvidence(contactId: string) {
   const { contact, transcripts, messages, ghlCalls, images } = await gatherData(contactId)
   const { custom: existing, dob: existingDob } = getExistingValues(contact)
   const context = buildContext(
-    contact, existing, existingDob, transcripts, messages, ghlCalls, images.length
+    contact, existing, existingDob, transcripts, messages, ghlCalls, images.length,
+    process.env.INTAKE_FILL_OVERWRITE !== '0'
   )
   const name =
     contact?.contactName ??
