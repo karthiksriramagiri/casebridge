@@ -313,7 +313,23 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
       }],
     })
 
-    const text = (msg.content[0] as any)?.text ?? ''
+    // Opus 5 runs adaptive thinking by default, so content[0] is a thinking
+    // block and content[0].text is undefined — which parsed as '' and threw
+    // "Unexpected end of JSON input". Take the text block explicitly.
+    const text = msg.content
+      .filter((b: any) => b.type === 'text')
+      .map((b: any) => b.text)
+      .join('')
+      .trim()
+    if (!text) {
+      throw new Error(
+        `no text block in response (stop_reason=${msg.stop_reason}, ` +
+        `blocks=${msg.content.map((b: any) => b.type).join(',')})`
+      )
+    }
+    if (msg.stop_reason === 'max_tokens') {
+      throw new Error('response hit max_tokens — JSON would be truncated')
+    }
     const cleaned = text.replace(/```json?\n?|```/g, '').trim()
     parsed = JSON.parse(cleaned)
   } catch (err: any) {
