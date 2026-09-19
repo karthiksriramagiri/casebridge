@@ -1,3 +1,6 @@
+// Max jobs drained per tick. Keeps one tick's GHL cost bounded.
+const JOB_BATCH_LIMIT = Number(process.env.JOB_BATCH_LIMIT || 25)
+
 const crypto = require("node:crypto");
 const { Pool } = require("pg");
 const { normalizePhone } = require("./store");
@@ -157,10 +160,13 @@ class PostgresStore {
     return item;
   }
 
-  async dueJobs(now = new Date()) {
+  async dueJobs(now = new Date(), limit = JOB_BATCH_LIMIT) {
+    // Bounded batch. This query had no LIMIT, so every tick pulled the entire
+    // pending backlog and ran it sequentially — each job costing at least one
+    // GHL call. With a backlog that saturates the API quota indefinitely.
     const result = await this.pool.query(
-      "select data from jobs where status = 'pending' and run_at <= $1 order by run_at asc",
-      [now.toISOString()]
+      "select data from jobs where status = 'pending' and run_at <= $1 order by run_at asc limit $2",
+      [now.toISOString(), Math.max(1, Number(limit) || JOB_BATCH_LIMIT)]
     );
     return result.rows.map(rowData);
   }

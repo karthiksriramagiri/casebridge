@@ -1503,6 +1503,14 @@ class SmsBot {
 
   async hydrateContactTags(contact, options = {}) {
     if (!contact || this.config.dryRun || (contact.tags && !options.force)) return contact;
+    // Even a forced refresh reuses a very recent lookup. runDueJob forces this
+    // on every job, so a contact with several queued jobs (or a retrying one)
+    // was re-fetched from GHL every single time.
+    if (options.force && contact.tags && contact.lastTagLookupAt) {
+      const age = Date.now() - new Date(contact.lastTagLookupAt).getTime();
+      const ttl = Number(process.env.TAG_LOOKUP_TTL_MS || 120000);
+      if (Number.isFinite(age) && age >= 0 && age < ttl) return contact;
+    }
     try {
       const data = await ghl.getContact(this.config, contact.ghlContactId || contact.id);
       const fetched = data?.contact || data;
@@ -1515,6 +1523,7 @@ class SmsBot {
         return this.store.upsertContact({
           id: contact.id,
           tags: fetched.tags,
+          lastTagLookupAt: new Date().toISOString(),
           lastTagLookupFailedAt: "",
           lastTagLookupError: "",
           timezone: resolveContactTimezone(withTags, this.config),

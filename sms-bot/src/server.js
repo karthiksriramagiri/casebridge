@@ -2566,11 +2566,24 @@ if (require.main === module) {
     server.listen(config.port, config.host, () => {
       console.log(`Accident Support Desk SMS bot listening on http://${config.host}:${config.port}`);
     });
+    // Overlap guard. setInterval does not wait for the previous run, so once a
+    // tick ran longer than 60s the ticks stacked and hit GHL concurrently,
+    // compounding the backlog instead of draining it.
+    let jobTickRunning = false;
     setInterval(() => {
-      runDueJobs().catch(async (error) => {
-        console.error("job tick failed", error);
-        await notifyBotError("Job tick failed", { Error: error.message });
-      });
+      if (jobTickRunning) {
+        console.warn("[jobs] previous tick still running — skipping this one");
+        return;
+      }
+      jobTickRunning = true;
+      runDueJobs()
+        .catch(async (error) => {
+          console.error("job tick failed", error);
+          await notifyBotError("Job tick failed", { Error: error.message });
+        })
+        .finally(() => {
+          jobTickRunning = false;
+        });
     }, 60_000);
     scheduleDailyMonitor(config);
     if (String(process.env.AUTO_APPLY_LLM_BATCH || "false").toLowerCase() === "true") {

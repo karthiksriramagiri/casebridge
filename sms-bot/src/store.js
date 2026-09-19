@@ -79,10 +79,12 @@ class Store {
     return this.data.jobs[id];
   }
 
-  dueJobs(now = new Date()) {
+  dueJobs(now = new Date(), limit = Number(process.env.JOB_BATCH_LIMIT || 25)) {
+    // Bounded batch — see the note in postgresStore.dueJobs.
     return Object.values(this.data.jobs)
       .filter((job) => job.status === "pending" && new Date(job.runAt) <= now)
-      .sort((a, b) => new Date(a.runAt) - new Date(b.runAt));
+      .sort((a, b) => new Date(a.runAt) - new Date(b.runAt))
+      .slice(0, Math.max(1, Number(limit) || 25));
   }
 
   updateJob(id, patch) {
