@@ -1,0 +1,212 @@
+/* Agent floor — retro isometric office. Pixel-crisp, warm CRT palette. */
+
+*, *::before, *::after { box-sizing: border-box; }
+
+.ag-root {
+  --ag-bg:      #1B1726;
+  --ag-bg-2:    #241F33;
+  --ag-panel:   #2C2639;
+  --ag-line:    #3E3650;
+  --ag-text:    #F2EBDD;
+  --ag-muted:   #A99FB4;
+  --ag-accent:  #C17A4A;
+  --ag-live:    #5FD97F;
+  --ag-train:   #E8B44A;
+  min-height: 100vh;
+  background:
+    radial-gradient(1400px 780px at 30% -10%, #302A44 0%, transparent 60%),
+    var(--ag-bg);
+  color: var(--ag-text);
+  padding: 22px clamp(16px, 2.2vw, 40px) 32px;
+}
+
+.ag-shell { max-width: min(1900px, 100%); margin: 0 auto; }
+
+/* ── Header ───────────────────────────────────────────────────────────────── */
+
+.ag-head { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+.ag-title {
+  font-family: var(--font-pixel), ui-monospace, monospace;
+  font-size: clamp(16px, 2vw, 27px);
+  letter-spacing: 0.02em;
+  color: var(--ag-text);
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.5);
+}
+.ag-sub { font-size: 13.5px; color: var(--ag-muted); }
+.ag-hint { color: #7E7590; }
+.ag-headrule {
+  height: 3px; margin: 14px 0 16px;
+  background: repeating-linear-gradient(90deg, var(--ag-accent) 0 12px, transparent 12px 20px);
+  opacity: 0.55;
+}
+
+/* ── Layout ───────────────────────────────────────────────────────────────── */
+
+/* One self-contained card per agent, so the page reads the same with one
+   worker or eight. */
+.ag-roster {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-top: 16px;
+}
+
+/* ── Stage ────────────────────────────────────────────────────────────────── */
+
+.ag-stage {
+  position: relative;
+  width: 100%;
+  /* The art's own ratio drives the box. max-height keeps the info row on
+     screen on short displays; the SVG then letterboxes sideways rather than
+     distorting, because preserveAspectRatio defaults to "meet". */
+  aspect-ratio: 1408 / 768;
+  max-height: calc(100vh - 290px);
+  background: #0E0B14;
+  border: 1px solid var(--ag-line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.ag-svg { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+
+/* ── Animations ───────────────────────────────────────────────────────────── */
+
+/* Speech-bubble text, matched to the lettering painted in the office art. */
+.ag-say {
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  font-size: 21px;
+  font-weight: 700;
+  fill: #17150F;
+  opacity: 0;
+  animation-iteration-count: infinite;
+  animation-timing-function: ease-in-out;
+}
+.ag-say--idle { opacity: 1; fill: #6E6A60; animation: none; font-size: 21px; }
+
+.ag-spot { animation: ag-spot 5s ease-in-out infinite; }
+@keyframes ag-spot { 0%, 100% { opacity: 0.75; } 50% { opacity: 1; } }
+
+.ag-ring {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ag-ring 2.6s ease-in-out infinite;
+}
+@keyframes ag-ring {
+  0%, 100% { opacity: 0.35; transform: scale(0.94); }
+  50%      { opacity: 0.9;  transform: scale(1.04); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ag-spot, .ag-ring { animation: none !important; }
+  /* Hold the first activity instead of cycling. */
+  .ag-say { animation: none !important; opacity: 0; }
+  .ag-say:first-of-type { opacity: 1; }
+  .ag-say--idle { opacity: 1; }
+}
+
+/* ── Agent cards ──────────────────────────────────────────────────────────── */
+
+.ag-agent {
+  --accent: var(--ag-accent);
+  background: var(--ag-panel);
+  border: 1px solid var(--ag-line);
+  border-left: 3px solid var(--accent);
+  border-left-color: color-mix(in srgb, var(--accent) 55%, var(--ag-line));
+  border-radius: 10px;
+  padding: 15px 16px 14px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.16s, background 0.16s, transform 0.16s;
+}
+.ag-agent.is-on {
+  border-left-color: var(--accent);
+  background: #322B44;
+  transform: translateY(-2px);
+}
+
+.ag-agent-head {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; text-align: left; cursor: pointer;
+  background: none; border: 0; padding: 0 0 10px;
+  color: var(--ag-text);
+  font: inherit;
+}
+.ag-agent-id { flex: 1; min-width: 0; }
+.ag-agent-name {
+  display: block;
+  font-size: 16px; font-weight: 700; letter-spacing: -0.01em;
+}
+.ag-agent-role { font-size: 12.5px; color: var(--accent); }
+
+.ag-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: 10.5px; font-weight: 600;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  padding: 5px 9px; border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--ag-muted); white-space: nowrap;
+}
+.ag-dot { width: 6px; height: 6px; border-radius: 50%; }
+.ag-dot--live { background: var(--ag-live); box-shadow: 0 0 6px var(--ag-live); }
+.ag-dot--building { background: var(--ag-train); box-shadow: 0 0 6px var(--ag-train); }
+.ag-dot--planned { background: #6D6480; }
+
+.ag-agent-desc {
+  font-size: 13.5px; line-height: 1.62; color: #D8D1E2;
+  margin: 0 0 14px;
+}
+
+/* Small section label — DM Sans, not pixel type, so it stays readable. */
+.ag-sub-h {
+  font-size: 10.5px; font-weight: 700;
+  letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--ag-muted);
+  margin: 0 0 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ag-line);
+}
+
+.ag-duties { list-style: none; margin: 0 0 14px; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.ag-duties li {
+  position: relative; padding-left: 17px;
+  font-size: 12.5px; line-height: 1.5; color: #CAC2D6;
+}
+.ag-duties li::before {
+  content: ''; position: absolute; left: 2px; top: 7px;
+  width: 5px; height: 5px; border-radius: 50%;
+  background: var(--accent); opacity: 0.85;
+}
+
+.ag-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 14px; }
+.ag-stat { background: var(--ag-bg-2); border-radius: 8px; padding: 9px 11px; }
+.ag-stat-n { font-size: 20px; font-weight: 700; line-height: 1.1; }
+.ag-stat-l { font-size: 10.5px; color: var(--ag-muted); margin-top: 3px; }
+
+.ag-agent-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap;
+  margin-top: auto; padding-top: 12px;
+  border-top: 1px dashed var(--ag-line);
+}
+.ag-runs { font-size: 11.5px; color: var(--ag-muted); }
+
+.ag-link {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 8px 13px; border-radius: 7px;
+  background: var(--accent); color: #1B1726;
+  text-decoration: none; font-size: 12.5px; font-weight: 700;
+  transition: filter 0.15s, transform 0.15s;
+}
+.ag-link:hover { filter: brightness(1.08); transform: translateY(-1px); }
+
+/* Placeholder that makes the roster's intent obvious with one hire. */
+.ag-agent--ghost {
+  border: 1px dashed var(--ag-line);
+  border-left: 1px dashed var(--ag-line);
+  background: transparent;
+  align-items: center; justify-content: center;
+  text-align: center; gap: 10px;
+  min-height: 190px;
+}
+.ag-ghost-plus { font-size: 30px; color: #574E6B; line-height: 1; }
+.ag-ghost-text { font-size: 12.5px; color: #7E7590; max-width: 30ch; margin: 0; }

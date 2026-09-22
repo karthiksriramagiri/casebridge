@@ -3,7 +3,7 @@
 // planned call attempt, N per lead per day based on cadence rules).
 
 import { createClient }                               from '@supabase/supabase-js'
-import { resolveTimezone }                            from './area-codes'
+import { resolveTimezone, stateForPhone }             from './area-codes'
 import { BLOCKS_BY_COUNT, blockWindows, stagePriority } from './blocks'
 import type { BlockName } from './blocks'
 import { getNumberPool, assignRandomCallerId }         from './number-pool'
@@ -332,6 +332,44 @@ export async function syncGHLToQueue(): Promise<{
   return { created, updated, cancelled, skipped }
 }
 
+// ─── State filter ─────────────────────────────────────────────────────────────
+// Admins can restrict the floor to a set of states (dialer_queue_settings).
+// Enforced at serve time, so a change takes effect on the next buffer fill —
+// no re-sync needed. Callbacks bypass it: the rep already promised that call.
+
+export interface StateFilter {
+  mode:   'off' | 'include' | 'exclude'
+  states: string[]
+}
+
+export const NO_STATE_FILTER: StateFilter = { mode: 'off', states: [] }
+
+export async function getStateFilter(): Promise<StateFilter> {
+  const db = supabaseAdmin()
+  const { data, error } = await db.from('dialer_queue_settings')
+    .select('state_filter_mode, state_filter_list')
+    .eq('id', 1)
+    .maybeSingle()
+  // Table missing (migration not run) or no row → no filtering.
+  if (error || !data) return NO_STATE_FILTER
+  const states = (data.state_filter_list ?? []).map((s: string) => s.toUpperCase())
+  const mode   = (data.state_filter_mode ?? 'off') as StateFilter['mode']
+  if (mode === 'off' || states.length === 0) return NO_STATE_FILTER
+  return { mode, states }
+}
+
+// Does this lead's phone pass the filter?
+// Unknown state (unmapped area code) is kept on exclude, dropped on include —
+// "only call CA" shouldn't leak leads we can't place.
+export function passesStateFilter(phone: string, filter: StateFilter): boolean {
+  if (filter.mode === 'off' || filter.states.length === 0) return true
+  const state = stateForPhone(phone)
+  if (!state) return filter.mode === 'exclude'
+  return filter.mode === 'include'
+    ?  filter.states.includes(state)
+    : !filter.states.includes(state)
+}
+
 // ─── Buffer management ────────────────────────────────────────────────────────
 
 // Fill rep's buffer to `count`.
@@ -351,6 +389,8 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     .maybeSingle()
   if (!user || user.role !== 'REP' || !user.active) return []
   const repSpeaksSpanish = user.spanish === true
+
+  const stateFilter = await getStateFilter()
 
   // ── Force-buffer due callbacks owned by this rep (bypass buffer limit) ──
   const { data: dueCallbacks } = await db.from('dialer_attempts')
@@ -436,6 +476,8 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
     // Spanish leads only go to Spanish-capable reps
     if (a.lang === 'es' && !repSpeaksSpanish) return false
+    // State filter — callbacks are exempt (already promised to the lead)
+    if (!a.is_callback && !passesStateFilter(a.phone, stateFilter)) return false
     if (!a.is_callback) {
       const nums = pendingByContact.get(a.contact_id) ?? []
       if (a.attempt_number !== Math.min(...nums)) return false
@@ -484,6 +526,8 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     .map(r => r.rep_identity)
     .filter(id => validRepIds.has(id))
   if (readyReps.length === 0) return {}
+
+  const stateFilter = await getStateFilter()
 
   // Release buffered leads from INVALID identities (admin, agent, unknown)
   // so they go back to the pending pool
@@ -568,6 +612,8 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
+    // State filter — callbacks are exempt (already promised to the lead)
+    if (!a.is_callback && !passesStateFilter(a.phone, stateFilter)) return false
     if (!a.is_callback) {
       const nums = pendingByContact.get(a.contact_id) ?? []
       if (a.attempt_number !== Math.min(...nums)) return false

@@ -1,0 +1,1466 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   CaseBridge Metrics — design system
+   Warm-paper analytics surface. Single accent (terracotta). Reserved status
+   ramp (good / warn / critical) that never doubles as a categorical hue.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.mx {
+  /* — Surfaces: one warm gray family, no cool/warm mixing — */
+  --mx-bg:        #EFECE4;
+  --mx-surface:   #FFFFFF;
+  --mx-surface-2: #F8F5EF;
+  --mx-surface-3: #EFEADF;
+  --mx-sunken:    #E7E1D4;
+
+  /* — Ink: warm off-black, never #000 — */
+  --mx-ink:       #1B1714;
+  --mx-ink-2:     #47413A;
+  --mx-muted:     #857D72;
+  --mx-faint:     #B3AAA0;
+
+  /* — Lines — */
+  --mx-line:      #DCD4C6;
+  --mx-line-2:    #EAE4D9;
+
+  /* — One accent. Exactly one. — */
+  --mx-accent:      #B4693C;
+  --mx-accent-ink:  #8C4E28;
+  --mx-accent-soft: #F5E6DA;
+
+  /* — Reserved status ramp; always paired with a text label — */
+  --mx-good:      #137A4E;
+  --mx-good-soft: #DFF0E6;
+  --mx-warn:      #A9700B;
+  --mx-warn-soft: #F8EBD2;
+  --mx-crit:      #BE3428;
+  --mx-crit-soft: #FADFDC;
+  --mx-idle:      #7A7468;
+  --mx-idle-soft: #EAE6DD;
+
+  /* — Tinted shadows: carry the paper hue, never flat black.
+       A card sits on a grained surface, so the contact shadow has to be
+       readable or the card reads as a flat patch rather than a sheet. — */
+  --mx-shadow-sm: 0 1px 1px rgba(74, 58, 40, 0.04), 0 2px 5px -2px rgba(74, 58, 40, 0.07);
+  --mx-shadow:    0 1px 2px rgba(74, 58, 40, 0.05), 0 6px 16px -6px rgba(74, 58, 40, 0.14);
+  --mx-shadow-lg: 0 24px 60px -12px rgba(48, 36, 24, 0.24), 0 4px 12px -4px rgba(48, 36, 24, 0.12);
+
+  /* — Easing. The built-in keywords are too weak to read as intentional;
+       these are the stronger variants everything in here shares so the whole
+       surface moves with one accent. Never ease-in on UI: it withholds motion
+       at exactly the moment the eye is on it. — */
+  --mx-ease-out:    cubic-bezier(0.23, 1, 0.32, 1);
+  --mx-ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+
+  --mx-r-sm: 6px;
+  --mx-r:    10px;
+  --mx-r-lg: 16px;
+
+  /* z-index scale — no magic 9999 */
+  --mx-z-sticky: 20;
+  --mx-z-header: 30;
+  --mx-z-overlay: 40;
+
+  /* Height of the sticky app bar — table headers park directly beneath it */
+  --mx-header-h: 58px;
+
+  min-height: 100dvh;
+  background: var(--mx-bg);
+  color: var(--mx-ink);
+  font-feature-settings: 'ss01' 1;
+  position: relative;
+  isolation: isolate;
+}
+
+/* Paper grain — sits behind content, never over it */
+.mx::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.22'/%3E%3C/svg%3E");
+}
+
+/* Every number in this dashboard aligns in its column */
+.mx :where(td, th, .mx-num, .mx-stat-value, .mx-hero-value) {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+.mx :focus-visible {
+  outline: 2px solid var(--mx-accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+/* ── App header ─────────────────────────────────────────────────────────── */
+.mx-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--mx-z-header);
+  /* A translucent layer the page scrolls under, not an opaque strip that
+     consumes it. At 0.86 alpha the blur was doing nothing — the material
+     only reads once enough of the content behind it comes through. */
+  background: rgba(253, 252, 249, 0.68);
+  backdrop-filter: saturate(1.8) blur(20px);
+  -webkit-backdrop-filter: saturate(1.8) blur(20px);
+  border-bottom: 1px solid var(--mx-line);
+  /* Bright top edge: light catching the near edge of the material. */
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+}
+
+/* A viewer who has asked for less transparency gets a solid bar instead. */
+@media (prefers-reduced-transparency: reduce) {
+  .mx-header { background: var(--mx-surface); backdrop-filter: none; -webkit-backdrop-filter: none; }
+}
+.mx-header-inner {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 0 24px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 58px;
+}
+.mx-wordmark {
+  display: flex;
+  /* Centred, not baseline: the item is stretched to full header height so its
+     divider runs edge to edge, and baseline alignment inside a stretched box
+     pins the text to the top — which left the wordmark riding above the nav
+     tabs instead of sitting on their line. */
+  align-items: center;
+  gap: 5px;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: var(--mx-ink);
+  padding-right: 20px;
+  margin-right: 4px;
+  border-right: 1px solid var(--mx-line);
+  align-self: stretch;
+  white-space: nowrap;
+}
+.mx-wordmark i {
+  font-family: var(--font-dm-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  color: var(--mx-accent);
+  letter-spacing: 0;
+}
+
+.mx-nav { display: flex; align-items: stretch; gap: 2px; flex: 1; min-width: 0; overflow-x: auto; scrollbar-width: none; }
+.mx-nav::-webkit-scrollbar { display: none; }
+.mx-tab {
+  appearance: none;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  padding: 0 13px;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--mx-muted);
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  position: relative;
+  white-space: nowrap;
+  transition: color 180ms var(--mx-ease-out);
+}
+.mx-tab::after {
+  content: '';
+  position: absolute;
+  left: 13px; right: 13px; bottom: -1px;
+  height: 2px;
+  background: var(--mx-ink);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mx-tab:hover { color: var(--mx-ink-2); }
+.mx-tab[aria-current='page'],
+.mx-tab[aria-selected='true'] { color: var(--mx-ink); font-weight: 600; }
+.mx-tab[aria-current='page']::after,
+.mx-tab[aria-selected='true']::after { transform: scaleX(1); }
+.mx-tab-count {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 99px;
+  background: var(--mx-crit-soft);
+  color: var(--mx-crit);
+  font-variant-numeric: tabular-nums;
+}
+
+.mx-header-actions { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+
+/* ── Segmented date control ─────────────────────────────────────────────── */
+.mx-seg {
+  display: inline-flex;
+  align-items: center;
+  background: var(--mx-sunken);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 1px;
+}
+.mx-seg-btn {
+  appearance: none;
+  border: 0;
+  background: none;
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--mx-muted);
+  padding: 5px 11px;
+  border-radius: 6px;
+  white-space: nowrap;
+  transition: background 180ms var(--mx-ease-out), color 180ms var(--mx-ease-out), box-shadow 180ms var(--mx-ease-out);
+}
+.mx-seg-btn:hover { color: var(--mx-ink); }
+.mx-seg-btn[aria-pressed='true'] {
+  background: var(--mx-surface);
+  color: var(--mx-ink);
+  box-shadow: var(--mx-shadow-sm);
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+.mx-btn {
+  appearance: none;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: 8px;
+  padding: 7px 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  transition: background 160ms var(--mx-ease-out), border-color 160ms var(--mx-ease-out), color 160ms var(--mx-ease-out), transform 100ms var(--mx-ease-out), box-shadow 160ms var(--mx-ease-out);
+}
+/* A press has to be felt, not inferred. A 1px nudge is below the threshold
+   where the eye registers it as feedback; a slight scale reads as the control
+   yielding under the finger. Everything pressable on this page does this. */
+.mx-btn:active:not([disabled]) { transform: scale(0.97); }
+.mx-btn[disabled] { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+.mx-btn-primary { background: var(--mx-ink); color: #fff; }
+.mx-btn-primary:hover:not([disabled]) { background: #322a24; box-shadow: var(--mx-shadow); }
+
+.mx-btn-accent { background: var(--mx-accent); color: #fff; }
+.mx-btn-accent:hover:not([disabled]) { background: var(--mx-accent-ink); }
+
+.mx-btn-ghost { background: transparent; color: var(--mx-muted); border-color: transparent; }
+.mx-btn-ghost:hover:not([disabled]) { background: var(--mx-surface-3); color: var(--mx-ink); }
+
+.mx-btn-quiet {
+  background: var(--mx-surface);
+  color: var(--mx-ink-2);
+  border-color: var(--mx-line);
+}
+.mx-btn-quiet:hover:not([disabled]) { border-color: var(--mx-faint); background: var(--mx-surface-2); }
+
+.mx-icon-btn {
+  width: 32px; height: 32px;
+  padding: 0;
+  border-radius: 8px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: transparent; border: 1px solid transparent;
+  color: var(--mx-muted); cursor: pointer;
+  transition: background 160ms var(--mx-ease-out), color 160ms var(--mx-ease-out);
+}
+.mx-icon-btn:hover { background: var(--mx-surface-3); color: var(--mx-ink); }
+
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.mx-main {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 28px 24px 96px;
+}
+.mx-section { margin-bottom: 34px; }
+.mx-section:last-child { margin-bottom: 0; }
+
+.mx-section-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+/* The eyebrow names the section; the note qualifies it. They were the same
+   colour with the note set larger, so the caption outweighed its own heading.
+   The label now carries the weight and the note steps back. */
+.mx-eyebrow {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  color: var(--mx-ink-2);
+}
+.mx-section-note { font-size: 11.5px; color: var(--mx-muted); line-height: 1.45; }
+
+/* Tracking is size-specific: large text reads too loose at default spacing,
+   so it tightens as it grows, while the 10px uppercase labels below open up.
+   One fixed letter-spacing would be wrong at one end or the other. */
+.mx-page-title {
+  font-size: clamp(26px, 2.6vw, 32px);
+  font-weight: 750;
+  letter-spacing: -0.028em;
+  line-height: 1.05;
+  margin: 0;
+  text-wrap: balance;
+}
+.mx-page-title i {
+  font-family: var(--font-dm-serif), Georgia, serif;
+  font-style: italic;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: var(--mx-accent);
+}
+.mx-page-sub { font-size: 13px; color: var(--mx-muted); margin: 9px 0 0; max-width: 62ch; line-height: 1.5; }
+
+/* ── Cards ──────────────────────────────────────────────────────────────── */
+.mx-card {
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r);
+  box-shadow: var(--mx-shadow-sm);
+}
+.mx-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 18px;
+  border-bottom: 1px solid var(--mx-line-2);
+  flex-wrap: wrap;
+}
+.mx-card-title { font-size: 13px; font-weight: 700; letter-spacing: -0.01em; }
+
+/* ── Hero KPI rail ──────────────────────────────────────────────────────── */
+.mx-hero {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r-lg);
+  box-shadow: var(--mx-shadow);
+  overflow: hidden;
+}
+.mx-hero-cell {
+  padding: 15px 18px 14px;
+  border-left: 1px solid var(--mx-line-2);
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+  position: relative;
+}
+.mx-hero-cell:first-child { border-left: 0; }
+.mx-hero-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--mx-muted);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.mx-hero-value {
+  font-size: clamp(24px, 2.5vw, 32px);
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+  color: var(--mx-ink);
+}
+.mx-hero-value.is-good { color: var(--mx-good); }
+.mx-hero-value.is-warn { color: var(--mx-warn); }
+.mx-hero-value.is-crit { color: var(--mx-crit); }
+.mx-hero-value.is-empty { color: var(--mx-faint); font-weight: 500; }
+.mx-hero-foot { font-size: 11px; color: var(--mx-muted); line-height: 1.35; margin-top: auto; padding-top: 2px; }
+
+/* ── Secondary stat strip ───────────────────────────────────────────────────
+   The hero rail and this strip are one reading — the headline costs and the
+   delivery figures behind them. They used to sit as two separate cards with
+   different radii and a gap between, which read as two unrelated objects.
+   The strip is now the base of the same sheet: it tucks under the rail, shares
+   its width and its bottom corners, and stays visually quieter.             */
+.mx-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(122px, 1fr));
+  gap: 1px;
+  background: var(--mx-line-2);
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r);
+  overflow: hidden;
+  box-shadow: var(--mx-shadow-sm);
+}
+
+/* Only when the strip actually sits under a KPI rail do the two join into one
+   sheet — the strip drops its top edge and its upper corners, and the rail
+   drops its lower ones. A strip standing on its own keeps its full frame. */
+.mx-hero + .mx-strip {
+  border-top: 0;
+  border-radius: 0 0 var(--mx-r-lg) var(--mx-r-lg);
+  margin-top: 0;
+  box-shadow: var(--mx-shadow);
+}
+.mx-hero:has(+ .mx-strip) {
+  border-radius: var(--mx-r-lg) var(--mx-r-lg) 0 0;
+  box-shadow: none;
+}
+.mx-strip-cell { background: var(--mx-surface-2); padding: 11px 16px; min-width: 0; }
+.mx-strip-label {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.09em; color: var(--mx-muted); margin-bottom: 4px;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.mx-strip-value { font-size: 16px; font-weight: 650; letter-spacing: -0.02em; color: var(--mx-ink); }
+.mx-strip-value.is-empty { color: var(--mx-faint); font-weight: 500; }
+
+/* ── Status pills (reserved ramp; always carry a text label) ───────────── */
+.mx-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 9.5px;
+  font-weight: 700;
+  /* 9.5px uppercase needs the extra tracking to stay readable at all */
+  letter-spacing: 0.07em;
+  padding: 2.5px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+  text-transform: uppercase;
+}
+.mx-pill-dot { display: block; width: 5px; height: 5px; border-radius: 50%; background: currentColor; flex-shrink: 0; }
+.mx-pill.t-kill  { background: var(--mx-crit-soft); color: var(--mx-crit); }
+.mx-pill.t-watch { background: var(--mx-warn-soft); color: var(--mx-warn); }
+.mx-pill.t-scale { background: var(--mx-good-soft); color: var(--mx-good); }
+.mx-pill.t-floor { background: var(--mx-idle-soft); color: var(--mx-idle); }
+.mx-pill.t-read  { background: var(--mx-accent-soft); color: var(--mx-accent-ink); }
+
+/* "On track" is the default state — most rows in a healthy account carry it.
+   Given the same chip treatment as a kill or a scale, nine repetitions of it
+   per screen out-shout the two rows that actually need attention. It keeps
+   the label, loses the chip. */
+.mx-pill.t-ok { background: none; color: var(--mx-faint); font-weight: 600; padding-inline: 0; }
+.mx-pill.t-ok .mx-pill-dot { display: none; }
+
+/* Stage chips — softer, rounded, used in the pipeline + lead lists */
+.mx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+  background: var(--mx-surface-3);
+  color: var(--mx-ink-2);
+  white-space: nowrap;
+}
+.mx-chip b { font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* ── Live / status dot ─────────────────────────────────────────────────── */
+.mx-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+.mx-dot.on  { background: var(--mx-good); box-shadow: 0 0 0 3px var(--mx-good-soft); }
+.mx-dot.off { background: var(--mx-faint); }
+
+/* ── Attention list ─────────────────────────────────────────────────────── */
+.mx-attn { display: flex; flex-direction: column; }
+.mx-attn-row {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  padding: 10px 18px;
+  border-top: 1px solid var(--mx-line-2);
+  background: none;
+  border-left: 0; border-right: 0; border-bottom: 0;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  cursor: pointer;
+  transition: background 150ms var(--mx-ease-out);
+}
+.mx-attn-row:first-child { border-top: 0; }
+.mx-attn-row:hover { background: var(--mx-surface-2); }
+.mx-attn-body { min-width: 0; }
+.mx-attn-name { display: block; font-size: 12.5px; font-weight: 600; color: var(--mx-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-attn-why { font-size: 11px; color: var(--mx-muted); margin-top: 1px; }
+.mx-attn-fig { font-size: 12px; color: var(--mx-ink-2); white-space: nowrap; font-variant-numeric: tabular-nums; display: inline-flex; align-items: center; gap: 8px; }
+
+/* ── Funnel ─────────────────────────────────────────────────────────────── */
+.mx-funnel { display: flex; flex-direction: column; padding: 4px 0; }
+.mx-funnel-row {
+  display: grid;
+  grid-template-columns: 116px minmax(0, 1fr) 96px;
+  align-items: center;
+  gap: 14px;
+  padding: 6px 18px;
+  background: none; border: 0; width: 100%; text-align: left; font: inherit;
+  cursor: pointer;
+  transition: background 150ms var(--mx-ease-out);
+}
+.mx-funnel-row:hover { background: var(--mx-surface-2); }
+/* An empty stage is a fact, not a control. Eleven full-weight troughs reading
+   zero drown the one row that actually holds contacts, so a stage with nothing
+   in it collapses to a hairline and lets the eye go straight to the data. */
+.mx-funnel-row[disabled] { cursor: default; }
+.mx-funnel-row[disabled] .mx-funnel-stage { color: var(--mx-muted); font-weight: 500; }
+/* Not an outlined trough — that reads as an empty input waiting to be filled.
+   A single centred hairline says "nothing here" and carries the eye across to
+   the zero, the way a leader line does in a table of contents. */
+.mx-funnel-row[disabled] .mx-funnel-track {
+  background: linear-gradient(
+    to bottom,
+    transparent calc(50% - 0.5px),
+    var(--mx-line-2) calc(50% - 0.5px),
+    var(--mx-line-2) calc(50% + 0.5px),
+    transparent calc(50% + 0.5px)
+  );
+  border-radius: 0;
+}
+.mx-funnel-row[disabled] .mx-funnel-meta { color: var(--mx-faint); font-weight: 500; }
+.mx-funnel-row[disabled]:hover { background: none; }
+.mx-funnel-stage { font-size: 12px; font-weight: 600; color: var(--mx-ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mx-funnel-track { display: block; height: 22px; background: var(--mx-sunken); border-radius: 4px; overflow: hidden; position: relative; }
+.mx-funnel-bar {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  background: var(--mx-accent);
+  transition: width 520ms cubic-bezier(0.22, 1, 0.36, 1);
+  min-width: 2px;
+}
+.mx-funnel-bar.leak { background: var(--mx-crit); }
+.mx-funnel-bar.done { background: var(--mx-good); }
+.mx-funnel-meta { font-size: 12px; text-align: right; white-space: nowrap; color: var(--mx-ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+.mx-funnel-meta span { color: var(--mx-muted); font-weight: 500; margin-left: 6px; }
+
+/* ── Trend small-multiples ──────────────────────────────────────────────── */
+.mx-trend { display: grid; grid-template-columns: minmax(0, 1fr); }
+.mx-trend-panel { padding: 14px 18px 12px; border-top: 1px solid var(--mx-line-2); min-width: 0; }
+.mx-trend-panel:first-child { border-top: 0; }
+.mx-trend-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+.mx-trend-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: var(--mx-muted); }
+.mx-trend-read { font-size: 13px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+.mx-trend-svg { display: block; width: 100%; height: 76px; overflow: visible; }
+.mx-trend-axis { display: flex; justify-content: space-between; font-size: 10px; color: var(--mx-faint); margin-top: 6px; }
+
+/* ── Tables ─────────────────────────────────────────────────────────────── */
+/* The wrapper scrolls horizontally, which makes it the sticky containing block
+   for BOTH axes — so the header row sticks inside this box, not to the page.
+   It therefore pins at top: 0 of the wrapper; offsetting it by the app-bar
+   height would push it down over the first data row. */
+.mx-tw { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.mx-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 12.5px; }
+.mx-table th {
+  position: sticky; top: 0; z-index: 4;
+  background: var(--mx-surface-2);
+  /* 9.5px uppercase needs the extra tracking to stay legible, and enough
+     contrast to be read as a label rather than as noise above the data. */
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.085em;
+  color: var(--mx-ink-2);
+  padding: 9px 11px;
+  white-space: nowrap;
+  text-align: left;
+  border-bottom: 1px solid var(--mx-line);
+  user-select: none;
+}
+.mx-table th.num, .mx-table td.num { text-align: right; }
+.mx-table th.sortable { cursor: pointer; transition: color 150ms var(--mx-ease-out); }
+.mx-table th.sortable:hover { color: var(--mx-ink); }
+.mx-table th .sort-caret { opacity: 0; margin-left: 3px; transition: opacity 150ms var(--mx-ease-out); }
+.mx-table th.sortable:hover .sort-caret { opacity: 0.45; }
+.mx-table th[aria-sort] { color: var(--mx-ink); }
+.mx-table th[aria-sort] .sort-caret { opacity: 1; color: var(--mx-accent); }
+
+.mx-table td { padding: 7px 11px; border-bottom: 1px solid var(--mx-line-2); vertical-align: middle; }
+.mx-table tbody tr { transition: background 130ms var(--mx-ease-out); }
+/* Twenty-plus columns is a long way for the eye to travel without losing the
+   row. The hover was one shade off white, which is not enough to act as the
+   ruler it needs to be. */
+.mx-table tbody tr.row:hover { background: var(--mx-surface-3); }
+.mx-table tbody tr.row:hover .mx-sticky { background: var(--mx-surface-3); }
+.mx-table tbody tr.is-open { background: var(--mx-surface-2); }
+.mx-table tbody tr.is-open .mx-sticky { background: var(--mx-surface-2); }
+.mx-table tbody tr.flagged-kill  .mx-sticky-first { box-shadow: inset 3px 0 0 var(--mx-crit); }
+.mx-table tbody tr.flagged-scale .mx-sticky-first { box-shadow: inset 3px 0 0 var(--mx-good); }
+.mx-table tbody tr.flash { animation: mx-flash 1.6s ease-out; }
+@keyframes mx-flash {
+  0%, 30% { background: var(--mx-accent-soft); }
+  100%    { background: transparent; }
+}
+
+/* Sticky identity columns keep context during horizontal scroll */
+.mx-sticky { position: sticky; background: var(--mx-surface); z-index: 1; }
+.mx-sticky-first { left: 0; }
+/* The identity column stays put while the figures scroll under it. A hairline
+   alone reads as a table rule; a short shadow reads as the column floating
+   above the ones passing beneath, which is what is happening. */
+.mx-sticky-name  { left: 34px; box-shadow: 1px 0 0 var(--mx-line-2), 6px 0 10px -8px rgba(74, 58, 40, 0.3); }
+.mx-table th.mx-sticky { z-index: 5; background: var(--mx-surface-2); }
+
+.mx-creative { font-weight: 600; color: var(--mx-ink); max-width: 230px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; line-height: 1.35; }
+/* The Meta ad id is a lookup key, not something anyone reads down the column.
+   It was set only one step lighter than the name, so every row carried two
+   lines of near-equal weight. Held back to a true second tier, it stops
+   competing and the row loses the height it was spending on it. */
+.mx-creative-id {
+  display: block;
+  font-size: 9px;
+  line-height: 1.25;
+  color: var(--mx-faint);
+  opacity: 0.75;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: -0.02em;
+  transition: opacity 140ms var(--mx-ease-out);
+}
+.mx-table tbody tr.row:hover .mx-creative-id { opacity: 1; }
+.mx-dim { color: var(--mx-faint); }
+
+/* Numeric cell emphasis by threshold */
+.mx-v-good { color: var(--mx-good); font-weight: 700; }
+.mx-v-warn { color: var(--mx-warn); font-weight: 700; }
+.mx-v-crit { color: var(--mx-crit); font-weight: 700; }
+
+/* Drill-down links inside cells */
+.mx-drill {
+  appearance: none; background: none; border: 0; padding: 0;
+  font: inherit; font-weight: 650; font-variant-numeric: tabular-nums;
+  color: var(--mx-ink); cursor: pointer;
+  border-bottom: 1px solid var(--mx-faint);
+  transition: color 140ms var(--mx-ease-out), border-color 140ms var(--mx-ease-out);
+}
+.mx-drill:hover { color: var(--mx-accent-ink); border-color: var(--mx-accent); }
+
+.mx-expand {
+  appearance: none; background: none; border: 0; cursor: pointer;
+  width: 22px; height: 22px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  color: var(--mx-faint);
+  transition: background 140ms var(--mx-ease-out), color 140ms var(--mx-ease-out), transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.mx-expand:hover { background: var(--mx-surface-3); color: var(--mx-ink); }
+.mx-expand.open { transform: rotate(90deg); color: var(--mx-accent); }
+
+/* Expanded detail row */
+.mx-detail { background: var(--mx-surface-2); }
+.mx-detail-inner { padding: 14px 18px 16px 44px; display: flex; flex-direction: column; gap: 14px; }
+.mx-detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; }
+.mx-stage-btn {
+  appearance: none; cursor: pointer; text-align: left; font: inherit;
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line-2);
+  border-radius: 8px;
+  padding: 8px 11px;
+  display: flex; flex-direction: column; gap: 3px;
+  transition: border-color 150ms var(--mx-ease-out), transform 120ms var(--mx-ease-out), box-shadow 150ms var(--mx-ease-out);
+}
+.mx-stage-btn:hover:not([disabled]) { border-color: var(--mx-accent); transform: translateY(-1px); box-shadow: var(--mx-shadow-sm); }
+.mx-stage-btn[disabled] { cursor: default; opacity: 0.45; }
+.mx-stage-btn-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--mx-muted); }
+.mx-stage-btn-val { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* Totals footer */
+.mx-table tfoot td {
+  background: var(--mx-surface-3);
+  border-top: 1px solid var(--mx-line);
+  border-bottom: 0;
+  font-weight: 700;
+  color: var(--mx-ink);
+  padding: 10px 11px;
+}
+.mx-table tfoot td.mx-sticky { background: var(--mx-surface-3); }
+.mx-table tfoot .lbl { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mx-muted); font-weight: 700; }
+
+/* ── Campaign group ─────────────────────────────────────────────────────── */
+.mx-camp { margin-bottom: 14px; }
+.mx-camp-head {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 16px;
+  background: var(--mx-surface-2);
+  border-bottom: 1px solid var(--mx-line-2);
+  flex-wrap: wrap;
+  border-radius: var(--mx-r) var(--mx-r) 0 0;
+}
+.mx-camp.collapsed .mx-camp-head { border-bottom: 0; border-radius: var(--mx-r); }
+.mx-camp-name { font-size: 13.5px; font-weight: 700; letter-spacing: -0.015em; color: var(--mx-ink); text-decoration: none; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+a.mx-camp-name:hover { color: var(--mx-accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+.mx-camp-stats { display: flex; align-items: baseline; gap: 18px; margin-left: auto; flex-wrap: wrap; }
+.mx-camp-stat { font-size: 11px; color: var(--mx-muted); white-space: nowrap; }
+.mx-camp-stat b { font-size: 13px; font-weight: 700; color: var(--mx-ink); letter-spacing: -0.01em; margin-right: 4px; font-variant-numeric: tabular-nums; }
+.mx-camp-stat b.accent { color: var(--mx-accent-ink); }
+.mx-camp-stat b.good { color: var(--mx-good); }
+
+/* ── Firm cards ─────────────────────────────────────────────────────────── */
+.mx-firm-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 12px; }
+.mx-firm {
+  display: flex; flex-direction: column; gap: 10px;
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r);
+  padding: 17px 18px;
+  text-decoration: none;
+  color: inherit;
+  transition: border-color 180ms var(--mx-ease-out), transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms var(--mx-ease-out);
+}
+.mx-firm:hover { border-color: var(--mx-accent); transform: translateY(-2px); box-shadow: var(--mx-shadow); }
+.mx-firm-name { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; }
+.mx-firm-meta { display: flex; gap: 16px; margin-top: auto; }
+.mx-firm-meta div { min-width: 0; }
+.mx-firm-arrow { margin-left: auto; color: var(--mx-faint); transition: transform 180ms var(--mx-ease-out), color 180ms var(--mx-ease-out); }
+.mx-firm:hover .mx-firm-arrow { color: var(--mx-accent); transform: translateX(3px); }
+
+/* ── Forms ──────────────────────────────────────────────────────────────── */
+.mx-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.mx-label { font-size: 11px; font-weight: 600; color: var(--mx-ink-2); }
+.mx-input {
+  font: inherit;
+  font-size: 13px;
+  background: var(--mx-surface-2);
+  border: 1px solid var(--mx-line);
+  color: var(--mx-ink);
+  border-radius: 8px;
+  padding: 8px 11px;
+  width: 100%;
+  transition: border-color 150ms var(--mx-ease-out), background 150ms var(--mx-ease-out);
+}
+.mx-input::placeholder { color: var(--mx-faint); }
+.mx-input:hover { border-color: var(--mx-faint); }
+.mx-input:focus { background: var(--mx-surface); border-color: var(--mx-accent); outline: none; box-shadow: 0 0 0 3px var(--mx-accent-soft); }
+.mx-input[aria-invalid='true'] { border-color: var(--mx-crit); }
+.mx-error { font-size: 11.5px; color: var(--mx-crit); display: flex; align-items: center; gap: 5px; }
+.mx-hint { font-size: 11px; color: var(--mx-muted); }
+
+/* ── Modal / slide-over ─────────────────────────────────────────────────── */
+.mx-overlay {
+  position: fixed; inset: 0; z-index: var(--mx-z-overlay);
+  background: rgba(35, 26, 18, 0.42);
+  backdrop-filter: blur(3px);
+  -webkit-backdrop-filter: blur(3px);
+  display: flex;
+  animation: mx-fade 180ms ease-out;
+}
+@keyframes mx-fade { from { opacity: 0 } to { opacity: 1 } }
+
+.mx-sheet {
+  margin-left: auto;
+  height: 100dvh;
+  width: min(560px, 100%);
+  background: var(--mx-surface);
+  border-left: 1px solid var(--mx-line);
+  box-shadow: var(--mx-shadow-lg);
+  display: flex; flex-direction: column;
+  animation: mx-slide 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes mx-slide { from { transform: translateX(26px); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.mx-dialog {
+  margin: auto;
+  width: min(480px, calc(100% - 32px));
+  max-height: calc(100dvh - 48px);
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r-lg);
+  box-shadow: var(--mx-shadow-lg);
+  display: flex; flex-direction: column;
+  animation: mx-pop 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+@keyframes mx-pop { from { transform: translateY(8px) scale(0.985); opacity: 0 } to { transform: none; opacity: 1 } }
+
+.mx-sheet-head, .mx-dialog-head {
+  padding: 18px 22px 15px;
+  border-bottom: 1px solid var(--mx-line-2);
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  flex-shrink: 0;
+}
+.mx-sheet-body { overflow-y: auto; flex: 1; }
+.mx-dialog-body { overflow-y: auto; padding: 20px 22px; }
+.mx-sheet-foot, .mx-dialog-foot {
+  padding: 12px 22px;
+  border-top: 1px solid var(--mx-line-2);
+  display: flex; align-items: center; gap: 10px;
+  flex-shrink: 0;
+  background: var(--mx-surface-2);
+}
+
+/* ── Empty / loading states ─────────────────────────────────────────────── */
+.mx-empty {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 8px; padding: 56px 24px; text-align: center;
+}
+.mx-empty-icon {
+  width: 42px; height: 42px; border-radius: 12px;
+  background: var(--mx-surface-3);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--mx-faint); margin-bottom: 4px;
+}
+.mx-empty-title { font-size: 14px; font-weight: 650; color: var(--mx-ink-2); }
+.mx-empty-text { font-size: 12.5px; color: var(--mx-muted); max-width: 46ch; line-height: 1.5; }
+
+/* A null result should not cost as much vertical space as a full one */
+.mx-empty.compact { flex-direction: row; gap: 12px; padding: 14px 18px; text-align: left; justify-content: flex-start; }
+.mx-empty.compact .mx-empty-icon { width: 30px; height: 30px; border-radius: 9px; margin-bottom: 0; flex-shrink: 0; }
+.mx-empty.compact .mx-empty-title { font-size: 13px; }
+.mx-empty.compact .mx-empty-text { font-size: 12px; max-width: none; }
+
+.mx-skel {
+  background: linear-gradient(90deg, var(--mx-surface-3) 0%, var(--mx-sunken) 50%, var(--mx-surface-3) 100%);
+  background-size: 300% 100%;
+  animation: mx-shimmer 1.4s ease-in-out infinite;
+  border-radius: 5px;
+}
+@keyframes mx-shimmer { 0% { background-position: 150% 0 } 100% { background-position: -150% 0 } }
+
+.mx-spin { animation: mx-rotate 900ms linear infinite; }
+@keyframes mx-rotate { to { transform: rotate(360deg) } }
+
+/* ── Responsive ─────────────────────────────────────────────────────────── */
+@media (max-width: 1120px) {
+  .mx-hero  { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .mx-hero-cell:nth-child(3n + 1) { border-left: 0; }
+  .mx-hero-cell:nth-child(n + 4)  { border-top: 1px solid var(--mx-line-2); }
+  /* A five-cell rail leaves one slot empty on a three-column grid, which reads
+     as a hole punched in the sheet. The last cell takes the space instead. */
+  .mx-hero-cell:last-child:nth-child(3n + 2) { grid-column: span 2; }
+}
+@media (max-width: 860px) {
+  /* Brand and actions keep one row; the section nav drops to its own line so
+     neither the tab list nor the date control can push the page sideways. */
+  .mx-header-inner { flex-wrap: wrap; row-gap: 0; min-height: 0; padding-block: 8px; }
+  .mx-wordmark { border-right: 0; padding-right: 0; margin-right: 0; align-self: center; }
+  .mx-header-actions { margin-left: auto; }
+  .mx-nav { order: 3; flex-basis: 100%; border-top: 1px solid var(--mx-line-2); padding-top: 2px; }
+  .mx-tab { padding-block: 9px; }
+  .mx-seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .mx-seg::-webkit-scrollbar { display: none; }
+}
+
+@media (max-width: 720px) {
+  .mx-main { padding: 20px 14px 72px; }
+  .mx-header-inner { padding: 0 14px; }
+  .mx-hero { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .mx-hero-cell:nth-child(n) { border-left: 1px solid var(--mx-line-2); border-top: 1px solid var(--mx-line-2); }
+  .mx-hero-cell:nth-child(2n + 1) { border-left: 0; }
+  .mx-hero-cell:nth-child(-n + 2) { border-top: 0; }
+  .mx-camp-stats { width: 100%; margin-left: 0; gap: 14px; }
+  .mx-funnel-row { grid-template-columns: 92px minmax(0, 1fr) 76px; padding-inline: 12px; }
+  .mx-attn-row { grid-template-columns: 68px minmax(0, 1fr) auto; gap: 10px; padding-inline: 12px; }
+  .mx-section-head { row-gap: 4px; }
+  .mx-detail-inner { padding-left: 16px; }
+  .mx-sheet { width: 100%; }
+}
+
+/* Reduced motion means gentler, not absent. Colour and opacity changes carry
+   meaning — which row is hovered, which tab is live — so they stay. What goes
+   is movement: transforms, the bar fills that sweep across, the shimmer. */
+@media (prefers-reduced-motion: reduce) {
+  .mx *, .mx *::before, .mx *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-property: background-color, border-color, color, opacity, box-shadow !important;
+    transition-duration: 140ms !important;
+    transform: none !important;
+  }
+}
+
+/* ── Utilities ──────────────────────────────────────────────────────────── */
+.mx .sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Pipeline + trend sit side by side on wide screens, stack below */
+@media (max-width: 1180px) {
+  .mx-split { grid-template-columns: minmax(0, 1fr) !important; }
+}
+
+/* Date inputs inherit the warm surface instead of the OS default */
+.mx input[type='date'] { color-scheme: light; }
+.mx input[type='date']::-webkit-calendar-picker-indicator { cursor: pointer; opacity: 0.55; }
+.mx input[type='date']::-webkit-calendar-picker-indicator:hover { opacity: 1; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Firm + invoice surfaces
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Breadcrumb + section sub-nav ───────────────────────────────────────── */
+.mx-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+.mx-crumb {
+  color: var(--mx-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  transition: color 150ms var(--mx-ease-out);
+}
+.mx-crumb:hover { color: var(--mx-ink); text-decoration: underline; text-underline-offset: 3px; }
+.mx-crumb-sep { color: var(--mx-faint); }
+.mx-crumb-current { color: var(--mx-ink); font-weight: 650; white-space: nowrap; }
+
+.mx-subnav {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  border-bottom: 1px solid var(--mx-line);
+  background: var(--mx-surface);
+  padding: 0 24px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  position: sticky;
+  top: var(--mx-header-h);
+  z-index: calc(var(--mx-z-header) - 1);
+}
+.mx-subnav::-webkit-scrollbar { display: none; }
+.mx-subnav-inner { max-width: 1560px; margin: 0 auto; width: 100%; display: flex; gap: 2px; }
+
+/* ── Invoice identity bar ───────────────────────────────────────────────── */
+.mx-idbar {
+  background: var(--mx-surface);
+  border-bottom: 1px solid var(--mx-line-2);
+}
+.mx-idbar-inner {
+  max-width: 1560px;
+  margin: 0 auto;
+  padding: 13px 24px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.mx-idbar-title { font-size: 17px; font-weight: 700; letter-spacing: -0.025em; }
+.mx-idbar-meta { font-size: 12px; color: var(--mx-muted); display: inline-flex; align-items: center; gap: 7px; }
+.mx-idbar-spacer { margin-left: auto; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+
+/* ── P&L ledger ─────────────────────────────────────────────────────────── */
+.mx-ledger { display: flex; flex-direction: column; }
+.mx-ledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 16px;
+  padding: 13px 20px;
+  border-top: 1px solid var(--mx-line-2);
+}
+.mx-ledger-row:first-child { border-top: 0; }
+.mx-ledger-label { font-size: 13px; font-weight: 600; color: var(--mx-ink); }
+.mx-ledger-sub { font-size: 11.5px; color: var(--mx-muted); margin-top: 2px; line-height: 1.4; }
+.mx-ledger-val {
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.015em;
+}
+/* Costs read as plain ink with a leading minus — only the bottom line takes a
+   polarity color, which is how a P&L is actually read. */
+.mx-ledger-val.inflow  { color: var(--mx-good); }
+.mx-ledger-val.outflow { color: var(--mx-ink-2); }
+.mx-ledger-val.zero    { color: var(--mx-faint); font-weight: 500; }
+
+.mx-ledger-row.net {
+  background: var(--mx-surface-3);
+  border-top: 2px solid var(--mx-line);
+  padding-block: 16px;
+}
+.mx-ledger-row.net .mx-ledger-label { font-size: 13.5px; font-weight: 700; }
+.mx-ledger-row.net .mx-ledger-val { font-size: 24px; font-weight: 700; letter-spacing: -0.03em; }
+.mx-ledger-val.pos { color: var(--mx-good); }
+.mx-ledger-val.neg { color: var(--mx-crit); }
+
+/* Cost composition — one stacked bar, 2px surface gaps between segments */
+.mx-comp { display: flex; height: 26px; border-radius: 5px; overflow: hidden; gap: 2px; background: var(--mx-sunken); }
+.mx-comp-seg { min-width: 2px; transition: opacity 160ms var(--mx-ease-out); position: relative; }
+.mx-comp-seg:hover { opacity: 0.82; }
+.mx-comp-key { display: flex; flex-wrap: wrap; gap: 10px 18px; margin-top: 11px; }
+.mx-comp-key-item { display: inline-flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--mx-muted); }
+.mx-comp-swatch { display: block; width: 9px; height: 9px; border-radius: 2.5px; flex-shrink: 0; }
+.mx-comp-key-item b { color: var(--mx-ink); font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* ── Target vs actual meter ─────────────────────────────────────────────── */
+.mx-targets { display: grid; grid-template-columns: repeat(auto-fit, minmax(178px, 1fr)); gap: 1px; background: var(--mx-line-2); }
+.mx-target { background: var(--mx-surface); padding: 13px 16px 14px; min-width: 0; }
+.mx-target-label { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em; color: var(--mx-muted); margin-bottom: 6px; }
+.mx-target-val { font-size: 19px; font-weight: 700; letter-spacing: -0.025em; line-height: 1; font-variant-numeric: tabular-nums; }
+.mx-target-track { display: block; height: 4px; border-radius: 2px; background: var(--mx-sunken); margin: 9px 0 6px; overflow: hidden; }
+.mx-target-fill { display: block; height: 100%; border-radius: 2px; transition: width 560ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mx-target-fill.ok   { background: var(--mx-good); }
+.mx-target-fill.mid  { background: var(--mx-warn); }
+.mx-target-fill.bad  { background: var(--mx-crit); }
+.mx-target-fill.none { background: var(--mx-faint); }
+.mx-target-foot { font-size: 11px; color: var(--mx-muted); display: flex; justify-content: space-between; gap: 8px; }
+.mx-target-delta { font-weight: 650; font-variant-numeric: tabular-nums; }
+
+/* ── Leaderboard ────────────────────────────────────────────────────────── */
+.mx-board { display: flex; flex-direction: column; }
+.mx-board-row {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) minmax(90px, 180px) 62px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 20px;
+  border-top: 1px solid var(--mx-line-2);
+}
+.mx-board-row:first-child { border-top: 0; }
+.mx-board-rank { font-size: 11px; color: var(--mx-faint); font-variant-numeric: tabular-nums; font-weight: 650; }
+.mx-board-name { font-size: 13px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-board-track { display: block; height: 7px; border-radius: 4px; background: var(--mx-sunken); overflow: hidden; }
+.mx-board-fill { display: block; height: 100%; border-radius: 4px; background: var(--mx-accent); min-width: 3px; transition: width 520ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mx-board-val { font-size: 13px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── Toolbar above a table ──────────────────────────────────────────────── */
+.mx-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--mx-line-2);
+  flex-wrap: wrap;
+  background: var(--mx-surface-2);
+}
+.mx-toolbar-stats { display: flex; align-items: baseline; gap: 14px; font-size: 12px; color: var(--mx-muted); flex-wrap: wrap; }
+.mx-toolbar-stats b { color: var(--mx-ink); font-weight: 700; font-variant-numeric: tabular-nums; margin-right: 3px; }
+.mx-toolbar-stats b.good { color: var(--mx-good); }
+.mx-toolbar-stats b.warn { color: var(--mx-warn); }
+.mx-toolbar-stats b.accent { color: var(--mx-accent-ink); }
+.mx-toolbar-actions { margin-left: auto; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+
+/* ── Inline edit ────────────────────────────────────────────────────────── */
+.mx-inline {
+  appearance: none; background: none; border: 0; padding: 2px 5px; margin: -2px -5px;
+  font: inherit; font-size: 12px; color: var(--mx-ink-2);
+  cursor: text; border-radius: 5px; text-align: left;
+  display: inline-flex; align-items: center; gap: 5px;
+  max-width: 100%;
+  transition: background 140ms var(--mx-ease-out), color 140ms var(--mx-ease-out);
+}
+.mx-inline:hover { background: var(--mx-surface-3); color: var(--mx-ink); }
+.mx-inline .pencil { opacity: 0; transition: opacity 140ms var(--mx-ease-out); flex-shrink: 0; }
+.mx-inline:hover .pencil { opacity: 0.5; }
+.mx-inline.empty { color: var(--mx-faint); font-style: italic; }
+.mx-inline[disabled] { cursor: default; background: none; }
+.mx-inline[disabled]:hover { background: none; color: var(--mx-ink-2); }
+
+.mx-inline-edit { display: inline-flex; align-items: center; gap: 5px; }
+.mx-inline-edit input {
+  font: inherit; font-size: 12px; width: 118px;
+  padding: 3px 7px; border-radius: 5px;
+  background: var(--mx-surface); border: 1px solid var(--mx-accent);
+  color: var(--mx-ink); outline: none;
+  box-shadow: 0 0 0 3px var(--mx-accent-soft);
+}
+
+/* ── Toggle chip (OT, flags) ────────────────────────────────────────────── */
+.mx-toggle {
+  appearance: none; cursor: pointer; font: inherit;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 2.5px 8px; border-radius: 5px;
+  background: transparent; border: 1px solid var(--mx-line);
+  color: var(--mx-faint);
+  transition: background 150ms var(--mx-ease-out), border-color 150ms var(--mx-ease-out), color 150ms var(--mx-ease-out);
+}
+.mx-toggle:hover:not([disabled]) { border-color: var(--mx-accent); color: var(--mx-accent-ink); }
+.mx-toggle[aria-pressed='true'] { background: var(--mx-accent-soft); border-color: var(--mx-accent); color: var(--mx-accent-ink); }
+.mx-toggle[disabled] { opacity: 0.4; cursor: default; }
+
+/* ── Destructive confirm inline ─────────────────────────────────────────── */
+.mx-confirm { display: inline-flex; align-items: center; gap: 7px; font-size: 10.5px; white-space: nowrap; }
+.mx-confirm span { color: var(--mx-crit); font-weight: 650; }
+.mx-confirm button { appearance: none; background: none; border: 0; cursor: pointer; font: inherit; font-size: 10.5px; font-weight: 700; padding: 0; }
+.mx-confirm .yes { color: var(--mx-crit); }
+.mx-confirm .no { color: var(--mx-muted); font-weight: 500; }
+
+.mx-rowact {
+  appearance: none; background: none; border: 0; cursor: pointer; padding: 4px;
+  border-radius: 5px; color: var(--mx-faint); line-height: 0;
+  transition: background 140ms var(--mx-ease-out), color 140ms var(--mx-ease-out);
+}
+.mx-rowact:hover { background: var(--mx-surface-3); color: var(--mx-ink-2); }
+.mx-rowact.danger:hover { background: var(--mx-crit-soft); color: var(--mx-crit); }
+.mx-rowact.good:hover { background: var(--mx-good-soft); color: var(--mx-good); }
+.mx-rowact.is-on { color: var(--mx-good); }
+.mx-rowact.is-picked { color: var(--mx-accent); background: var(--mx-accent-soft); }
+
+/* ── Accident group tags — 5 fixed hues, assigned by group order ────────── */
+.mx-group {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+  padding: 2.5px 8px; border-radius: 99px; white-space: nowrap;
+}
+.mx-group-x { appearance: none; background: none; border: 0; cursor: pointer; color: inherit; opacity: 0.5; padding: 0; line-height: 1; font-size: 12px; }
+.mx-group-x:hover { opacity: 1; }
+
+/* ── Checkbox ───────────────────────────────────────────────────────────── */
+.mx-check {
+  width: 15px; height: 15px; border-radius: 4px;
+  accent-color: var(--mx-accent);
+  cursor: pointer;
+}
+
+/* ── Select ─────────────────────────────────────────────────────────────── */
+.mx-select {
+  font: inherit; font-size: 12px; font-weight: 500;
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line);
+  color: var(--mx-ink);
+  border-radius: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: border-color 150ms var(--mx-ease-out);
+}
+.mx-select:hover { border-color: var(--mx-faint); }
+.mx-select:focus { outline: none; border-color: var(--mx-accent); box-shadow: 0 0 0 3px var(--mx-accent-soft); }
+
+/* ── Findings / insight cards ───────────────────────────────────────────── */
+.mx-finding {
+  display: grid;
+  grid-template-columns: 84px minmax(0, 1fr);
+  gap: 14px;
+  padding: 13px 18px;
+  border-top: 1px solid var(--mx-line-2);
+}
+.mx-finding:first-of-type { border-top: 0; }
+.mx-finding-area { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mx-muted); padding-top: 2px; }
+.mx-finding-text { font-size: 13px; line-height: 1.5; color: var(--mx-ink); }
+.mx-finding-action { font-size: 12px; color: var(--mx-accent-ink); margin-top: 6px; display: flex; gap: 6px; line-height: 1.45; }
+
+/* ── Case group blocks in the PC table ──────────────────────────────────── */
+.mx-subhead td {
+  background: var(--mx-surface-3);
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.09em;
+  color: var(--mx-muted);
+  padding: 7px 11px;
+  border-bottom: 1px solid var(--mx-line);
+}
+.mx-table tbody tr.repl { background: color-mix(in srgb, var(--mx-warn-soft) 40%, transparent); }
+.mx-table tbody tr.picked { background: var(--mx-accent-soft); }
+.mx-table tbody tr.picked:hover { background: var(--mx-accent-soft); }
+
+/* ── Firm/invoice card grids ────────────────────────────────────────────── */
+.mx-inv-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(268px, 1fr)); gap: 12px; }
+.mx-inv {
+  position: relative;
+  display: flex; flex-direction: column; gap: 3px;
+  background: var(--mx-surface);
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r);
+  padding: 16px 18px 15px;
+  text-decoration: none; color: inherit;
+  transition: border-color 180ms var(--mx-ease-out), transform 180ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 180ms var(--mx-ease-out);
+}
+.mx-inv:hover { border-color: var(--mx-accent); transform: translateY(-2px); box-shadow: var(--mx-shadow); }
+.mx-inv-code { font-size: 9.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--mx-accent-ink); }
+.mx-inv-title { font-size: 15px; font-weight: 700; letter-spacing: -0.02em; margin-top: 2px; }
+.mx-inv-dates { font-size: 11.5px; color: var(--mx-muted); margin-top: 3px; font-variant-numeric: tabular-nums; }
+.mx-inv-figs {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(62px, 1fr));
+  gap: 12px 14px;
+  margin-top: 12px;
+  padding-top: 11px;
+  border-top: 1px solid var(--mx-line-2);
+}
+.mx-inv-figs > * { min-width: 0; }
+.mx-inv-fig-label { display: block; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--mx-muted); }
+.mx-inv-fig-val { display: block; font-size: 15px; white-space: nowrap; font-weight: 700; letter-spacing: -0.02em; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.mx-inv-edit {
+  position: absolute; top: 10px; right: 10px;
+  opacity: 0; transition: opacity 150ms var(--mx-ease-out);
+}
+.mx-inv:hover + .mx-inv-edit, .mx-inv-edit:hover, .mx-inv-wrap:hover .mx-inv-edit { opacity: 1; }
+.mx-inv-wrap { position: relative; }
+
+/* ── Banner (setup hints, API errors) ───────────────────────────────────── */
+.mx-banner {
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 16px;
+  border-radius: var(--mx-r);
+  border: 1px solid var(--mx-line);
+  background: var(--mx-surface-2);
+  font-size: 12.5px;
+  line-height: 1.5;
+}
+.mx-banner svg { flex-shrink: 0; margin-top: 1px; }
+.mx-banner.warn { background: var(--mx-warn-soft); border-color: color-mix(in srgb, var(--mx-warn) 35%, transparent); color: var(--mx-warn); }
+.mx-banner.crit { background: var(--mx-crit-soft); border-color: color-mix(in srgb, var(--mx-crit) 32%, transparent); color: var(--mx-crit); }
+.mx-banner b { font-weight: 700; display: block; margin-bottom: 2px; }
+.mx-banner code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11.5px;
+  background: rgba(0,0,0,0.05);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+@media (max-width: 720px) {
+  .mx-subnav, .mx-idbar-inner { padding-inline: 14px; }
+  .mx-ledger-row { padding-inline: 14px; }
+  .mx-board-row { grid-template-columns: 20px minmax(0, 1fr) minmax(48px, 80px) 50px; padding-inline: 14px; gap: 9px; }
+  .mx-finding { grid-template-columns: minmax(0, 1fr); gap: 5px; padding-inline: 14px; }
+}
+
+/* Inline edit rendered at title size — the invoice name is edited in place
+   rather than being shown twice, once as a heading and once as a control. */
+.mx-inline.title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--mx-ink);
+  padding: 3px 7px;
+  margin: -3px -7px;
+}
+.mx-inline.title.empty { font-weight: 600; }
+.mx-inline-edit.title input { font-size: 17px; font-weight: 700; letter-spacing: -0.02em; width: 260px; }
+
+/* A row action whose child is a text label needs a border to read as a
+   control; icon-only actions do not. */
+.mx-rowact.bordered {
+  border: 1px solid var(--mx-line);
+  border-radius: 5px;
+  padding: 3px 8px;
+  line-height: 1.3;
+}
+.mx-rowact.bordered:hover { border-color: var(--mx-crit); }
+
+/* ── Shrink-to-fit guards ───────────────────────────────────────────────────
+   A grid or flex item defaults to `min-width: auto`, so a wide table inside a
+   card can force its whole track past the viewport even though the table has
+   its own horizontal scroller. These let the containers actually shrink. */
+.mx main > *,
+.mx section,
+.mx .mx-card,
+.mx .mx-tw,
+.mx .mx-hero,
+.mx .mx-strip,
+.mx .mx-targets,
+.mx .mx-split > * { min-width: 0; }
+
+/* Header actions must be allowed to compress before they push the page. */
+@media (max-width: 860px) {
+  .mx-header-actions { flex-shrink: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+  .mx-header-actions .mx-seg { flex-shrink: 1; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Interaction polish
+
+   Collected at the end so these rules win over the component definitions
+   above without needing to raise specificity anywhere. Two rules only:
+   a press must be felt, and a hover effect must never fire on a touch.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Press ────────────────────────────────────────────────────────────────
+   Every pressable surface yields under the finger. The scale is tuned to the
+   control's size — a 22px icon button needs more than a full-width card to
+   register the same amount of give. Transform only: it stays on the
+   compositor and costs nothing. */
+.mx-icon-btn,
+.mx-seg-btn,
+.mx-drill,
+.mx-toggle,
+.mx-rowact,
+.mx-attn-row,
+.mx-funnel-row,
+.mx-stage-btn,
+.mx-inv,
+.mx-firm,
+.mx-camp-name {
+  transition-property: background, background-color, border-color, color, box-shadow, opacity, transform;
+  transition-duration: 160ms;
+  transition-timing-function: var(--mx-ease-out);
+}
+
+.mx-icon-btn:active,
+.mx-expand:active,
+.mx-rowact:active            { transform: scale(0.90); }
+.mx-expand.open:active       { transform: rotate(90deg) scale(0.90); }
+.mx-seg-btn:active,
+.mx-drill:active,
+.mx-toggle:active:not([disabled]) { transform: scale(0.94); }
+
+/* Large surfaces: the same gesture, scaled down so it reads as give rather
+   than as the whole card jumping. */
+.mx-attn-row:active,
+.mx-funnel-row:active:not([disabled]) { transform: scale(0.995); }
+.mx-stage-btn:active:not([disabled]),
+.mx-inv:active,
+.mx-firm:active { transform: scale(0.985); }
+
+/* ── Hover ────────────────────────────────────────────────────────────────
+   A touch device fires :hover on tap and leaves it stuck until the next tap
+   elsewhere, so a lift-on-hover card stays lifted. Gate every hover transform
+   behind a real pointer; the colour and border changes are safe either way. */
+@media (hover: none), (pointer: coarse) {
+  .mx-firm:hover,
+  .mx-inv:hover,
+  .mx-stage-btn:hover:not([disabled]) { transform: none; box-shadow: var(--mx-shadow-sm); }
+  .mx-firm:hover .mx-firm-arrow { transform: none; }
+}
+
+/* ── Sticky table header ──────────────────────────────────────────────────
+   A 1px rule under a header that content slides beneath reads as a seam.
+   A short shadow instead lets the rows pass under the header as if it were
+   floating above them, which is what it is doing. */
+.mx-table thead th { box-shadow: 0 1px 0 var(--mx-line), 0 4px 8px -6px rgba(74, 58, 40, 0.28); }
+
+/* ── Entrance ─────────────────────────────────────────────────────────────
+   Campaign cards and the decision queue arrive together after a fetch. A
+   short stagger reads as the page settling rather than as everything
+   snapping into place at once. Decorative only — nothing waits on it, and
+   the delays are short enough that the last card is in under a fifth of a
+   second. Never from scale(0): nothing in the world appears from nothing. */
+@keyframes mx-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.mx-camp,
+.mx-inv,
+.mx-firm {
+  animation: mx-rise 320ms var(--mx-ease-out) backwards;
+}
+
+/* Campaign cards share their section with the heading above them, so the
+   index has to count articles rather than every sibling — otherwise the
+   first card is already one step into the stagger. The card grids hold
+   nothing but cards, so nth-child is right there. */
+.mx-camp:nth-of-type(2) { animation-delay: 40ms; }
+.mx-camp:nth-of-type(3) { animation-delay: 80ms; }
+.mx-camp:nth-of-type(4) { animation-delay: 120ms; }
+.mx-camp:nth-of-type(n + 5) { animation-delay: 160ms; }
+
+.mx-inv:nth-child(2),  .mx-firm:nth-child(2)  { animation-delay: 40ms; }
+.mx-inv:nth-child(3),  .mx-firm:nth-child(3)  { animation-delay: 80ms; }
+.mx-inv:nth-child(4),  .mx-firm:nth-child(4)  { animation-delay: 120ms; }
+.mx-inv:nth-child(5),  .mx-firm:nth-child(5)  { animation-delay: 160ms; }
+.mx-inv:nth-child(n + 6), .mx-firm:nth-child(n + 6) { animation-delay: 180ms; }
+
+/* ── Financial Center front page ────────────────────────────────────────────
+   The company rollup. Two column widths only: a wide analysis column and a
+   narrow context column beside it, collapsing to one at 1040px.            */
+.mx-fin-split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+@media (max-width: 1040px) {
+  .mx-fin-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+.mx-fin-note { font-size: 11.5px; color: var(--mx-muted); line-height: 1.5; }
+.mx-fin-note b { color: var(--mx-ink-2); font-weight: 650; }
+
+/* A run of small labelled figures inside a card — quieter than the stat strip
+   because it sits under a heading that already frames it. */
+.mx-fin-facts { display: grid; gap: 1px; background: var(--mx-line-2); }
+.mx-fin-fact {
+  background: var(--mx-surface);
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; padding: 10px 18px;
+}
+.mx-fin-fact-label { font-size: 12px; color: var(--mx-ink-2); }
+.mx-fin-fact-sub { font-size: 11px; color: var(--mx-muted); margin-top: 1px; }
+.mx-fin-fact-val { font-size: 14px; font-weight: 700; letter-spacing: -0.02em; white-space: nowrap; }
+
+/* ── Revenue vs cost, by month ────────────────────────────────────────────── */
+.mx-pnl { padding: 16px 18px 14px; }
+.mx-pnl-plot { position: relative; }
+.mx-pnl-svg { display: block; width: 100%; overflow: visible; }
+.mx-pnl-tick { font-size: 10px; fill: var(--mx-faint); font-variant-numeric: tabular-nums; }
+.mx-pnl-month { font-size: 10.5px; fill: var(--mx-muted); font-weight: 600; }
+.mx-pnl-month.on { fill: var(--mx-ink); }
+.mx-pnl-net { font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+.mx-pnl-tip {
+  position: absolute; top: 4px; min-width: 186px;
+  background: var(--mx-surface); border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r-sm); box-shadow: var(--mx-shadow-lg);
+  padding: 9px 11px 8px; pointer-events: none; z-index: 2;
+}
+.mx-pnl-tip-head {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 11.5px; font-weight: 700; color: var(--mx-ink); margin-bottom: 7px;
+}
+.mx-pnl-tip-head span { font-size: 10.5px; font-weight: 500; color: var(--mx-muted); }
+.mx-pnl-tip-row {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 11.5px; color: var(--mx-ink-2); padding: 1.5px 0;
+}
+.mx-pnl-tip-row b { margin-left: auto; font-weight: 700; color: var(--mx-ink); font-variant-numeric: tabular-nums; }
+.mx-pnl-tip-sub {
+  display: flex; flex-wrap: wrap; gap: 3px 12px;
+  font-size: 10.5px; color: var(--mx-muted); margin: 6px 0 2px; padding-left: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.mx-pnl-tip-net {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  border-top: 1px solid var(--mx-line-2); margin-top: 7px; padding-top: 6px;
+  font-size: 11.5px; color: var(--mx-ink-2);
+}
+.mx-pnl-tip-net b { font-size: 13.5px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+.mx-pnl-key {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px 18px;
+  margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--mx-line-2);
+}
+.mx-pnl-key-note { font-size: 11px; color: var(--mx-faint); margin-left: auto; }
+
+/* ── Firm P&L table ───────────────────────────────────────────────────────── */
+.mx-table td.pos, .mx-table td.neg { font-weight: 700; font-variant-numeric: tabular-nums; }
+.mx-table td.pos { color: var(--mx-good); }
+.mx-table td.neg { color: var(--mx-crit); }
+.mx-firmlink { color: var(--mx-ink); font-weight: 650; text-decoration: none; }
+.mx-firmlink:hover { color: var(--mx-accent-ink); text-decoration: underline; text-underline-offset: 3px; }
+
+/* Share-of-total rail behind a table figure — magnitude at a glance without a
+   second chart. */
+.mx-bar-cell { position: relative; }
+.mx-bar-cell .rail {
+  position: absolute; right: 11px; bottom: 4px; height: 3px; border-radius: 2px;
+  background: var(--mx-accent); opacity: 0.45;
+}
+
+/* ── Spend pacing against a firm's weekly cap ───────────────────────────────
+   Not a target meter: a ceiling. The fill runs toward the cap and the bar
+   turns critical only once it is crossed, with the overage stated in words
+   beside it so the colour is never the only signal.                        */
+.mx-pace { display: flex; flex-direction: column; }
+.mx-pace-row {
+  display: grid; grid-template-columns: minmax(0, 1fr) auto;
+  gap: 4px 12px; padding: 11px 18px; border-top: 1px solid var(--mx-line-2);
+}
+.mx-pace-row:first-child { border-top: 0; }
+.mx-pace-name { font-size: 12.5px; font-weight: 600; color: var(--mx-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mx-pace-val { font-size: 13px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; text-align: right; }
+.mx-pace-track {
+  grid-column: 1 / -1; height: 6px; border-radius: 3px;
+  background: var(--mx-sunken); overflow: hidden; position: relative;
+}
+.mx-pace-fill { display: block; height: 100%; border-radius: 3px; background: var(--mx-accent); transition: width 520ms cubic-bezier(0.22, 1, 0.36, 1); }
+.mx-pace-fill.over { background: var(--mx-crit); }
+.mx-pace-fill.near { background: var(--mx-warn); }
+/* Where the initial-phase cap sits inside the scale-phase track */
+.mx-pace-mark { position: absolute; top: -2px; bottom: -2px; width: 1px; background: var(--mx-faint); }
+.mx-pace-foot {
+  grid-column: 1 / -1; display: flex; justify-content: space-between; gap: 10px;
+  font-size: 11px; color: var(--mx-muted);
+}
+.mx-pace-foot b { font-weight: 650; color: var(--mx-ink-2); font-variant-numeric: tabular-nums; }

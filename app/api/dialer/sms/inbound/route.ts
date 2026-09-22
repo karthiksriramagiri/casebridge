@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cancelDrip } from '@/app/dialer/_lib/sms-drip'
 
 function supabaseAdmin() {
   return createClient(
@@ -89,6 +90,13 @@ export async function POST(req: NextRequest) {
     firm:         contact?.firm ?? null,
     read:         false,
   })
+
+  // Cancel any active SMS drip — the contact replied via SMS
+  if (contact?.id) {
+    await cancelDrip(contact.id).catch(err =>
+      console.error('[dialer:sms:inbound] cancelDrip error:', err)
+    )
+  }
 
   return new NextResponse('<Response></Response>', {
     headers: { 'Content-Type': 'text/xml' },

@@ -35,7 +35,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={`${dmSans.variable} ${dmSerif.variable}`}>
+    /* suppressHydrationWarning covers the class the inline script below adds
+       to this element before React hydrates. It is scoped to <html> only, so
+       a genuine mismatch anywhere else still surfaces. */
+    <html
+      lang="en"
+      className={`${dmSans.variable} ${dmSerif.variable}`}
+      suppressHydrationWarning
+    >
+      <head>
+        {/* Stamped before first paint so the scroll-reveal styles only take
+            effect when there is JavaScript to undo them. Without this the
+            initial hidden state would strand every section below the fold
+            for anyone whose bundle does not run. */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `document.documentElement.classList.add('cb-js')`,
+          }}
+        />
+      </head>
       <body className="font-sans antialiased">{children}</body>
     </html>
   );

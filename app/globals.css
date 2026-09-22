@@ -159,3 +159,408 @@
 .metrics-page ::-webkit-scrollbar { width: 6px; height: 6px; }
 .metrics-page ::-webkit-scrollbar-track { background: #EDE8DF; }
 .metrics-page ::-webkit-scrollbar-thumb { background: #C9C3B8; border-radius: 3px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   case-bridge.com — marketing site
+
+   The palette is taken from the logo itself rather than invented around it.
+   The mark is two arcs: an orange one over a steel-blue one, set above a
+   slate wordmark. The previous design used only the slate and the orange,
+   which left the orange doing every job on the page — eyebrow text, every
+   icon tile, every badge, every button — and made the whole site read as a
+   default template.
+
+   Here the steel blue carries structure, the slate carries surface, and the
+   orange is rationed: the primary action, the section numerals, and the
+   single arc that runs through the page. Nothing else.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --cb-paper:     #F6F4F0;   /* warm ground — never pure white */
+  --cb-paper-2:   #EFEBE4;
+  --cb-white:     #FFFFFF;
+
+  --cb-ink:       #17212B;   /* body copy, a shade deeper than the wordmark */
+  --cb-ink-2:     #435262;
+  --cb-ink-3:     #6C7B8A;
+  --cb-ink-4:     #9AA6B2;
+
+  --cb-slate:     #1D2832;   /* dark sections */
+  --cb-slate-2:   #26333F;
+  --cb-slate-3:   #33434F;
+
+  --cb-steel:     #2F5878;   /* the lower arc — structure */
+  --cb-steel-2:   #44749B;
+  --cb-steel-3:   #7FA3C2;
+
+  --cb-ember:     #EE7F22;   /* the upper arc — action, rationed */
+  --cb-ember-2:   #D96E14;
+
+  --cb-line:      #E0DCD4;
+  --cb-line-2:    #CFC9BF;
+  --cb-line-dark: rgba(255, 255, 255, 0.10);
+  --cb-line-dark-2: rgba(255, 255, 255, 0.18);
+
+  --cb-ease:      cubic-bezier(0.23, 1, 0.32, 1);
+  --cb-ease-soft: cubic-bezier(0.4, 0, 0.2, 1);
+
+  --cb-gut: clamp(1.25rem, 4vw, 2.5rem);
+}
+
+/* ── Shell ──────────────────────────────────────────────────────────────── */
+
+.cb {
+  background: var(--cb-paper);
+  color: var(--cb-ink);
+  font-feature-settings: 'ss01' 1, 'cv11' 1;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: clip;
+}
+
+.cb-wrap {
+  width: 100%;
+  max-width: 1240px;
+  margin-inline: auto;
+  padding-inline: var(--cb-gut);
+}
+
+.cb-section { padding-block: clamp(4.5rem, 9vw, 8rem); position: relative; }
+.cb-section.tight { padding-block: clamp(3rem, 6vw, 5rem); }
+
+.cb-dark { background: var(--cb-slate); color: #fff; }
+.cb-dark .cb-lead { color: rgba(255, 255, 255, 0.62); }
+.cb-dark .cb-body { color: rgba(255, 255, 255, 0.55); }
+
+/* ── Type ───────────────────────────────────────────────────────────────────
+   Tracking is size-specific. The display sizes pull in hard — at 4rem the
+   default spacing reads as gaps between letters — while the 11px uppercase
+   labels open right up, because small caps need the air to stay readable.  */
+
+.cb-display {
+  font-size: clamp(2.5rem, 5.6vw, 4.5rem);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.038em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.cb-h2 {
+  font-size: clamp(1.875rem, 3.4vw, 2.875rem);
+  font-weight: 700;
+  line-height: 1.06;
+  letter-spacing: -0.032em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+.cb-h3 {
+  font-size: clamp(1.0625rem, 1.3vw, 1.1875rem);
+  font-weight: 650;
+  line-height: 1.3;
+  letter-spacing: -0.016em;
+  margin: 0;
+}
+
+.cb-lead {
+  font-size: clamp(1.0625rem, 1.35vw, 1.1875rem);
+  line-height: 1.62;
+  color: var(--cb-ink-2);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.cb-body {
+  font-size: 0.9375rem;
+  line-height: 1.68;
+  color: var(--cb-ink-2);
+  margin: 0;
+  text-wrap: pretty;
+}
+
+.cb-small { font-size: 0.8125rem; line-height: 1.6; color: var(--cb-ink-3); margin: 0; }
+
+.cb-label {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--cb-ink-3);
+}
+.cb-dark .cb-label { color: rgba(255, 255, 255, 0.42); }
+
+/* The section index. Mono numerals so 01–06 stay the same width, ember so the
+   reader can find their place on a long page at a glance. */
+.cb-index {
+  font-family: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, monospace;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  color: var(--cb-ember);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Section header ─────────────────────────────────────────────────────────
+   Left-aligned with a rule that runs to the edge of the column. The previous
+   design centred an eyebrow, a headline and a sub-headline on every single
+   section, so six sections in a row had the identical silhouette and nothing
+   led the eye anywhere.                                                     */
+
+/* Not a single gap for all three: an 11px label wants ~16px under it, but a
+   46px headline needs noticeably more air before the lead or the two collide
+   on the headline's descenders. */
+.cb-head { display: flex; flex-direction: column; max-width: 46rem; }
+.cb-head > * + * { margin-top: 1rem; }
+.cb-head > .cb-head-lead { margin-top: 1.625rem; }
+.cb-head-top { display: flex; align-items: center; gap: 0.75rem; }
+.cb-head-rule { height: 1px; flex: 1; background: var(--cb-line); min-width: 1.5rem; }
+.cb-dark .cb-head-rule { background: var(--cb-line-dark); }
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+
+.cb-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 2.875rem;
+  padding-inline: 1.375rem;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  letter-spacing: -0.006em;
+  white-space: nowrap;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background-color 180ms var(--cb-ease), border-color 180ms var(--cb-ease),
+              color 180ms var(--cb-ease), transform 120ms var(--cb-ease),
+              box-shadow 180ms var(--cb-ease);
+}
+/* A press has to be felt. */
+.cb-btn:active { transform: scale(0.975); }
+
+.cb-btn-primary {
+  background: var(--cb-ember);
+  color: #fff;
+  box-shadow: 0 1px 2px rgba(23, 33, 43, 0.12), 0 6px 18px -8px rgba(238, 127, 34, 0.55);
+}
+.cb-btn-primary:hover { background: var(--cb-ember-2); }
+
+.cb-btn-ink { background: var(--cb-ink); color: #fff; }
+.cb-btn-ink:hover { background: var(--cb-slate-3); }
+
+.cb-btn-ghost { background: transparent; color: var(--cb-ink); border-color: var(--cb-line-2); }
+.cb-btn-ghost:hover { border-color: var(--cb-ink-3); background: rgba(23, 33, 43, 0.03); }
+
+.cb-dark .cb-btn-ghost { color: rgba(255, 255, 255, 0.85); border-color: var(--cb-line-dark-2); }
+.cb-dark .cb-btn-ghost:hover { color: #fff; border-color: rgba(255, 255, 255, 0.34); background: rgba(255, 255, 255, 0.05); }
+
+/* The arrow leans into the direction of travel on hover. */
+.cb-btn svg { transition: transform 220ms var(--cb-ease); }
+@media (hover: hover) and (pointer: fine) {
+  .cb-btn:hover svg.cb-arrow { transform: translateX(3px); }
+}
+
+/* A text link that reads as one — underline grows from the left on hover. */
+.cb-link {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  font-size: 0.9375rem; font-weight: 600; color: var(--cb-ink);
+  text-decoration: none; position: relative;
+  padding-bottom: 2px;
+}
+.cb-link::after {
+  content: ''; position: absolute; left: 0; right: 0; bottom: 0; height: 1px;
+  background: currentColor; transform: scaleX(0); transform-origin: left;
+  transition: transform 260ms var(--cb-ease);
+}
+@media (hover: hover) and (pointer: fine) {
+  .cb-link:hover::after { transform: scaleX(1); }
+}
+.cb-dark .cb-link { color: #fff; }
+
+/* ── Focus ──────────────────────────────────────────────────────────────── */
+.cb :focus-visible {
+  outline: 2px solid var(--cb-steel-2);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+.cb-dark :focus-visible { outline-color: var(--cb-steel-3); }
+
+/* ── Reveal on scroll ───────────────────────────────────────────────────────
+   A short rise, staggered by a few tens of milliseconds down a group. Purely
+   decorative: content is visible and interactive before it plays, and the
+   whole thing is off under reduced motion.                                  */
+
+/* Gated on `cb-js`, which a blocking inline script in the layout stamps on
+   <html>. Without it the initial state is never applied, so a reader with
+   JavaScript disabled — or one whose bundle failed — gets the whole page
+   rather than a column of empty sections. */
+.cb-js .cb-reveal {
+  opacity: 0;
+  transform: translateY(14px);
+  transition: opacity 640ms var(--cb-ease), transform 760ms var(--cb-ease);
+  transition-delay: var(--cb-delay, 0ms);
+}
+.cb-js .cb-reveal.is-in { opacity: 1; transform: none; }
+
+/* ── The bridge ─────────────────────────────────────────────────────────────
+   The mark is a bridge. The old site put that logo in the corner and then
+   never referred to it again. Here the two arcs are a real drawing that runs
+   under the hero and carries the four process steps, so the page is built on
+   the brand's own geometry instead of on stock photography.                 */
+
+.cb-arc { display: block; width: 100%; height: auto; overflow: visible; }
+.cb-arc path { fill: none; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+
+.cb-js .cb-arc-draw path {
+  stroke-dasharray: var(--len, 2000);
+  stroke-dashoffset: var(--len, 2000);
+  transition: stroke-dashoffset 1400ms var(--cb-ease-soft);
+  transition-delay: var(--cb-delay, 0ms);
+}
+.cb-js .cb-arc-draw.is-in path { stroke-dashoffset: 0; }
+
+/* ── Rules and plates ───────────────────────────────────────────────────── */
+
+.cb-rule { height: 1px; background: var(--cb-line); border: 0; margin: 0; }
+.cb-dark .cb-rule { background: var(--cb-line-dark); }
+
+.cb-plate {
+  background: var(--cb-white);
+  border: 1px solid var(--cb-line);
+  border-radius: 10px;
+}
+.cb-dark .cb-plate {
+  background: rgba(255, 255, 255, 0.035);
+  border-color: var(--cb-line-dark);
+}
+
+/* Fine engineered grid — a drawn texture, not a photograph at 20% opacity */
+.cb-grid-bg {
+  position: absolute; inset: 0; pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgba(255, 255, 255, 0.032) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(255, 255, 255, 0.032) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 30%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 80% 60% at 50% 40%, #000 30%, transparent 78%);
+}
+
+/* ── Spec list ──────────────────────────────────────────────────────────────
+   Replaces the four "100% / Verified / Real-Time / Compliant" tiles. Three of
+   those four were adjectives set in the typography of a statistic, which is
+   the tell of a page that wants to look like it has numbers and does not.
+   A specification reads as an honest claim and is far harder to fake.      */
+
+.cb-specs { display: grid; gap: 0; border-top: 1px solid var(--cb-line-dark); }
+.cb-spec {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 1.25rem;
+  padding-block: 0.9375rem;
+  border-bottom: 1px solid var(--cb-line-dark);
+}
+.cb-spec-k { font-size: 0.875rem; color: rgba(255, 255, 255, 0.55); }
+.cb-spec-v {
+  font-size: 0.9375rem; font-weight: 650; color: #fff;
+  letter-spacing: -0.012em; text-align: right;
+}
+.cb-spec-v em { font-style: normal; color: var(--cb-ember); }
+
+/* ── Numbered list rows ─────────────────────────────────────────────────── */
+
+.cb-row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: clamp(1rem, 2.5vw, 2rem);
+  padding-block: clamp(1.5rem, 3vw, 2.25rem);
+  border-top: 1px solid var(--cb-line);
+  align-items: start;
+}
+.cb-dark .cb-row { border-top-color: var(--cb-line-dark); }
+.cb-row:last-child { border-bottom: 1px solid var(--cb-line); }
+.cb-dark .cb-row:last-child { border-bottom-color: var(--cb-line-dark); }
+
+/* ── Accordion ──────────────────────────────────────────────────────────── */
+
+.cb-acc { border-top: 1px solid var(--cb-line); }
+.cb-acc-item { border-bottom: 1px solid var(--cb-line); }
+.cb-acc-trigger {
+  width: 100%; display: flex; align-items: center; gap: 1.25rem;
+  padding-block: 1.25rem; text-align: left;
+  background: none; border: 0; cursor: pointer;
+  font-size: 1rem; font-weight: 600; letter-spacing: -0.014em; color: var(--cb-ink);
+  transition: color 160ms var(--cb-ease);
+}
+.cb-acc-trigger:hover { color: var(--cb-steel); }
+.cb-acc-icon {
+  margin-left: auto; flex-shrink: 0;
+  width: 1.5rem; height: 1.5rem; border-radius: 999px;
+  display: grid; place-items: center;
+  color: var(--cb-ink-3);
+  transition: transform 300ms var(--cb-ease), color 160ms var(--cb-ease), background-color 160ms var(--cb-ease);
+}
+.cb-acc-trigger[aria-expanded='true'] .cb-acc-icon { transform: rotate(45deg); color: var(--cb-ember); }
+/* Height animates off a measured value, so the panel can be interrupted
+   mid-open without snapping. */
+.cb-acc-panel {
+  overflow: hidden;
+  height: 0;
+  transition: height 320ms var(--cb-ease), opacity 260ms var(--cb-ease);
+  opacity: 0;
+}
+.cb-acc-panel.is-open { opacity: 1; }
+.cb-acc-panel > div { padding-bottom: 1.375rem; padding-right: clamp(0rem, 6vw, 4rem); }
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+
+.cb-field { display: flex; flex-direction: column; gap: 0.4375rem; min-width: 0; }
+.cb-field-label { font-size: 0.8125rem; font-weight: 600; color: var(--cb-ink-2); }
+.cb-input {
+  width: 100%;
+  height: 2.875rem;
+  padding-inline: 0.875rem;
+  font: inherit;
+  font-size: 0.9375rem;
+  color: var(--cb-ink);
+  background: var(--cb-white);
+  border: 1px solid var(--cb-line-2);
+  border-radius: 6px;
+  transition: border-color 160ms var(--cb-ease), box-shadow 160ms var(--cb-ease);
+}
+textarea.cb-input { height: auto; padding-block: 0.75rem; resize: vertical; line-height: 1.6; }
+.cb-input::placeholder { color: var(--cb-ink-4); }
+.cb-input:hover { border-color: var(--cb-ink-4); }
+.cb-input:focus {
+  outline: none;
+  border-color: var(--cb-steel-2);
+  box-shadow: 0 0 0 3px rgba(47, 88, 120, 0.13);
+}
+.cb-input[aria-invalid='true'] { border-color: #C0392B; }
+
+/* ── Marquee-free logo strip ────────────────────────────────────────────── */
+
+.cb-marks {
+  display: flex; flex-wrap: wrap;
+  align-items: center; gap: 0.5rem clamp(1.25rem, 3vw, 2.5rem);
+}
+.cb-mark {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  font-size: 0.8125rem; font-weight: 500;
+  color: rgba(255, 255, 255, 0.55);
+}
+.cb-mark svg { color: var(--cb-steel-3); flex-shrink: 0; }
+
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-js .cb-reveal { opacity: 1; transform: none; transition: none; }
+  .cb-js .cb-arc-draw path { stroke-dashoffset: 0; transition: none; }
+  .cb *, .cb *::before, .cb *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+  .cb-acc-panel { transition: none; }
+}

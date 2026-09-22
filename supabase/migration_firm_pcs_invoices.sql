@@ -14,7 +14,7 @@ CREATE INDEX IF NOT EXISTS idx_ghl_leads_case_status ON public.ghl_leads(firm_id
 
 -- Backfill MCA invoice buckets (matches seeded import from invoices)
 UPDATE public.ghl_leads gl
-SET invoice_code = 'INV-1'
+SET invoice_code = 'INV-1'how do i 
 FROM public.firms f
 WHERE gl.firm_id = f.id AND f.slug = 'mca'
   AND gl.contact_name IN (

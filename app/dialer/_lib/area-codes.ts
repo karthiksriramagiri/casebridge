@@ -333,3 +333,11 @@ export function resolveTimezone(
 ): string {
   return firmDefault
 }
+
+// US state for a lead phone number (area code based). Null when unknown
+// (non-US number, toll-free, or an area code we don't map).
+export function stateForPhone(phone: string | null | undefined): string | null {
+  if (!phone) return null
+  const ac = extractAreaCode(phone)
+  return ac ? (AREA_CODE_STATE[ac] ?? null) : null
+}

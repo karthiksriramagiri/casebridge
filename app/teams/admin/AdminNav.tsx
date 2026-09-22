@@ -9,10 +9,12 @@ const navItems = [
   { label: 'Performance',  href: '/teams/admin/performance',  exact: false },
   { label: 'Cases',        href: '/teams/admin/cases',        exact: false },
   { label: 'Timeclock',    href: '/teams/admin/timeclock',    exact: false },
+  { label: 'Team Center',  href: '/teams/admin/team-metrics', exact: false },
   { label: 'Urgent Tasks', href: '/teams/admin/urgent-tasks', exact: false },
   { label: 'Programs',     href: '/teams/admin/programs',     exact: false },
   { label: 'Modules',      href: '/teams/admin/modules',      exact: false },
   { label: 'Exams',        href: '/teams/admin/exams',        exact: false },
+  { label: 'Venu',         href: '/venu',                     exact: false },
 ]
 
 export default function AdminNav() {

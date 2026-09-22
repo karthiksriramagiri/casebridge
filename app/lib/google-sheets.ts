@@ -1,6 +1,10 @@
 import jwt from 'jsonwebtoken'
 
-const CLIENT_EMAIL = (process.env.GOOGLE_SHEETS_CLIENT_EMAIL || '').trim()
+/* The deployed value is quoted with a trailing literal "\n", which survives
+   .trim() (it is two characters, not a newline) and made Google reject every
+   request with "account not found" — the signed-case append has been failing
+   silently on it. Strip the escape as well as real whitespace. */
+const CLIENT_EMAIL = (process.env.GOOGLE_SHEETS_CLIENT_EMAIL || '').replace(/\\n/g, '').trim()
 // Key stored base64-encoded; decode then convert literal \n to real newlines
 const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY_B64
   ? Buffer.from(process.env.GOOGLE_SHEETS_PRIVATE_KEY_B64, 'base64').toString('utf-8').replace(/\\n/g, '\n')

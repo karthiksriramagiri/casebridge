@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Car Accident? Find Out If You Qualify in 45 Seconds</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  button, input, select, textarea { font-family: inherit; }
+  html, body { width: 100%; max-width: 100%; overflow-x: hidden; margin: 0; padding: 0; }
+  #ghl-escape { width: 100%; }
+
+  /* Green full-viewport backdrop — covers GHL's nav bar during quiz phase */
+  body.quiz-active::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: #2d4a2c;
+    z-index: 2000;
+    pointer-events: none;
+  }
+  /* Phase 1 must sit above the backdrop */
+  .phase-dark { position: relative; z-index: 2001; }
+  body { font-family: 'Figtree', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
+
+  /* ─── PHASE 1: Dark green ─── */
+  .phase-dark { background-color: #2d4a2c; min-height: 100vh; display: flex; flex-direction: column; }
+  .phase-dark-inner {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 16px 16px 20px;
+    text-align: center;
+    color: #fff;
+  }
+  .stars-badge {
+    background: rgba(255,255,255,0.12);
+    border-radius: 20px;
+    padding: 6px 14px;
+    font-size: 13px;
+    color: #fff;
+    margin-bottom: 12px;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .stars-badge .stars { color: #f5c518; letter-spacing: 2px; }
+  .phase-dark h1 {
+    font-size: clamp(26px, 5vw, 38px);
+    font-weight: 700;
+    color: #fff;
+    line-height: 1.2;
+    max-width: 600px;
+    margin-bottom: 10px;
+  }
+  .phase-dark .subtitle {
+    font-size: 15px;
+    color: rgba(255,255,255,0.85);
+    margin-bottom: 16px;
+    max-width: 500px;
+  }
+  .phase-dark .subtitle strong { color: #fff; }
+  .progress-wrap { width: 100%; max-width: 460px; margin-bottom: 16px; }
+  .progress-label { font-size: 12px; color: rgba(255,255,255,0.65); margin-bottom: 8px; }
+  .progress-bar-bg { background: rgba(255,255,255,0.2); border-radius: 4px; height: 5px; overflow: hidden; }
+  .progress-bar-fill { background: #4cce52; height: 100%; border-radius: 4px; transition: width 0.4s ease; }
+
+  /* ─── Question rail slider ─── */
+  .quiz-viewport {
+    width: 100%;
+    max-width: 520px;
+    overflow: hidden;
+  }
+  #quiz-rail {
+    display: flex;
+    will-change: transform;
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .quiz-slide {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+  }
+
+  /* Question card */
+  .question-title { font-size: 22px; font-weight: 600; color: #fff; margin-bottom: 10px; }
+  .question-subtitle { font-size: 14px; color: rgba(255,255,255,0.75); margin-bottom: 22px; max-width: 420px; margin-left: auto; margin-right: auto; }
+  .options-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .option-btn {
+    background: rgba(255,255,255,0.97);
+    border: 2px solid transparent;
+    border-radius: 14px;
+    padding: 14px 18px;
+    text-align: left;
+    font-size: 16px;
+    font-weight: 500;
+    color: #1a1a1a;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    width: 100%;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.12);
+    transition: background 0.12s, border-color 0.12s, box-shadow 0.12s, transform 0.1s;
+    will-change: transform;
+  }
+  .option-btn:hover {
+    background: #fff;
+    border-color: #4cce52;
+    box-shadow: 0 4px 18px rgba(0,0,0,0.18);
+    transform: translateY(-2px);
+  }
+  .option-btn:active { transform: translateY(0); background: #f0fdf4; border-color: #4cce52; }
+  .option-icon { font-size: 26px; flex-shrink: 0; line-height: 1; }
+  .option-icon img.emoji { width: 26px; height: 26px; vertical-align: middle; }
+  .w-opt-icon img.emoji { width: 26px; height: 26px; vertical-align: middle; }
+  .back-link {
+    color: rgba(255,255,255,0.7);
+    font-size: 14px;
+    cursor: pointer;
+    margin-bottom: 24px;
+    display: inline-block;
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+  .back-link:hover { color: #fff; }
+
+  /* Social proof */
+  .social-proof { max-width: 460px; margin-top: 12px; }
+  .social-proof-text { font-size: 14px; font-weight: 500; color: #fff; margin-bottom: 12px; line-height: 1.4; }
+  .social-proof-badges { display: flex; justify-content: center; align-items: center; gap: 12px; font-size: 13px; color: rgba(255,255,255,0.8); }
+  .social-proof-badges .dot { color: rgba(255,255,255,0.4); }
+  .star-gold { color: #f5c518; }
+
+  /* ─── Slide animations (GPU-composited transitions) ─── */
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .anim-fade { animation: fadeIn 0.3s cubic-bezier(0.25,0.46,0.45,0.94) both; }
+
+  /* Transition-based slide — no keyframes = no jank */
+  .slide-ready {
+    will-change: transform, opacity;
+    backface-visibility: hidden;
+  }
+  .slide-entering {
+    transition: opacity 0.26s cubic-bezier(0.25,0.46,0.45,0.94),
+                transform 0.26s cubic-bezier(0.25,0.46,0.45,0.94);
+  }
+
+  /* ─── Loading / checking screen ─── */
+  #loading-screen {
+    position: fixed; inset: 0; background: #2d4a2c;
+    display: flex; align-items: center; justify-content: center;
+    z-index: 2010;
+  }
+  .loading-items { display: flex; flex-direction: column; gap: 22px; }
+  .loading-item {
+    display: flex; align-items: center; gap: 16px;
+    font-size: 18px; font-weight: 600; color: rgba(255,255,255,0);
+    transition: color 0.4s ease;
+  }
+  .loading-item.visible { color: rgba(255,255,255,0.9); }
+  .loading-icon {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid rgba(255,255,255,0.25);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0; transition: border-color 0.3s, background 0.3s;
+    font-size: 14px; color: transparent;
+    position: relative;
+  }
+  .loading-item.checked .loading-icon {
+    border-color: #4cce52; background: transparent;
+    color: #4cce52;
+  }
+  .loading-item.spinning .loading-icon {
+    border-color: rgba(255,255,255,0.3);
+    border-top-color: #4cce52;
+    animation: spin 0.8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ─── Great News screen ─── */
+  #great-news-screen {
+    position: fixed; inset: 0; background: #2d4a2c;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 2011; text-align: center;
+    will-change: transform;
+  }
+  #great-news-screen.swipe-out {
+    transition: transform 0.45s cubic-bezier(0.4, 0, 0.2, 1);
+    transform: translateX(-100%);
+  }
+  canvas#confetti-canvas {
+    position: fixed; inset: 0; pointer-events: none; z-index: 2009;
+  }
+  .gn-check {
+    width: 70px; height: 70px; border: 3px solid #4cce52; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin-bottom: 22px; font-size: 32px; color: #4cce52;
+    animation: popIn 0.5s cubic-bezier(0.175,0.885,0.32,1.275) both;
+  }
+  @keyframes popIn {
+    from { opacity: 0; transform: scale(0.4); }
+    to   { opacity: 1; transform: scale(1); }
+  }
+  #great-news-screen h2 {
+    font-size: 32px; font-weight: 800; color: #fff; margin-bottom: 10px;
+    animation: fadeIn 0.5s 0.2s both;
+  }
+  #great-news-screen p {
+    font-size: 17px; color: rgba(255,255,255,0.8);
+    animation: fadeIn 0.5s 0.35s both;
+  }
+
+  /* ─── Ticker ─── */
+  .ticker-section { background: #fff; padding: 24px 0 16px; overflow: hidden; }
+  .ticker-label { text-align: center; font-size: 11px; letter-spacing: 2px; color: #666; font-weight: 600; margin-bottom: 14px; text-transform: uppercase; }
+  .ticker-track { display: flex; animation: ticker-scroll 28s linear infinite; white-space: nowrap; }
+  @keyframes ticker-scroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+  .ticker-item { display: inline-flex; flex-direction: column; align-items: center; min-width: 160px; padding: 0 20px; border-right: 1px solid #eee; }
+  .ticker-amount { font-size: 22px; font-weight: 700; color: #1a1a1a; }
+  .ticker-type { font-size: 12px; color: #888; margin-top: 2px; }
+  .ticker-note { text-align: center; font-size: 11px; color: #aaa; margin-top: 12px; padding: 0 20px; }
+
+  /* ─── Footer ─── */
+  .footer-disclaimer { background: #f3f4f6; padding: 32px 40px 28px; text-align: center; font-size: 13px; color: #4b5563; line-height: 1.8; max-width: 100%; }
+  .footer-disclaimer a { color: #4a90a4; text-decoration: none; font-size: 15px; display: inline-block; margin-top: 4px; }
+  .footer-disclaimer a:hover { text-decoration: underline; }
+
+  /* ─── PHASE 2: White ─── */
+  .phase-white { background: #f8f9fa; min-height: 100vh; display: flex; flex-direction: column; }
+  .top-banner { background: #2d4a2c; color: #fff; text-align: center; font-size: 14px; padding: 10px 16px; font-weight: 500; position: sticky; top: 0; z-index: 10; }
+  .top-banner strong { color: #4cce52; }
+  .nav-bar {
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    position: sticky;
+    top: 40px;
+    z-index: 9;
+  }
+  .breadcrumb-bar {
+    padding: 14px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    max-width: 860px;
+    margin: 0 auto;
+    width: 100%;
+  }
+  .breadcrumbs { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #aaa; }
+  .breadcrumbs .bc-active { color: #2d4a2c; font-weight: 600; }
+  .breadcrumbs .bc-sep { color: #ccc; }
+  .step-label { font-size: 13px; color: #aaa; }
+  .progress-bar2-bg { height: 4px; background: #e5e7eb; overflow: hidden; max-width: 860px; margin: 0 auto; }
+  .progress-bar2-fill { height: 100%; background: #4cce52; transition: width 0.4s ease; }
+
+  /* Phase 2 content */
+  .p2-viewport { flex: 1; width: 100%; overflow: hidden; min-width: 0; }
+  #p2-rail {
+    display: flex;
+    width: 100%;
+    will-change: transform;
+    transition: transform 0.22s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  .p2-slide {
+    flex: 0 0 100%;
+    min-width: 0;
+  }
+  .phase-white-inner {
+    max-width: 680px;
+    margin: 0 auto;
+    padding: 36px 20px;
+    width: 100%;
+  }
+  .w-question-title { font-size: clamp(20px, 3.5vw, 27px); font-weight: 600; color: #111827; margin-bottom: 24px; line-height: 1.35; letter-spacing: -0.2px; }
+  .w-options-list { display: flex; flex-direction: column; gap: 14px; margin-bottom: 28px; }
+  .w-option-btn {
+    background: #fff;
+    border: 2px solid #e5e7eb;
+    border-radius: 14px;
+    padding: 18px 22px;
+    text-align: left;
+    font-size: 16px;
+    font-weight: 500;
+    color: #111827;
+    letter-spacing: 0.1px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    transition: border-color 0.12s, background 0.12s, box-shadow 0.12s, transform 0.1s;
+    will-change: transform;
+  }
+  .w-option-btn:hover { border-color: #4cce52; background: #f0fdf4; box-shadow: 0 4px 14px rgba(0,0,0,0.10); transform: translateY(-2px); }
+  .w-option-btn:active { transform: translateY(0); background: #dcfce7; }
+  .w-opt-icon { font-size: 26px; flex-shrink: 0; }
+
+  /* Form fields */
+  .field-group { margin-bottom: 20px; }
+  .field-label { font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 8px; display: block; letter-spacing: 0.4px; text-transform: uppercase; }
+  .field-input, .field-select {
+    width: 100%;
+    border: 1.5px solid #d1d5db;
+    border-radius: 10px;
+    padding: 14px 16px;
+    font-size: 15px;
+    font-family: inherit;
+    color: #111827;
+    background: #fff;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  .field-input:focus, .field-select:focus { border-color: #4cce52; box-shadow: 0 0 0 3px rgba(76,206,82,0.12); }
+  .field-hint { font-size: 12px; color: #9ca3af; margin-top: 6px; }
+  .field-select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%236b7280' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    padding-right: 40px;
+    cursor: pointer;
+  }
+  .state-list {
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 0; right: 0;
+    background: #fff;
+    border: 1.5px solid #d1d5db;
+    border-radius: 10px;
+    max-height: 220px;
+    overflow-y: auto;
+    z-index: 50;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+  }
+  .state-list .state-option {
+    padding: 12px 16px;
+    font-size: 15px;
+    color: #111827;
+    cursor: pointer;
+    border-bottom: 1px solid #f3f4f6;
+  }
+  .state-list .state-option:last-child { border-bottom: none; }
+  .state-list .state-option:hover { background: #f0fdf4; color: #2d4a2c; }
+
+  /* Phone field */
+  .phone-wrap { display: flex; align-items: center; border: 1.5px solid #d1d5db; border-radius: 8px; overflow: hidden; background: #fff; transition: border-color 0.2s, box-shadow 0.2s; }
+  .phone-wrap:focus-within { border-color: #4cce52; box-shadow: 0 0 0 3px rgba(76,206,82,0.12); }
+  .phone-flag { padding: 0 12px; border-right: 1px solid #d1d5db; background: #f9fafb; height: 50px; display: flex; align-items: center; gap: 4px; font-size: 13px; color: #374151; white-space: nowrap; }
+  .phone-input { flex: 1; border: none; outline: none; padding: 13px 14px; font-size: 15px; color: #1a1a1a; }
+
+  .name-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 20px; }
+
+  /* CTA */
+  .cta-btn {
+    width: 100%;
+    background: #4cce52;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s, box-shadow 0.15s;
+    margin-bottom: 14px;
+    box-shadow: 0 2px 8px rgba(76,206,82,0.3);
+  }
+  .cta-btn:hover { background: #3db543; transform: translateY(-1px); box-shadow: 0 4px 14px rgba(76,206,82,0.4); }
+  .cta-btn:active { transform: translateY(0); }
+
+  .w-back-link { display: block; text-align: center; font-size: 14px; color: #6b7280; cursor: pointer; margin-bottom: 28px; text-decoration: none; transition: color 0.15s; }
+  .w-back-link:hover { color: #374151; }
+
+  .consent-text { font-size: 11px; color: #9ca3af; line-height: 1.6; margin-bottom: 16px; text-align: center; }
+  .consent-text a { color: #6b7280; }
+
+  /* Testimonial */
+  .testimonial-box { border-top: 1px solid #e5e7eb; padding-top: 24px; margin-top: 8px; }
+  .test-stars { color: #f5c518; font-size: 18px; letter-spacing: 2px; margin-bottom: 8px; }
+  .test-quote { font-size: 14px; color: #374151; font-style: italic; line-height: 1.6; margin-bottom: 10px; }
+  .test-author { font-size: 13px; color: #6b7280; }
+  .test-author strong { color: #1a1a1a; }
+  .test-author .recovered { color: #4cce52; font-weight: 600; }
+
+  /* Confidential badge */
+  .confidential-badge { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; font-size: 13px; color: #166534; display: flex; align-items: center; gap: 8px; margin-bottom: 24px; justify-content: center; }
+
+  /* Thank you */
+  .thankyou-inner { max-width: 560px; margin: 0 auto; padding: 28px 20px 24px; width: 100%; text-align: center; }
+  .ty-check { width: 56px; height: 56px; border: 3px solid #4cce52; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 16px; font-size: 24px; color: #4cce52; }
+  .ty-title { font-size: clamp(20px, 4vw, 28px); font-weight: 700; color: #1a1a1a; margin-bottom: 10px; }
+  .ty-sub { font-size: 14px; color: #4b5563; line-height: 1.55; margin-bottom: 16px; max-width: 420px; margin-left: auto; margin-right: auto; }
+  .ty-contact-note { background: #f0fdf4; border-radius: 8px; padding: 10px 16px; font-size: 13px; color: #166534; margin-bottom: 16px; }
+  .ty-what-next { font-size: 14px; font-weight: 700; color: #1a1a1a; margin-bottom: 10px; }
+  .ty-step { border: 1.5px solid #d1d5db; border-radius: 8px; padding: 11px 14px; text-align: left; font-size: 13px; color: #374151; margin-bottom: 8px; display: flex; gap: 10px; align-items: flex-start; line-height: 1.45; }
+  .ty-step .step-num { font-weight: 700; color: #6b7280; flex-shrink: 0; }
+  .ty-badges { display: flex; justify-content: center; gap: 20px; margin-top: 20px; flex-wrap: wrap; }
+  .ty-badge { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 11px; color: #6b7280; }
+  .ty-badge .badge-icon { font-size: 20px; }
+  .ty-step img.emoji { width: 18px; height: 18px; vertical-align: middle; }
+  .ty-badge .badge-icon img.emoji { width: 22px; height: 22px; vertical-align: middle; }
+  .ty-check img.emoji { width: 32px; height: 32px; vertical-align: middle; }
+
+  .dq-inline { background: rgba(220,38,38,0.1); border: 1px solid rgba(220,38,38,0.3); color: #fca5a5; border-radius: 10px; padding: 10px 14px; font-size: 14px; margin-top: 10px; text-align: left; }
+  .dq-inline img.emoji { width: 14px; height: 14px; vertical-align: middle; }
+  .dq-inline.phase-white-inner, .phase-white-inner .dq-inline { color: #dc2626; background: #fef2f2; border-color: #fecaca; }
+  .micro-badges { display: flex; justify-content: center; gap: 6px; align-items: center; font-size: 13px; color: #6b7280; margin-bottom: 16px; flex-wrap: wrap; }
+  .micro-badges .dot { color: #d1d5db; }
+  .micro-badges img.emoji { width: 14px; height: 14px; vertical-align: middle; }
+
+  /* ─── Disqualify screen ─── */
+  #disqualify-screen {
+    position: fixed; inset: 0; background: #2d4a2c;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    z-index: 2012; text-align: center; padding: 32px 20px;
+  }
+  .dq-icon { font-size: 52px; margin-bottom: 20px; }
+  .dq-title { font-size: 26px; font-weight: 800; color: #fff; margin-bottom: 12px; }
+  .dq-sub { font-size: 16px; color: rgba(255,255,255,0.8); line-height: 1.6; max-width: 420px; margin-bottom: 28px; }
+  .dq-btn {
+    background: rgba(255,255,255,0.15); border: 2px solid rgba(255,255,255,0.4);
+    color: #fff; border-radius: 8px; padding: 12px 28px; font-size: 15px; font-weight: 600;
+    cursor: pointer; transition: background 0.15s;
+  }
+  .dq-btn:hover { background: rgba(255,255,255,0.25); }
+
+  /* Utility */
+  .hidden { display: none !important; }
+
+  @media (max-width: 480px) {
+    .name-row { grid-template-columns: 1fr; }
+    .breadcrumb-bar { padding: 12px 14px; }
+    .thankyou-inner { padding: 20px 16px 20px; }
+    .ty-check { width: 48px; height: 48px; font-size: 20px; margin-bottom: 12px; }
+    .ty-title { font-size: 19px; margin-bottom: 8px; }
+    .ty-sub { font-size: 13px; margin-bottom: 12px; }
+    .ty-contact-note { padding: 9px 14px; font-size: 12px; margin-bottom: 12px; }
+    .ty-what-next { font-size: 13px; margin-bottom: 8px; }
+    .ty-step { padding: 10px 12px; font-size: 12px; margin-bottom: 7px; }
+    .ty-badges { gap: 16px; margin-top: 16px; }
+    .ty-badge { font-size: 11px; }
+    .ty-badge .badge-icon { font-size: 18px; }
+  }
+</style>
+<!-- Google Tag Manager -->
+<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({'gtm.start':
+new Date().getTime(),event:'gtm.js'});var f=d.getElementsByTagName(s)[0],
+j=d.createElement(s),dl=l!='dataLayer'?'&l='+l:'';j.async=true;j.src=
+'https://www.googletagmanager.com/gtm.js?id='+i+dl;f.parentNode.insertBefore(j,f);
+})(window,document,'script','dataLayer','GTM-PG4PSRX4');</script>
+<!-- End Google Tag Manager -->
+
+<!-- Meta Pixel Code -->
+<script>
+!function(f,b,e,v,n,t,s)
+{if(f.fbq)return;n=f.fbq=function(){n.callMethod?
+n.callMethod.apply(n,arguments):n.queue.push(arguments)};
+if(!f._fbq)f._fbq=n;n.push=n;n.loaded=!0;n.version='2.0';
+n.queue=[];t=b.createElement(e);t.async=!0;
+t.src=v;s=b.getElementsByTagName(e)[0];
+s.parentNode.insertBefore(t,s)}(window, document,'script',
+'https://connect.facebook.net/en_US/fbevents.js');
+fbq('init', '1428269752032605');
+fbq('track', 'PageView');
+</script>
+<noscript><img height="1" width="1" style="display:none"
+src="https://www.facebook.com/tr?id=1428269752032605&ev=PageView&noscript=1"
+/></noscript>
+<!-- End Meta Pixel Code -->
+</head>
+<body>
+<!-- Google Tag Manager (noscript) -->
+<noscript><iframe src="https://www.googletagmanager.com/ns.html?id=GTM-PG4PSRX4"
+height="0" width="0" style="display:none;visibility:hidden"></iframe></noscript>
+<!-- End Google Tag Manager (noscript) -->
+
+<!-- ═══════════════════════════════════ DISQUALIFY SCREEN ═══════════════════════════════════ -->
+<div id="disqualify-screen" class="hidden">
+  <div class="dq-icon">😔</div>
+  <div class="dq-title">We're Sorry...</div>
+  <div class="dq-sub">Based on your answers, we are unable to connect you with a case manager at this time. You may not qualify for a case evaluation.</div>
+  <button class="dq-btn" onclick="restartSurvey()">← Start Over</button>
+</div>
+
+<!-- ═══════════════════════════════════ LOADING SCREEN ═══════════════════════════════════ -->
+<div id="loading-screen" class="hidden">
+  <div class="loading-items">
+    <div class="loading-item" id="li1">
+      <div class="loading-icon" id="li1-icon"></div>
+      <span>Checking eligibility...</span>
+    </div>
+    <div class="loading-item" id="li2">
+      <div class="loading-icon" id="li2-icon"></div>
+      <span>Reviewing case details...</span>
+    </div>
+    <div class="loading-item" id="li3">
+      <div class="loading-icon" id="li3-icon"></div>
+      <span>Connecting with available case managers...</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ GREAT NEWS SCREEN ═══════════════════════════════════ -->
+<canvas id="confetti-canvas" class="hidden"></canvas>
+<div id="great-news-screen" class="hidden">
+  <div class="gn-check">✓</div>
+  <h2>Great News!</h2>
+  <p>You qualify for a free case evaluation</p>
+</div>
+
+<div id="ghl-escape">
+<!-- ═══════════════════════════════════ PHASE 1 ═══════════════════════════════════ -->
+<div id="phase1" class="phase-dark">
+  <div class="phase-dark-inner">
+    <div class="stars-badge">
+      <span class="stars">★★★★★</span>
+      <span>4.9 out of 5 stars</span>
+    </div>
+
+    <h1>Car Accident?<br>Find Out If You Qualify in 45 Seconds</h1>
+    <p class="subtitle">Case evaluation <strong>100% FREE</strong>. You pay nothing until we win your case.</p>
+
+    <div class="progress-wrap">
+      <div class="progress-label" id="q-progress-label">Question 1 of 8</div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="q-progress-bar" style="width:12%"></div>
+      </div>
+    </div>
+
+    <div class="quiz-viewport">
+      <div id="quiz-rail">
+        <!-- Q1 -->
+        <div id="q1" class="quiz-slide">
+          <div class="question-title">How Long Ago Was The Accident?</div>
+          <div class="options-list">
+            <button class="option-btn" onclick="selectQ(1, 'In The Past 30 Days')"><span class="option-icon">📅</span> In The Past 30 Days</button>
+            <button class="option-btn" onclick="selectQ(1, 'Within The Past 12 Months')"><span class="option-icon">🗓️</span> Within The Past 12 Months</button>
+            <button class="option-btn" onclick="selectQ(1, 'Over A Year Ago')"><span class="option-icon">⏳</span> Over A Year Ago</button>
+          </div>
+          <div id="dq-notice-q1" class="dq-inline hidden">⚠ Based on your answer, you do not qualify for a free case evaluation at this time.</div>
+        </div>
+        <!-- Q2 -->
+        <div id="q2" class="quiz-slide">
+          <div class="question-title">Were You At Fault?</div>
+          <div class="options-list">
+            <button class="option-btn" onclick="selectQ(2, 'Yes')"><span class="option-icon">❌</span> Yes</button>
+            <button class="option-btn" onclick="selectQ(2, 'No')"><span class="option-icon">✅</span> No</button>
+            <button class="option-btn" onclick="selectQ(2, 'I Was A Passenger')"><span class="option-icon">🚗</span> I Was A Passenger</button>
+          </div>
+          <div id="dq-notice-q2" class="dq-inline hidden">⚠ Based on your answer, you do not qualify for a free case evaluation at this time.</div>
+          <a class="back-link" onclick="goBack(2)">← Back</a>
+        </div>
+        <!-- Q3 -->
+        <div id="q3" class="quiz-slide">
+          <div class="question-title">What Option Describes Your Injury?</div>
+          <div class="options-list">
+            <button class="option-btn" onclick="selectQ(3, 'Aches And Pains')"><span class="option-icon">😣</span> Aches And Pains</button>
+            <button class="option-btn" onclick="selectQ(3, 'Broken Bones')"><span class="option-icon">🦴</span> Broken Bones</button>
+            <button class="option-btn" onclick="selectQ(3, 'Internal Injury')"><span class="option-icon">🏥</span> Internal Injury</button>
+            <button class="option-btn" onclick="selectQ(3, 'Other')"><span class="option-icon">📋</span> Other</button>
+            <button class="option-btn" onclick="selectQ(3, 'Not Hurt At All')"><span class="option-icon">😊</span> Not Hurt At All</button>
+          </div>
+          <div id="dq-notice-q3" class="dq-inline hidden">⚠ Based on your answer, you do not qualify for a free case evaluation at this time.</div>
+          <a class="back-link" onclick="goBack(3)">← Back</a>
+        </div>
+      </div>
+    </div><!-- /quiz-viewport -->
+
+    <div class="social-proof">
+      <div class="social-proof-text">Our clients have received an average of $67,000 in compensation with the help of our case managers</div>
+      <div class="social-proof-badges">
+        <span><span class="star-gold">★</span> 100% free evaluation</span>
+        <span class="dot">•</span>
+        <span>No cost until you win</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Ticker -->
+  <div class="ticker-section">
+    <div class="ticker-label">Average Settlement Ranges</div>
+    <div style="overflow:hidden;">
+      <div class="ticker-track">
+        <div class="ticker-item"><div class="ticker-amount">$28,750</div><div class="ticker-type">Pedestrian Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$125,000</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$95,000</div><div class="ticker-type">Truck Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$45,000</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$112,000</div><div class="ticker-type">Motorcycle Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$62,500</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$87,500</div><div class="ticker-type">Truck Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$32,500</div><div class="ticker-type">Motorcycle Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$28,750</div><div class="ticker-type">Pedestrian Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$125,000</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$95,000</div><div class="ticker-type">Truck Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$45,000</div><div class="ticker-type">Car Accident</div></div>
+        <!-- duplicate for seamless loop -->
+        <div class="ticker-item"><div class="ticker-amount">$28,750</div><div class="ticker-type">Pedestrian Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$125,000</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$95,000</div><div class="ticker-type">Truck Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$45,000</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$112,000</div><div class="ticker-type">Motorcycle Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$62,500</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$87,500</div><div class="ticker-type">Truck Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$32,500</div><div class="ticker-type">Motorcycle Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$28,750</div><div class="ticker-type">Pedestrian Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$125,000</div><div class="ticker-type">Car Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$95,000</div><div class="ticker-type">Truck Accident</div></div>
+        <div class="ticker-item"><div class="ticker-amount">$45,000</div><div class="ticker-type">Car Accident</div></div>
+      </div>
+    </div>
+    <div class="ticker-note">Based on national MVA settlement averages. Individual results vary. Past results do not guarantee future outcomes.</div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer-disclaimer">
+    This website operates independently and has no association or affiliation with YouTube, Google, or Facebook, nor does it form a part of their websites. Additionally, it has not been endorsed in any way by YouTube, Google, or Facebook. The trademarks FACEBOOK and YOUTUBE are owned by FACEBOOK, Inc. and GOOGLE Inc., respectively.<br><br>
+    <a href="#">Privacy Policy</a>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════ PHASE 2 ═══════════════════════════════════ -->
+<div id="phase2" class="phase-white hidden">
+  <div class="top-banner">Free Case Evaluation <strong>100% Free</strong> — No Cost Until You Win</div>
+
+  <div class="nav-bar">
+    <div class="breadcrumb-bar">
+      <div class="breadcrumbs">
+        <span id="bc-start">Start</span>
+        <span class="bc-sep">/</span>
+        <span id="bc-details">Details</span>
+        <span class="bc-sep">/</span>
+        <span id="bc-finishing">Finishing</span>
+      </div>
+      <div class="step-label" id="step-label">Step 4 of 6</div>
+    </div>
+    <div class="progress-bar2-bg">
+      <div class="progress-bar2-fill" id="p2-bar" style="width:55%"></div>
+    </div>
+  </div>
+
+  <div class="p2-viewport">
+  <div id="p2-rail">
+
+    <!-- Step 4: Attorney -->
+    <div id="s4" class="p2-slide">
+    <div class="phase-white-inner">
+      <div class="w-question-title">Are You Currently Working With An Attorney?</div>
+      <div class="w-options-list">
+        <button class="w-option-btn" onclick="selectP2(4, 'No')"><span class="w-opt-icon">✅</span> No</button>
+        <button class="w-option-btn" onclick="selectP2(4, 'Yes, But I\'d Like A New One')"><span class="w-opt-icon">🔄</span> Yes, But I'd Like A New One</button>
+        <button class="w-option-btn" onclick="selectP2(4, 'Yes')"><span class="w-opt-icon">❌</span> Yes</button>
+      </div>
+      <div id="dq-notice-q4" class="dq-inline hidden">⚠ Based on your answer, you do not qualify for a free case evaluation at this time.</div>
+      <a class="w-back-link" onclick="goBack(4)">← Back</a>
+      <div class="testimonial-box">
+        <div class="test-stars">★★★★★</div>
+        <div class="test-quote">"I didn't have a case manager and didn't know where to start. Accident Support Desk guided me through every step, very professionally."</div>
+        <div class="test-author">— <strong>Maria G.</strong> &nbsp;<span class="recovered">Recovered $62,500</span><br>California</div>
+      </div>
+    </div>
+    </div>
+
+    <!-- Step 5: State -->
+    <div id="s5" class="p2-slide">
+    <div class="phase-white-inner">
+      <div class="w-question-title">Which State Did This Accident Happen In?</div>
+      <div class="field-group" style="position:relative;">
+        <div class="state-dropdown" id="state-dropdown">
+          <input class="field-input" id="state-input" type="text" placeholder="Search or select a state..." autocomplete="off" oninput="filterStates()" onfocus="openStateDropdown()" onblur="closeStateDropdown()">
+          <div class="state-list hidden" id="state-list"></div>
+        </div>
+        <input type="hidden" id="state-select">
+      </div>
+      <button class="cta-btn" onclick="goToS6()">Next →</button>
+      <a class="w-back-link" onclick="goBack(5)">← Back</a>
+      <div class="testimonial-box">
+        <div class="test-stars">★★★★★</div>
+        <div class="test-quote">"The form was very easy to complete. In less than 5 minutes I had a case specialist reviewing my case."</div>
+        <div class="test-author">— <strong>Patricia V.</strong> &nbsp;<span class="recovered">Recovered $28,750</span><br>Washington</div>
+      </div>
+    </div>
+    </div>
+
+    <!-- Step 6: Name -->
+    <div id="s6" class="p2-slide">
+    <div class="phase-white-inner">
+      <div class="w-question-title">What's Your Name?</div>
+      <div class="field-group">
+        <label class="field-label">First Name *</label>
+        <input class="field-input" id="fname" type="text" placeholder="First Name">
+      </div>
+      <div class="field-group">
+        <label class="field-label">Last Name *</label>
+        <input class="field-input" id="lname" type="text" placeholder="Last Name">
+      </div>
+      <button class="cta-btn" onclick="goToS7()">Next →</button>
+      <a class="w-back-link" onclick="goBack(6)">← Back</a>
+      <div class="testimonial-box">
+        <div class="test-stars">★★★★★</div>
+        <div class="test-quote">"I wasn't sure if I had a case, but I left my number. They called me within minutes and now I'm getting treatment and compensation."</div>
+        <div class="test-author">— <strong>Robert M.</strong> &nbsp;<span class="recovered">Recovered $45,000</span><br>Texas</div>
+      </div>
+    </div>
+    </div>
+
+    <!-- Step 7: Email -->
+    <div id="s7" class="p2-slide">
+    <div class="phase-white-inner">
+      <div class="w-question-title">What's the best email to send your evaluation info to?</div>
+      <div class="field-group">
+        <label class="field-label">Email *</label>
+        <div style="position:relative;">
+          <span style="position:absolute;left:14px;top:50%;transform:translateY(-50%);color:#9ca3af;font-size:16px;">✉</span>
+          <input class="field-input" id="email" type="email" placeholder="Email" style="padding-left:38px;" oninput="validateEmail()">
+        </div>
+        <div id="email-error" style="display:none;color:#e53e3e;font-size:13px;margin-top:6px;">Please enter a valid email address.</div>
+      </div>
+      <button class="cta-btn" onclick="goToS8()">Next →</button>
+      <a class="w-back-link" onclick="goBack(7)">← Back</a>
+      <div class="testimonial-box">
+        <div class="test-stars">★★★★★</div>
+        <div class="test-quote">"I submitted my information and within an hour a case manager called me. They explained everything clearly and we're already moving forward with my case."</div>
+        <div class="test-author">— <strong>Michael A.</strong> &nbsp;<span class="recovered">Recovered $112,000</span><br>California</div>
+      </div>
+    </div>
+    </div>
+
+    <!-- Step 8: Phone + Submit -->
+    <div id="s8" class="p2-slide">
+    <div class="phase-white-inner">
+      <div class="w-question-title">Last Question, What Is The Best Number To Let You Know Of Your Accident's Value?</div>
+      <div class="field-group">
+        <label class="field-label">Phone *</label>
+        <input class="field-input" id="phone-input" type="tel" placeholder="Phone">
+      </div>
+      <div style="display:flex;gap:12px;align-items:flex-start;margin-bottom:24px;">
+        <input type="checkbox" id="consent-check" style="margin-top:3px;width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:#4cce52;">
+        <label for="consent-check" style="font-size:13px;color:#374151;line-height:1.6;cursor:pointer;">
+          By clicking "Submit", you agree that the phone number you are providing may be used to contact you by Accident Support Desk (including with auto-dialed/auto-selected and prerecorded calls, as well as text/SMS messages) with marketing information and offers concerning your injuries and potential legal help. Msg. and data rates apply, and your consent to such contact/marketing is not required for purchase or use of services.
+        </label>
+      </div>
+      <button class="cta-btn" id="submit-btn" onclick="goToThankyou()">Submit</button>
+      <a class="w-back-link" onclick="goBack(8)">← Back</a>
+      <div class="micro-badges">
+        <span>☎ A representative will call you in minutes</span>
+        <span class="dot">•</span>
+        <span>👤 46 people evaluated their case today</span>
+      </div>
+    </div>
+    </div>
+
+    <!-- Thank You -->
+    <div id="s-thankyou" class="p2-slide">
+    <div class="thankyou-inner">
+      <div class="ty-check">✓</div>
+      <div class="ty-title">Your case is being evaluated!</div>
+      <div class="ty-sub">A representative will call you within the next few minutes. Answer your phone — this call could be worth thousands of dollars.</div>
+      <div class="ty-what-next">What happens next?</div>
+      <div class="ty-step"><span class="step-num">1</span><span>📞 Stay by your phone — a representative will call you shortly</span></div>
+      <div class="ty-step"><span class="step-num">2</span><span>✅ If you move forward, a case manager starts working on your case immediately — at no cost to you</span></div>
+      <div class="ty-badges">
+        <div class="ty-badge"><span class="badge-icon">⚖️</span><span>Experienced Case Managers</span></div>
+        <div class="ty-badge"><span class="badge-icon">💰</span><span>Free Until You Win</span></div>
+        <div class="ty-badge"><span class="badge-icon">🇺🇸</span><span>US Based Team</span></div>
+      </div>
+    </div>
+    </div>
+
+  </div><!-- /p2-rail -->
+  </div><!-- /p2-viewport -->
+</div>
+</div><!-- /ghl-escape -->
+
+<script>
+// ── GHL full-viewport escape ──────────────────────────────────────────────
+(function() {
+  // 1. Build an override <style> and inject it into <head> LAST so it wins
+  //    the cascade even against GHL's own !important rules.
+  var overrideStyle = document.createElement('style');
+  overrideStyle.id = 'asd-override';
+  overrideStyle.textContent = [
+    'html,body{margin:0!important;padding:0!important;',
+      'width:100%!important;max-width:100%!important;overflow-x:hidden!important;}',
+    '#ghl-escape{width:100%!important;max-width:none!important;',
+      'margin:0!important;padding:0!important;}',
+    /* Hide any GHL nav/header that sits above our content */
+    'body>header,body>nav,body>.navbar,',
+    'body>[class*="header"]:not(#ghl-escape),',
+    'body>[class*="navbar"]:not(#ghl-escape),',
+    'body>[id*="header"]:not(#ghl-escape),',
+    'body>[id*="navbar"]:not(#ghl-escape){display:none!important;}',
+  ].join('');
+  document.head.appendChild(overrideStyle);
+
+  // 2. Watch <head> for GHL injecting new <style>/<link> nodes after ours —
+  //    re-append our override so it stays last in the cascade.
+  if (window.MutationObserver) {
+    new MutationObserver(function(mutations) {
+      mutations.forEach(function(m) {
+        m.addedNodes.forEach(function(n) {
+          if (n !== overrideStyle && (n.tagName === 'STYLE' || n.tagName === 'LINK')) {
+            document.head.appendChild(overrideStyle);
+          }
+        });
+      });
+    }).observe(document.head, { childList: true });
+  }
+
+  // 3. Move #ghl-escape to be first child of <body>, clearing ancestor padding
+  var el = document.getElementById('ghl-escape');
+  if (el && el.parentNode !== document.body) {
+    var node = el.parentNode;
+    while (node && node !== document.body) {
+      node.style.setProperty('padding-top', '0', 'important');
+      node.style.setProperty('margin-top', '0', 'important');
+      node = node.parentNode;
+    }
+    document.body.insertBefore(el, document.body.firstChild);
+  }
+
+  // 4. After full load, hide any remaining fixed/sticky GHL nav elements
+  //    and measure + fix any leftover gap.
+  window.addEventListener('load', function() {
+    var ourIds = new Set(['ghl-escape','disqualify-screen','loading-screen','confetti-canvas','great-news-screen']);
+    Array.from(document.body.children).forEach(function(child) {
+      if (!ourIds.has(child.id) && child.tagName !== 'SCRIPT' && child.tagName !== 'STYLE' && child.tagName !== 'LINK') {
+        var pos = window.getComputedStyle(child).position;
+        if (pos === 'fixed' || pos === 'sticky') {
+          child.style.setProperty('display', 'none', 'important');
+        }
+      }
+    });
+    // If a gap still remains, pull our escape div up to cover it
+    var escEl = document.getElementById('ghl-escape');
+    if (escEl) {
+      var top = escEl.getBoundingClientRect().top;
+      if (top > 1) {
+        escEl.style.setProperty('margin-top', '-' + Math.ceil(top) + 'px', 'important');
+      }
+    }
+  });
+})();
+
+// Show green backdrop while quiz (phase1) is active
+document.body.classList.add('quiz-active');
+
+const answers = {};
+let quizStep = 1;
+let p2Step = 4;
+
+// Capture UTM / ad params from URL
+const _usp = new URLSearchParams(window.location.search);
+const utmParams = {
+  utm_source:   _usp.get('utm_source')   || '',
+  utm_medium:   _usp.get('utm_medium')   || '',
+  campaign_id:  _usp.get('campaign_id')  || '',
+  adset_id:     _usp.get('adset_id')     || '',
+  ad_id:        _usp.get('ad_id')        || '',
+  placement:    _usp.get('placement')    || '',
+  fbclid:       _usp.get('fbclid')       || '',
+};
+
+// ─── Rail helpers — single transform, pure GPU, zero reflow ───
+function setRail(railId, index, instant) {
+  const rail = document.getElementById(railId);
+  if (instant) {
+    rail.style.transition = 'none';
+    rail.style.transform = `translateX(-${index * 100}%)`;
+    rail.offsetHeight; // flush style so transition:none takes effect
+    rail.style.transition = '';
+  } else {
+    rail.style.transform = `translateX(-${index * 100}%)`;
+  }
+}
+
+// ─── Disqualify ───
+const TOTAL_QUESTIONS = 8;
+
+const DISQUALIFY_RULES = [
+  { key: 'accidentTime', value: 'Over A Year Ago' },
+  { key: 'fault',        value: 'Yes' },
+  { key: 'injury',       value: 'Not Hurt At All' },
+  { key: 'attorney',     value: 'Yes' },
+];
+
+function checkDisqualify(key, val) {
+  return DISQUALIFY_RULES.some(r => r.key === key && r.value === val);
+}
+
+function showDisqualify(noticeId) {
+  ['dq-notice-q1','dq-notice-q2','dq-notice-q3','dq-notice-q4'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.classList.add('hidden');
+  });
+  const notice = document.getElementById(noticeId);
+  if (notice) notice.classList.remove('hidden');
+}
+
+function restartSurvey() {
+  // Reset answers
+  Object.keys(answers).forEach(k => delete answers[k]);
+  // Hide all overlays, show phase1 at Q1
+  ['dq-notice-q1','dq-notice-q2','dq-notice-q3','dq-notice-q4'].forEach(id => {
+    const el = document.getElementById(id); if (el) el.classList.add('hidden');
+  });
+  ['loading-screen','great-news-screen','confetti-canvas'].forEach(id => {
+    document.getElementById(id).classList.add('hidden');
+  });
+  document.getElementById('phase1').classList.remove('hidden');
+  document.getElementById('phase2').classList.add('hidden');
+  document.body.classList.add('quiz-active'); // restore green backdrop
+  setRail('quiz-rail', 0, true);
+  setRail('p2-rail', 0, true);
+  quizStep = 1;
+  p2Step = 4;
+  document.getElementById('q-progress-label').textContent = 'Question 1 of ' + TOTAL_QUESTIONS;
+  document.getElementById('q-progress-bar').style.width = Math.round((1 / TOTAL_QUESTIONS) * 100) + '%';
+  window.scrollTo(0, 0);
+}
+
+// ─── Quiz (phase 1) ───
+const qKeys = { 1: 'accidentTime', 2: 'fault', 3: 'injury' };
+
+function selectQ(qNum, val) {
+  answers[qKeys[qNum]] = val;
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ event: 'form_progress', step_number: qNum });
+  if (checkDisqualify(qKeys[qNum], val)) { showDisqualify('dq-notice-q' + qNum); return; }
+  if (qNum < 3) showQ(qNum + 1);
+  else transitionToPhase2();
+}
+
+function showQ(n, instant) {
+  setRail('quiz-rail', n - 1, instant);
+  quizStep = n;
+  document.getElementById('q-progress-label').textContent = 'Question ' + n + ' of ' + TOTAL_QUESTIONS;
+  document.getElementById('q-progress-bar').style.width = Math.round((n / TOTAL_QUESTIONS) * 100) + '%';
+}
+
+function goBack(fromStep) {
+  if (fromStep === 2) { showQ(1); }
+  else if (fromStep === 3) { showQ(2); }
+  else if (fromStep === 4) {
+    // Swipe phase2 out right, phase1 back in from left
+    const phase2 = document.getElementById('phase2');
+    const phase1 = document.getElementById('phase1');
+    phase1.classList.remove('hidden');
+    phase1.style.position = 'fixed';
+    phase1.style.inset = '0';
+    phase1.style.transform = 'translateX(-100%)';
+    phase1.style.willChange = 'transform';
+    phase1.style.transition = 'none';
+    // Set quiz rail to Q3 instantly
+    setRail('quiz-rail', 2, true);
+    quizStep = 3;
+    document.getElementById('q-progress-label').textContent = 'Question 3 of ' + TOTAL_QUESTIONS;
+    document.getElementById('q-progress-bar').style.width = Math.round((3 / TOTAL_QUESTIONS) * 100) + '%';
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const dur = '0.4s cubic-bezier(0.4, 0, 0.2, 1)';
+        phase1.style.transition = `transform ${dur}`;
+        phase2.style.transition = `transform ${dur}`;
+        phase1.style.transform = 'translateX(0)';
+        phase2.style.transform = 'translateX(100%)';
+        setTimeout(() => {
+          phase2.classList.add('hidden');
+          phase2.style.transform = '';
+          phase2.style.transition = '';
+          phase1.style.position = '';
+          phase1.style.inset = '';
+          phase1.style.transform = '';
+          phase1.style.transition = '';
+          phase1.style.willChange = '';
+          window.scrollTo(0, 0);
+        }, 420);
+      });
+    });
+  }
+  else if (fromStep === 5) { showP2(4); }
+  else if (fromStep === 6) { showP2(5); }
+  else if (fromStep === 7) { showP2(6); }
+  else if (fromStep === 8) { showP2(7); }
+}
+
+// ─── Phase 1 → Loading → Great News → Phase 2 ───
+function transitionToPhase2() {
+  document.getElementById('phase1').classList.add('hidden');
+  document.body.classList.remove('quiz-active'); // drop green backdrop
+  showLoadingSequence();
+}
+
+function showLoadingSequence() {
+  const screen = document.getElementById('loading-screen');
+  screen.classList.remove('hidden');
+
+  const items = [
+    { id: 'li1', iconId: 'li1-icon' },
+    { id: 'li2', iconId: 'li2-icon' },
+    { id: 'li3', iconId: 'li3-icon' },
+  ];
+
+  // Reset state
+  items.forEach(({ id, iconId }) => {
+    const el = document.getElementById(id);
+    const icon = document.getElementById(iconId);
+    el.classList.remove('visible','checked','spinning');
+    icon.textContent = '';
+  });
+
+  // Step timings
+  const delays      = [0, 300, 600];
+  const checkDelays = [180, 480, 820];
+
+  delays.forEach((delay, i) => {
+    setTimeout(() => {
+      const el = document.getElementById(items[i].id);
+      el.classList.add('visible');
+      if (i === 2) el.classList.add('spinning');
+    }, delay);
+  });
+
+  checkDelays.forEach((delay, i) => {
+    setTimeout(() => {
+      const el   = document.getElementById(items[i].id);
+      const icon = document.getElementById(items[i].iconId);
+      el.classList.remove('spinning');
+      el.classList.add('checked');
+      icon.textContent = '✓';
+    }, delay);
+  });
+
+  // After sequence: show Great News
+  setTimeout(() => {
+    screen.classList.add('hidden');
+    showGreatNews();
+  }, 1200);
+}
+
+function showGreatNews() {
+  const canvas = document.getElementById('confetti-canvas');
+  const gnScreen = document.getElementById('great-news-screen');
+  canvas.classList.remove('hidden');
+  gnScreen.classList.remove('hidden');
+  gnScreen.style.transform = '';
+  gnScreen.classList.remove('swipe-out');
+  canvas.width = window.innerWidth;
+  canvas.height = window.innerHeight;
+  runConfetti(canvas);
+
+  // After short display, swipe great-news left while phase2 swipes in from right
+  setTimeout(() => {
+    const phase2 = document.getElementById('phase2');
+
+    // Position phase2 off-screen right, make it visible but shifted
+    phase2.classList.remove('hidden');
+    phase2.style.position = 'fixed';
+    phase2.style.inset = '0';
+    phase2.style.transform = 'translateX(100%)';
+    phase2.style.willChange = 'transform';
+    phase2.style.transition = 'none';
+    p2Step = 4;
+    setRail('p2-rail', 0, true);
+    updateNav(4);
+
+    // One rAF to paint, second to trigger both transitions simultaneously
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const swipeDuration = '0.45s cubic-bezier(0.4, 0, 0.2, 1)';
+        phase2.style.transition = `transform ${swipeDuration}`;
+        phase2.style.transform = 'translateX(0)';
+        gnScreen.classList.add('swipe-out');
+        canvas.classList.add('hidden');
+
+        setTimeout(() => {
+          // Clean up: remove fixed positioning from phase2
+          phase2.style.position = '';
+          phase2.style.inset = '';
+          phase2.style.transform = '';
+          phase2.style.transition = '';
+          phase2.style.willChange = '';
+          gnScreen.classList.add('hidden');
+          gnScreen.classList.remove('swipe-out');
+          window.scrollTo(0, 0);
+        }, 460);
+      });
+    });
+  }, 900);
+}
+
+function runConfetti(canvas) {
+  const ctx = canvas.getContext('2d');
+  const pieces = [];
+  const colors = ['#f5c518','#4cce52','#ff6b6b','#74b9ff','#a29bfe','#fd79a8','#55efc4','#fdcb6e'];
+  for (let i = 0; i < 200; i++) {
+    pieces.push({
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height * 0.6 - canvas.height * 0.3,
+      w: Math.random() * 9 + 4, h: Math.random() * 5 + 2,
+      color: colors[Math.floor(Math.random() * colors.length)],
+      rotation: Math.random() * Math.PI * 2,
+      rotSpeed: (Math.random() - 0.5) * 0.12,
+      vx: (Math.random() - 0.5) * 2.5,
+      vy: Math.random() * 3.5 + 1.5,
+    });
+  }
+  let frame, start = null;
+  function draw(ts) {
+    if (!start) start = ts;
+    if (ts - start > 1400) { cancelAnimationFrame(frame); return; }
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    pieces.forEach(p => {
+      ctx.save();
+      ctx.translate(p.x + p.w / 2, p.y + p.h / 2);
+      ctx.rotate(p.rotation);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+      p.x += p.vx; p.y += p.vy; p.rotation += p.rotSpeed;
+      if (p.y > canvas.height + 20) p.y = -20;
+    });
+    frame = requestAnimationFrame(draw);
+  }
+  frame = requestAnimationFrame(draw);
+}
+
+// ─── Phase 2 ───
+const p2Index = { 4:0, 5:1, 6:2, 7:3, 8:4, 99:5 };
+
+var phoneValidationReady = false;
+function showP2(step, instant) {
+  setRail('p2-rail', p2Index[step], instant);
+  p2Step = step;
+  updateNav(step);
+  window.scrollTo(0, 0);
+  if (step === 8 && !phoneValidationReady) {
+    phoneValidationReady = true;
+    setupPhoneValidation();
+  }
+}
+
+function updateNav(step) {
+  const bcStart    = document.getElementById('bc-start');
+  const bcDetails  = document.getElementById('bc-details');
+  const bcFinish   = document.getElementById('bc-finishing');
+  [bcStart, bcDetails, bcFinish].forEach(el => el.classList.remove('bc-active'));
+  const pBar  = document.getElementById('p2-bar');
+  const label = document.getElementById('step-label');
+
+  const cfg = {
+    4:  { bc: bcStart,   label: 'Step 4 of 8', pct: '43%' },
+    5:  { bc: bcDetails, label: 'Step 5 of 8', pct: '57%' },
+    6:  { bc: bcDetails, label: 'Step 6 of 8', pct: '71%' },
+    7:  { bc: bcFinish,  label: 'Step 7 of 8', pct: '85%' },
+    8:  { bc: bcFinish,  label: 'Step 8 of 8', pct: '95%' },
+    99: { bc: bcFinish,  label: '',             pct: '100%' },
+  };
+  if (cfg[step]) {
+    cfg[step].bc.classList.add('bc-active');
+    label.textContent = cfg[step].label;
+    pBar.style.width  = cfg[step].pct;
+  }
+}
+
+// ─── Step handlers ───
+function selectP2(step, val) {
+  if (step === 4) {
+    answers.attorney = val;
+    if (checkDisqualify('attorney', val)) { showDisqualify('dq-notice-q4'); return; }
+  }
+  window.dataLayer = window.dataLayer || [];
+  window.dataLayer.push({ event: 'form_progress', step_number: step });
+  showP2(step + 1);
+}
+
+function goToS6() {
+  const state = document.getElementById('state-select').value;
+  if (!state) { alert('Please select the state where the accident happened.'); return; }
+  answers.state = state;
+  showP2(6);
+}
+
+
+function goToS7() {
+  const fname = document.getElementById('fname').value.trim();
+  const lname = document.getElementById('lname').value.trim();
+  if (!fname || !lname) { alert('Please enter your first and last name.'); return; }
+  answers.firstName = fname;
+  answers.lastName  = lname;
+  showP2(7);
+}
+
+// ─── State typeahead ───
+const US_STATES = ['Alabama','Alaska','Arizona','Arkansas','California','Colorado','Connecticut','Delaware','Florida','Georgia','Hawaii','Idaho','Illinois','Indiana','Iowa','Kansas','Kentucky','Louisiana','Maine','Maryland','Massachusetts','Michigan','Minnesota','Mississippi','Missouri','Montana','Nebraska','Nevada','New Hampshire','New Jersey','New Mexico','New York','North Carolina','North Dakota','Ohio','Oklahoma','Oregon','Pennsylvania','Rhode Island','South Carolina','South Dakota','Tennessee','Texas','Utah','Vermont','Virginia','Washington','West Virginia','Wisconsin','Wyoming','Washington D.C.'];
+
+const STATE_ABBR = {'AL':'Alabama','AK':'Alaska','AZ':'Arizona','AR':'Arkansas','CA':'California','CO':'Colorado','CT':'Connecticut','DE':'Delaware','FL':'Florida','GA':'Georgia','HI':'Hawaii','ID':'Idaho','IL':'Illinois','IN':'Indiana','IA':'Iowa','KS':'Kansas','KY':'Kentucky','LA':'Louisiana','ME':'Maine','MD':'Maryland','MA':'Massachusetts','MI':'Michigan','MN':'Minnesota','MS':'Mississippi','MO':'Missouri','MT':'Montana','NE':'Nebraska','NV':'Nevada','NH':'New Hampshire','NJ':'New Jersey','NM':'New Mexico','NY':'New York','NC':'North Carolina','ND':'North Dakota','OH':'Ohio','OK':'Oklahoma','OR':'Oregon','PA':'Pennsylvania','RI':'Rhode Island','SC':'South Carolina','SD':'South Dakota','TN':'Tennessee','TX':'Texas','UT':'Utah','VT':'Vermont','VA':'Virginia','WA':'Washington','WV':'West Virginia','WI':'Wisconsin','WY':'Wyoming','DC':'Washington D.C.'};
+
+function renderStateList(filtered) {
+  const list = document.getElementById('state-list');
+  list.innerHTML = '';
+  filtered.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'state-option';
+    div.textContent = s;
+    div.addEventListener('mousedown', () => selectState(s));
+    list.appendChild(div);
+  });
+}
+
+function openStateDropdown() {
+  renderStateList(US_STATES);
+  document.getElementById('state-list').classList.remove('hidden');
+}
+
+function closeStateDropdown() {
+  setTimeout(() => document.getElementById('state-list').classList.add('hidden'), 150);
+}
+
+function filterStates() {
+  const q = document.getElementById('state-input').value.trim();
+  const qu = q.toUpperCase();
+  const ql = q.toLowerCase();
+  // Check if input matches an abbreviation exactly
+  const abbrMatch = STATE_ABBR[qu];
+  const filtered = abbrMatch
+    ? [abbrMatch]
+    : US_STATES.filter(s => s.toLowerCase().startsWith(ql));
+  renderStateList(filtered);
+  document.getElementById('state-list').classList.remove('hidden');
+  document.getElementById('state-select').value = '';
+}
+
+function selectState(state) {
+  document.getElementById('state-input').value = state;
+  document.getElementById('state-select').value = state;
+  document.getElementById('state-list').classList.add('hidden');
+  goToS6();
+}
+
+function validateEmail() {
+  const email = document.getElementById('email').value.trim();
+  const err = document.getElementById('email-error');
+  const valid = email.length > 0 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  err.style.display = email.length > 0 && !valid ? 'block' : 'none';
+}
+
+function goToS8() {
+  const email = document.getElementById('email').value.trim();
+  const err = document.getElementById('email-error');
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    err.style.display = 'block';
+    return;
+  }
+  err.style.display = 'none';
+  answers.email = email;
+  showP2(8);
+}
+
+function setupPhoneValidation() {
+  var phoneInput = document.getElementById('phone-input');
+  var btn = document.getElementById('submit-btn');
+  var lastValidated = '';
+
+  // Error message element
+  var err = document.createElement('div');
+  err.style.cssText = 'color:#dc3545;font-size:13px;margin-top:6px;display:none;font-weight:500;';
+  phoneInput.parentNode.insertBefore(err, phoneInput.nextSibling);
+
+  // Loading element
+  var loading = document.createElement('div');
+  loading.style.cssText = 'color:#666;font-size:13px;margin-top:6px;display:none;';
+  loading.textContent = 'Verifying...';
+  phoneInput.parentNode.insertBefore(loading, err);
+
+  // Disable submit until validated
+  btn.disabled = true;
+  btn.style.opacity = '0.5';
+  btn.style.cursor = 'not-allowed';
+
+  function setSubmitEnabled(enabled) {
+    btn.disabled = !enabled;
+    btn.style.opacity = enabled ? '1' : '0.5';
+    btn.style.cursor = enabled ? 'pointer' : 'not-allowed';
+  }
+
+  // Reset on edit
+  phoneInput.addEventListener('input', function () {
+    err.style.display = 'none';
+    phoneInput.style.borderColor = '';
+    setSubmitEnabled(false);
+    lastValidated = '';
+  });
+
+  // Validate on blur
+  phoneInput.addEventListener('blur', function () {
+    var digits = phoneInput.value.replace(/\D/g, '');
+    if (digits.length < 10 || digits === lastValidated) return;
+    lastValidated = digits;
+    loading.style.display = 'block';
+    err.style.display = 'none';
+    setSubmitEnabled(false);
+
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 5000);
+
+    fetch('https://case-bridge.com/api/validate-phone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: digits }),
+      signal: controller.signal
+    })
+      .then(function (r) { clearTimeout(timer); return r.json(); })
+      .then(function (data) {
+        loading.style.display = 'none';
+        if (data.valid) {
+          phoneInput.style.borderColor = '#28a745';
+          setSubmitEnabled(true);
+        } else {
+          phoneInput.style.borderColor = '#dc3545';
+          err.textContent = 'This number is invalid.';
+          err.style.display = 'block';
+          setSubmitEnabled(false);
+        }
+      })
+      .catch(function () {
+        clearTimeout(timer);
+        // Proxy unreachable or timed out — fail open
+        loading.style.display = 'none';
+        setSubmitEnabled(true);
+      });
+  });
+}
+
+function goToThankyou() {
+  const phone = document.getElementById('phone-input').value.trim();
+  if (!phone || phone.replace(/\D/g,'').length < 10) { alert('Please enter a valid phone number.'); return; }
+  if (!document.getElementById('consent-check').checked) { alert('Please check the consent box to continue.'); return; }
+  answers.phone = phone;
+
+  // Send all responses to Pabbly webhook
+  // mode:'no-cors' avoids CORS preflight; body sent as text/plain which Pabbly parses as JSON
+  fetch('https://connect.pabbly.com/workflow/sendwebhookdata/IjU3NjcwNTZlMDYzMjA0Mzc1MjZhNTUzMDUxM2Ii_pc', {
+    method: 'POST',
+    mode: 'no-cors',
+    body: JSON.stringify({
+      firm:          'The Herro Law Firm',
+      firstName:     answers.firstName   || '',
+      lastName:      answers.lastName    || '',
+      email:         answers.email       || '',
+      phone:         answers.phone       || '',
+      state:         Object.keys(STATE_ABBR).find(k => STATE_ABBR[k] === answers.state) || answers.state || '',
+      accidentTime:  answers.accidentTime || '',
+      fault:         answers.fault        || '',
+      injury:        answers.injury       || '',
+      attorney:      answers.attorney     || '',
+      utm_source:    utmParams.utm_source,
+      utm_medium:    utmParams.utm_medium,
+      campaign_id:   utmParams.campaign_id,
+      adset_id:      utmParams.adset_id,
+      ad_id:         utmParams.ad_id,
+      placement:     utmParams.placement,
+      fbclid:        utmParams.fbclid,
+    })
+  }).catch(function() {});
+
+  // Fire Meta Lead event with dedup eventID
+  var eventId = 'lead_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+  if (typeof fbq === 'function') {
+    fbq('track', 'Lead', {}, { eventID: eventId });
+  }
+
+  showP2(99);
+}
+</script>
+<script src="https://cdn.jsdelivr.net/npm/twemoji@14.0.2/dist/twemoji.min.js" crossorigin="anonymous"></script>
+<script>twemoji.parse(document.body, { folder: 'svg', ext: '.svg' });</script>
+</body>
+</html>
+
+
+
+

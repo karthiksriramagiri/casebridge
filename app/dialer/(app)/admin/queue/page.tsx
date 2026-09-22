@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/app/dialer/_lib/supabase'
 import { formatBlockWindow } from '@/app/dialer/_lib/blocks'
+import { stateForPhone } from '@/app/dialer/_lib/area-codes'
 import type { BlockName } from '@/app/dialer/_lib/blocks'
 
 interface Attempt {
@@ -129,6 +130,7 @@ export default function QueueAdminPage() {
   const [firm,   setFirm]   = useState('')
   const [status, setStatus] = useState('')
   const [block,  setBlock]  = useState('')
+  const [state,  setState]  = useState('')      // table view only
   const [search, setSearch] = useState('')
   const [tab,    setTab]    = useState<'active' | 'done' | 'callbacks' | 'all'>('active')
 
@@ -192,6 +194,49 @@ export default function QueueAdminPage() {
       .then(() => { fetchReps(); fetchData() })
       .catch(console.error)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Calling states — persisted queue filter ───────────────────────────────
+  // Reps are only served leads whose state passes this. Table filters above
+  // are view-only; this one changes what actually gets dialed.
+  type FilterMode = 'off' | 'include' | 'exclude'
+  const [savedMode,   setSavedMode]   = useState<FilterMode>('off')
+  const [savedStates, setSavedStates] = useState<string[]>([])
+  const [draftMode,   setDraftMode]   = useState<FilterMode>('off')
+  const [draftStates, setDraftStates] = useState<string[]>([])
+  const [statesOpen,  setStatesOpen]  = useState(false)
+  const [savingStates, setSavingStates] = useState(false)
+
+  const loadStateFilter = useCallback(async () => {
+    const res  = await fetch('/api/dialer/queue/state-filter')
+    const data = await res.json()
+    const mode   = (data.mode ?? 'off') as FilterMode
+    const states = (data.states ?? []) as string[]
+    setSavedMode(mode);   setSavedStates(states)
+    setDraftMode(mode);   setDraftStates(states)
+  }, [])
+
+  useEffect(() => { loadStateFilter() }, [loadStateFilter])
+
+  async function saveStateFilter() {
+    setSavingStates(true)
+    const res  = await fetch('/api/dialer/queue/state-filter', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ mode: draftMode, states: draftStates }),
+    })
+    const data = await res.json()
+    setSavingStates(false)
+    if (!res.ok) { showToast(data.error ?? 'Could not save state filter'); return }
+    setSavedMode(data.mode); setSavedStates(data.states ?? [])
+    setStatesOpen(false)
+    await Promise.all([fetchData(), fetchReps()])
+    showToast(
+      data.mode === 'off'
+        ? 'Calling every state again'
+        : `${data.mode === 'include' ? 'Calling only' : 'Skipping'} ${(data.states ?? []).join(', ')}` +
+          (data.released ? ` — ${data.released} queued lead(s) released` : '')
+    )
+  }
 
   const fetchData = useCallback(async () => {
     const params = new URLSearchParams({ limit: '10000' })
@@ -353,11 +398,35 @@ export default function QueueAdminPage() {
     return list
   }, [sorted, tab])
 
-  // Apply search
+  // States present in today's plan, with counts — drives the pickers below
+  const stateCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      if (['cancelled', 'expired', 'merged'].includes(item.status)) continue
+      const st = stateForPhone(item.phone) ?? '??'
+      counts.set(st, (counts.get(st) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [items])
+
+  // How many of today's attempts the saved filter keeps reps away from
+  const skippedByFilter = useMemo(() => {
+    if (savedMode === 'off' || savedStates.length === 0) return 0
+    return items.filter(item => {
+      if (['cancelled', 'expired', 'merged', 'completed'].includes(item.status)) return false
+      if (item.is_callback) return false                       // callbacks bypass the filter
+      const st = stateForPhone(item.phone)
+      if (!st) return savedMode === 'include'                  // unknown state: dropped on include
+      return savedMode === 'include' ? !savedStates.includes(st) : savedStates.includes(st)
+    }).length
+  }, [items, savedMode, savedStates])
+
+  // Apply state + search
   const filtered = tabFiltered.filter(item =>
-    !search ||
-    item.contact_name.toLowerCase().includes(search.toLowerCase()) ||
-    item.phone.includes(search)
+    (!state || (stateForPhone(item.phone) ?? '??') === state) &&
+    (!search ||
+      item.contact_name.toLowerCase().includes(search.toLowerCase()) ||
+      item.phone.includes(search))
   )
 
   return (
@@ -450,6 +519,14 @@ export default function QueueAdminPage() {
           <option value="night">Night</option>
         </select>
 
+        <select value={state} onChange={e => setState(e.target.value)}
+          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+          <option value="">All states</option>
+          {stateCounts.map(([st, n]) => (
+            <option key={st} value={st}>{st === '??' ? 'Unknown' : st} ({n})</option>
+          ))}
+        </select>
+
         <select value={status} onChange={e => setStatus(e.target.value)}
           className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
           <option value="">All statuses</option>
@@ -475,6 +552,96 @@ export default function QueueAdminPage() {
         </div>
 
         <span className="text-xs text-gray-400">{filtered.length} attempts</span>
+
+        {/* Calling states — what reps actually get served */}
+        <div className="relative ml-auto">
+          <button onClick={() => setStatesOpen(o => !o)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors
+              ${savedMode === 'off'
+                ? 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'
+                : 'border-amber-400/40 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300'}`}>
+            <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M1.5 2.5A.5.5 0 012 2h12a.5.5 0 01.39.812L10 8.34V13a.5.5 0 01-.724.447l-3-1.5A.5.5 0 016 11.5V8.34L1.61 2.812A.5.5 0 011.5 2.5z" />
+            </svg>
+            {savedMode === 'off'
+              ? 'Calling: all states'
+              : savedMode === 'include'
+                ? `Calling only: ${savedStates.join(', ')}`
+                : `Skipping: ${savedStates.join(', ')}`}
+            {skippedByFilter > 0 && (
+              <span className="rounded-full bg-amber-200/70 px-1.5 text-[10px] tabular-nums text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                {skippedByFilter} held
+              </span>
+            )}
+          </button>
+
+          {statesOpen && (
+            <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Which states do reps call?</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                State comes from the lead's area code. Callbacks are always served, whatever the filter says.
+              </p>
+
+              <div className="mt-3 flex rounded-lg border border-gray-300 overflow-hidden dark:border-gray-700">
+                {([
+                  ['off',     'All states'],
+                  ['include', 'Only these'],
+                  ['exclude', 'All but these'],
+                ] as const).map(([m, label]) => (
+                  <button key={m} onClick={() => setDraftMode(m)}
+                    className={`flex-1 px-2 py-1.5 text-xs font-medium transition-colors
+                      ${draftMode === m
+                        ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white'
+                        : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {draftMode !== 'off' && (
+                <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  {stateCounts.filter(([st]) => st !== '??').length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-gray-400">No leads in today's plan yet — sync from GHL first.</p>
+                  ) : stateCounts.filter(([st]) => st !== '??').map(([st, n]) => {
+                    const on = draftStates.includes(st)
+                    return (
+                      <label key={st}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <input type="checkbox" checked={on}
+                          onChange={() => setDraftStates(prev =>
+                            on ? prev.filter(x => x !== st) : [...prev, st].sort()
+                          )}
+                          className="h-3.5 w-3.5 accent-cyan-600" />
+                        <span className="font-medium text-gray-700 dark:text-gray-200">{st}</span>
+                        <span className="ml-auto text-xs tabular-nums text-gray-400">{n}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+
+              {draftMode !== 'off' && draftStates.length > 0 && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {draftMode === 'include'
+                    ? `Reps will only be served ${draftStates.join(', ')} leads.`
+                    : `Reps will be served everything except ${draftStates.join(', ')}.`}
+                </p>
+              )}
+
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button onClick={() => { setDraftMode(savedMode); setDraftStates(savedStates); setStatesOpen(false) }}
+                  className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                  Cancel
+                </button>
+                <button onClick={saveStateFilter}
+                  disabled={savingStates || (draftMode !== 'off' && draftStates.length === 0)}
+                  className="rounded-lg bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50 transition-colors">
+                  {savingStates ? 'Saving…' : 'Apply to queue'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Table */}
@@ -554,7 +721,7 @@ export default function QueueAdminPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
               <tr>
-                {['#', 'Lead', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Owner', 'Assigned', 'Status', 'Disposition', ''].map(h => (
+                {['#', 'Lead', 'State', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Owner', 'Assigned', 'Status', 'Disposition', ''].map(h => (
                   <th key={h || '_actions'} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                 ))}
               </tr>
@@ -574,6 +741,23 @@ export default function QueueAdminPage() {
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-gray-800 dark:text-gray-200">{item.contact_name}</p>
                       <p className="text-xs text-gray-400 font-mono">{item.phone}</p>
+                    </td>
+                    <td className="px-4 py-2.5 text-xs">
+                      {(() => {
+                        const st = stateForPhone(item.phone)
+                        if (!st) return <span className="text-gray-300 dark:text-gray-700">—</span>
+                        const held = savedMode !== 'off' && !item.is_callback && (
+                          savedMode === 'include' ? !savedStates.includes(st) : savedStates.includes(st)
+                        )
+                        return (
+                          <span title={held ? 'Not served — filtered out by the state filter' : undefined}
+                            className={`inline-block rounded px-1.5 py-0.5 font-medium ${held
+                              ? 'bg-amber-100 text-amber-700 line-through dark:bg-amber-950/40 dark:text-amber-400'
+                              : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}>
+                            {st}
+                          </span>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-gray-700 dark:text-gray-300">{FIRM_LABEL[item.firm] ?? item.firm}</p>

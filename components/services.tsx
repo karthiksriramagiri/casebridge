@@ -1,139 +1,112 @@
-import {
-  Car,
-  Truck,
-  PersonStanding,
-  CarTaxiFront,
-  UserCheck,
-  PhoneCall,
-  BarChart3,
-  Shield,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { Reveal, SectionHead } from "@/components/site/primitives";
 
-interface Service {
-  icon: LucideIcon;
-  title: string;
-  description: string;
-  highlight?: string;
-}
+/* The previous version was four identical dark cards, each with the same
+   orange icon tile and a badge reading CORE SERVICE / HIGH VALUE / GROWING
+   SEGMENT / HIGH DEMAND. None of those badges carried information a firm
+   could act on, and four equal cards meant nothing led.
 
-const services: Service[] = [
+   A row list holds more per screen, and the column that matters — what we
+   actually verify before a case is sent — gets its own place instead of
+   being buried in a paragraph. */
+
+const caseTypes = [
   {
-    icon: Car,
-    title: "Motor Vehicle Accident Cases",
-    description:
-      "Pre-qualified cases from individuals involved in car, motorcycle, and pedestrian accidents who meet your specific case criteria and insurance thresholds.",
-    highlight: "Core Service",
+    name: "Motor vehicle collisions",
+    blurb:
+      "Car and motorcycle accidents where the claimant is injured, treating, and has not yet retained counsel.",
+    checks: ["Fault and police report", "Injury and treatment status", "Policy limits"],
   },
   {
-    icon: Truck,
-    title: "Commercial Vehicle Cases",
-    description:
-      "Vetted cases for commercial trucking collisions, fleet accidents, and premises liability matters with verified policy coverage and documented injuries.",
-    highlight: "High Value",
+    name: "Commercial and trucking",
+    blurb:
+      "Fleet and commercial vehicle collisions, where coverage is higher and the carrier is identifiable.",
+    checks: ["Carrier and DOT number", "Commercial policy coverage", "Documented injuries"],
   },
   {
-    icon: PersonStanding,
-    title: "Pedestrian Accident Cases",
-    description:
-      "Pre-qualified cases from pedestrians struck by vehicles, including crosswalk accidents and hit-and-run incidents, with verified injuries and documented liability.",
-    highlight: "Growing Segment",
+    name: "Pedestrian and cyclist",
+    blurb:
+      "Crosswalk incidents and hit-and-runs, including cases where the claimant was struck on foot.",
+    checks: ["Scene and liability", "Medical documentation", "Uninsured motorist cover"],
   },
   {
-    icon: CarTaxiFront,
-    title: "Rideshare Accident Cases",
-    description:
-      "Screened cases involving Uber, Lyft, and other rideshare collisions — passengers, drivers, and third parties — with confirmed coverage and documented injuries.",
-    highlight: "High Demand",
-  },
-  {
-    icon: UserCheck,
-    title: "Professional Intake Screening",
-    description:
-      "Every prospect is evaluated by trained intake specialists who verify accident details, injury severity, treatment status, and insurance coverage before delivery.",
-  },
-  {
-    icon: PhoneCall,
-    title: "Live Warm Transfers",
-    description:
-      "Qualified claimants are connected directly to your intake team in real time, resulting in significantly higher conversion rates than static case lists.",
-  },
-  {
-    icon: BarChart3,
-    title: "Performance Analytics",
-    description:
-      "Transparent reporting on case volume, conversion rates, and cost-per-acquisition so you can measure ROI and refine targeting criteria over time.",
-  },
-  {
-    icon: Shield,
-    title: "Full Regulatory Compliance",
-    description:
-      "Every case is sourced in accordance with ABA Model Rules, state bar regulations, and TCPA guidelines with documented consent records.",
+    name: "Rideshare",
+    blurb:
+      "Uber and Lyft collisions involving passengers, drivers, or third parties, where coverage tiers apply.",
+    checks: ["Trip status at impact", "Platform coverage tier", "Injury verification"],
   },
 ];
 
 export function Services() {
   return (
-    <section id="services" className="py-16 bg-card sm:py-28">
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
-            Our Services
-          </p>
-          <h2 className="mx-auto mt-4 max-w-2xl font-serif text-2xl font-bold text-foreground sm:text-3xl md:text-4xl text-balance">
-            End-to-End MVA Case Generation
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-[15px] font-medium leading-7 text-muted-foreground text-pretty">
-            From multi-channel prospect acquisition through professional
-            screening to real-time delivery, we handle every stage of the
-            pipeline so your attorneys can focus on casework.
-          </p>
-        </div>
+    <section id="case-types" className="cb-section">
+      <div className="cb-wrap">
+        <SectionHead
+          index="01"
+          label="What we deliver"
+          title="Four case types, one standard of proof."
+          lead="Every case is screened against the same checklist before it reaches your intake team. If it does not clear, it is not sent."
+        />
 
-        {/* Top 4 featured cards */}
-        <div className="mt-16 grid gap-6 lg:grid-cols-2">
-          {services.slice(0, 4).map((service) => (
-            <div
-              key={service.title}
-              className="group relative overflow-hidden rounded-xl border border-border bg-primary p-6 transition-all hover:shadow-lg sm:p-8 md:p-10"
-            >
-              <div className="flex items-start justify-between">
-                <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-secondary text-secondary-foreground">
-                  <service.icon className="h-6 w-6" />
+        {/* On wide screens the right-hand column gets one header rather than
+            the same label repeated once per row — four identical captions down
+            a list is the sort of repetition that makes a page look generated.
+            Below md the columns stack, so each row labels itself again. */}
+        <div className="mt-14">
+          <div className="hidden md:grid" style={{ gridTemplateColumns: "3.25rem minmax(0, 1fr)", columnGap: "clamp(1rem, 2.5vw, 2rem)" }}>
+            <span />
+            <div className="grid grid-cols-12 gap-x-12 pb-3">
+              <span className="col-span-7" />
+              <p className="col-span-5 cb-label" style={{ fontSize: "0.625rem" }}>
+                Verified before delivery
+              </p>
+            </div>
+          </div>
+
+          {caseTypes.map((c, i) => (
+            <Reveal key={c.name} delay={i * 60}>
+              <article className="cb-row">
+                <span className="cb-index" style={{ paddingTop: "0.3rem" }}>
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+
+                <div className="grid gap-x-12 gap-y-4 md:grid-cols-12">
+                  <div className="md:col-span-7">
+                    <h3 className="cb-h3">{c.name}</h3>
+                    <p className="cb-body mt-2.5" style={{ maxWidth: "34rem" }}>
+                      {c.blurb}
+                    </p>
+                  </div>
+
+                  <div className="md:col-span-5">
+                    <p className="cb-label md:hidden" style={{ fontSize: "0.625rem" }}>
+                      Verified before delivery
+                    </p>
+                    <ul className="mt-3 flex flex-col gap-1.5 md:mt-0">
+                      {c.checks.map((check) => (
+                        <li
+                          key={check}
+                          className="flex items-baseline gap-2.5 text-[0.875rem]"
+                          style={{ color: "var(--cb-ink-2)" }}
+                        >
+                          <span
+                            aria-hidden="true"
+                            style={{
+                              width: 5,
+                              height: 5,
+                              borderRadius: 999,
+                              background: "var(--cb-steel-2)",
+                              flexShrink: 0,
+                              transform: "translateY(-2px)",
+                            }}
+                          />
+                          {check}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
                 </div>
-                {service.highlight && (
-                  <span className="rounded-full bg-secondary/15 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-secondary">
-                    {service.highlight}
-                  </span>
-                )}
-              </div>
-              <h3 className="mt-6 text-lg font-bold text-primary-foreground">
-                {service.title}
-              </h3>
-              <p className="mt-3 text-sm font-medium leading-7 text-primary-foreground/50">
-                {service.description}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {/* Bottom 4 cards */}
-        <div className="mt-4 grid gap-4 sm:mt-6 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-          {services.slice(4).map((service) => (
-            <div
-              key={service.title}
-              className="group relative rounded-xl border border-border bg-background p-7 transition-all hover:border-secondary/30 hover:shadow-md"
-            >
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-secondary/10 text-secondary transition-colors group-hover:bg-secondary group-hover:text-secondary-foreground">
-                <service.icon className="h-5 w-5" />
-              </div>
-              <h3 className="mt-5 text-[15px] font-bold text-foreground">
-                {service.title}
-              </h3>
-              <p className="mt-2.5 text-[13px] font-medium leading-6 text-muted-foreground">
-                {service.description}
-              </p>
-            </div>
+              </article>
+            </Reveal>
           ))}
         </div>
       </div>

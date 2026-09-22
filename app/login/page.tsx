@@ -24,7 +24,7 @@ export default function LoginPage() {
     const data = await res.json()
 
     if (data.success) {
-      router.push('/metrics')
+      router.push('/creative')
     } else {
       setError('Invalid username or password')
       setLoading(false)

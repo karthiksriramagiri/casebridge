@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cancelDrip } from '@/app/dialer/_lib/sms-drip'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -67,6 +68,12 @@ export async function POST(req: NextRequest) {
       { onConflict: 'message_id' }
     )
     if (error) console.error('[ghl:message] outbound insert error:', error.message)
+
+    // Cancel any active SMS drip — a rep manually messaged this contact via GHL
+    await cancelDrip(contactId).catch(err =>
+      console.error('[ghl:message] cancelDrip error:', err)
+    )
+
     return NextResponse.json({ ok: true, tracked: 'outbound' })
   }
 
@@ -97,6 +104,12 @@ export async function POST(req: NextRequest) {
       .eq('replied', false)
 
     if (error) console.error('[ghl:message] reply update error:', error.message)
+
+    // Cancel any active SMS drip — the contact replied
+    await cancelDrip(contactId).catch(err =>
+      console.error('[ghl:message] cancelDrip error:', err)
+    )
+
     return NextResponse.json({ ok: true, tracked: 'inbound' })
   }
 

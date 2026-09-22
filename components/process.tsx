@@ -1,74 +1,175 @@
-import { Search, ClipboardCheck, Zap, TrendingUp } from "lucide-react";
+"use client";
+
+import { useEffect, useRef, useState } from "react";
+import { Reveal } from "@/components/site/primitives";
 
 const steps = [
   {
-    icon: Search,
-    number: "1",
-    title: "Prospect Identification",
+    title: "Acquisition",
     description:
-      "Our cross-platform campaigns across search, social, and strategic partnerships identify individuals involved in motor vehicle accidents who are actively seeking legal counsel.",
+      "Campaigns across search, social, and partner networks reach people who have just been in a collision and are looking for counsel.",
   },
   {
-    icon: ClipboardCheck,
-    number: "2",
-    title: "Intake & Qualification",
+    title: "Screening",
     description:
-      "Each prospect is evaluated by trained intake specialists who verify accident circumstances, injury documentation, medical treatment status, and insurance coverage.",
+      "A trained intake specialist verifies the accident, the injuries, the treatment status, and the insurance position on a recorded call.",
   },
   {
-    icon: Zap,
-    number: "3",
-    title: "Exclusive Delivery",
+    title: "Delivery",
     description:
-      "Qualified cases are transferred to your firm through live warm transfer, direct CRM integration, or your secure dashboard. Every case is exclusive to your practice.",
+      "The case goes to your firm and no one else — live warm transfer, straight into your CRM, or waiting in your portal.",
   },
   {
-    icon: TrendingUp,
-    number: "4",
-    title: "Ongoing Optimization",
+    title: "Optimisation",
     description:
-      "We continuously refine targeting and qualification criteria using your conversion data to improve case quality and maximize your return on investment over time.",
+      "Your conversion data feeds back into targeting and qualifying criteria, so the cases you get in month six beat the ones from month one.",
   },
 ];
 
+/* The four piers meet the steel span at these points. Both the arc and the
+   piers live in one SVG so they cannot drift apart at any viewport width —
+   the alternative, positioning HTML rules against a stretched SVG, is exactly
+   the kind of thing that survives the desktop breakpoint and nothing else. */
+const PIERS = [
+  { x: 150, y: 101 },
+  { x: 450, y: 60 },
+  { x: 750, y: 60 },
+  { x: 1050, y: 101 },
+];
+
 export function Process() {
+  const ref = useRef<SVGSVGElement | null>(null);
+  const [seen, setSeen] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+
+    /* Same units problem as the hero span: non-scaling-stroke resolves the
+       dash in screen pixels while getTotalLength() reports user units, so the
+       measured length has to be scaled by the viewBox factor or the line
+       stops short of its own end. The SVG is height:auto, which keeps x and y
+       on the same scale, so one factor covers both. */
+    const applyLengths = () => {
+      const scale = el.getBoundingClientRect().width / 1200;
+      for (const p of Array.from(
+        el.querySelectorAll<SVGPathElement | SVGLineElement>("path, line"),
+      )) {
+        const len = Math.ceil((p as SVGPathElement).getTotalLength() * (scale || 1));
+        p.style.setProperty("--len", String(len));
+      }
+    };
+    applyLengths();
+    const ro = new ResizeObserver(applyLengths);
+    ro.observe(el);
+
+    let io: IntersectionObserver | null = null;
+    if (typeof IntersectionObserver === "undefined") {
+      setSeen(true);
+    } else {
+      io = new IntersectionObserver(
+        ([e]) => {
+          if (e.isIntersecting) {
+            setSeen(true);
+            io?.disconnect();
+          }
+        },
+        { threshold: 0.2 },
+      );
+      io.observe(el);
+    }
+
+    return () => {
+      ro.disconnect();
+      io?.disconnect();
+    };
+  }, []);
+
   return (
-    <section id="process" className="py-16 bg-primary sm:py-28">
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
-            How It Works
-          </p>
-          <h2 className="mx-auto mt-4 max-w-2xl font-serif text-2xl font-bold text-primary-foreground sm:text-3xl md:text-4xl text-balance">
-            From Prospect to Retained Case
-          </h2>
-          <p className="mx-auto mt-4 max-w-xl text-[15px] font-medium leading-7 text-primary-foreground/50 text-pretty">
-            A streamlined four-step process built to deliver consistent,
-            high-quality motor vehicle accident cases to your firm.
-          </p>
+    <section id="process" className="cb-dark cb-section relative overflow-hidden">
+      <div className="cb-grid-bg" aria-hidden="true" style={{ opacity: 0.6 }} />
+
+      <div className="cb-wrap relative">
+        <div className="cb-head">
+          <Reveal className="cb-head-top">
+            <span className="cb-index">03</span>
+            <span className="cb-label">How it works</span>
+            <span className="cb-head-rule" aria-hidden="true" />
+          </Reveal>
+          <Reveal delay={60}>
+            <h2 className="cb-h2" style={{ color: "#fff" }}>
+              From collision to retained case.
+            </h2>
+          </Reveal>
+          <Reveal delay={120}>
+            <p className="cb-lead" style={{ maxWidth: "36rem" }}>
+              Four stages, and a case has to clear all of them. Most do not — which
+              is the point.
+            </p>
+          </Reveal>
         </div>
 
-        <div className="mt-10 grid gap-4 sm:mt-16 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4">
-          {steps.map((step) => (
-            <div
-              key={step.number}
-              className="relative rounded-lg border border-primary-foreground/8 bg-primary-foreground/[0.03] p-7 transition-colors hover:bg-primary-foreground/[0.06]"
-            >
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-secondary/15">
-                  <step.icon className="h-5 w-5 text-secondary" />
+        {/* ── The span, on wide screens ──────────────────────────────────── */}
+        <div className="mt-20 hidden lg:block">
+          <svg
+            ref={ref}
+            viewBox="0 0 1200 150"
+            preserveAspectRatio="none"
+            aria-hidden="true"
+            className={`cb-arc cb-arc-draw ${seen ? "is-in" : ""}`}
+          >
+            {/* Lower span — steel */}
+            <path
+              d="M0 148 C 300 24, 900 24, 1200 148"
+              stroke="var(--cb-steel-2)"
+              strokeWidth={1.6}
+            />
+            {/* Upper span — ember, as in the mark */}
+            <path
+              d="M0 150 C 300 -4, 900 -4, 1200 150"
+              stroke="var(--cb-ember)"
+              strokeWidth={1.6}
+              opacity={0.85}
+              style={{ ["--cb-delay" as string]: "160ms" }}
+            />
+            {/* Piers down to the deck */}
+            {PIERS.map((p, i) => (
+              <line
+                key={p.x}
+                x1={p.x}
+                y1={p.y}
+                x2={p.x}
+                y2={150}
+                stroke="rgba(255,255,255,0.22)"
+                strokeWidth={1}
+                style={{ ["--cb-delay" as string]: `${700 + i * 90}ms` }}
+              />
+            ))}
+          </svg>
+        </div>
+
+        {/* ── The deck ───────────────────────────────────────────────────── */}
+        <div className="mt-12 grid gap-x-8 gap-y-10 sm:grid-cols-2 lg:mt-0 lg:grid-cols-4 lg:gap-x-8">
+          {steps.map((s, i) => (
+            <Reveal key={s.title} delay={i * 80}>
+              <div
+                className="relative pt-6"
+                style={{ borderTop: "1px solid var(--cb-line-dark-2)" }}
+              >
+                <div className="flex items-baseline gap-3">
+                  <span className="cb-index">{String(i + 1).padStart(2, "0")}</span>
+                  <h3 className="cb-h3" style={{ color: "#fff" }}>
+                    {s.title}
+                  </h3>
                 </div>
-                <span className="font-serif text-xs font-bold tracking-wider text-primary-foreground/30">
-                  STEP {step.number}
-                </span>
+                <p
+                  className="mt-3 text-[0.875rem] leading-[1.62]"
+                  style={{ color: "rgba(255,255,255,0.55)" }}
+                >
+                  {s.description}
+                </p>
               </div>
-              <h3 className="mt-5 text-[15px] font-semibold text-primary-foreground">
-                {step.title}
-              </h3>
-              <p className="mt-2.5 text-[13px] font-medium leading-6 text-primary-foreground/45">
-                {step.description}
-              </p>
-            </div>
+            </Reveal>
           ))}
         </div>
       </div>

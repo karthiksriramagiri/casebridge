@@ -1,0 +1,19 @@
+{
+  "name": "ghl-intake-agent",
+  "version": "1.0.0",
+  "description": "Auto-fills GoHighLevel intake fields by reading SMS/email conversations, Twilio call transcripts, and MMS images with Claude, so a signed-case tag triggers a review-ready intake instead of manual copy/paste.",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "list-fields": "node scripts/list-custom-fields.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "dotenv": "^16.4.5",
+    "twilio": "^5.3.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

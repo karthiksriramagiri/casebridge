@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/sms-drip",
       "schedule": "0 14 * * *"
+    },
+    {
+      "path": "/api/cron/intake-fill",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

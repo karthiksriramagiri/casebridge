@@ -2,43 +2,38 @@
 
 import type React from "react";
 import { useState } from "react";
-import { Phone, Mail, MapPin, Send, CheckCircle2, Clock } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import {
+  ArrowRight,
+  Check,
+  Clock,
+  Mail,
+  Pin,
+  Reveal,
+  SectionHead,
+} from "@/components/site/primitives";
 
-const contactInfo = [
-  {
-    icon: Mail,
-    label: "Email",
-    value: "sales@case-bridge.com",
-    href: "mailto:sales@case-bridge.com",
-  },
-  {
-    icon: MapPin,
-    label: "Office",
-    value: "Atlanta, GA",
-    href: null,
-  },
+const hours = [
+  ["Mon – Fri", "8:00 AM – 8:00 PM ET"],
+  ["Saturday", "9:00 AM – 5:00 PM ET"],
+  ["Sunday", "Closed"],
 ];
 
 export function ContactForm() {
   const [submitted, setSubmitted] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setSubmitting(true);
 
-    const formData = new FormData(e.currentTarget);
+    const fd = new FormData(e.currentTarget);
     const data = {
-      firstName: formData.get("firstName"),
-      lastName: formData.get("lastName"),
-      email: formData.get("email"),
-      phone: formData.get("phone"),
-      firmName: formData.get("firmName"),
-      message: formData.get("message"),
+      firstName: fd.get("firstName"),
+      lastName: fd.get("lastName"),
+      email: fd.get("email"),
+      phone: fd.get("phone"),
+      firmName: fd.get("firmName"),
+      message: fd.get("message"),
     };
 
     try {
@@ -48,222 +43,190 @@ export function ContactForm() {
         body: JSON.stringify(data),
       });
     } catch {
-      // still show success to user
+      // The enquiry is also reachable by email, shown alongside the form.
     }
 
     setSubmitting(false);
     setSubmitted(true);
-  };
+  }
 
   return (
-    <section id="contact" className="py-16 bg-background sm:py-28">
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="text-center">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
-            Get Started
-          </p>
-          <h2 className="mx-auto mt-4 max-w-xl font-serif text-2xl font-bold text-foreground sm:text-3xl md:text-4xl text-balance">
-            Request a Consultation
-          </h2>
-          <p className="mx-auto mt-4 max-w-lg text-[15px] font-medium leading-7 text-muted-foreground text-pretty">
-            Tell us about your practice and an account representative will
-            contact you within one business day to discuss case volume,
-            targeting, and pricing.
-          </p>
-        </div>
+    <section id="contact" className="cb-section">
+      <div className="cb-wrap">
+        <SectionHead
+          index="06"
+          label="Get started"
+          title="Start a conversation."
+          lead="Tell us about your practice and an account representative will come back to you within one business day."
+        />
 
-        <div className="mx-auto mt-14 max-w-5xl">
-          <div className="grid gap-10 lg:grid-cols-12">
-            {/* Contact details */}
-            <div className="flex flex-col gap-6 lg:col-span-4">
-              {contactInfo.map((item) => (
-                <div key={item.label} className="flex items-start gap-4">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-secondary/10">
-                    <item.icon className="h-4 w-4 text-secondary" />
-                  </div>
-                  <div>
-                    <div className="text-[13px] font-semibold text-foreground">
-                      {item.label}
-                    </div>
-                    {item.href ? (
-                      <a
-                        href={item.href}
-                        className="text-[13px] text-muted-foreground transition-colors hover:text-secondary"
-                      >
-                        {item.value}
-                      </a>
-                    ) : (
-                      <p className="whitespace-pre-line text-[13px] text-muted-foreground">
-                        {item.value}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              <div className="rounded-lg border border-border bg-card p-5">
-                <div className="flex items-center gap-3">
-                  <Clock className="h-4 w-4 text-secondary" />
-                  <span className="text-[13px] font-semibold text-foreground">
-                    Business Hours
+        <div className="mt-14 grid gap-x-16 gap-y-12 lg:grid-cols-12">
+          {/* Details */}
+          <div className="lg:col-span-4">
+            <Reveal>
+              <dl className="m-0 flex flex-col">
+                <div
+                  className="flex items-start gap-3 py-4"
+                  style={{ borderTop: "1px solid var(--cb-line)" }}
+                >
+                  <span style={{ color: "var(--cb-steel)" }} className="mt-[3px]">
+                    <Mail />
                   </span>
+                  <div>
+                    <dt className="cb-label" style={{ fontSize: "0.625rem" }}>
+                      Email
+                    </dt>
+                    <dd className="m-0 mt-1">
+                      <a
+                        href="mailto:sales@case-bridge.com"
+                        className="cb-link"
+                        style={{ fontSize: "0.9375rem" }}
+                      >
+                        sales@case-bridge.com
+                      </a>
+                    </dd>
+                  </div>
                 </div>
-                <div className="mt-3 flex flex-col gap-1.5 text-[13px]">
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Mon - Fri</span>
-                    <span className="text-foreground">8:00 AM - 8:00 PM ET</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Saturday</span>
-                    <span className="text-foreground">9:00 AM - 5:00 PM ET</span>
-                  </div>
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">Sunday</span>
-                    <span className="text-muted-foreground">Closed</span>
-                  </div>
-                </div>
-              </div>
-            </div>
 
-            {/* Form */}
-            <div className="lg:col-span-8">
-              {submitted ? (
-                <div className="flex h-full min-h-[460px] items-center justify-center rounded-lg border border-border bg-card">
-                  <div className="text-center px-8">
-                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-secondary/10">
-                      <CheckCircle2 className="h-7 w-7 text-secondary" />
-                    </div>
-                    <h3 className="mt-5 font-serif text-2xl font-bold text-foreground">
-                      Thank You
-                    </h3>
-                    <p className="mx-auto mt-3 max-w-sm text-sm leading-relaxed text-muted-foreground">
-                      Your inquiry has been received. A dedicated account
-                      representative will be in touch within one business day.
-                    </p>
+                <div
+                  className="flex items-start gap-3 py-4"
+                  style={{ borderTop: "1px solid var(--cb-line)" }}
+                >
+                  <span style={{ color: "var(--cb-steel)" }} className="mt-[3px]">
+                    <Pin />
+                  </span>
+                  <div>
+                    <dt className="cb-label" style={{ fontSize: "0.625rem" }}>
+                      Office
+                    </dt>
+                    <dd className="m-0 mt-1 text-[0.9375rem]" style={{ color: "var(--cb-ink)" }}>
+                      Atlanta, GA
+                    </dd>
                   </div>
+                </div>
+
+                <div
+                  className="py-4"
+                  style={{
+                    borderTop: "1px solid var(--cb-line)",
+                    borderBottom: "1px solid var(--cb-line)",
+                  }}
+                >
+                  <div className="flex items-center gap-3">
+                    <span style={{ color: "var(--cb-steel)" }}>
+                      <Clock />
+                    </span>
+                    <dt className="cb-label" style={{ fontSize: "0.625rem" }}>
+                      Hours
+                    </dt>
+                  </div>
+                  <dd className="m-0 mt-3 flex flex-col gap-1.5">
+                    {hours.map(([day, time]) => (
+                      <div key={day} className="flex justify-between gap-4 text-[0.8125rem]">
+                        <span style={{ color: "var(--cb-ink-3)" }}>{day}</span>
+                        <span style={{ color: "var(--cb-ink-2)" }}>{time}</span>
+                      </div>
+                    ))}
+                  </dd>
+                </div>
+              </dl>
+            </Reveal>
+          </div>
+
+          {/* Form */}
+          <div className="lg:col-span-8">
+            <Reveal delay={100}>
+              {submitted ? (
+                <div
+                  className="cb-plate flex flex-col items-start gap-4 p-8 sm:p-10"
+                  style={{ background: "var(--cb-white)" }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="grid place-items-center rounded-full"
+                    style={{
+                      width: 40,
+                      height: 40,
+                      background: "rgba(47, 88, 120, 0.1)",
+                      color: "var(--cb-steel)",
+                    }}
+                  >
+                    <Check size={18} />
+                  </span>
+                  <h3 className="cb-h3">Enquiry received.</h3>
+                  <p className="cb-body" style={{ maxWidth: "32rem" }}>
+                    An account representative will be in touch within one business
+                    day. If it is urgent, email{" "}
+                    <a href="mailto:sales@case-bridge.com" className="cb-link">
+                      sales@case-bridge.com
+                    </a>{" "}
+                    directly.
+                  </p>
                 </div>
               ) : (
-                <div className="rounded-lg border border-border bg-card p-5 sm:p-8 md:p-10">
-                  <form
-                    onSubmit={handleSubmit}
-                    className="flex flex-col gap-5"
-                  >
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <div className="flex flex-col gap-2">
-                        <Label
-                          htmlFor="firstName"
-                          className="text-[13px] font-medium text-foreground"
-                        >
-                          First Name{" "}
-                          <span className="text-secondary">*</span>
-                        </Label>
-                        <Input
-                          id="firstName"
-                          name="firstName"
-                          required
-                          placeholder="John"
-                          className="h-11 border-border bg-background text-sm"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Label
-                          htmlFor="lastName"
-                          className="text-[13px] font-medium text-foreground"
-                        >
-                          Last Name{" "}
-                          <span className="text-secondary">*</span>
-                        </Label>
-                        <Input
-                          id="lastName"
-                          name="lastName"
-                          required
-                          placeholder="Smith"
-                          className="h-11 border-border bg-background text-sm"
-                        />
-                      </div>
+                <form
+                  onSubmit={handleSubmit}
+                  className="cb-plate p-6 sm:p-8"
+                  style={{ background: "var(--cb-white)" }}
+                >
+                  <div className="grid gap-5 sm:grid-cols-2">
+                    <div className="cb-field">
+                      <label className="cb-field-label" htmlFor="firstName">
+                        First name
+                      </label>
+                      <input id="firstName" name="firstName" required className="cb-input" placeholder="John" />
                     </div>
-                    <div className="grid gap-5 sm:grid-cols-2">
-                      <div className="flex flex-col gap-2">
-                        <Label
-                          htmlFor="email"
-                          className="text-[13px] font-medium text-foreground"
-                        >
-                          Email <span className="text-secondary">*</span>
-                        </Label>
-                        <Input
-                          id="email"
-                          name="email"
-                          type="email"
-                          required
-                          placeholder="john@lawfirm.com"
-                          className="h-11 border-border bg-background text-sm"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <Label
-                          htmlFor="phone"
-                          className="text-[13px] font-medium text-foreground"
-                        >
-                          Phone
-                        </Label>
-                        <Input
-                          id="phone"
-                          name="phone"
-                          type="tel"
-                          placeholder="(555) 123-4567"
-                          className="h-11 border-border bg-background text-sm"
-                        />
-                      </div>
+                    <div className="cb-field">
+                      <label className="cb-field-label" htmlFor="lastName">
+                        Last name
+                      </label>
+                      <input id="lastName" name="lastName" required className="cb-input" placeholder="Smith" />
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <Label
-                        htmlFor="firmName"
-                        className="text-[13px] font-medium text-foreground"
-                      >
-                        Firm Name{" "}
-                        <span className="text-secondary">*</span>
-                      </Label>
-                      <Input
-                        id="firmName"
-                        name="firmName"
-                        required
-                        placeholder="Smith & Associates, PLLC"
-                        className="h-11 border-border bg-background text-sm"
-                      />
+                    <div className="cb-field">
+                      <label className="cb-field-label" htmlFor="email">
+                        Email
+                      </label>
+                      <input id="email" name="email" type="email" required className="cb-input" placeholder="john@lawfirm.com" />
                     </div>
-                    <div className="flex flex-col gap-2">
-                      <Label
-                        htmlFor="message"
-                        className="text-[13px] font-medium text-foreground"
-                      >
-                        Tell Us About Your Needs
-                      </Label>
-                      <Textarea
+                    <div className="cb-field">
+                      <label className="cb-field-label" htmlFor="phone">
+                        Phone
+                      </label>
+                      <input id="phone" name="phone" type="tel" className="cb-input" placeholder="(555) 123-4567" />
+                    </div>
+                    <div className="cb-field sm:col-span-2">
+                      <label className="cb-field-label" htmlFor="firmName">
+                        Firm name
+                      </label>
+                      <input id="firmName" name="firmName" required className="cb-input" placeholder="Smith &amp; Associates, PLLC" />
+                    </div>
+                    <div className="cb-field sm:col-span-2">
+                      <label className="cb-field-label" htmlFor="message">
+                        What are you looking for?
+                      </label>
+                      <textarea
                         id="message"
                         name="message"
                         rows={4}
-                        placeholder="Describe your target geographies, case types, and monthly volume requirements..."
-                        className="resize-none border-border bg-background text-sm"
+                        className="cb-input"
+                        placeholder="Case criteria, target jurisdictions, and the monthly volume you can work."
                       />
                     </div>
-                    <div className="flex flex-col gap-4 pt-2 sm:flex-row sm:items-center sm:justify-between">
-                      <Button
-                        type="submit"
-                        disabled={submitting}
-                        className="bg-secondary text-secondary-foreground hover:bg-secondary/90 gap-2 px-8 shadow-none disabled:opacity-60"
-                      >
-                        {submitting ? "Sending..." : "Submit Inquiry"}
-                        {!submitting && <Send className="h-3.5 w-3.5" />}
-                      </Button>
-                      <p className="max-w-[280px] text-[11px] leading-relaxed text-muted-foreground">
-                        By submitting, you consent to be contacted regarding our
-                        services.
-                      </p>
-                    </div>
-                  </form>
-                </div>
+                  </div>
+
+                  <div className="mt-7 flex flex-col gap-4 sm:flex-row sm:items-center">
+                    <button type="submit" className="cb-btn cb-btn-primary" disabled={submitting}>
+                      {submitting ? "Sending…" : "Send enquiry"}
+                      {!submitting && <ArrowRight className="cb-arrow" />}
+                    </button>
+                    <p className="cb-small" style={{ maxWidth: "26rem" }}>
+                      By submitting, you consent to be contacted about your
+                      enquiry. We do not share your details.
+                    </p>
+                  </div>
+                </form>
               )}
-            </div>
+            </Reveal>
           </div>
         </div>
       </div>

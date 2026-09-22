@@ -1,140 +1,116 @@
-"use client";
+import { Quote, Reveal, SectionHead } from "@/components/site/primitives";
 
-import { useState } from "react";
-import { ChevronLeft, ChevronRight, Star, Quote } from "lucide-react";
+/* The carousel this replaces showed one quote at a time behind two arrow
+   buttons, a counter, and a row of dots — more chrome than content, and two
+   thirds of the evidence hidden behind an interaction nobody performs. All
+   three are on the page now, with one given the weight of a pull quote. */
 
-const testimonials = [
+const featured = {
+  quote:
+    "We evaluated a dozen case providers before choosing Case Bridge. The difference is the screening — every case arrives with verified accident details, confirmed treatment records, and real intent to retain counsel.",
+  name: "Robert H.",
+  title: "Managing Partner",
+  location: "Dallas, TX",
+};
+
+const supporting = [
   {
     quote:
-      "We evaluated a dozen case providers before choosing Case Bridge. The difference is the quality of screening -- every case arrives with verified accident details, confirmed treatment records, and real intent to retain counsel. Our conversion rate has tripled.",
-    name: "Robert H.",
-    title: "Managing Partner",
-    location: "Dallas, TX",
-  },
-  {
-    quote:
-      "The exclusivity model is what sold us. We stopped wasting time competing with four other firms for the same prospect. Case Bridge sends cases that are genuinely ours, and it shows in our intake numbers.",
+      "The exclusivity model is what sold us. We stopped competing with four other firms for the same prospect, and it shows in our intake numbers.",
     name: "Sarah M.",
     title: "Senior Partner",
     location: "San Mateo, CA",
   },
   {
     quote:
-      "The live transfer program changed our practice. We connect with potential clients within seconds of them seeking representation. Our cost per retained case dropped significantly, and case quality has been remarkably consistent month over month.",
+      "Live transfer changed our practice. We speak to a claimant within seconds of them looking for representation, and case quality has been consistent month over month.",
     name: "Angela T.",
     title: "Director of Intake",
     location: "Atlanta, GA",
   },
 ];
 
-export function Testimonials() {
-  const [current, setCurrent] = useState(0);
-
-  const prev = () =>
-    setCurrent((c) => (c === 0 ? testimonials.length - 1 : c - 1));
-  const next = () =>
-    setCurrent((c) => (c === testimonials.length - 1 ? 0 : c + 1));
-
-  const t = testimonials[current];
-
+function Attribution({
+  name,
+  title,
+  location,
+}: {
+  name: string;
+  title: string;
+  location: string;
+}) {
   return (
-    <section id="testimonials" className="py-16 bg-background sm:py-28">
-      <div className="mx-auto max-w-7xl px-5 sm:px-8">
-        <div className="grid gap-16 lg:grid-cols-12">
-          {/* Left column */}
-          <div className="lg:col-span-4">
-            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-secondary">
-              Testimonials
-            </p>
-            <h2 className="mt-4 font-serif text-2xl font-bold text-foreground sm:text-3xl md:text-4xl text-balance">
-              What Our Partners Say
-            </h2>
-            <p className="mt-4 text-[15px] font-medium leading-7 text-muted-foreground text-pretty">
-              Hear from attorneys who have transformed their intake pipeline
-              with Case Bridge.
-            </p>
+    <figcaption className="mt-6 flex items-center gap-3">
+      <span
+        aria-hidden="true"
+        className="grid h-9 w-9 shrink-0 place-items-center rounded-full text-[0.75rem] font-bold"
+        style={{ background: "var(--cb-steel)", color: "#fff", letterSpacing: "-0.02em" }}
+      >
+        {name
+          .split(" ")
+          .map((n) => n[0])
+          .join("")}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-[0.875rem] font-semibold" style={{ color: "var(--cb-ink)" }}>
+          {name}
+        </span>
+        <span className="block text-[0.8125rem]" style={{ color: "var(--cb-ink-3)" }}>
+          {title} · {location}
+        </span>
+      </span>
+    </figcaption>
+  );
+}
 
-            {/* Navigation */}
-            <div className="mt-8 flex items-center gap-3">
-              <button
-                type="button"
-                onClick={prev}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
-                aria-label="Previous testimonial"
-              >
-                <ChevronLeft className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={next}
-                className="flex h-10 w-10 items-center justify-center rounded-lg border border-border text-muted-foreground transition-colors hover:border-foreground hover:text-foreground"
-                aria-label="Next testimonial"
-              >
-                <ChevronRight className="h-4 w-4" />
-              </button>
-              <span className="ml-2 text-xs text-muted-foreground">
-                {current + 1} / {testimonials.length}
-              </span>
-            </div>
+export function Testimonials() {
+  return (
+    <section id="testimonials" className="cb-section">
+      <div className="cb-wrap">
+        <SectionHead index="04" label="Partners" title="What the firms say." />
 
-            {/* Dots */}
-            <div className="mt-4 flex gap-2">
-              {testimonials.map((_, i) => (
-                <button
-                  key={`dot-${testimonials[i].name}`}
-                  type="button"
-                  onClick={() => setCurrent(i)}
-                  className={`h-1.5 rounded-full transition-all ${
-                    i === current
-                      ? "w-8 bg-secondary"
-                      : "w-1.5 bg-border hover:bg-muted-foreground"
-                  }`}
-                  aria-label={`Go to testimonial ${i + 1}`}
-                />
-              ))}
-            </div>
+        <div className="mt-14 grid gap-x-16 gap-y-12 lg:grid-cols-12">
+          {/* The pull quote is the one place a display serif belongs: large,
+              set as a quotation, and never used at label size. */}
+          <div className="lg:col-span-7">
+            <Reveal>
+              <figure className="m-0">
+                <Quote size={30} style={{ color: "var(--cb-line-2)" }} />
+                <blockquote className="m-0 mt-4">
+                  <p
+                    className="font-serif"
+                    style={{
+                      fontSize: "clamp(1.375rem, 2.4vw, 1.875rem)",
+                      lineHeight: 1.36,
+                      letterSpacing: "-0.018em",
+                      color: "var(--cb-ink)",
+                      textWrap: "pretty",
+                    }}
+                  >
+                    {featured.quote}
+                  </p>
+                </blockquote>
+                <Attribution {...featured} />
+              </figure>
+            </Reveal>
           </div>
 
-          {/* Right column - testimonial card */}
-          <div className="lg:col-span-8">
-            <div className="rounded-lg border border-border bg-card p-6 sm:p-8 md:p-10 lg:p-12">
-              <Quote className="h-8 w-8 text-secondary/30" />
-
-              <div className="mt-4 flex gap-0.5">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Star
-                    key={`star-${t.name}-${i}`}
-                    className="h-4 w-4 fill-secondary text-secondary"
-                  />
-                ))}
-              </div>
-
-              <blockquote className="mt-6">
-                <p className="text-base font-medium leading-7 text-foreground sm:text-lg sm:leading-8 md:text-xl md:leading-9 text-pretty">
-                  {`"${t.quote}"`}
-                </p>
-              </blockquote>
-
-              <div className="mt-8 flex items-center gap-4 border-t border-border pt-6">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-primary font-serif text-sm font-bold text-primary-foreground">
-                  {t.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .join("")}
-                </div>
-                <div>
-                  <div className="text-sm font-semibold text-foreground">
-                    {t.name}
-                  </div>
-                  <div className="text-[13px] text-muted-foreground">
-                    {t.title}
-                  </div>
-                  <div className="text-xs text-muted-foreground/70">
-                    {t.location}
-                  </div>
-                </div>
-              </div>
-            </div>
+          <div className="flex flex-col gap-10 lg:col-span-5">
+            {supporting.map((t, i) => (
+              <Reveal key={t.name} delay={100 + i * 80}>
+                <figure
+                  className="m-0 pt-7"
+                  style={{ borderTop: "1px solid var(--cb-line)" }}
+                >
+                  <blockquote className="m-0">
+                    <p className="cb-body" style={{ color: "var(--cb-ink)" }}>
+                      {t.quote}
+                    </p>
+                  </blockquote>
+                  <Attribution {...t} />
+                </figure>
+              </Reveal>
+            ))}
           </div>
         </div>
       </div>

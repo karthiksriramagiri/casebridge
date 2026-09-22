@@ -69,7 +69,7 @@ BEGIN
     (mod_docu,   'Sending Docuseal Agreement', '', 80, true, 'video',
      'https://www.loom.com/share/de087e4f2be74dc681fa42302a2867a1'),
     (mod_listen, 'Listening to the Call', '', 80, true, 'video',
-     'https://www.loom.com/share/dea142d79f084e66b6ea618c2a388778');
+8778');
 
   -- ── Program ↔ Module links (position = display order) ────────────────
   INSERT INTO public.program_modules (program_id, module_id, position) VALUES

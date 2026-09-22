@@ -1,0 +1,684 @@
+/* Venu — training surface.
+   Deliberately its own visual language: quiet, wide, and centred on the orb,
+   so a rep on a practice call has one thing to look at. */
+
+.venu {
+  --ink: #0b0b0c;
+  --ink-2: #3f4147;
+  --muted: #7c7f88;
+  --line: #e8e7ea;
+  --paper: #ffffff;
+  --wash: #f7f6f8;
+  --tint: #ece9f6;
+  --teal: #4aa89a;
+  --teal-deep: #2f7d75;
+  --good: #16794e;
+  --warn: #b45309;
+  --bad: #b42318;
+
+  min-height: 100vh;
+  background:
+    radial-gradient(120% 90% at 0% 0%, var(--tint) 0%, rgba(236, 233, 246, 0) 55%),
+    radial-gradient(90% 70% at 100% 100%, #f2f5f4 0%, rgba(242, 245, 244, 0) 60%),
+    var(--wash);
+  color: var(--ink);
+  font-family: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.venu-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 20px 28px;
+}
+
+.venu-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.venu-mark span:first-child {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.venu-who {
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.venu-wrap {
+  max-width: 1080px;
+  margin: 0 auto;
+  padding: 8px 28px 80px;
+}
+
+/* ── The orb ──────────────────────────────────────────────────────────── */
+.venu-orb {
+  position: relative;
+  border-radius: 50%;
+  background:
+    radial-gradient(40% 36% at 33% 25%, rgba(255, 255, 255, 0.5) 0%, rgba(255, 255, 255, 0) 64%),
+    radial-gradient(95% 90% at 66% 76%, #2b746e 0%, rgba(43, 116, 110, 0) 72%),
+    linear-gradient(155deg, #74c3b0 0%, #46a297 48%, #2d7d76 100%);
+  box-shadow:
+    0 0 0 14px rgba(74, 168, 154, 0.05),
+    0 0 90px 30px rgba(74, 168, 154, 0.13),
+    inset -18px -24px 52px rgba(8, 48, 44, 0.42),
+    inset 14px 16px 34px rgba(255, 255, 255, 0.26);
+  animation: venu-breathe 6s ease-in-out infinite;
+}
+.venu-orb.lg { width: 260px; height: 260px; }
+.venu-orb.sm { width: 92px; height: 92px; }
+
+.venu-orb.is-speaking { animation: venu-speak 1.4s ease-in-out infinite; }
+.venu-orb.is-listening::after {
+  content: '';
+  position: absolute;
+  inset: -18px;
+  border-radius: 50%;
+  border: 1px solid rgba(74, 168, 154, 0.4);
+  animation: venu-ripple 1.8s ease-out infinite;
+}
+.venu-orb.is-thinking { filter: saturate(0.55); }
+
+@keyframes venu-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.022); }
+}
+@keyframes venu-speak {
+  0%, 100% { transform: scale(1); box-shadow: 0 0 0 14px rgba(74,168,154,.05), 0 0 90px 30px rgba(74,168,154,.16), inset -18px -24px 52px rgba(8,48,44,.42), inset 14px 16px 34px rgba(255,255,255,.26); }
+  50% { transform: scale(1.055); box-shadow: 0 0 0 22px rgba(74,168,154,.07), 0 0 120px 44px rgba(74,168,154,.26), inset -18px -24px 52px rgba(8,48,44,.42), inset 14px 16px 34px rgba(255,255,255,.3); }
+}
+@keyframes venu-ripple {
+  0% { transform: scale(0.92); opacity: 0.9; }
+  100% { transform: scale(1.22); opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .venu-orb, .venu-orb.is-speaking { animation: none; }
+  .venu-orb.is-listening::after { animation: none; opacity: .5; }
+}
+
+/* ── Type ─────────────────────────────────────────────────────────────── */
+.venu-h1 { font-size: 40px; font-weight: 700; letter-spacing: -0.028em; margin: 0; }
+.venu-h2 { font-size: 19px; font-weight: 600; letter-spacing: -0.015em; margin: 0; }
+.venu-sub { color: var(--muted); font-size: 15px; margin: 8px 0 0; }
+.venu-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* ── Surfaces ─────────────────────────────────────────────────────────── */
+.venu-card {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  box-shadow: 0 1px 2px rgba(16, 16, 20, 0.03), 0 8px 24px -16px rgba(16, 16, 20, 0.14);
+}
+
+.venu-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(288px, 1fr));
+  gap: 14px;
+}
+
+.venu-scenario {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  text-align: left;
+  text-decoration: none;
+  color: inherit;
+  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s, border-color .18s;
+}
+.venu-scenario:hover {
+  transform: translateY(-2px);
+  border-color: #d8d6dd;
+  box-shadow: 0 2px 4px rgba(16,16,20,.04), 0 18px 40px -22px rgba(16,16,20,.28);
+}
+.venu-scenario-archetype { font-size: 13px; color: var(--muted); line-height: 1.45; }
+
+.venu-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--wash);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-2);
+  letter-spacing: .01em;
+}
+
+.venu-dots { display: inline-flex; gap: 3px; align-items: center; }
+.venu-dot { width: 5px; height: 5px; border-radius: 50%; background: #dcdae1; }
+.venu-dot.on { background: var(--teal-deep); }
+
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+.venu-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 22px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: transform .12s cubic-bezier(.2,.7,.3,1), opacity .15s;
+}
+.venu-btn:hover { transform: translateY(-1px); }
+.venu-btn:active { transform: translateY(0); }
+.venu-btn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
+
+.venu-btn.ghost {
+  background: transparent;
+  color: var(--ink-2);
+  border: 1px solid var(--line);
+}
+.venu-btn.ghost:hover { background: var(--paper); }
+.venu-btn.danger {
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid #f0c9c5;
+}
+.venu-btn.danger:hover { background: #fdf4f3; }
+
+/* ── Call surface ─────────────────────────────────────────────────────── */
+.venu-call {
+  display: grid;
+  grid-template-columns: 1fr 380px;
+  gap: 28px;
+  align-items: start;
+}
+@media (max-width: 900px) {
+  .venu-call { grid-template-columns: 1fr; }
+  .venu-orb.lg { width: 200px; height: 200px; }
+}
+
+.venu-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 22px;
+  padding: 48px 24px;
+}
+
+.venu-status {
+  font-size: 13px;
+  color: var(--muted);
+  min-height: 20px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.venu-live-dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: #e04f4f;
+  animation: venu-blink 1.6s ease-in-out infinite;
+}
+@keyframes venu-blink { 0%,100% { opacity: 1 } 50% { opacity: .25 } }
+
+.venu-caption {
+  max-width: 560px;
+  text-align: center;
+  font-size: 20px;
+  line-height: 1.5;
+  letter-spacing: -0.012em;
+  min-height: 90px;
+}
+.venu-caption .interim { color: var(--muted); }
+
+.venu-rail {
+  max-height: 560px;
+  overflow-y: auto;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.venu-line { font-size: 14px; line-height: 1.55; }
+.venu-line .who {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.venu-line.rep .who { color: var(--teal-deep); }
+
+/* ── Scorecard ────────────────────────────────────────────────────────── */
+.venu-score-hero {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+}
+.venu-score-num { font-size: 68px; font-weight: 700; letter-spacing: -0.04em; line-height: 1; }
+
+.venu-trait { display: flex; flex-direction: column; gap: 8px; padding: 18px; }
+.venu-meter { height: 5px; border-radius: 999px; background: #edecf0; overflow: hidden; }
+.venu-meter > i { display: block; height: 100%; border-radius: 999px; background: var(--ink); }
+
+.venu-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 12px 18px;
+  border-top: 1px solid var(--line);
+  font-size: 14px;
+}
+.venu-row:first-child { border-top: 0; }
+
+.venu-pill {
+  flex: none;
+  min-width: 94px;
+  text-align: center;
+  padding: 2px 8px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+}
+.venu-pill.surfaced { background: #e7f4ec; color: var(--good); }
+.venu-pill.incomplete { background: #fdf1e0; color: var(--warn); }
+.venu-pill.missed { background: #fdeceb; color: var(--bad); }
+.venu-pill.not_applicable { background: var(--wash); color: var(--muted); }
+
+.venu-note {
+  border: 1px dashed #d9d7e0;
+  background: rgba(255,255,255,.6);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 13px;
+  color: var(--ink-2);
+  line-height: 1.5;
+}
+
+.venu-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+/* ── Login ────────────────────────────────────────────────────────────── */
+.venu-login {
+  display: grid;
+  grid-template-columns: 1fr 460px;
+  min-height: calc(100vh - 70px);
+}
+.venu-login-stage {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 40px;
+}
+.venu-login-form {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px;
+  background: rgba(255, 255, 255, 0.55);
+  border-left: 1px solid var(--line);
+}
+@media (max-width: 860px) {
+  .venu-login { grid-template-columns: 1fr; }
+  .venu-login-form { border-left: 0; border-top: 1px solid var(--line); }
+  .venu-login-stage { padding-top: 60px; }
+}
+
+.venu-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 6px;
+}
+.venu-input {
+  width: 100%;
+  height: 44px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  font-family: inherit;
+  font-size: 14.5px;
+  color: var(--ink);
+  transition: border-color .15s, box-shadow .15s;
+}
+.venu-input:focus {
+  outline: none;
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(74, 168, 154, 0.14);
+}
+
+/* ── Mode cards ───────────────────────────────────────────────────────── */
+.venu-mode {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px;
+  text-decoration: none;
+  color: inherit;
+  transition: transform .18s cubic-bezier(.2,.7,.3,1), box-shadow .18s, border-color .18s;
+}
+.venu-mode:hover {
+  transform: translateY(-2px);
+  border-color: #d8d6dd;
+  box-shadow: 0 2px 4px rgba(16,16,20,.04), 0 18px 40px -22px rgba(16,16,20,.28);
+}
+.venu-mode.is-test { background: linear-gradient(180deg, #fff 0%, #fbfaf8 100%); }
+.venu-mode-go { margin-top: 6px; font-size: 13.5px; font-weight: 600; color: var(--teal-deep); }
+
+.venu-mode-tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.venu-mode-tag.practice { background: #eef1f5; color: #4a5568; }
+.venu-mode-tag.test { background: #f0e9dd; color: #8a6114; }
+
+/* ── Checkpoint list ──────────────────────────────────────────────────── */
+.venu-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  font-size: 14px;
+  border-top: 1px solid var(--line);
+}
+.venu-check:first-of-type { border-top: 0; }
+.venu-check-num {
+  display: grid;
+  place-items: center;
+  width: 20px; height: 20px;
+  flex: none;
+  border-radius: 6px;
+  background: var(--wash);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.venu-transcript-toggle {
+  width: 100%;
+  max-width: 520px;
+  margin-top: 6px;
+  font-size: 13px;
+}
+.venu-transcript-toggle > summary {
+  cursor: pointer;
+  color: var(--muted);
+  text-align: center;
+  list-style: none;
+}
+.venu-transcript-toggle > summary::-webkit-details-marker { display: none; }
+.venu-transcript-toggle > summary:hover { color: var(--ink-2); }
+
+/* ── Admin table ──────────────────────────────────────────────────────── */
+.venu-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+}
+.venu-table th {
+  text-align: left;
+  padding: 12px 14px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.venu-table td {
+  padding: 11px 14px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+.venu-table tr:last-child td { border-bottom: 0; }
+.venu-table tr.is-focus { background: #f6f8f7; }
+
+.venu-linkish {
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-weight: 600;
+  color: var(--ink);
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: var(--line);
+  text-underline-offset: 3px;
+}
+.venu-linkish:hover { text-decoration-color: var(--teal); }
+
+.venu-toggle {
+  width: 38px; height: 22px;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #eceaef;
+  cursor: pointer;
+  transition: background .16s, border-color .16s;
+}
+.venu-toggle > i {
+  display: block;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 2px rgba(0,0,0,.18);
+  transition: transform .16s cubic-bezier(.2,.7,.3,1);
+}
+.venu-toggle.on { background: var(--teal-deep); border-color: var(--teal-deep); }
+.venu-toggle.on > i { transform: translateX(16px); }
+.venu-toggle:disabled { opacity: .5; cursor: wait; }
+
+.venu-signout {
+  margin-left: 14px;
+  padding: 5px 12px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.venu-signout:hover { background: var(--paper); border-color: #d8d6dd; color: var(--ink); }
+.venu-signout:disabled { opacity: .5; cursor: wait; }
+
+.venu-who { display: inline-flex; align-items: center; }
+
+.venu-lead-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--line);
+}
+.venu-lead-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+  padding: 5px 0;
+}
+.venu-lead-row > span:first-child { color: var(--muted); flex: none; }
+.venu-lead-row > span:last-child { text-align: right; font-weight: 500; }
+
+/* ── Review drawer ────────────────────────────────────────────────────── */
+.venu-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(16, 16, 22, 0.28);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+  animation: venu-fade .18s ease-out;
+}
+@keyframes venu-fade { from { opacity: 0 } to { opacity: 1 } }
+
+.venu-drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 100vw);
+  background: var(--wash);
+  border-left: 1px solid var(--line);
+  box-shadow: -24px 0 60px -30px rgba(16, 16, 22, 0.4);
+  z-index: 41;
+  display: flex;
+  flex-direction: column;
+  animation: venu-slide .22s cubic-bezier(.2, .7, .3, 1);
+}
+@keyframes venu-slide { from { transform: translateX(24px); opacity: .6 } to { transform: none; opacity: 1 } }
+@media (prefers-reduced-motion: reduce) {
+  .venu-scrim, .venu-drawer { animation: none; }
+}
+
+.venu-drawer-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+  background: var(--paper);
+}
+.venu-drawer-close {
+  flex: none;
+  width: 30px; height: 30px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.venu-drawer-close:hover { background: var(--wash); color: var(--ink); }
+
+.venu-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.venu-drawer-scores {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.venu-drawer-metric {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.venu-drawer-label { margin-bottom: 8px; }
+
+/* Rows in the calls list become buttons that open the drawer */
+.venu-row-button {
+  width: 100%;
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  font: inherit;
+  cursor: pointer;
+  transition: background .14s;
+}
+.venu-row-button:first-child { border-top: 0; }
+.venu-row-button:hover { background: #fafafb; }
+
+/* Transcript with playback */
+.venu-play-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 9px 10px;
+  border-radius: 10px;
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+.venu-play-row.rep { background: #f4f7f6; }
+.venu-play-row .who {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.venu-play-row.rep .who { color: var(--teal-deep); }
+
+.venu-play {
+  flex: none;
+  width: 24px; height: 24px;
+  margin-top: 2px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--paper);
+  color: var(--ink-2);
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background .14s, color .14s, border-color .14s;
+}
+.venu-play:hover:not(:disabled) { background: var(--ink); color: #fff; border-color: var(--ink); }
+.venu-play.is-playing { background: var(--teal-deep); border-color: var(--teal-deep); color: #fff; }
+.venu-play:disabled { opacity: .3; cursor: default; }
+
+/* ── Draw mix editor ──────────────────────────────────────────────────── */
+.venu-weight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.venu-weight { display: flex; flex-direction: column; gap: 5px; }
+.venu-weight-label { font-size: 13px; font-weight: 600; color: var(--ink-2); }
+.venu-weight-help { font-size: 11.5px; color: var(--muted); line-height: 1.4; }
+.venu-weight .venu-input { height: 38px; }
