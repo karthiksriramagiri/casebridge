@@ -1464,3 +1464,11 @@ a.mx-camp-name:hover { color: var(--mx-accent-ink); text-decoration: underline; 
   font-size: 11px; color: var(--mx-muted);
 }
 .mx-pace-foot b { font-weight: 650; color: var(--mx-ink-2); font-variant-numeric: tabular-nums; }
+
+/* Where a figure came from, when a page mixes sources */
+.mx-src {
+  display: inline-block; margin-left: 7px; padding: 1px 6px; border-radius: 4px;
+  background: var(--mx-accent-soft); color: var(--mx-accent-ink);
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em;
+  vertical-align: 1px;
+}

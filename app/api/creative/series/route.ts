@@ -14,8 +14,19 @@ import { NextRequest, NextResponse } from 'next/server'
    fatigue curve only shows up across its full run.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const TOKEN = (process.env.META_ACCESS_TOKEN || '').trim().replace(/\\n$/, '')
+import { adAccounts, accountByKey } from '@/app/_metrics/ad-accounts'
+
 const BASE = 'https://graph.facebook.com/v25.0'
+
+/* A row id belongs to exactly one account, and only that account's token can
+   read it. The caller passes the account key it got from /insights; without
+   one, every configured token is tried in turn rather than assuming the
+   first. */
+function tokensToTry(key: string | null): string[] {
+  const named = accountByKey(key)
+  if (named) return [named.token]
+  return adAccounts().map(a => a.token)
+}
 
 export const dynamic = 'force-dynamic'
 
@@ -35,28 +46,46 @@ const actionVal = (arr: any[] = [], type: string) =>
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   const level = req.nextUrl.searchParams.get('level') || 'ad'
+  const account = req.nextUrl.searchParams.get('account')
   if (!id || !/^\d+$/.test(id)) return NextResponse.json({ error: 'bad id' }, { status: 400 })
-  if (!TOKEN) return NextResponse.json({ days: [] })
 
-  const url = new URL(`${BASE}/${id}/insights`)
-  url.searchParams.set('access_token', TOKEN)
-  url.searchParams.set('fields', FIELDS)
-  url.searchParams.set('level', level)
-  url.searchParams.set('time_increment', '1')
-  // Lifetime. Meta caps `maximum` at 37 months, which outlives any creative here.
-  url.searchParams.set('date_preset', 'maximum')
-  url.searchParams.set('limit', '500')
+  const tokens = tokensToTry(account)
+  if (tokens.length === 0) return NextResponse.json({ days: [] })
 
-  try {
-    const rows: any[] = []
+  /** Pull the whole paginated series with one account's token. */
+  async function fetchAll(token: string): Promise<{ rows: any[]; error: string | null }> {
+    const url = new URL(`${BASE}/${id}/insights`)
+    url.searchParams.set('access_token', token)
+    url.searchParams.set('fields', FIELDS)
+    url.searchParams.set('level', level)
+    url.searchParams.set('time_increment', '1')
+    // Lifetime. Meta caps `maximum` at 37 months, which outlives any creative here.
+    url.searchParams.set('date_preset', 'maximum')
+    url.searchParams.set('limit', '500')
+
+    const out: any[] = []
     let next: string | null = url.toString()
     // Paginate: a creative running six months is past the 500-row page size.
-    while (next && rows.length < 2000) {
+    while (next && out.length < 2000) {
       const res: any = await fetch(next, { next: { revalidate: 900 } })
       const json = await res.json()
-      if (json?.error) return NextResponse.json({ error: json.error.message, days: [] }, { status: 502 })
-      rows.push(...(json.data || []))
+      if (json?.error) return { rows: [], error: json.error.message }
+      out.push(...(json.data || []))
       next = json.paging?.next ?? null
+    }
+    return { rows: out, error: null }
+  }
+
+  try {
+    let rows: any[] = []
+    let lastError: string | null = null
+    for (const token of tokens) {
+      const r = await fetchAll(token)
+      if (r.rows.length) { rows = r.rows; lastError = null; break }
+      lastError = r.error
+    }
+    if (!rows.length && lastError) {
+      return NextResponse.json({ error: lastError, days: [] }, { status: 502 })
     }
 
     const days = rows

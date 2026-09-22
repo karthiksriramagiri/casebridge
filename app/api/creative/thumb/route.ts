@@ -14,8 +14,19 @@ import { NextRequest } from 'next/server'
    (an ad id) rather than a signed link that expires.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const TOKEN = (process.env.META_ACCESS_TOKEN || '').trim().replace(/\\n$/, '')
+import { adAccounts, accountByKey } from '@/app/_metrics/ad-accounts'
+
 const BASE = 'https://graph.facebook.com/v25.0'
+
+/* A row id belongs to exactly one account, and only that account's token can
+   read it. The caller passes the account key it got from /insights; without
+   one, every configured token is tried in turn rather than assuming the
+   first. */
+function tokensToTry(key: string | null): string[] {
+  const named = accountByKey(key)
+  if (named) return [named.token]
+  return adAccounts().map(a => a.token)
+}
 
 /* A day in the browser, a week at the edge. The still for a given ad does not
    change — a new creative is a new ad id — so this is safe to hold onto. */
@@ -44,17 +55,23 @@ function pickUrl(c: any): string | null {
 
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
+  const account = req.nextUrl.searchParams.get('account')
   if (!id || !/^\d+$/.test(id)) return new Response('bad id', { status: 400 })
-  if (!TOKEN) return new Response('no token', { status: 503 })
+
+  const tokens = tokensToTry(account)
+  if (tokens.length === 0) return new Response('no token', { status: 503 })
 
   try {
-    const metaUrl = new URL(`${BASE}/${id}`)
-    metaUrl.searchParams.set('fields', CREATIVE_FIELDS)
-    metaUrl.searchParams.set('access_token', TOKEN)
-
-    const metaRes = await fetch(metaUrl.toString(), { next: { revalidate: 3600 } })
-    const json = await metaRes.json()
-    const src = pickUrl(json?.creative)
+    let src: string | null = null
+    for (const token of tokens) {
+      const metaUrl = new URL(`${BASE}/${id}`)
+      metaUrl.searchParams.set('fields', CREATIVE_FIELDS)
+      metaUrl.searchParams.set('access_token', token)
+      const metaRes = await fetch(metaUrl.toString(), { next: { revalidate: 3600 } })
+      const json = await metaRes.json()
+      src = pickUrl(json?.creative)
+      if (src) break
+    }
     if (!src) return new Response('no image', { status: 404 })
 
     // redirect: 'follow' is the default and is the whole point of this hop.

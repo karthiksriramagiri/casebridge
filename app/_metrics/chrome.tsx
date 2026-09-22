@@ -29,7 +29,6 @@ const NAV: Record<SiteId, { wordmark: string; items: NavItem[] }> = {
     wordmark: 'Creative',
     items: [
       { label: 'Overview',          sub: '' },
-      { label: 'Daily Health',      sub: '/health' },
       { label: 'Creative Analysis', sub: '/analysis' },
       { label: 'Winner Analysis',   sub: '/winners' },
       { label: 'Competitors',       sub: '/competitors' },

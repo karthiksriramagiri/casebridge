@@ -77,6 +77,10 @@ export type AdMetrics = {
   cpl: number | null           // $
   hookRate: number | null      // % — 3s views / impressions
   videoPlays: number           // denominator for the retention quartiles
+  reach: number
+  landingPageViews: number
+  lpViewRate: number | null    // % — LP views / link clicks
+  costPerLpView: number | null
   clickToLead: number | null   // % — leads / link clicks
   p25: number; p50: number; p75: number; p100: number
   holdRate: number | null      // % — p100 / 3s plays
