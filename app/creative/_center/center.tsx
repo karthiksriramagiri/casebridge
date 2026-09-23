@@ -59,6 +59,7 @@ export default function CreativeCenter({ view }: { view: View }) {
      every column, so they are dropped outright rather than ranked. */
   const [ads, setAds] = useState<Ad[]>([])
   const [benchmarks, setBenchmarks] = useState<any>(null)
+  const [outcomes, setOutcomes] = useState<Record<string, any>>({})
   const [outcomesLoading, setOutcomesLoading] = useState(false)
   const [trendLoading, setTrendLoading] = useState(false)
   const [summary, setSummary] = useState<any>(null)
@@ -84,31 +85,23 @@ export default function CreativeCenter({ view }: { view: View }) {
 
   /* Outcomes ride in separately. The GHL pipeline sweep behind CPQ / CPA runs
      an order of magnitude slower than anything Meta answers, so waiting on it
-     would hold the whole funnel hostage to its last two columns. The table
-     paints on Meta data and these merge in when they arrive. */
+     would hold the whole funnel hostage to its last two columns.
+
+     They are kept in their own map rather than merged into `ads`, because the
+     insights pass replaces that array wholesale — whichever request landed
+     second used to win, and when outcomes lost the race every CPQ, CPA and
+     signed-case figure silently reverted to a dash. Merging at render is
+     order-independent. */
   useEffect(() => {
-    if (level !== 'ad') { setOutcomesLoading(false); return }
+    if (level !== 'ad') { setOutcomes({}); setOutcomesLoading(false); return }
     let cancelled = false
+    setOutcomesLoading(true)
+    setOutcomes({})
     fetch(`/api/metrics/creative-overview?date_preset=${effectivePreset}`)
       .then(r => r.json())
       .then(d => {
         if (cancelled) return
-        const byAd: Record<string, any> = d?.byAdId ?? {}
-        setAds(prev => prev.map(a => {
-          const o = byAd[a.id]
-          if (!o) return a
-          const signed = o.signedCases ?? 0
-          // "Qualified" is chase-or-beyond, matching the Ops dashboard's CPQ
-          // so the two pages cannot disagree.
-          const qualified = (o.chaseCount ?? 0) + signed
-          return {
-            ...a,
-            qualified, signed,
-            cpq: qualified > 0 ? a.spend / qualified : null,
-            cpa: signed > 0 ? a.spend / signed : null,
-            firmName: o.firmName ?? a.firmName ?? null,
-          }
-        }))
+        setOutcomes(d?.byAdId ?? {})
         setOutcomesLoading(false)
       })
       .catch(() => { if (!cancelled) setOutcomesLoading(false) })
@@ -147,12 +140,7 @@ export default function CreativeCenter({ view }: { view: View }) {
       .then(d => {
         if (cancelled || !d.ads) return
         const byId: Record<string, any> = Object.fromEntries(d.ads.map((a: any) => [a.id, a]))
-        setAds(prev => prev.map(a => {
-          const full = byId[a.id]
-          // Outcome fields arrive on their own request; never let the trend
-          // pass overwrite them with nulls.
-          return full ? { ...full, qualified: a.qualified, signed: a.signed, cpq: a.cpq, cpa: a.cpa } : a
-        }))
+        setAds(prev => prev.map(a => byId[a.id] ?? a))
         setBenchmarks(d.benchmarks ?? null)
         setTrendLoading(false)
       })
@@ -164,9 +152,27 @@ export default function CreativeCenter({ view }: { view: View }) {
   /* Firms that actually delivered in this range. A firm with no spend is not
      shown at all rather than as an empty tab — the account rarely runs all
      five at once, and five dead tabs read as broken. */
+  /* Rows carry their outcome figures from here on. Derived rather than
+     stored so the two requests behind them can land in any order. */
+  const withOutcomes = useMemo(() => ads.map(a => {
+    const o = outcomes[a.id]
+    if (!o) return a
+    const signed = o.signedCases ?? 0
+    // "Qualified" is chase-or-beyond, matching the Ops dashboard's CPQ so the
+    // two pages cannot disagree.
+    const qualified = (o.chaseCount ?? 0) + signed
+    return {
+      ...a,
+      qualified, signed,
+      cpq: qualified > 0 ? a.spend / qualified : null,
+      cpa: signed > 0 ? a.spend / signed : null,
+      firmName: o.firmName ?? a.firmName ?? null,
+    }
+  }), [ads, outcomes])
+
   const live = useMemo(
-    () => ads.filter(a => a.spendToday > 0 && (account === 'all' || a.account === account)),
-    [ads, account])
+    () => withOutcomes.filter(a => a.spendToday > 0 && (account === 'all' || a.account === account)),
+    [withOutcomes, account])
 
   const firmCounts = useMemo(() => {
     const c: Record<string, number> = {}
