@@ -9,6 +9,7 @@ import {
   IconCalendar,
 } from '@/app/_metrics/dash'
 import { PnlChart, type PnlMonth } from '@/app/finance/_components/pnl-chart'
+import { MoneyModel } from '@/app/finance/_components/money-model'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Financial Center — the front page.
@@ -87,8 +88,8 @@ export default function FinanceOverview() {
           <div>
             <h1 className="mx-page-title">Company <i>P&amp;L</i></h1>
             <p className="mx-page-sub">
-              Every firm, every dollar in and out, {blurb}. Revenue is booked when a case signs;
-              cash banked is tracked against the invoices below.
+              Every firm, every dollar in and out, {blurb}. Signed cases come from each firm's case
+              management sheet where one exists, and revenue is booked the day a case signs.
             </p>
           </div>
           {data?.range && (
@@ -107,11 +108,26 @@ export default function FinanceOverview() {
             {data.meta?.error && (
               <Banner tone="warn" title="Meta figures may be incomplete">{data.meta.error}</Banner>
             )}
+            {data.payments?.missing && (
+              <Banner tone="warn" title="Payments table missing">
+                Cash figures are falling back to the hand-entered invoice amounts. Run{' '}
+                <code>supabase/migration_payments.sql</code> then <code>supabase/seed_payments.sql</code>{' '}
+                to read what the processor actually collected.
+              </Banner>
+            )}
+
+            {Object.entries(data.sheets?.errors || {}).map(([slug, msg]) => (
+              <Banner key={slug} tone="crit" title={`The ${slug.toUpperCase()} case sheet could not be read`}>
+                {String(msg)} — that firm's figures fall back to the CRM records until the sheet is reachable.
+              </Banner>
+            ))}
             {data.setup?.invoicesMissing && (
               <Banner tone="warn" title="Invoice table missing">
                 Collections and billing cannot be shown until <code>supabase/migration_firm_invoice_periods.sql</code> is run.
               </Banner>
             )}
+
+            <MoneyModel />
 
             {/* ── The five figures ─────────────────────────────────────────── */}
             <section>
@@ -125,8 +141,11 @@ export default function FinanceOverview() {
                 <Hero label="Net profit" value={money(t.netProfit)}
                   tone={t.netProfit > 0 ? 'good' : t.netProfit < 0 ? 'crit' : undefined}
                   foot={t.netMargin == null ? 'no revenue in this window' : `${t.netMargin.toFixed(1)}% net margin`} />
-                <Hero label="Cash collected" value={money(t.collected)}
-                  foot={t.outstanding > 0 ? `${money(t.outstanding)} still outstanding` : 'nothing outstanding'} />
+                <Hero label="Cash collected" value={money(t.collectedGross || t.collected)}
+                  tone="good"
+                  foot={t.paymentCount
+                    ? `${num(t.paymentCount)} payments · ${money(t.processingFees)} in fees`
+                    : t.outstanding > 0 ? `${money(t.outstanding)} still outstanding` : 'nothing outstanding'} />
               </div>
 
               <div className="mx-strip">
@@ -214,13 +233,44 @@ export default function FinanceOverview() {
                     <span className="mx-card-title">Cash position</span>
                   </div>
                   <div className="mx-fin-facts">
-                    <Fact label="Billed on invoices" sub="Cases delivered in these periods" value={money(t.billedOnInvoices)} />
-                    <Fact label="Collected" sub="Payments recorded against invoices" value={money(t.collected)}
-                      tone="var(--mx-good)" />
-                    <Fact label="Financing interest" sub="Cost of advancing those payments" value={money(t.interestCost)} />
-                    <Fact label="Outstanding" sub="Billed and not yet paid" value={money(t.outstanding)}
-                      tone={t.outstanding > 0 ? 'var(--mx-warn)' : undefined} />
+                    {t.paymentCount > 0 ? (
+                      <>
+                        <Fact label="Collected" sub={`${num(t.paymentCount)} payments from the processor`}
+                          value={money(t.collectedGross)} tone="var(--mx-good)" />
+                        <Fact label="Processing fees" sub="Taken by the processor before it lands"
+                          value={money(t.processingFees)} />
+                        <Fact label="Net received" sub="What actually reached the bank"
+                          value={money(t.collectedNet)} tone="var(--mx-good)" />
+                        <Fact label="Revenue booked" sub="Cases signed in this window"
+                          value={money(t.revenue)} />
+                        <Fact label="Cash vs booked"
+                          sub={t.collectionRate == null ? 'no revenue booked here'
+                            : t.collectionRate >= 100
+                              ? 'collected more than booked — prepaid packages'
+                              : 'booked ahead of cash'}
+                          value={t.collectionRate == null ? '—' : `${t.collectionRate.toFixed(0)}%`}
+                          tone={t.collectionRate != null && t.collectionRate >= 100 ? 'var(--mx-good)' : 'var(--mx-warn)'} />
+                        <Fact label="Financing interest" sub="Cost of advancing those payments" value={money(t.interestCost)} />
+                      </>
+                    ) : (
+                      <>
+                        <Fact label="Billed on invoices" sub="Cases delivered in these periods" value={money(t.billedOnInvoices)} />
+                        <Fact label="Collected" sub="Payments recorded against invoices" value={money(t.collected)}
+                          tone="var(--mx-good)" />
+                        <Fact label="Financing interest" sub="Cost of advancing those payments" value={money(t.interestCost)} />
+                        <Fact label="Outstanding" sub="Billed and not yet paid" value={money(t.outstanding)}
+                          tone={t.outstanding > 0 ? 'var(--mx-warn)' : undefined} />
+                      </>
+                    )}
                   </div>
+
+                  {data.payments?.unmatched?.length > 0 && (
+                    <p className="mx-fin-note" style={{ marginTop: 10 }}>
+                      {money(t.unmatchedCollected)} came from payers with no firm record
+                      ({data.payments.unmatched.map((u: any) => u.name).join(', ')}). Counted in the
+                      company total, absent from the per-firm table below.
+                    </p>
+                  )}
                 </div>
 
                 <div className="mx-card" style={{ overflow: 'hidden' }}>
@@ -275,6 +325,9 @@ export default function FinanceOverview() {
               </div>
 
             </section>
+
+            {/* ── Sheet vs system ──────────────────────────────────────────── */}
+            {(data.sheets?.firms || []).map((r: any) => <SheetPanel key={r.firmSlug} recon={r} />)}
 
             {/* ── Collections ──────────────────────────────────────────────── */}
             <InvoiceTable rows={data.invoices} />
@@ -499,6 +552,7 @@ function FirmTable({ firms, totals }: { firms: any[]; totals: any }) {
                   <tr className="row" key={f.id}>
                     <td>
                       <Link href={`/finance/firms/${f.slug}`} className="mx-firmlink">{f.name}</Link>
+                      {f.sheetBacked && <span className="mx-src" title="Signed cases come from this firm's case management sheet">sheet</span>}
                       {f.replacementCases > 0 && (
                         <div style={{ fontSize: 11, color: 'var(--mx-muted)', marginTop: 1 }}>
                           {f.replacementCases} replacement{f.replacementCases === 1 ? '' : 's'} issued
@@ -564,6 +618,103 @@ function FirmTable({ firms, totals }: { firms: any[]; totals: any }) {
   )
 }
 
+/* ── Sheet vs system ───────────────────────────────────────────────────────
+   The sheet decides what gets billed, so every row it disagrees with the CRM
+   about is money moving. A case the CRM has and the sheet does not is a case
+   nobody is being invoiced for — it belongs on screen, not swallowed.      */
+
+const DIFF_KINDS: Record<string, { label: string; tone: string; note: string }> = {
+  onlyInSheet:  { label: 'Only in the sheet', tone: 'var(--mx-accent-ink)', note: 'Billed, but no CRM record to attribute it to' },
+  onlyInSystem: { label: 'Only in the CRM',   tone: 'var(--mx-warn)',       note: 'Not billed — the sheet has no row for it' },
+  movedInvoice: { label: 'Different invoice', tone: 'var(--mx-ink-2)',      note: 'Billed under the sheet\u2019s invoice' },
+  statusDiff:   { label: 'Different status',  tone: 'var(--mx-ink-2)',      note: 'The sheet\u2019s disposition wins' },
+}
+
+function SheetPanel({ recon }: { recon: any }) {
+  const [open, setOpen] = useState(false)
+
+  const rows: any[] = [
+    ...recon.onlyInSystem.map((c: any) => ({ kind: 'onlyInSystem', name: c.name, invoice: c.invoice, detail: c.status, date: c.signedAt })),
+    ...recon.onlyInSheet.map((c: any) => ({ kind: 'onlyInSheet', name: c.name, invoice: c.invoice, detail: c.status, date: c.signedAt })),
+    ...recon.movedInvoice.map((c: any) => ({ kind: 'movedInvoice', name: c.name, invoice: c.sheetInvoice, detail: `CRM says ${c.systemInvoice}`, date: null })),
+    ...recon.statusDiff.map((c: any) => ({ kind: 'statusDiff', name: c.name, invoice: c.invoice, detail: `${c.sheetStatus} · CRM says ${c.systemStatus}`, date: null })),
+  ]
+
+  const shown = open ? rows : rows.slice(0, 8)
+
+  return (
+    <section>
+      <div className="mx-section-head">
+        <p className="mx-eyebrow">{recon.firmName} · case management sheet</p>
+        <p className="mx-section-note">
+          <a href={recon.url} target="_blank" rel="noreferrer" className="mx-crumb">{recon.title}</a>
+          {' · every invoice, not only this window · read '}
+          {new Date(recon.fetchedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+        </p>
+      </div>
+
+      <div className="mx-card" style={{ overflow: 'hidden' }}>
+        <div className="mx-strip" style={{ border: 0, borderRadius: 0, boxShadow: 'none' }}>
+          <Stat label="Cases in the sheet" value={num(recon.sheetCases)} />
+          <Stat label="Matched to the CRM" value={num(recon.matched)} />
+          <Stat label="Closed per the sheet" value={num(recon.closedInSheet)} tone="var(--mx-good)" />
+          <Stat label="Only in the CRM" value={num(recon.onlyInSystem.length)}
+            tone={recon.onlyInSystem.length > 0 ? 'var(--mx-warn)' : undefined} />
+          <Stat label="Only in the sheet" value={num(recon.onlyInSheet.length)} />
+          <Stat label="Invoice moved" value={num(recon.movedInvoice.length)} />
+        </div>
+
+        {rows.length === 0 ? (
+          <div style={{ padding: 6 }}>
+            <EmptyState compact title="The sheet and the CRM agree"
+              text="Every case in the sheet matches a CRM record, on the same invoice with the same status." />
+          </div>
+        ) : (
+          <>
+            <div className="mx-tw">
+              <table className="mx-table">
+                <thead>
+                  <tr>
+                    <th>Case</th>
+                    <th>Invoice</th>
+                    <th>Difference</th>
+                    <th>Detail</th>
+                    <th>Signed</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {shown.map((r, i) => {
+                    const kind = DIFF_KINDS[r.kind]
+                    return (
+                      <tr className="row" key={`${r.kind}-${r.name}-${i}`}>
+                        <td style={{ fontWeight: 600 }}>{r.name}</td>
+                        <td style={{ color: 'var(--mx-muted)' }}>{r.invoice}</td>
+                        <td style={{ color: kind.tone, fontWeight: 600 }}>{kind.label}</td>
+                        <td style={{ color: 'var(--mx-muted)' }}>{r.detail || kind.note}</td>
+                        <td style={{ color: 'var(--mx-muted)', whiteSpace: 'nowrap' }}>
+                          {r.date ? shortDate(r.date) : <span className="mx-dim">—</span>}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {rows.length > 8 && (
+              <div style={{ padding: '10px 18px', borderTop: '1px solid var(--mx-line-2)' }}>
+                <button className="mx-btn mx-btn-quiet" onClick={() => setOpen(o => !o)}>
+                  {open ? 'Show fewer' : `Show all ${rows.length} differences`}
+                </button>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </section>
+  )
+}
+
 /* ── Collections ───────────────────────────────────────────────────────── */
 
 function InvoiceTable({ rows }: { rows: any[] }) {
@@ -585,6 +736,7 @@ function InvoiceTable({ rows }: { rows: any[] }) {
                 <th>Invoice</th>
                 <th>Period</th>
                 <th className="num">Cases</th>
+                <th className="num">Closed</th>
                 <th className="num">Billed</th>
                 <th className="num">Collected</th>
                 <th className="num">Interest</th>
@@ -597,11 +749,22 @@ function InvoiceTable({ rows }: { rows: any[] }) {
                   <td>
                     <Link href={`/finance/firms/${r.firmSlug}`} className="mx-firmlink">{r.firmName}</Link>
                   </td>
-                  <td style={{ fontWeight: 600 }}>{r.code}</td>
+                  <td style={{ fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    {r.code}
+                    {r.fromSheet && <span className="mx-src" title="Counted from the case management sheet">sheet</span>}
+                  </td>
                   <td style={{ color: 'var(--mx-muted)', whiteSpace: 'nowrap' }}>
                     {shortDate(r.periodStart)} – {shortDate(r.periodEnd)}
                   </td>
-                  <td className="num">{r.cases || <span className="mx-dim">—</span>}</td>
+                  <td className="num">
+                    {r.cases || <span className="mx-dim">—</span>}
+                    {r.sheetReplacements > 0 && (
+                      <span style={{ color: 'var(--mx-muted)', fontWeight: 400 }}> +{r.sheetReplacements}r</span>
+                    )}
+                  </td>
+                  <td className="num" style={{ color: 'var(--mx-muted)' }}>
+                    {r.sheetClosed == null ? <span className="mx-dim">—</span> : `${r.sheetClosed}/${r.cases}`}
+                  </td>
                   <td className="num">{money(r.billed)}</td>
                   <td className="num" style={{ color: r.collected > 0 ? 'var(--mx-good)' : undefined, fontWeight: r.collected > 0 ? 650 : undefined }}>
                     {r.collected > 0 ? money(r.collected) : <span className="mx-dim">—</span>}
@@ -619,6 +782,7 @@ function InvoiceTable({ rows }: { rows: any[] }) {
               <tr>
                 <td className="lbl" colSpan={3}>Total</td>
                 <td className="num">{num(rows.reduce((s, r) => s + r.cases, 0))}</td>
+                <td className="num">{num(rows.reduce((s, r) => s + (r.sheetClosed || 0), 0))}</td>
                 <td className="num">{money(rows.reduce((s, r) => s + r.billed, 0))}</td>
                 <td className="num">{money(rows.reduce((s, r) => s + r.collected, 0))}</td>
                 <td className="num">{money(rows.reduce((s, r) => s + r.interestCost, 0))}</td>

@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { BASE_PAY_PER_CASE, COMMISSION_PER_CLOSED } from '@/app/finance/firms/_lib/invoice-finance'
+import {
+  loadCaseSheet, SHEET_FIRMS, phoneKey, nameKey, invoiceKey,
+  type CaseSheet, type SheetCase,
+} from '@/app/lib/case-sheet'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Financial Center — the company-wide rollup behind the front page.
@@ -122,7 +126,7 @@ async function pageAll(build: () => any, pageSize = 1000) {
 }
 
 const LEAD_FIELDS =
-  'id, firm_id, qualified_at, invoice_code, case_status, victim_count, closer, closed_by_profile_id, ' +
+  'id, firm_id, contact_name, contact_phone, qualified_at, invoice_code, case_status, victim_count, closer, closed_by_profile_id, ' +
   'custom_case_value:form_data->custom_case_value, excluded:form_data->excluded_from_payment'
 
 /** Signed cases only. Where the pipeline-stage migration has run, stage-tracking
@@ -211,6 +215,8 @@ export async function GET(request: NextRequest) {
   let rates: any[] = []
   let invoices: any[] = []
   let invoicesMissing = false
+  let payments: any[] = []
+  let paymentsMissing = false
 
   try {
     const [firmRows, leadRows, opsRows, rateRows] = await Promise.all([
@@ -237,6 +243,19 @@ export async function GET(request: NextRequest) {
   } catch (e: any) {
     // The invoice table is optional-ish: the rest of the dashboard still reads.
     if (/firm_invoices|schema cache/i.test(e?.message || '')) invoicesMissing = true
+    else throw e
+  }
+
+  /* Money actually received, straight from the processor's export. Optional in
+     the same way invoices are: until the migration is run the dashboard falls
+     back to the hand-entered per-invoice figure rather than showing nothing. */
+  try {
+    payments = await pageAll(() => supabase
+      .from('payments')
+      .select('payment_id, paid_at, gross, net, refunded, status, payer_name, payer_domain, firm_id, product, case_count')
+      .order('paid_at', { ascending: true }))
+  } catch (e: any) {
+    if (/payments|schema cache/i.test(e?.message || '')) paymentsMissing = true
     else throw e
   }
 
@@ -364,10 +383,149 @@ export async function GET(request: NextRequest) {
     }
   }
 
+  /* ── The case management sheet ────────────────────────────────────────────
+     Where a firm keeps its invoices in a sheet, the sheet decides which cases
+     an invoice carries — it is what the two sides bill against. Each sheet row
+     is matched back onto its CRM record (phone first, then name) so a minor's
+     reduced case value and the rep who closed it survive the swap. Rows the
+     CRM has but the sheet does not are left out of the money and reported as
+     a discrepancy instead of quietly padding an invoice.                     */
+
+  /* Invoice codes are hand-typed in both systems — "INV - 7" in the invoice
+     table is the sheet's "INV-7" tab. Everything joins on the normalised key. */
+  const invoiceByKey: Record<string, any> = {}
+  for (const inv of invoices) invoiceByKey[`${inv.firm_id}:${invoiceKey(inv.code)}`] = inv
+  const invoiceStart = (firmId: string, code: string) =>
+    invoiceByKey[`${firmId}:${invoiceKey(code)}`]?.period_start ?? null
+
+  const sheets: Record<string, CaseSheet> = {}
+  const sheetErrors: Record<string, string> = {}
+
+  await Promise.all(firms
+    .filter(f => SHEET_FIRMS[f.slug])
+    .map(async f => {
+      try {
+        const loaded = await loadCaseSheet(f.slug)
+        if (loaded) sheets[f.id] = loaded
+      } catch (e: any) {
+        sheetErrors[f.slug] = e?.message || 'The case sheet could not be read.'
+      }
+    }))
+
+  type Recon = {
+    firmSlug: string
+    firmName: string
+    title: string
+    url: string
+    fetchedAt: string
+    sheetCases: number
+    matched: number
+    onlyInSheet: { name: string; phone: string | null; invoice: string; signedAt: string | null; status: string }[]
+    onlyInSystem: { name: string; phone: string | null; invoice: string; signedAt: string | null; status: string }[]
+    movedInvoice: { name: string; sheetInvoice: string; systemInvoice: string }[]
+    statusDiff: { name: string; invoice: string; sheetStatus: string; systemStatus: string }[]
+    closedInSheet: number
+    closedInSystem: number
+  }
+
+  const recons: Recon[] = []
+
+  function fromSheet(firm: any, sheet: CaseSheet, dbRows: any[]) {
+    const byPhone = new Map<string, any[]>()
+    const byName = new Map<string, any[]>()
+    for (const row of dbRows) {
+      const p = phoneKey(row.contact_phone)
+      if (p) (byPhone.get(p) || byPhone.set(p, []).get(p)!).push(row)
+      const n = nameKey(row.contact_name)
+      if (n) (byName.get(n) || byName.set(n, []).get(n)!).push(row)
+    }
+
+    const used = new Set<string>()
+    const take = (bucket: any[] | undefined) => bucket?.find(r => !used.has(r.id))
+
+    const recon: Recon = {
+      firmSlug: firm.slug,
+      firmName: firm.name,
+      title: sheet.title,
+      url: sheet.url,
+      fetchedAt: sheet.fetchedAt,
+      sheetCases: sheet.cases.length,
+      matched: 0,
+      onlyInSheet: [],
+      onlyInSystem: [],
+      movedInvoice: [],
+      statusDiff: [],
+      closedInSheet: sheet.cases.filter(c => c.closed).length,
+      closedInSystem: dbRows.filter(r => String(r.case_status || '').toLowerCase() === 'closed').length,
+    }
+
+    const rows = sheet.cases.map((c: SheetCase) => {
+      const match = take(byPhone.get(phoneKey(c.phone) || '')) || take(byName.get(nameKey(c.name) || ''))
+      if (match) {
+        used.add(match.id)
+        recon.matched += 1
+        const dbInvoice = invoiceKey(match.invoice_code)
+        if (dbInvoice && dbInvoice !== c.invoiceCode) {
+          recon.movedInvoice.push({ name: c.name, sheetInvoice: c.invoiceCode, systemInvoice: match.invoice_code })
+        }
+        const dbStatus = String(match.case_status || 'e_signed').toLowerCase()
+        if (dbStatus !== c.status) {
+          recon.statusDiff.push({ name: c.name, invoice: c.invoiceCode, sheetStatus: c.statusLabel, systemStatus: match.case_status || 'e_signed' })
+        }
+      } else {
+        recon.onlyInSheet.push({ name: c.name, phone: c.phone, invoice: c.invoiceCode, signedAt: c.signedAt, status: c.statusLabel })
+      }
+
+      // A minor is billed at a reduced value and never carries Sanguine. The
+      // value itself only exists in the CRM record; the sheet says so in prose.
+      const noteSaysMinor = /minor/i.test(`${c.lhpNote || ''} ${c.caseBridgeNote || ''}`)
+
+      return {
+        id: match?.id ?? `sheet:${c.invoiceCode}:${c.row}`,
+        firm_id: firm.id,
+        source: 'sheet' as const,
+        qualified_at: c.signedAt || match?.qualified_at || invoiceStart(firm.id, c.invoiceCode),
+        invoice_code: c.invoiceCode,
+        case_status: c.status,
+        victim_count: 1,
+        closer: match?.closer ?? null,
+        closed_by_profile_id: match?.closed_by_profile_id ?? null,
+        custom_case_value: match?.custom_case_value ?? null,
+        excluded: match ? match.excluded : (noteSaysMinor || null),
+        closedOverride: c.closed,
+      }
+    })
+
+    for (const row of dbRows) {
+      if (used.has(row.id)) continue
+      recon.onlyInSystem.push({
+        name: row.contact_name || '(no name)',
+        phone: row.contact_phone || null,
+        invoice: row.invoice_code || '—',
+        signedAt: row.qualified_at ? String(row.qualified_at).slice(0, 10) : null,
+        status: row.case_status || 'e_signed',
+      })
+    }
+
+    recons.push(recon)
+    return rows
+  }
+
+  /* One list of cases for the whole company: sheet-driven where a sheet
+     exists, CRM rows everywhere else. Everything below counts this list. */
+  const effectiveLeads: any[] = []
+  for (const firm of firms) {
+    const dbRows = leads.filter(l => l.firm_id === firm.id)
+    const sheet = sheets[firm.id]
+    if (sheet) effectiveLeads.push(...fromSheet(firm, sheet, dbRows))
+    else effectiveLeads.push(...dbRows)
+  }
+
   /* ── Cases ────────────────────────────────────────────────────────────── */
 
   const feePctOf = (firm: any) => (parseFloat(firm?.fee_percentage || 0) || 0) / 100
   const isReplacement = (l: any) => String(l.case_status || 'e_signed').toLowerCase() === 'replacement'
+  const isDisqualified = (l: any) => String(l.case_status || '').toLowerCase() === 'disqualified'
   const isExcluded = (l: any) => l.excluded === true || l.excluded === 'true'
   const dateOf = (l: any) => String(l.qualified_at || '').slice(0, 10)
 
@@ -378,8 +536,10 @@ export async function GET(request: NextRequest) {
     return (parseFloat(firm.case_value || 0) || 0) * (1 - feePctOf(firm))
   }
 
-  /** Closed = marked closed, or the replacement window elapsed without one. */
+  /** Closed = the sheet says so, else marked closed, else the replacement
+   *  window elapsed without a replacement being issued. */
   function isClosed(l: any, windowDays: number, now = Date.now()) {
+    if (l.closedOverride != null) return Boolean(l.closedOverride)
     if (String(l.case_status || '').toLowerCase() === 'closed') return true
     if (!l.qualified_at) return false
     const endsAt = new Date(l.qualified_at)
@@ -387,7 +547,7 @@ export async function GET(request: NextRequest) {
     return endsAt.getTime() < now
   }
 
-  const inWindow = leads.filter(l => {
+  const inWindow = effectiveLeads.filter(l => {
     const d = dateOf(l)
     return d >= start && d <= end
   })
@@ -433,12 +593,12 @@ export async function GET(request: NextRequest) {
   const sanguineByMonth: Record<string, number> = {}
   const revenueByFirm: Record<string, number> = {}
   const revenueByMonth: Record<string, number> = {}
-  const casesByFirm: Record<string, { signed: number; originals: number; minors: number; replacements: number; victims: number; closed: number }> = {}
+  const casesByFirm: Record<string, { signed: number; originals: number; minors: number; disqualified: number; replacements: number; victims: number; closed: number }> = {}
   const casesByMonth: Record<string, number> = {}
   const casesByDay: Record<string, number> = {}
   const revenueByDay: Record<string, number> = {}
 
-  let signedCases = 0, originalCases = 0, minorCases = 0, replacementCases = 0, totalVictims = 0, closedCases = 0
+  let signedCases = 0, originalCases = 0, minorCases = 0, replacementCases = 0, totalVictims = 0, closedCases = 0, disqualifiedCases = 0
   let revenueTotal = 0, repPayTotal = 0, sanguineTotal = 0
 
   for (const l of inWindow) {
@@ -449,7 +609,16 @@ export async function GET(request: NextRequest) {
     const closed = isClosed(l, windowDays)
     const replacement = isReplacement(l)
 
-    const c = (casesByFirm[l.firm_id] ||= { signed: 0, originals: 0, minors: 0, replacements: 0, victims: 0, closed: 0 })
+    // The sheet's own disposition: a dropped case is neither billed nor
+    // replaced, and nobody is paid for it.
+    if (isDisqualified(l)) {
+      const c = (casesByFirm[l.firm_id] ||= { signed: 0, originals: 0, minors: 0, disqualified: 0, replacements: 0, victims: 0, closed: 0 })
+      c.disqualified += 1
+      disqualifiedCases += 1
+      continue
+    }
+
+    const c = (casesByFirm[l.firm_id] ||= { signed: 0, originals: 0, minors: 0, disqualified: 0, replacements: 0, victims: 0, closed: 0 })
     c.signed += 1
     c.victims += l.victim_count ?? 1
     signedCases += 1
@@ -496,9 +665,9 @@ export async function GET(request: NextRequest) {
   /* ── Collections ──────────────────────────────────────────────────────── */
 
   const leadsByInvoice: Record<string, any[]> = {}
-  for (const l of leads) {
+  for (const l of effectiveLeads) {
     if (!l.invoice_code) continue
-    const key = `${l.firm_id}:${l.invoice_code}`
+    const key = `${l.firm_id}:${invoiceKey(l.invoice_code)}`
     ;(leadsByInvoice[key] ||= []).push(l)
   }
 
@@ -506,17 +675,24 @@ export async function GET(request: NextRequest) {
     .filter(inv => overlapDays(inv.period_start, inv.period_end, start, end) > 0)
     .map(inv => {
       const firm = firmById[inv.firm_id]
-      const rows = leadsByInvoice[`${inv.firm_id}:${inv.code}`] || []
-      const originals = rows.filter(l => !isReplacement(l))
+      const rows = leadsByInvoice[`${inv.firm_id}:${invoiceKey(inv.code)}`] || []
+      const originals = rows.filter(l => !isReplacement(l) && !isDisqualified(l))
       const billed = originals.reduce((s, l) => s + caseValue(l), 0)
       const collected = parseFloat(inv.payment_received || 0) || 0
       const interestRate = parseFloat(inv.payment_interest_rate || 0) || 0
       const interestCost = collected * interestRate
+      const sheet = sheets[inv.firm_id]
+      const sheetRows = sheet?.cases.filter(c => c.invoiceCode === invoiceKey(inv.code)) ?? null
+
       return {
         id: inv.id,
         firmSlug: firm?.slug || '',
         firmName: firm?.name || 'Unknown firm',
-        code: inv.code,
+        code: invoiceKey(inv.code) === invoiceKey(inv.code) && sheetRows ? invoiceKey(inv.code) : inv.code,
+        fromSheet: Boolean(sheetRows),
+        sheetCases: sheetRows ? sheetRows.filter(c => c.status === 'e_signed').length : null,
+        sheetReplacements: sheetRows ? sheetRows.filter(c => c.status === 'replacement').length : null,
+        sheetClosed: sheetRows ? sheetRows.filter(c => c.closed).length : null,
         title: inv.title,
         periodStart: inv.period_start,
         periodEnd: inv.period_end,
@@ -532,21 +708,84 @@ export async function GET(request: NextRequest) {
     })
     .sort((a, b) => (b.periodStart || '').localeCompare(a.periodStart || '') || a.firmName.localeCompare(b.firmName))
 
-  const collected = invoiceRows.reduce((s, r) => s + r.collected, 0)
+  const collectedFromInvoices = invoiceRows.reduce((s, r) => s + r.collected, 0)
   const interestCost = invoiceRows.reduce((s, r) => s + r.interestCost, 0)
   const billedOnInvoices = invoiceRows.reduce((s, r) => s + r.billed, 0)
+
+  /* ── Payments ─────────────────────────────────────────────────────────────
+     Cash in, from the processor rather than from a figure typed onto an
+     invoice. Only succeeded rows count, and a refund is netted off the row it
+     belongs to rather than booked as a separate negative payment. */
+  const paidInWindow = payments.filter(p => {
+    if (String(p.status || '').toLowerCase() !== 'succeeded') return false
+    const d = String(p.paid_at || '').slice(0, 10)
+    return d >= start && d <= end
+  })
+
+  const paymentsByFirm: Record<string, number> = {}
+  const paymentsByMonth: Record<string, number> = {}
+  const paymentsByDay: Record<string, number> = {}
+  const unmatchedPayers: Record<string, { name: string; domain: string; gross: number; n: number }> = {}
+
+  let collectedGross = 0, collectedNet = 0, refundedTotal = 0, paymentCases = 0
+
+  for (const p of paidInWindow) {
+    const gross = (parseFloat(p.gross) || 0) - (parseFloat(p.refunded) || 0)
+    const net   = (parseFloat(p.net)   || 0) - (parseFloat(p.refunded) || 0)
+    const d = String(p.paid_at).slice(0, 10)
+    const m = d.slice(0, 7)
+
+    collectedGross += gross
+    collectedNet   += net
+    refundedTotal  += parseFloat(p.refunded) || 0
+    paymentCases   += parseInt(p.case_count) || 0
+
+    paymentsByMonth[m] = (paymentsByMonth[m] || 0) + gross
+    paymentsByDay[d]   = (paymentsByDay[d]   || 0) + gross
+
+    if (p.firm_id) {
+      paymentsByFirm[p.firm_id] = (paymentsByFirm[p.firm_id] || 0) + gross
+    } else {
+      /* A payer with no firm record still earned us the money. Bucketed by
+         name rather than dropped, so the firm table and the company total can
+         never silently disagree. */
+      const k = String(p.payer_domain || 'unknown')
+      const u = (unmatchedPayers[k] ||= { name: String(p.payer_name || k), domain: k, gross: 0, n: 0 })
+      u.gross += gross
+      u.n += 1
+    }
+  }
+
+  /* Processing fees are a real cost — roughly 2.9% of everything collected —
+     and were previously invisible because only gross was ever recorded. */
+  const processingFees = collectedGross - collectedNet
+
+  const unmatchedCollected = Object.values(unmatchedPayers).reduce((s, u) => s + u.gross, 0)
+
+  /* Prefer the processor when it has data; fall back to the hand-entered
+     invoice figure while the payments table is empty or unmigrated. */
+  const hasPayments = paidInWindow.length > 0
+  const collected = hasPayments ? collectedGross : collectedFromInvoices
+
   const outstanding = invoiceRows.reduce((s, r) => s + r.outstanding, 0)
 
   /* ── Totals ───────────────────────────────────────────────────────────── */
 
   const adSpend = companySpend.spend
-  const totalCost = adSpend + opsTotal + salaryTotal + repPayTotal + sanguineTotal + interestCost
+  /* Processing fees only exist once real payments are loaded; before that the
+     cost stack is unchanged rather than guessing a percentage. */
+  const totalCost = adSpend + opsTotal + salaryTotal + repPayTotal + sanguineTotal + interestCost + processingFees
   const netProfit = revenueTotal - totalCost
+
+  /* The same P&L run on cash actually received instead of cases booked. Both
+     are true; they answer different questions, and showing only one of them is
+     how a business ends up surprised by its own bank balance. */
+  const cashNetProfit = collectedGross - totalCost
 
   const firmRows = firms
     .map(f => {
       const s = spendByFirm[f.id] || blankSpend()
-      const c = casesByFirm[f.id] || { signed: 0, originals: 0, minors: 0, replacements: 0, victims: 0, closed: 0 }
+      const c = casesByFirm[f.id] || { signed: 0, originals: 0, minors: 0, disqualified: 0, replacements: 0, victims: 0, closed: 0 }
       const revenue = revenueByFirm[f.id] || 0
       const firmOps = opsByFirm[f.id] || 0
       const repPay = repPayByFirm[f.id] || 0
@@ -562,7 +801,9 @@ export async function GET(request: NextRequest) {
         signedCases: c.signed,
         originalCases: c.originals,
         minorCases: c.minors,
+        disqualifiedCases: c.disqualified,
         billableCases: c.originals + c.minors,
+        sheetBacked: Boolean(sheets[f.id]),
         replacementCases: c.replacements,
         closedCases: c.closed,
         revenue,
@@ -578,6 +819,10 @@ export async function GET(request: NextRequest) {
         cpl: s.leads > 0 ? s.spend / s.leads : null,
         roas: cost > 0 ? revenue / cost : null,
         collected: invoicesForFirm.reduce((t, r) => t + r.collected, 0),
+        /* What this firm actually paid, from the processor. Kept beside the
+           invoice figure rather than replacing it — a gap between the two is
+           itself worth seeing. */
+        cashCollected: paymentsByFirm[f.id] || 0,
         outstanding: invoicesForFirm.reduce((t, r) => t + r.outstanding, 0),
         weeklySpend: weeklySpendByFirm[f.id] || 0,
         capInitial: parseFloat(f.phase_initial_max_weekly_spend || 0) || 0,
@@ -648,6 +893,7 @@ export async function GET(request: NextRequest) {
       signedCases,
       originalCases,
       minorCases,
+      disqualifiedCases,
       billableCases: originalCases + minorCases,
       replacementCases,
       closedCases,
@@ -661,6 +907,18 @@ export async function GET(request: NextRequest) {
       revenuePerCase: originalCases + minorCases > 0 ? revenueTotal / (originalCases + minorCases) : null,
       roas: adSpend > 0 ? revenueTotal / adSpend : null,
       collected,
+      collectedGross,
+      collectedNet,
+      processingFees,
+      refundedTotal,
+      paymentCount: paidInWindow.length,
+      paymentCases,
+      unmatchedCollected,
+      cashNetProfit,
+      cashMargin: collectedGross > 0 ? (cashNetProfit / collectedGross) * 100 : null,
+      /* Cash in against revenue booked. Over 100% means we collected on cases
+         signed before this window — prepaid packages do exactly that. */
+      collectionRate: revenueTotal > 0 ? (collectedGross / revenueTotal) * 100 : null,
       billedOnInvoices,
       outstanding,
       unattributedSpend: unattributed.spend,
@@ -672,6 +930,26 @@ export async function GET(request: NextRequest) {
     monthly,
     daily,
     invoices: invoiceRows,
+    payments: {
+      missing: paymentsMissing,
+      count: paidInWindow.length,
+      rows: paidInWindow.slice(-60).reverse().map(p => ({
+        id: p.payment_id,
+        paidAt: p.paid_at,
+        gross: parseFloat(p.gross) || 0,
+        net: parseFloat(p.net) || 0,
+        refunded: parseFloat(p.refunded) || 0,
+        payer: p.payer_name,
+        domain: p.payer_domain,
+        firmId: p.firm_id,
+        product: p.product,
+        cases: p.case_count,
+      })),
+      /* Payers with no firm record — early or one-off clients. Surfaced by
+         name so the money is visible even though no firm row claims it. */
+      unmatched: Object.values(unmatchedPayers).sort((a, b) => b.gross - a.gross),
+      byMonth: paymentsByMonth,
+    },
     expenseCategories: Object.entries(opsByCategory)
       .map(([category, v]) => ({ category, amount: v.amount, count: v.count }))
       .sort((a, b) => b.amount - a.amount),
@@ -679,6 +957,11 @@ export async function GET(request: NextRequest) {
       accounts: accountIds,
       error: _metaError,
       truncated: start < metaFloor ? metaFloor : null,
+    },
+    sheets: {
+      firms: recons,
+      errors: sheetErrors,
+      backing: Object.values(sheets).map(sh => ({ title: sh.title, url: sh.url, tabs: sh.tabs, cases: sh.cases.length, fetchedAt: sh.fetchedAt })),
     },
     setup: { invoicesMissing },
   })

@@ -9,11 +9,12 @@ const CLIENT_EMAIL = (process.env.GOOGLE_SHEETS_CLIENT_EMAIL || '').replace(/\\n
 const PRIVATE_KEY = process.env.GOOGLE_SHEETS_PRIVATE_KEY_B64
   ? Buffer.from(process.env.GOOGLE_SHEETS_PRIVATE_KEY_B64, 'base64').toString('utf-8').replace(/\\n/g, '\n')
   : (process.env.GOOGLE_SHEETS_PRIVATE_KEY || '').replace(/\\n/g, '\n')
-const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!
+export const SPREADSHEET_ID = process.env.GOOGLE_SHEETS_SPREADSHEET_ID!
+export const sheetsConfigured = Boolean(CLIENT_EMAIL && PRIVATE_KEY && SPREADSHEET_ID)
 
 let cachedToken: { value: string; expiresAt: number } | null = null
 
-async function getAccessToken(): Promise<string> {
+export async function getAccessToken(): Promise<string> {
   const now = Math.floor(Date.now() / 1000)
   if (cachedToken && cachedToken.expiresAt > now + 60) return cachedToken.value
 
