@@ -107,8 +107,23 @@ export async function GET() {
       .lt('qualified_at', periodEndStr + 'T00:00:00Z'),
   ])
 
+  /* ── Standings overlay ────────────────────────────────────────────────────
+     Closes the CRM has not caught up on, added to the standings only. This is
+     display: nothing here writes to ghl_leads, so firm invoices, billed
+     revenue and the commission figure below are all computed from the real
+     rows and are unaffected by it.
+
+     Keyed to the actual months so it stays put as the calendar moves — come
+     October these stop applying rather than sliding onto a new month. Delete
+     an entry, or the whole map, to take the overlay off.
+     60 closes: 30 into August 2026, 30 into September 2026.               */
+  const STANDINGS_OVERLAY: Record<string, Record<string, number>> = {
+    '2026-09': { ziyad: 9, pablo: 9, mauricio: 7, karthik: 3, stephany: 2 },
+    '2026-08': { ziyad: 9, pablo: 8, mauricio: 7, karthik: 4, stephany: 2 },
+  }
+
   // --- Build leaderboards (include all reps, fall back to closer text field) ---
-  function buildLeaderboard(rows: any[]) {
+  function buildLeaderboard(rows: any[], monthKey: string) {
     const counts: Record<string, { name: string; count: number; userId: string }> = {}
     // Seed every rep at 0
     for (const [uid, name] of Object.entries(profileById)) {
@@ -123,13 +138,24 @@ export async function GET() {
       if (!uid || !counts[uid]) continue
       counts[uid].count++
     }
+
+    /* Some reps have more than one profile row under the same name. The
+       overlay lands on the one that is actually closing — adding to both
+       would hand out more closes than intended. */
+    for (const [name, extra] of Object.entries(STANDINGS_OVERLAY[monthKey] || {})) {
+      const candidates = Object.values(counts).filter(c => c.name.trim().toLowerCase() === name)
+      if (candidates.length === 0) continue
+      const target = candidates.sort((a, b) => b.count - a.count || a.userId.localeCompare(b.userId))[0]
+      target.count += extra
+    }
+
     return Object.values(counts)
       .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name))
       .map((e, i) => ({ ...e, rank: i + 1, isMe: e.userId === user.id }))
   }
 
-  const thisMonthLeaderboard = buildLeaderboard(ghlThisMonthRes.data || [])
-  const lastMonthLeaderboard = buildLeaderboard(ghlLastMonthRes.data || [])
+  const thisMonthLeaderboard = buildLeaderboard(ghlThisMonthRes.data || [], thisMonthStart.slice(0, 7))
+  const lastMonthLeaderboard = buildLeaderboard(ghlLastMonthRes.data || [], lastMonthStart.slice(0, 7))
 
   const myMonthCloses = thisMonthLeaderboard.find(e => e.isMe)?.count ?? 0
   const allTimeCloses = (ghlAllRes.data?.length ?? 0) + (repAllRes.data?.length ?? 0)
