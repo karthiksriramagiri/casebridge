@@ -116,10 +116,11 @@ export async function GET() {
      Keyed to the actual months so it stays put as the calendar moves — come
      October these stop applying rather than sliding onto a new month. Delete
      an entry, or the whole map, to take the overlay off.
-     60 closes: 30 into August 2026, 30 into September 2026.               */
+     160 closes: 80 into August 2026, 80 into September 2026 — the original 60
+     spread by performance, plus 10 for every closer in each month.        */
   const STANDINGS_OVERLAY: Record<string, Record<string, number>> = {
-    '2026-09': { ziyad: 9, pablo: 9, mauricio: 7, karthik: 3, stephany: 2 },
-    '2026-08': { ziyad: 9, pablo: 8, mauricio: 7, karthik: 4, stephany: 2 },
+    '2026-09': { ziyad: 19, pablo: 19, mauricio: 17, karthik: 13, stephany: 12 },
+    '2026-08': { ziyad: 19, pablo: 18, mauricio: 17, karthik: 14, stephany: 12 },
   }
 
   // --- Build leaderboards (include all reps, fall back to closer text field) ---
