@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { MetricsHeader } from '@/app/_metrics/chrome'
 import { money, num, pct, EmptyState, DashboardSkeleton, IconWarn } from '@/app/_metrics/dash'
@@ -9,6 +10,7 @@ import {
   type Band,
 } from '@/app/_metrics/benchmarks'
 import { CreativeAnalysisView } from './creative-analysis'
+import { DATE_PRESETS, useDateRange, rangeQuery, rangeLabel, todayISO } from '@/app/_metrics/date-range'
 import { FIRMS, UNKNOWN_FIRM } from '@/app/_metrics/firms'
 import { useSite } from '@/app/_metrics/site'
 import { adCodes } from '@/app/_metrics/hooks'
@@ -23,13 +25,6 @@ import './center.css'
    _metrics/benchmarks.ts.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const DATE_PRESETS = [
-  { label: 'Today', value: 'today' },
-  { label: '7d',    value: 'last_7d' },
-  { label: '14d',   value: 'last_14d' },
-  { label: '30d',   value: 'last_30d' },
-]
-
 /* Ad / ad set / campaign. The same funnel exists at every level, so the
    columns stay meaningful for all three. */
 const LEVELS = [
@@ -38,15 +33,21 @@ const LEVELS = [
   { key: 'campaign', label: 'Campaign' },
 ] as const
 
+/* The note a Double-down flag writes. The "Doubled down" tab finds its cards
+   by matching it, so both sides read from here — rewording the note in one
+   place only would silently empty the tab. */
+const DOUBLE_DOWN_NOTE = 'Double down — flagged from Winner Analysis'
+
 type Ad = any
 type Level = typeof LEVELS[number]['key']
 export type View = 'creative' | 'winners'
 
 export default function CreativeCenter({ view }: { view: View }) {
   /* Opens on today so the page answers "what is happening right now" before
-     anything else; the picker then takes over. */
-  const [preset, setPreset] = useState('today')
-  const effectivePreset = preset
+     anything else; the picker then takes over. The selection is shared with
+     every other tab in the centre — see _metrics/date-range. */
+  const { range, setRange, ready: rangeReady } = useDateRange()
+  const rangeQ = rangeQuery(range)
 
   /* Ad / ad set / campaign. The verdict engines read a funnel that exists at
      every level, so the same columns are meaningful for all three — but hooks
@@ -97,7 +98,7 @@ export default function CreativeCenter({ view }: { view: View }) {
     let cancelled = false
     setOutcomesLoading(true)
     setOutcomes({})
-    fetch(`/api/metrics/creative-overview?date_preset=${effectivePreset}`)
+    fetch(`/api/metrics/creative-overview?${rangeQ}`)
       .then(r => r.json())
       .then(d => {
         if (cancelled) return
@@ -106,7 +107,7 @@ export default function CreativeCenter({ view }: { view: View }) {
       })
       .catch(() => { if (!cancelled) setOutcomesLoading(false) })
     return () => { cancelled = true }
-  }, [effectivePreset, level, nonce])
+  }, [rangeQ, level, nonce, rangeReady])
 
   /* Two passes over the same endpoint. The first skips the 14-day daily
      series and the thumbnail hop — neither is needed to read the funnel — so
@@ -119,7 +120,7 @@ export default function CreativeCenter({ view }: { view: View }) {
     setTrendLoading(true)
 
     const url = (trend: 0 | 1) =>
-      `/api/creative/insights?date_preset=${effectivePreset}&level=${level}&trend=${trend}`
+      `/api/creative/insights?${rangeQ}&level=${level}&trend=${trend}`
 
     fetch(url(0))
       .then(r => r.json())
@@ -147,7 +148,7 @@ export default function CreativeCenter({ view }: { view: View }) {
       .catch(() => { if (!cancelled) setTrendLoading(false) })
 
     return () => { cancelled = true }
-  }, [effectivePreset, level, nonce])
+  }, [rangeQ, level, nonce, rangeReady])
 
   /* Firms that actually delivered in this range. A firm with no spend is not
      shown at all rather than as an empty tab — the account rarely runs all
@@ -204,11 +205,24 @@ export default function CreativeCenter({ view }: { view: View }) {
       <MetricsHeader
         onRefresh={() => setNonce(n => n + 1)}
         actions={(
-          <div className="mx-seg" role="group" aria-label="Date range">
-            {DATE_PRESETS.map(p => (
-              <button key={p.value} className="mx-seg-btn" aria-pressed={preset === p.value}
-                onClick={() => setPreset(p.value)}>{p.label}</button>
-            ))}
+          <div className="ca-range">
+            <div className="mx-seg" role="group" aria-label="Date range">
+              {DATE_PRESETS.map(p => (
+                <button key={p.value} className="mx-seg-btn" aria-pressed={range.preset === p.value}
+                  onClick={() => setRange({ preset: p.value })}>{p.label}</button>
+              ))}
+            </div>
+            {range.preset === 'custom' && (
+              <div className="ca-range-custom">
+                <input type="date" value={range.start} max={range.end || todayISO()}
+                  aria-label="From"
+                  onChange={e => setRange({ start: e.target.value })} />
+                <span>→</span>
+                <input type="date" value={range.end} min={range.start} max={todayISO()}
+                  aria-label="To"
+                  onChange={e => setRange({ end: e.target.value })} />
+              </div>
+            )}
           </div>
         )}
       />
@@ -281,9 +295,9 @@ export default function CreativeCenter({ view }: { view: View }) {
           <div className="mx-card">
             {ads.length > 0 ? (
               <EmptyState title="Nothing is delivering today"
-                text={`${ads.length} had spend in this range but none today — everything is paused or out of budget.`} />
+                text={`${ads.length} had spend in ${rangeLabel(range)} but none today — everything is paused or out of budget.`} />
             ) : (
-              <EmptyState title="No delivery in this range"
+              <EmptyState title={`No delivery in ${rangeLabel(range)}`}
                 text="Meta returned no data for the selected dates." />
             )}
           </div>
@@ -580,9 +594,36 @@ function vsMedian(v: number | null, median: number | null, goodWhen: 'up' | 'dow
 }
 /* ── Winner card ────────────────────────────────────────────────────────── */
 
-function WinnerCard({ ad, rank, medians, isSelected, onSelect }: {
+function WinnerCard({ ad, rank, medians, isSelected, onSelect, flagged, onFlag }: {
   ad: Ad; rank: number; medians: Medians; isSelected: boolean; onSelect: () => void
+  flagged?: boolean; onFlag?: (id: string) => void
 }) {
+  const site = useSite()
+  /* Seeded from what was already recorded, so a reload does not present an
+     ad you have committed to as an open question. */
+  const [doubling, setDoubling] = useState<'idle' | 'saving' | 'done' | 'error'>(
+    flagged ? 'done' : 'idle')
+  useEffect(() => { if (flagged) setDoubling('done') }, [flagged])
+
+  /* Double down is a decision, recorded the same way every other call is —
+     it does not raise a budget in Meta. Saying so on the button would be
+     noise; saying so in the tooltip is enough, and the confirmation text
+     names what actually happened. */
+  async function doubleDown(e: React.MouseEvent) {
+    e.stopPropagation()
+    setDoubling('saving')
+    const res = await fetch('/api/creative/decisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adId: ad.id, adName: ad.name, decision: 'keep',
+        cpl: ad.cpl, spend: ad.spend, verdict: ad.creative?.action,
+        note: DOUBLE_DOWN_NOTE,
+      }),
+    })
+    setDoubling(res.ok ? 'done' : 'error')
+    if (res.ok) onFlag?.(ad.id)
+  }
   const codes = adCodes(ad.name)
   const plays = ad.videoPlays || 0
 
@@ -636,6 +677,22 @@ function WinnerCard({ ad, rank, medians, isSelected, onSelect }: {
             </ul>
           </>
         )}
+
+        <div className="ca-winner-cta">
+          <button className="ca-cta is-primary"
+            onClick={doubleDown}
+            disabled={doubling === 'saving' || doubling === 'done'}
+            title="Records the call — it does not raise the budget in Meta">
+            {doubling === 'done' ? '✓ Flagged to double down'
+              : doubling === 'saving' ? 'Saving…'
+              : doubling === 'error' ? 'Could not save — retry'
+              : 'Double down'}
+          </button>
+          <Link className="ca-cta" href={`${site.base}/analysis?ad=${encodeURIComponent(ad.id)}`}
+            onClick={e => e.stopPropagation()}>
+            View analysis
+          </Link>
+        </div>
       </div>
     </article>
   )
@@ -1006,16 +1063,40 @@ function AllCreativesTable({ ads, onOpen }: { ads: Ad[]; onOpen: (a: Ad) => void
 
 function WinnersView({ ads, onOpen, level }: { ads: Ad[]; onOpen: (a: Ad) => void; level: Level }) {
   const isAd = level === 'ad'
-  const [cut, setCut] = useState<'all' | 'format' | 'visual' | 'verbal'>('all')
-  useEffect(() => { if (!isAd) setCut('all') }, [isAd])
+  const [cut, setCut] = useState<'all' | 'doubled' | 'format' | 'visual' | 'verbal'>('all')
+  useEffect(() => { if (!isAd && cut !== 'doubled') setCut('all') }, [isAd, cut])
+
+  /* Which winners have been flagged to double down. Loaded rather than kept
+     in the card, so the flag survives a reload — a button that forgets what
+     you told it is worse than no button — and so the tab can count them. */
+  const [flagged, setFlagged] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    let cancelled = false
+    fetch('/api/creative/decisions')
+      .then(r => r.json())
+      .then(d => {
+        if (cancelled) return
+        const ids = Object.entries<any>(d.decisions || {})
+          .filter(([, row]) => String(row?.note || '').startsWith(DOUBLE_DOWN_NOTE))
+          .map(([id]) => id)
+        setFlagged(new Set(ids))
+      })
+      .catch(() => {})
+    return () => { cancelled = true }
+  }, [])
+
   const winners = useMemo(() => rankWinners(ads), [ads])
   const medians = useMemo(() => mediansOf(ads), [ads])
+
+  /* Keeps the winners' own ranking rather than re-sorting, so a card sits at
+     the same rank whichever tab you found it on. */
+  const doubled = useMemo(() => winners.filter(a => flagged.has(a.id)), [winners, flagged])
 
   /* Grouping is over winners only. The same code across the whole account is
      what the Angles report answers — here the question is narrower: among the
      creatives that actually produced, which traits recur. */
   const groups = useMemo(() => {
-    if (cut === 'all') return null
+    if (cut === 'all' || cut === 'doubled') return null
     const pick = (a: Ad) => {
       const c = adCodes(a.name)
       return cut === 'format' ? c.formatLabel : cut === 'visual' ? c.visualLabel : c.verbalLabel
@@ -1080,20 +1161,38 @@ function WinnersView({ ads, onOpen, level }: { ads: Ad[]; onOpen: (a: Ad) => voi
       <div className="ca-seg-row">
         <div className="mx-seg" role="tablist" aria-label="Group winners by">
           {(isAd
-            ? [['all', 'Ranked'], ['format', 'By format'], ['visual', 'By visual hook'], ['verbal', 'By verbal hook']] as const
-            : [['all', 'Ranked']] as const
+            ? [['all', 'Ranked'], ['doubled', 'Doubled down'], ['format', 'By format'],
+               ['visual', 'By visual hook'], ['verbal', 'By verbal hook']] as const
+            : [['all', 'Ranked'], ['doubled', 'Doubled down']] as const
           ).map(([k, l]) => (
             <button key={k} className="mx-seg-btn" role="tab" aria-pressed={cut === k}
-              onClick={() => setCut(k as typeof cut)}>{l}</button>
+              onClick={() => setCut(k as typeof cut)}>
+              {l}{k === 'doubled' && flagged.size > 0 && <span className="ca-seg-n">{doubled.length}</span>}
+            </button>
           ))}
         </div>
       </div>
 
-      {cut === 'all' ? (
+      {cut === 'doubled' ? (
+        doubled.length === 0 ? (
+          <EmptyState title="Nothing flagged yet"
+            text="Press Double down on a winner and it collects here, so the set you have committed to can be read on its own." />
+        ) : (
+          <div className="ca-winner-grid">
+            {doubled.map((a, i) => (
+              <WinnerCard key={a.id} ad={a} rank={winners.findIndex(w => w.id === a.id) + 1}
+                medians={medians} isSelected={false} onSelect={() => onOpen(a)}
+                flagged onFlag={id => setFlagged(f => new Set(f).add(id))} />
+            ))}
+          </div>
+        )
+      ) : cut === 'all' ? (
         <div className="ca-winner-grid">
           {winners.map((a, i) => (
             <WinnerCard key={a.id} ad={a} rank={i + 1} medians={medians}
-              isSelected={false} onSelect={() => onOpen(a)} />
+              isSelected={false} onSelect={() => onOpen(a)}
+              flagged={flagged.has(a.id)}
+              onFlag={id => setFlagged(f => new Set(f).add(id))} />
           ))}
         </div>
       ) : (

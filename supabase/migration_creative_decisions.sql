@@ -15,7 +15,9 @@ CREATE TABLE IF NOT EXISTS creative_decisions (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   ad_id       TEXT NOT NULL,
   ad_name     TEXT NOT NULL DEFAULT '',
-  decision    TEXT NOT NULL CHECK (decision IN ('keep', 'watch', 'kill')),
+  -- 'learning' is a real call, not the absence of one: it says "too early to
+  -- judge, leave it running" and stops the row being re-reviewed every morning.
+  decision    TEXT NOT NULL CHECK (decision IN ('keep', 'watch', 'kill', 'learning')),
   -- What the dashboard was showing when the call was made, so a decision can
   -- be read back against the numbers that prompted it rather than today's.
   cpl_at_time      NUMERIC,
@@ -28,3 +30,12 @@ CREATE TABLE IF NOT EXISTS creative_decisions (
 
 CREATE INDEX IF NOT EXISTS idx_creative_decisions_ad
   ON creative_decisions (ad_id, created_at DESC);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- 'learning' was added after the table shipped. Re-running this file widens the
+-- constraint on an existing table as well as creating a correct new one, so
+-- there is still only one file to run.
+-- ─────────────────────────────────────────────────────────────────────────────
+ALTER TABLE creative_decisions DROP CONSTRAINT IF EXISTS creative_decisions_decision_check;
+ALTER TABLE creative_decisions ADD CONSTRAINT creative_decisions_decision_check
+  CHECK (decision IN ('keep', 'watch', 'kill', 'learning'));

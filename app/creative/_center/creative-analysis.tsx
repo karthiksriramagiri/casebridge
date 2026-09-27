@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { money, num } from '@/app/_metrics/dash'
 import { BENCH, bandUp, bandDown, type Band } from '@/app/_metrics/benchmarks'
 
@@ -55,6 +55,18 @@ function statusOf(ad: Ad): { key: string; label: string } {
   if (ad.health?.level === 'watch' || a === 'fatigue') return { key: 'watch', label: 'WATCH' }
   return { key: 'test', label: 'TEST' }
 }
+
+/* Sorting a verdict alphabetically ("CUT, KEEP, WATCH") tells you nothing.
+   Both verdict columns rank best → worst instead, so descending puts winners
+   on top exactly like the numeric columns, and ascending surfaces the
+   problems — and, for Decision, the rows nobody has called yet. */
+const SUGGESTED_RANK: Record<string, number> = {
+  winner: 4, test: 3, learning: 2, watch: 1, cut: 0,
+}
+const DECISION_RANK: Record<string, number> = {
+  keep: 3, watch: 2, learning: 1, kill: 0,
+}
+const UNDECIDED_RANK = -1
 
 const pctOf = (part: number, whole: number) => (whole > 0 ? (part / whole) * 100 : null)
 
@@ -121,6 +133,58 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
   const [status, setStatus] = useState('all')
   const [sort, setSort] = useState<{ col: string; dir: 'asc' | 'desc' }>({ col: 'spend', dir: 'desc' })
 
+  /* The human call, kept apart from the suggestion. The Suggested column is
+     what the thresholds infer; Decision is what someone actually decided, and
+     only the second one is a commitment. Recorded, never acted on — nothing
+     here pauses an ad in Meta. */
+  const [review, setReview] = useState<ReviewKey | null>(null)
+  const [decision, setDecision] = useState('all')
+  const [decisions, setDecisions] = useState<Record<string, string>>({})
+  const [decisionsLocked, setDecisionsLocked] = useState(false)
+  const [decisionErr, setDecisionErr] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetch('/api/creative/decisions')
+      .then(r => r.json())
+      .then(d => {
+        setDecisionsLocked(!!d.needsMigration)
+        const map: Record<string, string> = {}
+        for (const [id, row] of Object.entries<any>(d.decisions || {})) map[id] = row.decision
+        setDecisions(map)
+      })
+      .catch(() => {})
+  }, [])
+
+  async function decide(ad: Ad, decision: string) {
+    const prev = decisions[ad.id]
+    // Optimistic: the select reflects the choice at once and reverts if the
+    // write fails, so a dropped request never silently looks recorded.
+    setDecisions(d => ({ ...d, [ad.id]: decision }))
+    const res = await fetch('/api/creative/decisions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adId: ad.id, adName: ad.name, decision,
+        cpl: ad.cpl, spend: ad.spend, verdict: statusOf(ad).key,
+      }),
+    })
+    if (!res.ok) {
+      setDecisions(d => { const n = { ...d }; if (prev) n[ad.id] = prev; else delete n[ad.id]; return n })
+      if (res.status === 503) setDecisionsLocked(true)
+      /* Reverting the dropdown without saying why looks like the click missed.
+         The constraint message in particular is actionable — it means the
+         migration needs re-running to accept 'learning'. */
+      const body = await res.json().catch(() => ({}))
+      setDecisionErr(
+        /check constraint/i.test(body.error || '')
+          ? 'This value is not accepted yet — re-run supabase/migration_creative_decisions.sql.'
+          : body.error || 'Could not save that decision.')
+      setTimeout(() => setDecisionErr(null), 6000)
+    } else {
+      setDecisionErr(null)
+    }
+  }
+
   const selected = useMemo(() => ads.find(a => a.id === selectedId) ?? null, [ads, selectedId])
 
   /* ── Filtering ────────────────────────────────────────────────────────── */
@@ -140,19 +204,42 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
     if (language !== 'all') out = out.filter(a => a.language === language)
     if (state !== 'all') out = out.filter(a => a.state === state)
     if (status !== 'all') out = out.filter(a => statusOf(a).key === status)
+    if (review) out = out.filter(a => matchesReview(a, review))
+    if (decision !== 'all') {
+      out = decision === 'none'
+        ? out.filter(a => !decisions[a.id])
+        : out.filter(a => decisions[a.id] === decision)
+    }
     if (q.trim()) {
       const needle = q.toLowerCase()
       out = out.filter(a => (a.name || '').toLowerCase().includes(needle)
         || (a.angle || '').toLowerCase().includes(needle))
     }
+    /* Verdicts are ordinal, not numeric, so they rank rather than measure —
+       but both paths return a number, which keeps one comparator. */
+    const rankOf = (ad: Ad): number | null => {
+      if (sort.col === 'suggested') return SUGGESTED_RANK[statusOf(ad).key] ?? UNDECIDED_RANK
+      if (sort.col === 'decision')  return DECISION_RANK[decisions[ad.id] ?? ''] ?? UNDECIDED_RANK
+      return cellValue(ad, sort.col)
+    }
+
     const dir = sort.dir === 'desc' ? -1 : 1
     return [...out].sort((x, y) => {
-      const a = cellValue(x, sort.col), b = cellValue(y, sort.col)
+      const a = rankOf(x), b = rankOf(y)
       if (a == null) return 1
       if (b == null) return -1
+      // Ties keep the heavier spender first so the order stays stable and the
+      // rows that matter most sit at the top of each group.
+      if (a === b) return (y.spend ?? 0) - (x.spend ?? 0)
       return (a - b) * dir
     })
-  }, [ads, tab, format, language, state, status, q, sort])
+  }, [ads, tab, format, language, state, status, review, decision, decisions, q, sort])
+
+  const reviewCounts = useMemo(() => ({
+    noLeads:     ads.filter(a => matchesReview(a, 'noLeads')).length,
+    highCpl:     ads.filter(a => matchesReview(a, 'highCpl')).length,
+    underPacing: ads.filter(a => matchesReview(a, 'underPacing')).length,
+  }), [ads])
 
   /* CPQ and CPA collapse into one number whenever the Chase stage is empty.
      Two identical columns read as a bug, so the reason is stated rather than
@@ -218,11 +305,15 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
         <Select label="Format"   value={format}   onChange={setFormat}   options={options.formats} />
         <Select label="Language" value={language} onChange={setLanguage} options={options.languages} />
         <Select label="State"    value={state}    onChange={setState}    options={options.states} />
-        <Select label="Status"   value={status}   onChange={setStatus}
+        <Select label="Suggested" value={status}  onChange={setStatus}
           options={['winner', 'watch', 'test', 'learning', 'cut']} />
-        {(format !== 'all' || language !== 'all' || state !== 'all' || status !== 'all' || q) && (
+        <Select label="Decision" value={decision} onChange={setDecision}
+          options={['keep', 'watch', 'kill', 'learning', 'none']} />
+        {(format !== 'all' || language !== 'all' || state !== 'all' || status !== 'all'
+          || decision !== 'all' || review || q) && (
           <button className="ka-clear" onClick={() => {
-            setFormat('all'); setLanguage('all'); setState('all'); setStatus('all'); setQ('')
+            setFormat('all'); setLanguage('all'); setState('all'); setStatus('all')
+            setDecision('all'); setReview(null); setQ('')
           }}>Clear</button>
         )}
         <span className="ka-count">{rows.length} of {ads.length}</span>
@@ -249,7 +340,16 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
                   <span className="ka-sort-mark">{sort.col === col ? (sort.dir === 'desc' ? '↓' : '↑') : ''}</span>
                 </th>
               ))}
-              <th>Status</th>
+              {(['suggested', 'decision'] as const).map(col => (
+                <th key={col} className={`ka-sortable${sort.col === col ? ' is-sorted' : ''}`}
+                  onClick={() => toggleSort(col)}
+                  title={col === 'decision'
+                    ? 'Sort by decision — ascending brings undecided rows to the top'
+                    : 'Sort by suggestion'}>
+                  {col === 'suggested' ? 'Suggested' : 'Decision'}
+                  <span className="ka-sort-mark">{sort.col === col ? (sort.dir === 'desc' ? '↓' : '↑') : ''}</span>
+                </th>
+              ))}
               <th />
             </tr>
           </thead>
@@ -293,6 +393,10 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
                   })}
 
                   <td><span className={`ka-status is-${st.key}`}>{st.label}</span></td>
+                  <td onClick={e => e.stopPropagation()}>
+                    <DecisionSelect value={decisions[ad.id]} disabled={decisionsLocked}
+                      onChange={v => decide(ad, v)} />
+                  </td>
                   <td>
                     <button className="ka-view" onClick={e => { e.stopPropagation(); onSelect(ad.id) }}>
                       View
@@ -305,6 +409,41 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
         </table>
         {rows.length === 0 && <p className="ka-empty">No creatives match these filters.</p>}
       </div>
+
+      {decisionErr && <p className="ka-decision-err">{decisionErr}</p>}
+
+      {/* ── Creatives to review ───────────────────────────────────────── */}
+      <section className="ka-review">
+        <div className="ka-review-head">
+          <div>
+            <h3 className="ka-review-title">Creatives to review</h3>
+            <p className="ka-review-sub">Items that need attention. Click a card to filter the table.</p>
+          </div>
+          {review && (
+            <button className="ka-clear" onClick={() => setReview(null)}>Show all</button>
+          )}
+        </div>
+        <div className="ka-review-cards">
+          {REVIEW_CARDS.map(c => {
+            const n = reviewCounts[c.key]
+            const on = review === c.key
+            return (
+              <button key={c.key}
+                className={`ka-review-card is-${c.tone}${on ? ' is-on' : ''}`}
+                aria-pressed={on}
+                disabled={n === 0 && !on}
+                onClick={() => setReview(on ? null : c.key)}>
+                <span className="ka-review-n">{n}</span>
+                <span className="ka-review-text">
+                  <span className="ka-review-t">{c.title}</span>
+                  <span className="ka-review-s">{c.sub}</span>
+                </span>
+                <span className="ka-review-arrow" aria-hidden="true">›</span>
+              </button>
+            )
+          })}
+        </div>
+      </section>
 
       <p className="ka-foot">
         Columns read left to right as the funnel. Quartiles are a share of video plays;
@@ -344,6 +483,11 @@ function Kpi({ label, value, tone }: { label: string; value: string; tone: strin
   )
 }
 
+/* "none" is a real filter value, not an absent one — it selects the rows
+   nobody has called yet, which is the list someone works through. It needs a
+   word, not a raw key. */
+const OPTION_LABEL: Record<string, string> = { none: 'Undecided' }
+
 function Select({ label, value, onChange, options }: {
   label: string; value: string; onChange: (v: string) => void; options: string[]
 }) {
@@ -353,7 +497,9 @@ function Select({ label, value, onChange, options }: {
       <span className="ka-select-label">{label}</span>
       <select value={value} onChange={e => onChange(e.target.value)}>
         <option value="all">All</option>
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
+        {options.map(o => (
+          <option key={o} value={o}>{OPTION_LABEL[o] ?? o.toUpperCase()}</option>
+        ))}
       </select>
     </label>
   )
@@ -649,5 +795,81 @@ function DailyChart({ days, metric }: { days: any[]; metric: 'leads' | 'cpl' | '
         <span>{days[days.length - 1]?.date?.slice(5)}</span>
       </div>
     </div>
+  )
+}
+
+/* ── Creatives to review ────────────────────────────────────────────────────
+   Three questions worth asking every morning, each answerable from the row
+   itself. They are filters, not verdicts: clicking one narrows the table so
+   the diagnosis starts from the shortlist instead of the whole account.
+
+   Pacing is defined against the creative's own recent average rather than a
+   budget, because Meta's insights carry delivery, not intent — there is no
+   "expected spend" to compare to without the budget, and inventing one would
+   make the card confidently wrong. */
+
+type ReviewKey = 'noLeads' | 'highCpl' | 'underPacing'
+
+function recentDailyMean(ad: Ad, days: number): number | null {
+  const d = (ad.daily || []).slice(-days)
+  if (d.length < 2) return null
+  return d.reduce((s: number, x: any) => s + (x.spend || 0), 0) / d.length
+}
+
+function leadsInLastDays(ad: Ad, days: number): number {
+  return (ad.daily || []).slice(-days).reduce((s: number, d: any) => s + (d.leads || 0), 0)
+}
+
+function matchesReview(ad: Ad, key: ReviewKey): boolean {
+  switch (key) {
+    case 'noLeads': {
+      // Only meaningful for something still being paid for.
+      const spent3 = (ad.daily || []).slice(-3).reduce((s: number, d: any) => s + (d.spend || 0), 0)
+      return spent3 > 0 && leadsInLastDays(ad, 3) === 0
+    }
+    case 'highCpl':
+      return ad.cpl != null && ad.cpl > BENCH.cpl.watch
+    case 'underPacing': {
+      const mean = recentDailyMean(ad, 7)
+      if (!mean || mean <= 0) return false
+      return (ad.spendToday ?? 0) < mean * 0.7
+    }
+  }
+}
+
+const REVIEW_CARDS: { key: ReviewKey; title: string; sub: string; tone: string }[] = [
+  { key: 'noLeads',     title: 'No leads in 3+ days', sub: "Still spending, nothing to show for it", tone: 'crit' },
+  { key: 'highCpl',     title: 'CPL above target',    sub: `Over ${'$'}${BENCH.cpl.watch} per lead`, tone: 'warn' },
+  { key: 'underPacing', title: 'Under pacing',        sub: 'Today under 70% of its 7-day average', tone: 'info' },
+]
+
+/* ── Decision ───────────────────────────────────────────────────────────────
+   The suggestion beside it is derived from thresholds; this is the call a
+   person made. A blank option is kept at the top so a row can be returned to
+   "undecided" rather than being stuck on whatever was clicked first. */
+
+const DECISIONS = [
+  { value: 'keep',     label: 'KEEP' },
+  { value: 'watch',    label: 'WATCH' },
+  { value: 'kill',     label: 'KILL' },
+  { value: 'learning', label: 'LEARNING' },
+] as const
+
+function DecisionSelect({ value, disabled, onChange }: {
+  value?: string; disabled?: boolean; onChange: (v: string) => void
+}) {
+  return (
+    <select
+      className={`ka-decision${value ? ` is-${value}` : ''}`}
+      value={value ?? ''}
+      disabled={disabled}
+      title={disabled
+        ? 'Run supabase/migration_creative_decisions.sql to record decisions'
+        : 'Records the call — it does not pause the ad in Meta'}
+      onChange={e => e.target.value && onChange(e.target.value)}
+    >
+      <option value="">—</option>
+      {DECISIONS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+    </select>
   )
 }

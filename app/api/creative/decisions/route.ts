@@ -47,8 +47,8 @@ export async function POST(req: NextRequest) {
   const { adId, adName, decision } = body
 
   if (!adId) return NextResponse.json({ error: 'adId is required' }, { status: 400 })
-  if (!['keep', 'watch', 'kill'].includes(decision)) {
-    return NextResponse.json({ error: 'decision must be keep, watch or kill' }, { status: 400 })
+  if (!['keep', 'watch', 'kill', 'learning'].includes(decision)) {
+    return NextResponse.json({ error: 'decision must be keep, watch, kill or learning' }, { status: 400 })
   }
 
   const { data, error } = await supabase
