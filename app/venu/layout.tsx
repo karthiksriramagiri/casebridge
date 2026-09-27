@@ -22,8 +22,12 @@ export default async function VenuLayout({ children }: { children: ReactNode }) 
         </Link>
         {user && (
           <div className="venu-who">
+            <Link href="/venu/voice" style={{ color: 'inherit', textDecoration: 'none' }}>Voice</Link>
             {user.role === 'admin' && (
-              <Link href="/venu/admin" style={{ color: 'inherit', textDecoration: 'none' }}>Team</Link>
+              <Link href="/venu/admin" style={{ color: 'inherit', textDecoration: 'none', marginLeft: 14 }}>Team</Link>
+            )}
+            {user.role === 'admin' && (
+              <Link href="/venu/admin/candidates" style={{ color: 'inherit', textDecoration: 'none', marginLeft: 14 }}>Candidates</Link>
             )}
             <Link href="/teams/dashboard" style={{ color: 'inherit', textDecoration: 'none', marginLeft: 14 }}>
               Team Center

@@ -124,6 +124,12 @@ export async function proxy(request: NextRequest) {
     }
   }
 
+  /* The candidate application is the one public corner of /venu: the whole
+     point is that someone with the link can make a temporary account before
+     they have any credentials. Everything under /venu/apply is theirs; the
+     token in the URL is what authorises it. */
+  const isVenuApply = pathname === '/venu/apply' || pathname.startsWith('/venu/apply/')
+
   // Protect /venu — same credentials as Teams, but its own sign-in page
   if (pathname === '/venu/login') {
     if (user) {
@@ -133,7 +139,7 @@ export async function proxy(request: NextRequest) {
     }
     return supabaseResponse
   }
-  if (pathname.startsWith('/venu') && !user) {
+  if (pathname.startsWith('/venu') && !isVenuApply && !user) {
     const res = NextResponse.redirect(new URL('/venu/login', request.url))
     supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
     return res

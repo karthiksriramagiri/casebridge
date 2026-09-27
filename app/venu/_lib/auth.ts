@@ -107,7 +107,14 @@ export function venuAdmin() {
 
 /** The Deepgram key in .env is quoted and carries a trailing newline — trim it. */
 export function deepgramKey(): string {
-  return (process.env.DEEPGRAM_API_KEY ?? '').trim().replace(/^"|"$/g, '').trim()
+  /* The stored value is quoted and ends with a literal "\n" — two characters,
+     not a newline, so .trim() cannot see it. Deepgram answers 401 to the key
+     with it still attached. Strip the escape as well as the quotes. */
+  return (process.env.DEEPGRAM_API_KEY ?? '')
+    .trim()
+    .replace(/^"|"$/g, '')
+    .replace(/\\n/g, '')
+    .trim()
 }
 
 /**
