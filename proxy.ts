@@ -43,6 +43,11 @@ export async function proxy(request: NextRequest) {
   )
   const effectivePath = rewritten ? siteRoot + (rawPath === '/' ? '' : rawPath) : rawPath
 
+  /* The candidate application is the one public corner of /venu: the whole
+     point is that someone with the link can make a temporary account before
+     they have any credentials. The token in the URL is what authorises it. */
+  const isVenuApply = effectivePath === '/venu/apply' || effectivePath.startsWith('/venu/apply/')
+
   const applyRewrite = (res: NextResponse) => {
     if (!rewritten) return res
     const url = request.nextUrl.clone()
@@ -53,6 +58,31 @@ export async function proxy(request: NextRequest) {
   }
 
   let supabaseResponse = NextResponse.next({ request })
+
+  /* ── Who actually needs a Supabase session ───────────────────────────────
+     Every request used to pay for an auth round trip before anything else
+     happened — the marketing site, the candidate application, static-ish
+     routes, the Creative and Financial centers (which authenticate with a
+     plain cookie, not Supabase). When Supabase slowed down on 2026-09-30 the
+     middleware blocked on that call and Vercel returned 504 for the whole
+     site at once: every route, all at the same moment.
+
+     Only the three products that read a Supabase user ask for one now, and
+     the call is given a deadline so a struggling auth service degrades one
+     request instead of taking the site off the air. */
+  const needsSupabaseAuth =
+    effectivePath.startsWith('/teams') ||
+    (effectivePath.startsWith('/venu') && !isVenuApply) ||
+    effectivePath.startsWith('/dialer')
+
+  if (!needsSupabaseAuth) {
+    if (effectivePath.startsWith('/creative') || effectivePath.startsWith('/finance') || effectivePath.startsWith('/metrics')) {
+      if (!request.cookies.get('casebridge_session')) {
+        return NextResponse.redirect(new URL('/login', request.url))
+      }
+    }
+    return applyRewrite(supabaseResponse)
+  }
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -73,7 +103,15 @@ export async function proxy(request: NextRequest) {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  /* A hung auth call must not become a hung page. Three seconds is far beyond
+     the ~100ms this normally takes; past that we treat the request as signed
+     out, which sends them to a login page instead of a gateway timeout. */
+  const authed = await Promise.race([
+    supabase.auth.getUser(),
+    new Promise<null>(resolve => setTimeout(() => resolve(null), 3000)),
+  ])
+  if (authed === null) console.error('[proxy] supabase auth timed out for', effectivePath)
+  const user = authed?.data?.user ?? null
   const pathname = effectivePath
 
   // Allow public pages (login, signup)
@@ -124,12 +162,6 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  /* The candidate application is the one public corner of /venu: the whole
-     point is that someone with the link can make a temporary account before
-     they have any credentials. Everything under /venu/apply is theirs; the
-     token in the URL is what authorises it. */
-  const isVenuApply = pathname === '/venu/apply' || pathname.startsWith('/venu/apply/')
-
   // Protect /venu — same credentials as Teams, but its own sign-in page
   if (pathname === '/venu/login') {
     if (user) {
@@ -145,16 +177,9 @@ export async function proxy(request: NextRequest) {
     return res
   }
 
-  // Protect the Creative and Financial centers with the simple session cookie.
-  // /metrics is kept because its redirect stub still resolves there.
-  if (pathname.startsWith('/creative') || pathname.startsWith('/finance') || pathname.startsWith('/metrics')) {
-    const sessionCookie = request.cookies.get('casebridge_session')
-    if (!sessionCookie) {
-      // Redirect to /login on the host the request arrived at, so the user
-      // lands back on the same center after signing in.
-      return NextResponse.redirect(new URL('/login', request.url))
-    }
-  }
+  /* The Creative and Financial centers are guarded above, before the Supabase
+     client is ever built — they authenticate with the plain session cookie and
+     have no business waiting on an auth service they do not use. */
 
   // ── Dialer auth ──────────────────────────────────────────────────────────
   const isDialerLogin = pathname === '/dialer/login'
