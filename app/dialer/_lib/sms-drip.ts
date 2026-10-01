@@ -1,4 +1,11 @@
 // SMS drip automation — 21-day cold outreach sequence (AM + PM).
+
+/* The sequence is 21 days and must end there in elapsed time, not just in
+   content. The templates stop at day 21, but a backlog in the sender can drag
+   a lead's delivery out for weeks — which is how people ended up being texted
+   for 59 days and receiving "this is my last message" two months in. Anything
+   past this many days after the drip started is cancelled rather than sent. */
+export const DRIP_MAX_DAYS = 21
 // Triggered on first "No Answer" disposition, cancelled when a PC replies.
 
 import { createClient } from '@supabase/supabase-js'

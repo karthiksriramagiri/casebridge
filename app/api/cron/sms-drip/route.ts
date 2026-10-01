@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { DRIP_MAX_DAYS } from '@/app/dialer/_lib/sms-drip'
 import { createClient } from '@supabase/supabase-js'
 import twilio from 'twilio'
 
@@ -44,7 +45,7 @@ export async function GET(req: NextRequest) {
   // Fetch pending messages that are due
   const { data: dueMessages, error } = await db
     .from('dialer_sms_drip')
-    .select('id, contact_id, phone, message, template_key')
+    .select('id, contact_id, phone, message, template_key, scheduled_at')
     .eq('status', 'pending')
     .lte('scheduled_at', now)
     .order('scheduled_at', { ascending: true })
@@ -61,14 +62,42 @@ export async function GET(req: NextRequest) {
 
   let sent = 0
   let failed = 0
+  let expired = 0   // drips closed out for passing the 21-day limit
 
   for (const msg of dueMessages) {
     // Double-check that the lead's drip is still active before sending
     const { data: state } = await db
       .from('dialer_lead_state')
-      .select('sms_drip_active, suppressed')
+      .select('sms_drip_active, suppressed, sms_drip_started_at')
       .eq('contact_id', msg.contact_id)
       .maybeSingle()
+
+    /* Hard stop at 21 days from the drip's start. The scheduler only ever
+       creates 21 days of messages, but a message is sent whenever it becomes
+       due — so a backlog turns a 21-day sequence into a 50-day one. Age is
+       measured from the start, not from the message's own due date, because
+       that is what the 21-day rule actually means.
+
+       Falls back to the message's schedule when a start time is missing: a
+       message scheduled more than 21 days ago cannot belong to a live drip. */
+    const startedAt = state?.sms_drip_started_at
+      ? +new Date(state.sms_drip_started_at)
+      : +new Date(msg.scheduled_at)
+    const ageDays = (Date.now() - startedAt) / 86_400_000
+
+    if (ageDays > DRIP_MAX_DAYS) {
+      await db.from('dialer_sms_drip').update({
+        status: 'cancelled', cancelled_at: now,
+      }).eq('contact_id', msg.contact_id).eq('status', 'pending')
+
+      await db.from('dialer_lead_state').update({
+        sms_drip_active: false,
+        updated_at: now,
+      }).eq('contact_id', msg.contact_id)
+
+      expired++
+      continue
+    }
 
     if (!state?.sms_drip_active || state?.suppressed) {
       // Drip was cancelled or lead is suppressed — cancel this message
@@ -128,6 +157,6 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  console.log(`[sms-drip:cron] sent=${sent} failed=${failed}`)
-  return NextResponse.json({ sent, failed })
+  console.log(`[sms-drip:cron] sent=${sent} failed=${failed} expired=${expired}`)
+  return NextResponse.json({ sent, failed, expired })
 }
