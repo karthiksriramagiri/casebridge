@@ -170,6 +170,7 @@ export async function GET(req: NextRequest) {
       })
 
       const text = [
+        `Name : ${lead.name || '—'}`,
         `Creative : ${creative || '—'}`,
         `Adset : ${adset || '—'}`,
         `Time(PST) : ${timePst}`,

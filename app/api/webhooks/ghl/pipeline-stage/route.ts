@@ -340,6 +340,7 @@ async function postNewLeadToSlack(o: {
     })
 
     const text = [
+      `Name : ${o.contactName || '—'}`,
       `Creative : ${creative || '—'}`,
       `Adset : ${adset || '—'}`,
       `Time(PST) : ${timePst}`,
