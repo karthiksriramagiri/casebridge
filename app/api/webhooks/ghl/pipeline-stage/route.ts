@@ -249,7 +249,12 @@ export async function POST(request: NextRequest) {
      make this endpoint fail, because GHL retries a non-2xx and the retry would
      write the lead twice. */
   if (stageParam === 'new_lead' && process.env.SLACK_NEW_LEAD_WEBHOOK) {
-    void postNewLeadToSlack({ adId, adName, adsetId, contactName, firmName: locationName })
+    void postNewLeadToSlack({
+      adId, adName, adsetId, contactName, firmName: locationName,
+      // The cron sweep covers the same leads; whichever gets there first
+      // claims the id so the other stays quiet.
+      opportunityId: payload.opportunity_id || payload.opportunityId || payload.id || contactId || null,
+    })
   }
 
   // Insert new pipeline record
@@ -294,8 +299,24 @@ async function postNewLeadToSlack(o: {
   adsetId: string | null
   contactName: string | null
   firmName: string | null
+  opportunityId: string | null
 }) {
   try {
+    /* Claim the lead before posting. The cron sweep reads the same table, so
+       whichever path sees it first sends and the other finds the row and stops
+       — one lead, one message, no coordination between them. */
+    if (o.opportunityId) {
+      const { error } = await supabase.from('lead_alerts').insert({
+        opportunity_id: o.opportunityId,
+        contact_name: o.contactName,
+        ad_id: o.adId,
+        lead_created_at: new Date().toISOString(),
+      })
+      // A duplicate key means the sweep already announced it. Anything else
+      // (table missing, for instance) must not silence the alert.
+      if (error && /duplicate key|already exists/i.test(error.message)) return
+    }
+
     let creative = o.adName
     let adset: string | null = null
 
