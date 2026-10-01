@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { tokenForAccount } from '@/app/_metrics/ad-accounts'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -219,13 +220,17 @@ const META_SPEND_OVERRIDES: Record<string, number> = {}
 
 let _metaError: string | null = null
 
-async function fetchMeta(path: string, params: Record<string, string> = {}) {
-  if (!TOKEN) {
+/* `token` defaults to the original account's. A firm running its own ad
+   account needs its own token — one token only reaches the accounts its user
+   is assigned to, and using the wrong one returns (#200) rather than empty
+   data, which is what put a permission error on the J&M page. */
+async function fetchMeta(path: string, params: Record<string, string> = {}, token = TOKEN) {
+  if (!token) {
     _metaError = 'META_ACCESS_TOKEN env var is not set.'
     return { data: [] }
   }
   const url = new URL(`${BASE}${path}`)
-  url.searchParams.set('access_token', TOKEN)
+  url.searchParams.set('access_token', token)
   for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v)
   const res = await fetch(url.toString(), { cache: 'no-store' })
   const json = await res.json()
@@ -420,6 +425,8 @@ export async function GET(request: NextRequest) {
 
   const insightFields = 'spend,impressions,clicks,ctr,cpc,reach,actions,ad_name,ad_id,adset_name,campaign_name,adset_id,campaign_id'
   const accountId = firm.meta_account_id
+  // The token that can actually read this firm's account.
+  const firmToken = tokenForAccount(accountId)
   const campaignFilter = (firm.meta_campaign_filter || '').trim().toLowerCase()
   const noMeta = !accountId
 
@@ -437,21 +444,21 @@ export async function GET(request: NextRequest) {
       ...metaDateParam,
       level: 'ad',
       limit: '500',
-    }),
+    }, firmToken),
     // Daily breakdown for chart (account level — not filtered, used for trend only)
     noMeta ? Promise.resolve({ data: [] }) : fetchMeta(`/${accountId}/insights`, {
       fields: 'spend,actions,impressions',
       ...metaDateParam,
       time_increment: '1',
       level: 'account',
-    }),
+    }, firmToken),
     // Current week spend — use time_range for consistency (date_preset lags)
     noMeta ? Promise.resolve({ data: [] }) : fetchMeta(`/${accountId}/insights`, {
       fields: 'spend,actions,campaign_name,adset_name,ad_name',
       time_range: JSON.stringify({ since: (() => { const d = new Date(); d.setDate(d.getDate() - 6); return d.toISOString().split('T')[0] })(), until: new Date().toISOString().split('T')[0] }),
       level: 'ad',
       limit: '500',
-    }),
+    }, firmToken),
     // GHL signed cases in period — for invoice: use invoice_code only (source of truth)
     // for other timeframes: filter by qualified_at date range
     (() => {
@@ -756,7 +763,11 @@ export async function GET(request: NextRequest) {
       originalCases: v.originals,
       replacementCases: v.replacements,
       totalVictims: v.victims,
-      grossRevenue: v.cases * parseFloat(firm.case_value || 0) * (1 - feePct),
+      /* Originals, not every signed case. A replacement is a case re-delivered
+         under warranty and is never re-billed — counting it here charged the
+         firm twice for one case and made the invoice card disagree with its own
+         "replaced" figure. */
+      grossRevenue: v.originals * parseFloat(firm.case_value || 0) * (1 - feePct),
     }))
     .sort((a, b) => a.invoiceCode.localeCompare(b.invoiceCode))
 

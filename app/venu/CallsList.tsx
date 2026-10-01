@@ -21,7 +21,7 @@ export default function CallsList({ rows }: { rows: CallRow[] }) {
 
   return (
     <>
-      <div className="venu-card">
+      <div className="venu-card venu-calls-scroll">
         {rows.length === 0 ? (
           <p className="venu-empty">No calls yet. Start with practice — it takes about five minutes.</p>
         ) : rows.map((r) => (

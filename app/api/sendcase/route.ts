@@ -4,6 +4,8 @@ import {
   GHL_BASE,
   GHL_LOCATION_ID,
   GhlQuotaError,
+  ghlFetch,
+  readGhlLimits,
   getPipelines,
   ghlHeaders,
   ghlKey,
@@ -107,14 +109,17 @@ async function fetchStageOpps(
     if (cursor) url.searchParams.set('startAfter', cursor)
     if (cursorId) url.searchParams.set('startAfterId', cursorId)
 
-    const res = await fetch(url.toString(), { headers, cache: 'no-store' })
+    // ghlFetch waits out a burst trip rather than reporting one; only a real
+    // refusal reaches the throw below.
+    const res = await ghlFetch(url.toString(), { headers, cache: 'no-store' })
     if (!res.ok) {
       // Surface refusals instead of returning a short list that reads as
       // "this stage is empty".
       throw new GhlQuotaError(
         res.status,
         res.headers.get('x-ratelimit-daily-remaining'),
-        res.headers.get('x-ratelimit-daily-reset')
+        res.headers.get('x-ratelimit-daily-reset'),
+        readGhlLimits(res.headers)
       )
     }
     const data = await res.json()

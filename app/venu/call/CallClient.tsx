@@ -26,9 +26,15 @@ type BotState = 'idle' | 'listening' | 'hearing' | 'thinking' | 'speaking'
 type Phase = 'ready' | 'connecting' | 'live' | 'wrapping'
 
 const MAX_REP_TURNS = 45
-/** Silence that ends the rep's turn. Mid-sentence pauses run 200-500ms, so this
- *  is about as tight as it goes before the rep gets cut off mid-thought. */
-const SILENCE_MS = 230
+/**
+ * Silence that ends the rep's turn.
+ *
+ * Tuned down to 230ms chasing latency, which backfired: one sentence broke into
+ * three turns ("Gotcha." / "Oh." / "Bad.") and each fragment cost a full round
+ * trip, so the call got slower AND choppier. Mid-sentence pauses run 200-500ms;
+ * this sits above the common ones.
+ */
+const SILENCE_MS = 330
 /** Speech has to clear the room by this much to start a turn. */
 const SPEECH_START_OVER_FLOOR_DB = 12
 /** Slightly lower to keep a turn going, so a quiet syllable doesn't split it.
@@ -46,7 +52,7 @@ const MAX_UTTERANCE_MS = 15000
  * no emotion parameter, so this is the only handle on how heavy the delivery
  * sounds once the words and the voice are already chosen.
  */
-const PLAYBACK_RATE = 0.94
+const PLAYBACK_RATE = 0.96
 
 /**
  * Nothing in the start path may await without a deadline. A silently dropped
@@ -72,6 +78,7 @@ export default function CallClient({
   const [error, setError] = useState('')
   const [elapsed, setElapsed] = useState(0)
   const [lead, setLead] = useState<Lead | null>(null)
+  const [reportReady, setReportReady] = useState<string | null>(null)
   const voice = useRef('aura-2-athena-en')
 
   const t0 = useRef(0)
@@ -114,7 +121,9 @@ export default function CallClient({
 
   const speak = useCallback(async (text: string) => {
     botBusy.current = true
-    setBot('speaking')
+    // Stay on "thinking" until audio actually starts. Flipping to "talking"
+    // when the request goes out means the rep watches a caller who is
+    // supposedly speaking sit in silence for the time it takes to synthesise.
     const startedAt = now()
 
     try {
@@ -129,8 +138,22 @@ export default function CallClient({
       ;(el as any).mozPreservesPitch = false
       ;(el as any).webkitPreservesPitch = false
       el.playbackRate = PLAYBACK_RATE
+      el.preload = 'auto'
+
+      // "speaking" means sound is actually coming out. play() resolving only
+      // means playback was allowed to begin — with a streaming source the
+      // element can start and immediately stall on an empty buffer, which is
+      // how the caller ends up "talking" through two seconds of silence.
+      const audible = () => {
+        if (firstAudioAt.current) return
+        firstAudioAt.current = performance.now()
+        setBot('speaking')
+      }
+      el.onplaying = audible
+      el.ontimeupdate = () => { if (el.currentTime > 0) audible() }
+
+      firstAudioAt.current = 0
       await el.play()
-      firstAudioAt.current = performance.now()
       await new Promise<void>((resolve) => {
         el.onended = () => resolve()
         el.onerror = () => resolve()
@@ -189,7 +212,10 @@ export default function CallClient({
       return
     }
 
-    router.push(`/venu/result/${sessionId.current}`)
+    // Show it landed before moving them — a silent jump to a report reads as
+    // the app having done something unexpected.
+    setReportReady(sessionId.current)
+    setTimeout(() => router.push(`/venu/result/${sessionId.current}`), 1600)
   }, [router, stopCapture])
 
   /**
@@ -229,11 +255,12 @@ export default function CallClient({
 
       const tSpeak = performance.now()
       if (data.text) await speak(data.text)
+      else if (data.acknowledgement && !ended.current) setBot('listening')
 
       console.info(
         `[venu] turnaround ${Math.round(performance.now() - t0)}ms — ` +
         `say ${Math.round(tSay - t0)}ms (server: auth ${data.timing?.auth ?? '?'} stt ${data.timing?.stt ?? '?'} turn ${data.timing?.turn ?? '?'}), ` +
-        `audio start ${Math.round(firstAudioAt.current - tSpeak)}ms`
+        `audio start ${firstAudioAt.current ? Math.round(firstAudioAt.current - tSpeak) : '?'}ms`
       )
 
       if (data.endCall) await finish(data.endReason ?? 'hung_up')
@@ -468,6 +495,18 @@ export default function CallClient({
         <Link href="/venu" className="venu-eyebrow" style={{ textDecoration: 'none' }}>← Back</Link>
         <span className={`venu-mode-tag ${mode}`}>{mode}</span>
       </div>
+
+      {reportReady && (
+        <div className="venu-ready" role="status">
+          <span className="venu-ready-dot" />
+          <span style={{ flex: 1 }}>
+            <strong>Call scored.</strong> Your report is ready for review.
+          </span>
+          <Link href={`/venu/result/${reportReady}`} className="venu-btn" style={{ height: 34, padding: '0 16px' }}>
+            Open report →
+          </Link>
+        </div>
+      )}
 
       {error && <div className="venu-note" style={{ borderColor: '#f0c4c0', marginBottom: 16 }}>{error}</div>}
 

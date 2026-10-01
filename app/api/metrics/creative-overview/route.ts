@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { ghlFetch, readGhlLimits, GhlQuotaError } from '@/lib/ghl-pipelines'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -13,6 +14,10 @@ const GHL_LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const GHL_PIPELINES: Record<string, string> = {
   lhp:         'yMqNixSnChC5lcGQXA1g',
   lhp_spanish: 'r1AsAtC7lzwO9ybtkQlA',
+  // Jacoby & Meyers was missing entirely, so none of its leads or signed cases
+  // reached the Creative Center.
+  jm:          '0tBzhg0eGSNKL870y3yV',
+  jm_spanish:  'TiyXTHCkxjb2m2UG2COR',
   eisenberg:   'Yk4w3ML56ECc10PFzjpK',
   thl:         'DYtmw8WEUtGePFbEDAIZ',
   mca:         '6Ku9EwTtMFk51o7Re9x0',
@@ -20,7 +25,55 @@ const GHL_PIPELINES: Record<string, string> = {
   levine:      'JPyMNjGGAIxUv0FWW7Cg',
 }
 
-type StageLabel = 'new_lead' | 'nr' | 'fu' | 'chase' | 'appointment' | 'contract_sent' | 'pending_send' | 'nq' | 'mia' | 'qualified' | 'closed'
+/* Stage ids resolved from GHL rather than hand-maintained.
+
+   The opportunity search returns a pipelineStageId but not the stage's name,
+   so every stage has to be recognised by id — and the hardcoded table below
+   had 2 of the 17 Pending Send / Signed/Sent ids in it. The other 15 silently
+   matched nothing, which is why signed cases read as zero. Reading the
+   pipelines once per request keeps the mapping true as stages are added. */
+let _stageCache: { at: number; map: Record<string, StageLabel> } | null = null
+
+async function liveStageMap(): Promise<Record<string, StageLabel>> {
+  if (_stageCache && Date.now() - _stageCache.at < 10 * 60_000) return _stageCache.map
+  const map: Record<string, StageLabel> = {}
+  try {
+    const res = await fetch(
+      `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${GHL_LOCATION_ID}`,
+      { headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
+        next: { revalidate: 600 } })
+    if (res.ok) {
+      const data: any = await res.json()
+      for (const p of data.pipelines ?? []) {
+        for (const st of p.stages ?? []) {
+          const label = labelForStageName(String(st.name || ''))
+          if (label) map[st.id] = label
+        }
+      }
+    }
+  } catch { /* fall back to the static table */ }
+  _stageCache = { at: Date.now(), map }
+  return map
+}
+
+/** One place that turns a stage's name into the label the dashboard uses. */
+function labelForStageName(name: string): StageLabel | undefined {
+  const n = name.toLowerCase()
+  if (n.includes('new lead') || n.includes('new_lead')) return 'new_lead'
+  if (n.includes('no response') || n.includes('no_response')) return 'nr'
+  if (n.includes('follow up') || n.includes('follow_up')) return 'fu'
+  if (n.includes('chase')) return 'chase'
+  if (n.includes('appointment')) return 'appointment'
+  if (n.includes('contract sent') || n.includes('contract_sent')) return 'contract_sent'
+  if (n.includes('pending send') || n.includes('pending_send')) return 'pending_send'
+  if (n.includes('not qualified') || n.includes('not_qualified')) return 'nq'
+  if (n === 'mia') return 'mia'
+  if (n.includes('qualified lead')) return 'qualified'
+  if (n.includes('signed') || n.includes('closed')) return 'signed'
+  return undefined
+}
+
+type StageLabel = 'new_lead' | 'nr' | 'fu' | 'chase' | 'appointment' | 'contract_sent' | 'pending_send' | 'nq' | 'mia' | 'qualified' | 'signed'
 
 const GHL_STAGE_LABEL: Record<string, StageLabel> = {
   // LHP
@@ -46,20 +99,20 @@ const GHL_STAGE_LABEL: Record<string, StageLabel> = {
   'c63f684a-f2eb-48f8-84f1-7ab35a1ba25b': 'nr',
   'fd0f13e3-b535-471a-ac37-7dc2ca177854': 'fu',
   'f0382a1e-b759-450f-8efe-d168cc10e3b1': 'nq',
-  'f011f3ad-b429-443f-9ff3-4e0eff68854a': 'closed',
+  'f011f3ad-b429-443f-9ff3-4e0eff68854a': 'signed',
   // THL
   '51f0c592-1111-43ba-bb3b-2f2f489177a8': 'new_lead',
   '121ae7a9-35c9-4204-a7d4-8fb19f297758': 'nr',
   '866213c6-c43e-47a2-a1d9-20a740f0dd0b': 'fu',
   '0c82f94f-f013-4fd6-99f8-75ef7b547915': 'nq',
-  '20ffb08b-2f48-46e6-b86a-3eb46a79c322': 'closed',
+  '20ffb08b-2f48-46e6-b86a-3eb46a79c322': 'signed',
   // MCA
   '402b0271-c256-4347-b217-4f771ec37992': 'new_lead',
   '87d0a194-8841-4062-b6a3-bfedd9186070': 'nr',
   'bda11191-0a4a-40da-b368-cd925ec884dc': 'fu',
   '8206445b-2ac5-46bb-be3e-93d116420161': 'nq',
   'cd35b35b-b09c-4151-b382-9c1574210d15': 'qualified',
-  'e4c30bbe-35aa-4411-8c84-cc032b1c0252': 'closed',
+  'e4c30bbe-35aa-4411-8c84-cc032b1c0252': 'signed',
   // Fears Law
   'c894b249-0d17-40dd-8ac6-72294a874e9e': 'new_lead',
   '91ced34f-cb7b-4a03-a47d-f4ffd25fd108': 'nr',
@@ -78,10 +131,15 @@ const GHL_STAGE_LABEL: Record<string, StageLabel> = {
   '42721281-30d6-4320-a89f-da91231353b4': 'nq',
 }
 
-type Lead = { name: string | null; phone: string | null; email: string | null; createdAt: string | null }
+type Lead = {
+  name: string | null; phone: string | null; email: string | null; createdAt: string | null
+  /** Where this person sits — pipeline stage for leads, Signed/Replacement for cases. */
+  stage?: string
+}
 
 type AdData = {
   signedCases: number
+  signedLeads: Lead[]
   firmSlug: string | null
   firmName: string | null
   latestInvoice: string | null
@@ -95,12 +153,15 @@ type AdData = {
   nqCount: number;        nqLeads: Lead[]
   miaCount: number;       miaLeads: Lead[]
   qualifiedCount: number; qualifiedLeads: Lead[]
-  closedCount: number;    closedLeads: Lead[]
+  /* Signed/Sent specifically. signedCases below is this plus Pending Send —
+     a case is signed once it reaches Pending Send, whether or not it has been
+     sent on yet. */
+  sentCount: number;      sentLeads: Lead[]
 }
 
 function emptyAdData(firmSlug: string | null = null, firmName: string | null = null, latestInvoice: string | null = null): AdData {
   return {
-    signedCases: 0, firmSlug, firmName, latestInvoice,
+    signedCases: 0, signedLeads: [], firmSlug, firmName, latestInvoice,
     newLeadCount: 0,      newLeadLeads: [],
     nrCount: 0,           nrLeads: [],
     fuCount: 0,           fuLeads: [],
@@ -111,7 +172,7 @@ function emptyAdData(firmSlug: string | null = null, firmName: string | null = n
     nqCount: 0,           nqLeads: [],
     miaCount: 0,          miaLeads: [],
     qualifiedCount: 0,    qualifiedLeads: [],
-    closedCount: 0,       closedLeads: [],
+    sentCount: 0,         sentLeads: [],
   }
 }
 
@@ -119,6 +180,7 @@ function emptyAdData(firmSlug: string | null = null, firmName: string | null = n
 // If start/end provided, filters by opp.createdAt date range
 // Unattributed leads (no UTM ad_id) are resolved via ghl_leads or stored under '__unattributed__'
 async function fetchPipelineBreakdown(
+  stageMap: Record<string, StageLabel>,
   pipelineId: string,
   start: string | null = null,
   end: string | null = null,
@@ -133,22 +195,29 @@ async function fetchPipelineBreakdown(
   console.log('[metrics:creative-overview] GHL sweep start', { pipelineId })
   while (url && pages < 20) {
     pages++
-    const res = await fetch(url, {
+    const res = await ghlFetch(url, {
       headers: { Authorization: `Bearer ${GHL_API_KEY}`, Version: '2021-07-28' },
       // 5-min shared cache: this sweep costs ~42 GHL calls per dashboard load
       // and was uncached on every request. Metrics minutes-stale are fine.
       next: { revalidate: 300 },
     })
-    if (!res.ok) break
+    /* Breaking here reports a partial sweep as a complete one: every ad past
+       the cut-off silently shows zero signed cases, which is indistinguishable
+       from genuinely having none. ghlFetch already waits out a burst trip, so
+       reaching this means a real refusal — say so rather than under-count. */
+    if (!res.ok) {
+      console.error('[metrics:creative-overview] GHL refused (%d) on pipeline %s after %d page(s)',
+        res.status, pipelineId, pages - 1)
+      throw new GhlQuotaError(res.status,
+        res.headers.get('x-ratelimit-daily-remaining'),
+        res.headers.get('x-ratelimit-daily-reset'),
+        readGhlLimits(res.headers))
+    }
     const data: any = await res.json()
     for (const opp of (data.opportunities || [])) {
-      // Date filter: skip opps outside the requested date range
-      if (start && end) {
-        const created = (opp.createdAt || '').split('T')[0]
-        if (created < start || created > end) continue
-      }
       const stageName = (opp.pipelineStage?.name || '').toLowerCase()
       const label: StageLabel | undefined =
+        stageMap[opp.pipelineStageId] ||
         GHL_STAGE_LABEL[opp.pipelineStageId] ||
         (stageName.includes('new lead') || stageName.includes('new_lead') ? 'new_lead' :
          stageName.includes('no response') || stageName.includes('no_response') ? 'nr' :
@@ -160,14 +229,37 @@ async function fetchPipelineBreakdown(
          stageName.includes('not qualified') || stageName.includes('not_qualified') ? 'nq' :
          stageName === 'mia' ? 'mia' :
          stageName.includes('qualified lead') ? 'qualified' :
-         stageName.includes('closed') ? 'closed' : undefined)
+         /* The pipelines call it "Signed/Sent". The old branch looked for
+            "closed", which no pipeline has, so every signed opportunity was
+            dropped on the floor here. */
+         stageName.includes('signed') || stageName.includes('closed') ? 'signed' : undefined)
       if (!label) continue
+
+      /* Date filter. Signed cases are filtered on the stage change that made
+         them signed; everything else on when the lead arrived. Filtering both
+         the same way would hide a case that signed this month off a lead that
+         came in last month. */
+      if (start && end) {
+        const inStage = label === 'pending_send' || label === 'signed'
+        const when = ((inStage ? (opp.lastStageChangeAt || opp.updatedAt || opp.createdAt) : opp.createdAt) || '').split('T')[0]
+        if (!when || when < start || when > end) continue
+      }
+
+      /* A case is signed when it reaches Pending Send, so that is the date it
+         should be counted on — not when the lead first came in, which can be
+         weeks earlier and would file the case in the wrong month.
+
+         GHL exposes only the LAST stage change, so this is exact while the
+         opportunity still sits in Pending Send and slightly late once it moves
+         on to Signed/Sent. There is no stage history to do better with. */
+      const signedAt = opp.lastStageChangeAt || opp.updatedAt || opp.createdAt || null
+      const isSignedStage = label === 'pending_send' || label === 'signed'
 
       const contact: Lead = {
         name:      opp.contact?.name || opp.name || null,
         phone:     opp.contact?.phone || null,
         email:     opp.contact?.email || null,
-        createdAt: opp.createdAt || null,
+        createdAt: isSignedStage ? signedAt : (opp.createdAt || null),
       }
 
       const attr = opp.attributions?.find((a: any) => a.isFirst) || opp.attributions?.[0]
@@ -260,10 +352,15 @@ export async function GET(req: Request) {
     const pipelineStart = isCustomOrPreset ? start : null
     const pipelineEnd   = isCustomOrPreset ? end   : null
 
-    let signedQuery = supabase.from('ghl_leads').select('ad_id, firm_id, created_at')
+    /* contact_name/qualified_at come along so a signed case can be named, not
+       just counted — the tile is clickable and has to show who. */
+    let signedQuery = supabase.from('ghl_leads')
+      .select('ad_id, firm_id, created_at, contact_name, contact_phone, contact_email, qualified_at, case_status')
     if (isCustomOrPreset) {
       signedQuery = signedQuery.gte('created_at', `${start}T00:00:00`).lte('created_at', `${end}T23:59:59`)
     }
+
+    const stageMap = await liveStageMap()
 
     const [signedRes, firmsRes, invoicesRes, pipelineResults] = await Promise.all([
       signedQuery,
@@ -271,7 +368,7 @@ export async function GET(req: Request) {
       supabase.from('firm_invoices').select('firm_id, code').order('sort_order', { ascending: false }).order('period_start', { ascending: false }),
       Promise.all(
         Object.entries(GHL_PIPELINES).map(([slug, pid]) =>
-          fetchPipelineBreakdown(pid, pipelineStart, pipelineEnd)
+          fetchPipelineBreakdown(stageMap, pid, pipelineStart, pipelineEnd)
             .then(data => ({ slug, data }))
             .catch(() => ({ slug, data: {} as Record<string, { label: StageLabel; contact: Lead }[]> }))
         )
@@ -296,12 +393,13 @@ export async function GET(req: Request) {
 
     const byAdId: Record<string, AdData> = {}
 
-    // Signed cases from Supabase
+    /* Supabase rows attach a firm to an ad and nothing more. Signed cases are
+       counted from the pipeline below: a case is signed once it reaches
+       Pending Send, and the pipeline is where that state actually lives. */
     for (const row of (signedRes.data || [])) {
       if (!row.ad_id) continue
       const firm = firmById[row.firm_id] || null
       if (!byAdId[row.ad_id]) byAdId[row.ad_id] = emptyAdData(firm?.slug || null, firm?.name || null, firm?.latestInvoice || null)
-      byAdId[row.ad_id].signedCases++
       if (firm?.slug && !byAdId[row.ad_id].firmSlug) {
         byAdId[row.ad_id].firmSlug = firm.slug
         byAdId[row.ad_id].firmName = firm.name
@@ -331,9 +429,21 @@ export async function GET(req: Request) {
           else if (label === 'nq')            { d.nqCount++;           d.nqLeads.push(contact) }
           else if (label === 'mia')           { d.miaCount++;          d.miaLeads.push(contact) }
           else if (label === 'qualified')     { d.qualifiedCount++;    d.qualifiedLeads.push(contact) }
-          else if (label === 'closed')        { d.closedCount++;       d.closedLeads.push(contact) }
+          else if (label === 'signed')        { d.sentCount++;         d.sentLeads.push(contact) }
         }
       }
+    }
+
+
+    /* Signed = Pending Send + Signed/Sent. Pending Send is the point the case
+       is ours; Signed/Sent is where it goes afterwards, so counting only the
+       latter would under-report everything still in flight. */
+    for (const d of Object.values(byAdId)) {
+      d.signedCases = d.pendingSendCount + d.sentCount
+      d.signedLeads = [
+        ...d.pendingSendLeads.map(l => ({ ...l, stage: 'Pending Send' })),
+        ...d.sentLeads.map(l => ({ ...l, stage: 'Signed/Sent' })),
+      ]
     }
 
     // Attribution via meta_campaign_filter: any adId containing a firm's filter string → assign that firm
@@ -352,6 +462,18 @@ export async function GET(req: Request) {
 
     return NextResponse.json({ byAdId })
   } catch (err) {
+    /* A quota refusal is a known, temporary condition rather than a crash, and
+       it carries a message worth showing — "burst limit, clears in seconds" is
+       actionable, "unhandled error" is not. Either way byAdId is returned
+       empty rather than partial: the outcome columns show nothing, which is
+       honest, instead of a subset that reads as the whole truth. */
+    if (err instanceof GhlQuotaError) {
+      console.error('[creative-overview]', err.message)
+      return NextResponse.json(
+        { error: err.message, limit: err.kind, retryAfterMs: err.retryAfterMs, byAdId: {} },
+        { status: 429 }
+      )
+    }
     console.error('[creative-overview] unhandled error:', err)
     return NextResponse.json({ error: String(err), byAdId: {} }, { status: 500 })
   }

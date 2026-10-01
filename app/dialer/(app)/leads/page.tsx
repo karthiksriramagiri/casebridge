@@ -1,5 +1,7 @@
 'use client'
 
+import { formatResetIn } from '@/lib/ghl-pipelines'
+
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useCall } from '../../_context/call'
 import type { Lead as CallLead } from '../../_types'
@@ -602,9 +604,7 @@ export default function LeadsPage() {
           // Without this the page rendered an empty stage list on a GHL rate
           // limit, which looks identical to "no leads" — and every reload
           // spent ~26 more GHL calls making the outage worse.
-          const reset = d.resetInSeconds
-            ? ` Resets in ~${Math.round(d.resetInSeconds / 3600)}h.`
-            : ''
+          const reset = formatResetIn(d.resetInSeconds)
           setCampsError(`${d.error ?? 'Failed to load stages'}${reset}`)
           return
         }

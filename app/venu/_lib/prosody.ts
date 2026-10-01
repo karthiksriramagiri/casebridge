@@ -17,10 +17,21 @@ export interface ProsodyFrame {
   f0: number | null
   /** loudness in dBFS (negative; -100 is silence) */
   db: number
+  /**
+   * Spectral tilt in dB: energy below 1kHz against energy from 1-5kHz.
+   * Higher means darker and softer; a hard, clipped delivery keeps more
+   * high-frequency energy. The clearest voice-quality correlate of warmth
+   * that can be had from a microphone without a model.
+   */
+  tilt?: number
 }
 
 export interface TurnProsody {
   medianF0: number | null
+  /** Median spectral tilt across the turn. */
+  tilt?: number | null
+  /** Voiced frames per second — a pace proxy that needs no word counting. */
+  pace?: number | null
   /** Pitch spread in semitones — the monotone/expressive axis. */
   pitchVariability: number | null
   pitchRange: number | null
@@ -46,12 +57,23 @@ export function detectPitch(buf: Float32Array, sampleRate: number): number | nul
   const n = buf.length
 
   let rms = 0
-  for (let i = 0; i < n; i++) rms += buf[i] * buf[i]
+  let peak = 0
+  for (let i = 0; i < n; i++) {
+    rms += buf[i] * buf[i]
+    const a = Math.abs(buf[i])
+    if (a > peak) peak = a
+  }
   rms = Math.sqrt(rms / n)
-  if (rms < 0.006) return null
+  if (rms < 0.0015) return null
 
   // Trim leading/trailing near-silence so the correlation window is speech.
-  const threshold = 0.2
+  //
+  // Relative to this frame's own peak, NOT an absolute level. It used to be a
+  // fixed 0.2, which worked only while automatic gain control was inflating the
+  // signal. Turning AGC off — necessary to stop the mic riding room tone up and
+  // breaking end-of-turn detection — dropped input levels below that constant,
+  // so the trim ate the whole buffer and pitch came back null on most frames.
+  const threshold = Math.max(0.02, peak * 0.2)
   let start = 0
   let end = n - 1
   while (start < n / 2 && Math.abs(buf[start]) < threshold) start++
@@ -126,6 +148,24 @@ export function detectPitch(buf: Float32Array, sampleRate: number): number | nul
   return f0 >= MIN_F0 && f0 <= MAX_F0 ? f0 : null
 }
 
+/**
+ * Low-band against high-band energy, in dB, from the analyser's own FFT.
+ * Positive and rising means a darker, breathier voice.
+ */
+export function spectralTilt(freqDb: Float32Array, sampleRate: number): number {
+  const binHz = sampleRate / 2 / freqDb.length
+  let lo = 0, loN = 0, hi = 0, hiN = 0
+  for (let i = 1; i < freqDb.length; i++) {
+    const f = i * binHz
+    const v = freqDb[i]
+    if (!Number.isFinite(v) || v < -110) continue
+    if (f >= 120 && f < 1000) { lo += v; loN++ }
+    else if (f >= 1000 && f < 5000) { hi += v; hiN++ }
+  }
+  if (!loN || !hiN) return 0
+  return Number((lo / loN - hi / hiN).toFixed(2))
+}
+
 export function rmsDb(buf: Float32Array): number {
   let sum = 0
   for (let i = 0; i < buf.length; i++) sum += buf[i] * buf[i]
@@ -147,7 +187,10 @@ function semitones(hz: number, ref: number): number {
 export function summarise(frames: ProsodyFrame[]): TurnProsody | null {
   if (frames.length === 0) return null
 
-  const audible = frames.filter((f) => f.db > SILENCE_DB)
+  // Relative to the loudest frame, so a quietly recorded take still summarises.
+  const loudest = frames.reduce((m, f) => Math.max(m, f.db), -100)
+  const audibleFloor = Math.max(SILENCE_DB, loudest - 30)
+  const audible = frames.filter((f) => f.db > audibleFloor)
   const voiced = audible.filter((f) => f.f0 !== null).map((f) => f.f0 as number)
   const dbs = audible.map((f) => f.db)
 
@@ -170,6 +213,9 @@ export function summarise(frames: ProsodyFrame[]): TurnProsody | null {
     pitchRange = hi - lo
   }
 
+  const tilts = audible.map((f) => f.tilt).filter((v): v is number => typeof v === 'number')
+  const spanSec = Math.max(0.25, (frames[frames.length - 1].t - frames[0].t) / 1000)
+
   const meanDb = dbs.reduce((a, b) => a + b, 0) / dbs.length
   const sortedDb = [...dbs].sort((a, b) => a - b)
   const dbRange =
@@ -177,6 +223,8 @@ export function summarise(frames: ProsodyFrame[]): TurnProsody | null {
 
   return {
     medianF0: medianF0 === null ? null : Math.round(medianF0),
+    tilt: tilts.length >= 4 ? Number(median(tilts).toFixed(2)) : null,
+    pace: Number((voiced.length / spanSec).toFixed(1)),
     pitchVariability: pitchVariability === null ? null : Number(pitchVariability.toFixed(2)),
     pitchRange: pitchRange === null ? null : Number(pitchRange.toFixed(2)),
     meanDb: Number(meanDb.toFixed(1)),
@@ -194,6 +242,7 @@ export class ProsodyMeter {
   private analyser: AnalyserNode | null = null
   private timer: ReturnType<typeof setInterval> | null = null
   private buf: Float32Array = new Float32Array(BUFFER)
+  private freq: Float32Array = new Float32Array(BUFFER / 2)
   frames: ProsodyFrame[] = []
 
   /** @param now - returns ms from session start, shared with the transcript */
@@ -204,6 +253,10 @@ export class ProsodyMeter {
       if (!Ctx) return false
 
       this.ctx = new Ctx()
+      // Created after `await getUserMedia`, so the user gesture has expired and
+      // Chrome starts the context suspended — a suspended analyser returns
+      // silence forever.
+      if (this.ctx.state === 'suspended') void this.ctx.resume()
       const source = this.ctx.createMediaStreamSource(stream)
       const analyser = this.ctx.createAnalyser()
       analyser.fftSize = BUFFER
@@ -214,10 +267,12 @@ export class ProsodyMeter {
       this.timer = setInterval(() => {
         if (!this.analyser || !this.ctx) return
         this.analyser.getFloatTimeDomainData(this.buf as any)
+        this.analyser.getFloatFrequencyData(this.freq as any)
         this.frames.push({
           t: now(),
           f0: detectPitch(this.buf, this.ctx.sampleRate),
           db: rmsDb(this.buf),
+          tilt: spectralTilt(this.freq, this.ctx.sampleRate),
         })
       }, SAMPLE_INTERVAL_MS)
 
@@ -227,6 +282,13 @@ export class ProsodyMeter {
       // never take the call down with it.
       return false
     }
+  }
+
+  /** What the meter actually heard — for diagnosing a failed capture. */
+  stats() {
+    const voiced = this.frames.filter((f) => f.f0 !== null).length
+    const peak = this.frames.reduce((m, f) => Math.max(m, f.db), -100)
+    return { frames: this.frames.length, voiced, peakDb: Math.round(peak) }
   }
 
   /** Loudness of the most recent frame, for voice-activity detection. */

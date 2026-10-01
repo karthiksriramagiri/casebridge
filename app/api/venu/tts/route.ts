@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getVenuUser, deepgramKey } from '@/app/venu/_lib/auth'
 import { claim } from '@/app/venu/_lib/tts-prewarm'
+import { venuAdmin } from '@/app/venu/_lib/auth'
+import { voiceFor } from '@/app/venu/_lib/nuance-leads'
 
 // Venu's voice.
 //
@@ -16,8 +18,23 @@ export async function GET(req: NextRequest) {
   const text = req.nextUrl.searchParams.get('text')
   if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 })
 
-  const voice = req.nextUrl.searchParams.get('voice')
-  const model = voice?.startsWith('aura') ? voice : 'aura-2-thalia-en'
+  // Resolve the voice in this order: an explicit one, then the session's own
+  // caller, then a neutral default.
+  //
+  // The fallback used to be aura-2-thalia-en — the original bright voice this
+  // was moved off — so any caller that reached this route without an explicit
+  // voice came out sounding like a cheerful woman regardless of who they were.
+  let model = req.nextUrl.searchParams.get('voice') ?? ''
+
+  if (!model.startsWith('aura')) {
+    const sessionId = req.nextUrl.searchParams.get('session')
+    if (sessionId) {
+      const { data } = await venuAdmin()
+        .from('venu_sessions').select('scenario_id').eq('id', sessionId).single()
+      if (data?.scenario_id) model = voiceFor(data.scenario_id)
+    }
+  }
+  if (!model.startsWith('aura')) model = 'aura-2-andromeda-en'
 
   // If /api/venu/say already started this line, take that stream — it has a
   // head start measured in hundreds of milliseconds.

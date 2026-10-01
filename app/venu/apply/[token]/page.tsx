@@ -51,6 +51,10 @@ export default function VoiceInterview() {
   const [feed, setFeed] = useState<Line[]>([])
   const [loading, setLoading] = useState(true)
   const [phone, setPhone] = useState('')
+  /* The box opens by itself when Venu asks. This is the way back to it if she
+     asks in a form we did not recognise — a candidate who has said their
+     number out loud and seen nothing happen needs somewhere to put it. */
+  const [phoneOpen, setPhoneOpen] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
   const [level, setLevel] = useState(0)
@@ -119,17 +123,29 @@ export default function VoiceInterview() {
     el.play().catch(done)
   }), [token])
 
-  /** Stop the whole-call recorder and put the file where a reviewer can play it. */
+  /** Stop the whole-call recorder and put the file where a reviewer can play it.
+
+      Called from more than one place on purpose. The interview used to save
+      only when the model remembered to mark the close, so an interview that
+      ended any other way — abandoned, errored, or simply unmarked — left no
+      audio at all. It now also saves when the number is submitted and when
+      the page goes away. */
+  const savingRef = useRef(false)
+  const savedRef = useRef(false)
+
   const saveCallRecording = useCallback(async () => {
     const rec = callRecorderRef.current
     if (!rec || rec.state === 'inactive') return
-    callRecorderRef.current = null
+    // Two save points can fire close together; the second must not upload a
+    // second copy or race the first.
+    if (savingRef.current || savedRef.current) return
+    savingRef.current = true
 
     const blob: Blob = await new Promise(resolve => {
       rec.addEventListener('stop', () => resolve(new Blob(callChunksRef.current, { type: rec.mimeType || 'audio/webm' })), { once: true })
       rec.stop()
     })
-    if (!blob.size) return
+    if (!blob.size) { savingRef.current = false; return }
 
     try {
       const startRes = await fetch(`/api/venu/candidates/${token}/upload`, {
@@ -150,12 +166,33 @@ export default function VoiceInterview() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ recordingPath: start.path, recordingName: 'interview.webm' }),
       })
+      savedRef.current = true
+      callRecorderRef.current = null
     } catch (e) {
-      // The transcript is already saved; losing the audio must not cost them
-      // the interview, so this is reported to us and not to the candidate.
+      /* The transcript is already saved; losing the audio must not cost them
+         the interview, so this is reported to us and not to the candidate.
+         The recorder is deliberately left in place so a later save point can
+         try again — nulling it here is what made the first failure final. */
       console.error('[venu:apply] call recording upload failed', e)
+    } finally {
+      savingRef.current = false
     }
   }, [token])
+
+  /* A closed tab is the most common way an interview ends early, and it used
+     to take the recording with it. Saving on pagehide keeps whatever was
+     captured; visibilitychange covers mobile, where pagehide is unreliable. */
+  useEffect(() => {
+    const flush = () => { void saveCallRecording() }
+    const onHide = () => { if (document.visibilityState === 'hidden') flush() }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onHide)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onHide)
+    }
+  }, [saveCallRecording])
+
 
   /** Send what they said, get Venu's reply, speak it, listen again. */
   const exchange = useCallback(async (audio: Blob | null, ms: number) => {
@@ -363,6 +400,13 @@ export default function VoiceInterview() {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error || 'Could not save your number.')
       setCandidate(data.candidate)
+      setPhoneOpen(false)
+
+      /* Opened early, this is just a number being filed — the interview is
+         still going and must not be hung up on the candidate mid-answer. Only
+         the real close ends the call. */
+      if (stage !== 'phone') return
+
       setStage('done')
       say('venu', CLOSING[1])
       endedRef.current = true
@@ -436,7 +480,7 @@ export default function VoiceInterview() {
             </p>
           )}
 
-          {stage === 'phone' && (
+          {(stage === 'phone' || phoneOpen) && (
             <div className="venu-card" style={{ padding: 24, marginTop: 20 }}>
               <label className="venu-label" htmlFor="phone">Your phone number</label>
               <input id="phone" className="venu-input" inputMode="tel" autoComplete="tel" autoFocus
@@ -449,6 +493,19 @@ export default function VoiceInterview() {
                 {busy ? 'Sending…' : 'Send my number'}
               </button>
             </div>
+          )}
+
+          {stage !== 'phone' && !phoneOpen && (
+            <p style={{ textAlign: 'center', marginTop: 14 }}>
+              <button
+                onClick={() => setPhoneOpen(true)}
+                style={{
+                  border: 0, background: 'none', padding: 0, cursor: 'pointer',
+                  fontSize: 11.5, color: 'var(--muted)', textDecoration: 'underline',
+                }}>
+                Asked for your number? Add it here
+              </button>
+            </p>
           )}
 
         </>

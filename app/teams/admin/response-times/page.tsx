@@ -4,8 +4,8 @@ import { useState, useEffect } from 'react'
 
 interface WorkerStats {
   workerName: string
-  slack: { count: number; avgFmt: string; medFmt: string; under90: number; pctUnder90: number }
-  call:  { count: number; avgFmt: string; medFmt: string; under90: number; pctUnder90: number }
+  slack: { count: number; medFmt: string; under90: number; pctUnder90: number }
+  call:  { count: number; medFmt: string; under90: number; pctUnder90: number }
 }
 
 export default function ResponseTimesPage() {
@@ -69,10 +69,6 @@ export default function ResponseTimesPage() {
                     ) : (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Avg</span>
-                          <span className="font-semibold text-gray-900">{w.slack.avgFmt}</span>
-                        </div>
-                        <div className="flex justify-between text-sm">
                           <span className="text-gray-500">Median</span>
                           <span className="font-semibold text-gray-900">{w.slack.medFmt}</span>
                         </div>
@@ -93,10 +89,6 @@ export default function ResponseTimesPage() {
                       <p className="text-sm text-gray-400">No data</p>
                     ) : (
                       <div className="space-y-2">
-                        <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Avg</span>
-                          <span className="font-semibold text-gray-900">{w.call.avgFmt}</span>
-                        </div>
                         <div className="flex justify-between text-sm">
                           <span className="text-gray-500">Median</span>
                           <span className="font-semibold text-gray-900">{w.call.medFmt}</span>

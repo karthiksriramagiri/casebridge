@@ -276,12 +276,17 @@ export async function GET(req: NextRequest) {
       '}',
     ].join('')
 
+    /* One request per ad rather than the batched ?ids= form: that parameter is
+       gone in Graph v26+, and an app pinned to a newer version than the one in
+       the URL gets upgraded silently — which is why thumbnails resolved for one
+       account and came back empty for the other. Individual lookups work on
+       every version, and each is separately cacheable. */
     await Promise.all(
-      chunk(adIds, 50).map(async idsChunk => {
-        const res = await fetchMeta(acct.token, '/', { ids: idsChunk.join(','), fields: CREATIVE_FIELDS })
-        for (const [adId, val] of Object.entries<any>(res || {})) {
-          const c = val?.creative
-          if (!c) continue
+      chunk(adIds, 25).map(async group => {
+        await Promise.all(group.map(async adId => {
+          const res = await fetchMeta(acct.token, `/${adId}`, { fields: CREATIVE_FIELDS })
+          const c = (res as any)?.creative
+          if (!c) return
           const oss = c.object_story_spec ?? {}
           const afs = c.asset_feed_spec ?? {}
           creativeById[adId] = {
@@ -291,7 +296,7 @@ export async function GET(req: NextRequest) {
               oss.link_data?.picture ?? c.thumbnail_url ?? null,
             isVideo: c.object_type === 'VIDEO' || !!oss.video_data,
           }
-        }
+        }))
       })
     )
 

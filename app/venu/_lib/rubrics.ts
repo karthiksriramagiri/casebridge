@@ -20,6 +20,26 @@
  */
 export const FOOTPRINT_STATES = ['CA']
 
+/**
+ * The caller is a person describing their own accident, not a hostile witness.
+ *
+ * What they say is taken as true. A setter's job is to collect the facts, not
+ * to audit them — verification happens later, by people with access to the
+ * carriers and the reports. Scoring that ignored this started producing
+ * coaching like "ask whether anyone has actually reached out to Mercury to
+ * verify that policy was in force", which is not a question a setter asks and
+ * not a skill this drill exists to build.
+ */
+export const TAKE_THEIR_WORD = {
+  rule: 'Take the caller at their word. If they say the other driver has insurance, insurance is confirmed. If they say they were not at fault, that is the fact of the call.',
+  neverRequire: [
+    'Verifying that a policy was actually in force, or suggesting someone call the carrier to check.',
+    'Asking whether the caller\'s own policy was active on the day, or probing for uninsured-motorist coverage as a catch.',
+    'Cross-examining a caller about something they have already answered.',
+    'Any question whose purpose is to catch the caller out rather than to capture a fact.',
+  ],
+}
+
 export const STATE_GATE = {
   rule: 'The accident must have happened in California. Anywhere else is an instant no, regardless of liability, injuries, insurance or treatment.',
   rightWay: [
@@ -76,8 +96,8 @@ export const CHECKPOINTS: Checkpoint[] = [
     id: 'police_insurance',
     label: 'Police report & insurance',
     complete:
-      'Whether police responded and a report exists (number/department if available), plus insurance on both sides — the defendant\'s coverage to pursue, and the caller\'s own policy status.',
-    incomplete: ['"The cops came" with no report detail', 'Only one side\'s insurance captured', 'Never asks whether the caller\'s own policy was active'],
+      'Whether police responded and a report exists (number/department if available), plus who insures each side. Capturing the carrier is the job — if the caller says the other driver gave them a Mercury card, that is insurance captured.',
+    incomplete: ['"The cops came" with no report detail', 'Neither side\'s carrier captured'],
   },
   {
     id: 'injuries',
@@ -112,6 +132,7 @@ export const EMPATHY_RUBRIC = {
     'Explains why an intrusive question is being asked.',
   ],
   negative: [
+    'Asking something the caller already answered — it tells them nobody was listening.',
     'Questions fired one after another with no acknowledgement between them.',
     'Moves straight to the next field after an emotional disclosure.',
     'Generic filler ("okay", "got it", "mhm") as the only response to distress.',

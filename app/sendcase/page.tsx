@@ -1,5 +1,7 @@
 'use client'
 
+import { formatResetIn } from '@/lib/ghl-pipelines'
+
 import { useEffect, useState, useCallback } from 'react'
 
 const BG     = '#EDEAE3'
@@ -114,9 +116,7 @@ export default function SendCasePage() {
       if (!res.ok || data.error) {
         // A GHL refusal used to arrive here as an empty list, which the UI
         // showed as "no leads" — indistinguishable from a real empty pipeline.
-        const reset = data.resetInSeconds
-          ? ` Resets in ~${Math.round(data.resetInSeconds / 3600)}h.`
-          : ''
+        const reset = formatResetIn(data.resetInSeconds)
         setApiError(`${data.error ?? `Request failed (${res.status})`}${reset}`)
       } else {
         setApiError(data.warning ?? null)

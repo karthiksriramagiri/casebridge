@@ -148,10 +148,15 @@ export async function POST(request: NextRequest) {
   }
 
   if (!firmRow) {
+    /* Never fall back onto an archived firm — an unmatched lead landing on a
+       client we no longer run would be invisible and wrong. Filtered in JS
+       rather than in the query: this is lead intake, and it must not start
+       500ing on a deployment where the archive column does not exist yet. */
     const { data } = await supabase
-      .from('firms').select('id, name')
-      .order('created_at', { ascending: true }).limit(1).single()
-    if (data) firmRow = data
+      .from('firms').select('*')
+      .order('created_at', { ascending: true })
+    const first = (data ?? []).find((f: any) => !f.archived) ?? (data ?? [])[0]
+    if (first) firmRow = { id: first.id, name: first.name }
   }
 
   firmId = firmRow?.id ?? null
@@ -175,18 +180,28 @@ export async function POST(request: NextRequest) {
     if (Array.isArray(invRows) && invRows.length > 0) invoiceCode = invRows[0].code
   }
 
-  // If ad_name is missing but ad_id is present, look it up from Meta so
-  // creative attribution works (GHL only sends ad_id, not ad_name)
+  /* If ad_name is missing but ad_id is present, look it up from Meta so
+     creative attribution works (GHL only sends ad_id, not ad_name).
+
+     The same hop also returns the ad set and campaign names. GHL sends ids for
+     those, and an id is not something anyone can read in Slack — asking for
+     all three costs nothing extra and is what makes the alert useful. */
   let resolvedAdName = adName
-  if (!resolvedAdName && adId && process.env.FB_ACCESS_TOKEN) {
+  let resolvedAdsetName: string | null = null
+  let resolvedCampaignName: string | null = null
+
+  if (adId && process.env.FB_ACCESS_TOKEN) {
     try {
       const metaRes = await fetch(
-        `https://graph.facebook.com/v19.0/${adId}?fields=name&access_token=${process.env.FB_ACCESS_TOKEN}`,
+        `https://graph.facebook.com/v25.0/${adId}?fields=name,adset{name},campaign{name}` +
+        `&access_token=${process.env.FB_ACCESS_TOKEN}`,
         { cache: 'no-store' }
       )
       if (metaRes.ok) {
         const metaData = await metaRes.json()
-        resolvedAdName = metaData.name || null
+        resolvedAdName = resolvedAdName || metaData.name || null
+        resolvedAdsetName = metaData.adset?.name ?? null
+        resolvedCampaignName = metaData.campaign?.name ?? null
       }
     } catch {}
   }

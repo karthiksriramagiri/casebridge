@@ -3,6 +3,7 @@ import { getVenuUser, venuAdmin } from '@/app/venu/_lib/auth'
 import { getNuanceScenario } from '@/app/venu/_lib/nuance-scenarios'
 import { computeMetrics } from '@/app/venu/_lib/metrics'
 import { scoreSetterSession } from '@/app/venu/_lib/scoring'
+import { loadBaseline } from '@/app/venu/_lib/voice-baseline-store'
 import type { Mode, Turn } from '@/app/venu/_lib/types'
 
 export const maxDuration = 300
@@ -33,13 +34,19 @@ export async function POST(req: NextRequest) {
 
   const metrics = computeMetrics(turns ?? [])
 
+  // Stamp the rep's voice profile onto the call. Observe-only: it is stored so
+  // the features can later be checked against calls a human has judged warm or
+  // cold, not used to score anything today.
+  const voiceBaseline = await loadBaseline(user.id)
+  const stored = { ...metrics, voiceBaseline }
+
   await db.from('venu_sessions').update({
     status: 'scoring',
     end_reason: endReason,
     ended_at: new Date().toISOString(),
     duration_sec: metrics.durationSec,
     transcript: turns,
-    metrics,
+    metrics: stored,
   }).eq('id', sessionId)
 
   if (!turns?.some((t) => t.speaker === 'rep' && t.text.trim())) {

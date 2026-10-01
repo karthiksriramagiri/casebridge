@@ -57,6 +57,16 @@ export function accountByKey(key: string | null | undefined): AdAccount | null {
   return adAccounts().find(a => a.key === key) ?? null
 }
 
+/** The token that can read a given act_… id. Firms carry their own ad account,
+    and a token only reaches the accounts its user is assigned to — reading one
+    firm's account with another's token is the (#200) permission error. Falls
+    back to the primary token so a firm on the original account is unaffected. */
+export function tokenForAccount(accountId: string | null | undefined): string {
+  const want = actId(accountId ?? '')
+  const match = adAccounts().find(a => a.id === want)
+  return match?.token ?? primaryAccount()?.token ?? ''
+}
+
 /** Primary account — the one single-account reports still read. */
 export function primaryAccount(): AdAccount | null {
   return adAccounts()[0] ?? null

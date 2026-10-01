@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { money, num } from '@/app/_metrics/dash'
 import { BENCH, bandUp, bandDown, type Band } from '@/app/_metrics/benchmarks'
+import { statusOf, SUGGEST, type Suggestion } from '@/app/_metrics/suggest'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Creative Analysis — the list, and one creative in full.
@@ -44,24 +45,14 @@ const COL_LABEL: Record<string, string> = {
   cpq: 'CPQ', cpa: 'CPA',
 }
 
-/* A creative's status. Distinct from the health verdict, which answers
-   "keep spending?" — this answers "what is this creative to us?". */
-function statusOf(ad: Ad): { key: string; label: string } {
-  const a = ad.creative?.action
-  if (a === 'learning') return { key: 'learning', label: 'LEARNING' }
-  if ((ad.signed ?? 0) > 0 && a === 'double_down') return { key: 'winner', label: 'WINNER' }
-  if (a === 'double_down') return { key: 'winner', label: 'WINNER' }
-  if (a === 'new_concept' || ad.health?.level === 'kill') return { key: 'cut', label: 'CUT' }
-  if (ad.health?.level === 'watch' || a === 'fatigue') return { key: 'watch', label: 'WATCH' }
-  return { key: 'test', label: 'TEST' }
-}
-
 /* Sorting a verdict alphabetically ("CUT, KEEP, WATCH") tells you nothing.
    Both verdict columns rank best → worst instead, so descending puts winners
    on top exactly like the numeric columns, and ascending surfaces the
    problems — and, for Decision, the rows nobody has called yet. */
+/* Best → worst, so descending puts winners on top. KEEP sits above TEST: a
+   lead yesterday is weak evidence, but it is evidence. */
 const SUGGESTED_RANK: Record<string, number> = {
-  winner: 4, test: 3, learning: 2, watch: 1, cut: 0,
+  winner: 5, keep: 4, test: 3, learning: 2, watch: 1, cut: 0,
 }
 const DECISION_RANK: Record<string, number> = {
   keep: 3, watch: 2, learning: 1, kill: 0,
@@ -306,7 +297,7 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
         <Select label="Language" value={language} onChange={setLanguage} options={options.languages} />
         <Select label="State"    value={state}    onChange={setState}    options={options.states} />
         <Select label="Suggested" value={status}  onChange={setStatus}
-          options={['winner', 'watch', 'test', 'learning', 'cut']} />
+          options={['winner', 'keep', 'test', 'watch', 'cut', 'learning']} />
         <Select label="Decision" value={decision} onChange={setDecision}
           options={['keep', 'watch', 'kill', 'learning', 'none']} />
         {(format !== 'all' || language !== 'all' || state !== 'all' || status !== 'all'
@@ -392,7 +383,7 @@ export function CreativeAnalysisView({ ads, benchmarks, summary, selectedId, onS
                     )
                   })}
 
-                  <td><span className={`ka-status is-${st.key}`}>{st.label}</span></td>
+                  <td><SuggestBadge s={st} /></td>
                   <td onClick={e => e.stopPropagation()}>
                     <DecisionSelect value={decisions[ad.id]} disabled={decisionsLocked}
                       onChange={v => decide(ad, v)} />
@@ -527,6 +518,7 @@ function CreativeDetail({ ad, benchmarks, onBack }: {
   const st = statusOf(ad)
   const days: any[] = ad.daily || []
   const [metric, setMetric] = useState<'leads' | 'cpl' | 'linkCtr'>('leads')
+  const [people, setPeople] = useState<'leads' | 'signed' | null>(null)
 
   const reasons = useMemo(() => buildReasons(ad, benchmarks), [ad, benchmarks])
 
@@ -558,14 +550,32 @@ function CreativeDetail({ ad, benchmarks, onBack }: {
           </div>
         </div>
 
+        {people === 'leads' && (
+          <PeoplePanel
+            title="Leads from this creative"
+            note="grouped by where they sit now"
+            people={ad.leadPeople ?? []}
+            onClose={() => setPeople(null)} />
+        )}
+        {people === 'signed' && (
+          <PeoplePanel
+            title="Signed cases from this creative"
+            people={ad.signedPeople ?? []}
+            onClose={() => setPeople(null)} />
+        )}
+
         <div className="ka-hero-kpis">
           <DetailKpi label="Spend" value={money(ad.spend)} delta={null} />
-          <DetailKpi label="Total Leads" value={num(ad.leads)} delta={null} />
+          <DetailKpi label="Total Leads" value={num(ad.leads)} delta={null}
+            onOpen={(ad.leadPeople?.length ?? 0) > 0 ? () => setPeople('leads') : undefined}
+            openHint={`${ad.leadPeople?.length ?? 0} in the pipeline`} />
           <DetailKpi label="Avg. CPL" value={ad.cpl != null ? money(ad.cpl) : '—'}
             delta={ad.delta?.cpl} goodWhen="down" />
           <DetailKpi label="Qualified" value={ad.qualified != null ? num(ad.qualified) : '—'} delta={null} />
           <DetailKpi label="CPQ" value={ad.cpq != null ? money(ad.cpq) : '—'} delta={null} />
-          <DetailKpi label="Signed Cases" value={ad.signed != null ? num(ad.signed) : '—'} delta={null} />
+          <DetailKpi label="Signed Cases" value={ad.signed != null ? num(ad.signed) : '—'} delta={null}
+            onOpen={(ad.signedPeople?.length ?? 0) > 0 ? () => setPeople('signed') : undefined}
+            openHint="See who signed" />
         </div>
       </div>
 
@@ -697,13 +707,16 @@ function Extra({ k, v }: { k: string; v: string }) {
   )
 }
 
-function DetailKpi({ label, value, delta, goodWhen = 'up' }: {
+function DetailKpi({ label, value, delta, goodWhen = 'up', onOpen, openHint }: {
   label: string; value: string; delta?: number | null; goodWhen?: 'up' | 'down'
+  /** Given only when there are names behind the number worth opening. */
+  onOpen?: () => void
+  openHint?: string
 }) {
   const show = delta != null && isFinite(delta) && Math.abs(Math.round(delta)) >= 5
   const good = show ? (goodWhen === 'down' ? delta! < 0 : delta! > 0) : false
-  return (
-    <div className="mx-card ka-dkpi">
+  const body = (
+    <>
       <span className="ka-dkpi-v">{value}</span>
       <span className="ka-dkpi-l">{label}</span>
       {show && (
@@ -711,8 +724,14 @@ function DetailKpi({ label, value, delta, goodWhen = 'up' }: {
           {delta! > 0 ? '↑' : '↓'}{Math.abs(Math.round(delta!))}%
         </span>
       )}
-    </div>
+      {onOpen && <span className="ka-dkpi-open">{openHint ?? 'See names'} →</span>}
+    </>
   )
+  // A button only when there is something to open — a dead click target on the
+  // tiles that have no names behind them would be worse than no affordance.
+  return onOpen
+    ? <button className="mx-card ka-dkpi is-open" onClick={onOpen}>{body}</button>
+    : <div className="mx-card ka-dkpi">{body}</div>
 }
 
 /* Reasons are derived, not written by a model: each one names the number, the
@@ -842,6 +861,114 @@ const REVIEW_CARDS: { key: ReviewKey; title: string; sub: string; tone: string }
   { key: 'highCpl',     title: 'CPL above target',    sub: `Over ${'$'}${BENCH.cpl.watch} per lead`, tone: 'warn' },
   { key: 'underPacing', title: 'Under pacing',        sub: 'Today under 70% of its 7-day average', tone: 'info' },
 ]
+
+/* ── Who is behind a number ─────────────────────────────────────────────────
+   Counts people argue with are counts they cannot open. Leads are grouped by
+   where they actually sit in the pipeline, because "40 leads" means something
+   very different if thirty of them are No Response. */
+
+function PeoplePanel({ title, note, people, onClose }: {
+  title: string
+  note?: string
+  people: { name: string | null; phone: string | null; email: string | null; createdAt: string | null; stage?: string }[]
+  onClose: () => void
+}) {
+  useEffect(() => {
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose() }
+    window.addEventListener('keydown', esc)
+    return () => window.removeEventListener('keydown', esc)
+  }, [onClose])
+
+  /* Grouped by stage, biggest group first — the shape of the pipeline is the
+     point, not the alphabet. */
+  const groups = useMemo(() => {
+    const m = new Map<string, typeof people>()
+    for (const p of people) {
+      const k = p.stage || 'Unknown'
+      m.set(k, [...(m.get(k) ?? []), p])
+    }
+    return [...m.entries()].sort((a, b) => b[1].length - a[1].length)
+  }, [people])
+
+  const day = (iso: string | null) => {
+    if (!iso) return ''
+    const d = new Date(iso)
+    return isNaN(+d) ? '' : d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  }
+
+  return (
+    <div className="ka-scrim" onClick={onClose}>
+      <aside className="ka-people" onClick={e => e.stopPropagation()} role="dialog" aria-label={title}>
+        <header className="ka-people-head">
+          <div>
+            <p className="ka-people-title">{title}</p>
+            <p className="ka-people-sub">{people.length} {people.length === 1 ? 'person' : 'people'}{note ? ` · ${note}` : ''}</p>
+          </div>
+          <button className="mx-icon-btn" onClick={onClose} aria-label="Close">✕</button>
+        </header>
+
+        <div className="ka-people-body">
+          {groups.length === 0 && <p className="ka-none">Nobody attributed to this creative yet.</p>}
+          {groups.map(([stage, list]) => (
+            <section className="ka-people-group" key={stage}>
+              <p className="ka-people-stage">
+                {stage}<span className="ka-people-n">{list.length}</span>
+              </p>
+              <ul className="ka-people-list">
+                {list.map((p, i) => (
+                  <li key={`${p.phone ?? p.email ?? p.name ?? i}-${i}`}>
+                    <span className="ka-people-name">{p.name || 'Unnamed'}</span>
+                    <span className="ka-people-meta">
+                      {[p.phone, p.email].filter(Boolean).join(' · ')}
+                    </span>
+                    {p.createdAt && <span className="ka-people-day">{day(p.createdAt)}</span>}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+        </div>
+      </aside>
+    </div>
+  )
+}
+
+/* ── Suggested badge ────────────────────────────────────────────────────────
+   Hovering explains the verdict: what fired, the threshold behind it, and the
+   numbers it was tested against. A native title= would do the first of those
+   after a second's delay and nothing else — and the whole point of a suggestion
+   is that someone can disagree with it, which needs the rule visible.
+
+   CSS-only on hover and focus, so it costs no state per row across a table
+   that can run to a few hundred. */
+
+function SuggestBadge({ s }: { s: Suggestion }) {
+  return (
+    <span className="ka-suggest" tabIndex={0}>
+      <span className={`ka-status is-${s.key}`}>{s.label}</span>
+      {(s.why || s.rule) && (
+        <span className="ka-tip" role="tooltip">
+          <span className="ka-tip-head">
+            <span className={`ka-status is-${s.key}`}>{s.label}</span>
+          </span>
+          {s.why && <span className="ka-tip-why">{s.why}</span>}
+          {s.rule && (
+            <span className="ka-tip-rule"><em>Rule</em>{s.rule}</span>
+          )}
+          {!!s.facts?.length && (
+            <span className="ka-tip-facts">
+              {s.facts.map(f => (
+                <span className="ka-tip-fact" key={f.label}>
+                  <span>{f.label}</span><strong>{f.value}</strong>
+                </span>
+              ))}
+            </span>
+          )}
+        </span>
+      )}
+    </span>
+  )
+}
 
 /* ── Decision ───────────────────────────────────────────────────────────────
    The suggestion beside it is derived from thresholds; this is the call a

@@ -13,7 +13,10 @@ export async function GET() {
     .order('created_at', { ascending: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ firms: data ?? [] })
+  /* Filtered here rather than in the query so this still works before the
+     archive migration is run — a missing column just reads as undefined. */
+  const firms = (data ?? []).filter((f: any) => !f.archived)
+  return NextResponse.json({ firms })
 }
 
 export async function POST(request: Request) {

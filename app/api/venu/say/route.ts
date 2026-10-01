@@ -105,6 +105,18 @@ export async function POST(req: NextRequest) {
 
   if (!transcript) return NextResponse.json({ transcript: '', text: '' })
 
+  // A bare acknowledgement is not a turn. The rep saying "Gotcha" while writing
+  // does not need an answer, and treating it as one burns a round trip and
+  // makes the caller sound like they are talking to themselves. It still goes
+  // into the transcript, because filler-as-the-only-response is exactly what
+  // the empathy rubric looks for.
+  const FILLER = /^(ok(ay)?|gotcha|got it|yeah|yep|yes|uh|um|oh|mhm|mm|right|sure|alright|cool|perfect|great|nice|bad|thanks|thank you)[.,!?\s]*$/i
+  if (FILLER.test(transcript)) {
+    session.history.push({ speaker: 'rep', text: transcript })
+    console.log(`[venu:say] acknowledgement only ("${transcript}") — no reply needed`)
+    return NextResponse.json({ transcript, audioPath, text: '', acknowledgement: true })
+  }
+
   session.history.push({ speaker: 'rep', text: transcript })
 
   // Only the recent stretch goes to the model. Input tokens are the main thing
@@ -123,7 +135,7 @@ export async function POST(req: NextRequest) {
   const model = process.env.VENU_TURN_MODEL || 'claude-haiku-4-5'
   const reply = await anthropic().messages.create({
     model,
-    max_tokens: 90,
+    max_tokens: 70,
     ...(model.startsWith('claude-haiku') ? {} : { output_config: { effort: 'low' as const } }),
     system: [{
       type: 'text' as const,

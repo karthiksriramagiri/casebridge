@@ -15,7 +15,7 @@ export default async function VenuHome() {
     .eq('user_id', user.id)
     .eq('track', 'setter')
     .order('started_at', { ascending: false })
-    .limit(8)
+    .limit(200)
 
   const rows = recent ?? []
   const scoreOf = (r: any) => embedded<any>(r.venu_scores)
@@ -68,6 +68,13 @@ export default async function VenuHome() {
           <span className="venu-mode-go">Start test →</span>
         </Link>
       </section>
+
+      <p style={{ textAlign: 'center', fontSize: 12.5, marginTop: 14 }}>
+        <Link href="/venu/voice" style={{ color: 'var(--teal-deep)', fontWeight: 600 }}>
+          Set up your voice profile →
+        </Link>
+        <span style={{ color: 'var(--muted)' }}> · two short lines, once</span>
+      </p>
 
       {avg !== null && (
         <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--muted)', marginTop: 18 }}>

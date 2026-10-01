@@ -25,7 +25,7 @@ interface ScoreboardEntry {
 }
 interface WorkerResponseStats {
   workerName: string
-  slack: { count: number; avgFmt: string; medFmt: string; under90: number; pctUnder90: number }
+  slack: { count: number; medFmt: string; under90: number; pctUnder90: number }
 }
 interface CallVerificationWorker {
   workerName: string
@@ -426,10 +426,6 @@ export default function AdminPerformancePage() {
                   ) : (
                     <div className="flex gap-8">
                       <div className="space-y-1.5">
-                        <div className="flex justify-between text-sm gap-4">
-                          <span className="text-gray-500">Avg</span>
-                          <span className="font-semibold text-gray-900">{w.slack.avgFmt}</span>
-                        </div>
                         <div className="flex justify-between text-sm gap-4">
                           <span className="text-gray-500">Median</span>
                           <span className="font-semibold text-gray-900">{w.slack.medFmt}</span>

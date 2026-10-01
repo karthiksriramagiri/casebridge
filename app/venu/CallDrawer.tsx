@@ -1,6 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
+import Link from 'next/link'
+import CallPlayer from './CallPlayer'
 
 interface Turn {
   speaker: 'rep' | 'caller'
@@ -19,6 +21,7 @@ interface Detail {
   durationSec: number | null
   repName: string
   transcript: Turn[]
+  voice?: string
   metrics: Record<string, any>
   scorecard: any | null
   book: { disposition: string; reason: string; nuance: string } | null
@@ -32,8 +35,6 @@ function mmss(ms: number) {
 export default function CallDrawer({ id, onClose }: { id: string; onClose: () => void }) {
   const [data, setData] = useState<Detail | null>(null)
   const [error, setError] = useState('')
-  const [playing, setPlaying] = useState<number | null>(null)
-  const audio = useRef<HTMLAudioElement | null>(null)
 
   useEffect(() => {
     let live = true
@@ -57,32 +58,6 @@ export default function CallDrawer({ id, onClose }: { id: string; onClose: () =>
     }
   }, [onClose])
 
-  /** Rep turns play their stored audio; the caller's lines are re-spoken. */
-  const play = useCallback(async (turn: Turn, index: number) => {
-    try {
-      audio.current?.pause()
-      const el = audio.current ?? new Audio()
-      audio.current = el
-
-      if (turn.speaker === 'rep') {
-        if (!turn.audioPath) return
-        const res = await fetch(`/api/venu/audio?path=${encodeURIComponent(turn.audioPath)}`)
-        if (!res.ok) throw new Error('unavailable')
-        el.src = (await res.json()).url
-      } else {
-        el.src = `/api/venu/tts?text=${encodeURIComponent(turn.text)}`
-      }
-
-      setPlaying(index)
-      el.onended = () => setPlaying(null)
-      el.onerror = () => setPlaying(null)
-      await el.play()
-    } catch {
-      setPlaying(null)
-    }
-  }, [])
-
-  useEffect(() => () => { audio.current?.pause() }, [])
 
   const card = data?.scorecard
   const checkpoints = card?.checkpoints ?? []
@@ -99,7 +74,20 @@ export default function CallDrawer({ id, onClose }: { id: string; onClose: () =>
               {data?.title ?? 'Loading…'}
             </h2>
           </div>
-          <button className="venu-drawer-close" onClick={onClose} aria-label="Close">✕</button>
+          <div style={{ display: 'flex', gap: 6, flex: 'none' }}>
+            {data && (
+              <Link
+                href={`/venu/result/${data.id}`}
+                className="venu-drawer-close"
+                aria-label="Open full screen"
+                title="Full screen"
+                style={{ display: 'grid', placeItems: 'center', textDecoration: 'none' }}
+              >
+                ⤢
+              </Link>
+            )}
+            <button className="venu-drawer-close" onClick={onClose} aria-label="Close">✕</button>
+          </div>
         </header>
 
         <div className="venu-drawer-body">
@@ -207,36 +195,21 @@ export default function CallDrawer({ id, onClose }: { id: string; onClose: () =>
           {data && data.transcript.length > 0 && (
             <section>
               <p className="venu-eyebrow venu-drawer-label">
-                Recording &amp; transcript — {mmss((data.durationSec ?? 0) * 1000)}
+                Listen back — {mmss((data.durationSec ?? 0) * 1000)}
               </p>
-              <div className="venu-card" style={{ padding: 6 }}>
-                {data.transcript.map((t, i) => (
-                  <div key={i} className={`venu-play-row ${t.speaker}`}>
-                    <button
-                      className={`venu-play${playing === i ? ' is-playing' : ''}`}
-                      onClick={() => play(t, i)}
-                      disabled={t.speaker === 'rep' && !t.audioPath}
-                      title={
-                        t.speaker === 'rep'
-                          ? (t.audioPath ? 'Play what you said' : 'No audio stored for this turn')
-                          : 'Hear this line again'
-                      }
-                    >
-                      {playing === i ? '❚❚' : '▶'}
-                    </button>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span className="who">
-                        {mmss(t.startMs)} · {t.speaker === 'rep' ? (data.repName || 'You') : 'Caller'}
-                      </span>
-                      {t.text}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              <p style={{ fontSize: 11.5, color: 'var(--muted)', marginTop: 8 }}>
-                Your turns play the audio recorded on the call. The caller&rsquo;s lines are re-spoken.
-              </p>
+              <CallPlayer
+                turns={data.transcript}
+                notes={card?.flaggedMoments ?? []}
+                repName={data.repName}
+                voice={data.voice}
+              />
             </section>
+          )}
+
+          {data && (
+            <Link href={`/venu/result/${data.id}`} className="venu-btn" style={{ alignSelf: 'flex-start' }}>
+              Open the full report →
+            </Link>
           )}
         </div>
       </aside>

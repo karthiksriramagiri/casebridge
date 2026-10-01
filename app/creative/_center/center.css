@@ -965,6 +965,7 @@
 .ka-status.is-winner   { background: var(--mx-good-soft); color: var(--mx-good); }
 .ka-status.is-watch    { background: var(--mx-warn-soft); color: var(--mx-warn); }
 .ka-status.is-cut      { background: var(--mx-crit-soft); color: var(--mx-crit); }
+.ka-status.is-keep     { background: var(--mx-good-soft); color: var(--mx-good); }
 .ka-status.is-test     { background: #E6EDF5; color: #2F6FA8; }
 .ka-status.is-learning { background: #EFE8F5; color: #6B4E94; }
 
@@ -1227,4 +1228,140 @@
   font-weight: 700;
   color: var(--mx-good);
   font-variant-numeric: tabular-nums;
+}
+
+/* Suggested verdict still resolving — the daily series arrives on the second
+   request, so the badge waits rather than asserting a verdict it cannot back. */
+.ka-status.is-pending {
+  background: transparent; color: var(--mx-faint);
+  letter-spacing: 0.08em;
+}
+
+/* ── Suggested verdict, explained on hover ─────────────────────────────────
+   The card is positioned by the cell and clipped by nothing: the table scrolls
+   horizontally, so a tooltip anchored inside it has to sit above the row's
+   stacking context or it disappears under the next column. */
+
+.ka-suggest { position: relative; display: inline-flex; outline: none; }
+.ka-suggest .ka-status { cursor: help; }
+
+.ka-tip {
+  position: absolute;
+  bottom: calc(100% + 7px);
+  right: 0;
+  z-index: 60;
+  width: 272px;
+  display: none;
+  flex-direction: column;
+  gap: 7px;
+  padding: 11px 13px;
+  border: 1px solid var(--mx-line);
+  border-radius: var(--mx-r);
+  background: var(--mx-surface);
+  box-shadow: var(--mx-shadow-lg);
+  text-align: left;
+  white-space: normal;
+  cursor: default;
+}
+.ka-suggest:hover .ka-tip,
+.ka-suggest:focus-visible .ka-tip { display: flex; }
+
+/* A small arrow, drawn from the card's own border so it tracks the theme. */
+.ka-tip::after {
+  content: '';
+  position: absolute; top: 100%; right: 18px;
+  border: 6px solid transparent;
+  border-top-color: var(--mx-surface);
+  filter: drop-shadow(0 1px 0 var(--mx-line));
+}
+
+.ka-tip-head { display: flex; }
+.ka-tip-why {
+  font-size: 12px; line-height: 1.5; color: var(--mx-ink); font-weight: 550;
+}
+.ka-tip-rule {
+  font-size: 11px; line-height: 1.5; color: var(--mx-muted);
+  padding-top: 6px; border-top: 1px solid var(--mx-line-2);
+}
+.ka-tip-rule em {
+  display: block; font-style: normal; font-weight: 650;
+  font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--mx-faint); margin-bottom: 2px;
+}
+
+.ka-tip-facts {
+  display: flex; flex-direction: column; gap: 3px;
+  padding-top: 6px; border-top: 1px solid var(--mx-line-2);
+}
+.ka-tip-fact {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 10px;
+  font-size: 11px; color: var(--mx-muted);
+}
+.ka-tip-fact strong {
+  font-weight: 650; color: var(--mx-ink); font-variant-numeric: tabular-nums;
+}
+
+/* Near the top of the table there is no room above, so it flips below. */
+.ka-table tbody tr:nth-child(-n+3) .ka-tip { bottom: auto; top: calc(100% + 7px); }
+.ka-table tbody tr:nth-child(-n+3) .ka-tip::after {
+  top: auto; bottom: 100%;
+  border-top-color: transparent; border-bottom-color: var(--mx-surface);
+}
+
+/* ── Openable KPI tile ──────────────────────────────────────────────────── */
+
+.ka-dkpi.is-open {
+  cursor: pointer; text-align: left; font: inherit;
+  transition: border-color 120ms var(--mx-ease-out), box-shadow 120ms var(--mx-ease-out);
+}
+.ka-dkpi.is-open:hover { border-color: var(--mx-accent); box-shadow: 0 0 0 2px var(--mx-accent-soft); }
+.ka-dkpi-open {
+  margin-top: 3px; font-size: 10.5px; font-weight: 600;
+  color: var(--mx-accent-ink);
+}
+
+/* ── People behind a number ─────────────────────────────────────────────── */
+
+.ka-scrim {
+  position: fixed; inset: 0; z-index: 80;
+  background: rgba(27, 23, 20, 0.34);
+  display: flex; justify-content: flex-end;
+}
+.ka-people {
+  width: min(430px, 94vw); height: 100%;
+  display: flex; flex-direction: column;
+  background: var(--mx-surface);
+  border-left: 1px solid var(--mx-line);
+  box-shadow: var(--mx-shadow-lg);
+}
+.ka-people-head {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 16px 18px; border-bottom: 1px solid var(--mx-line);
+}
+.ka-people-title { font-size: 14px; font-weight: 650; margin: 0; letter-spacing: -0.01em; }
+.ka-people-sub { font-size: 11.5px; color: var(--mx-muted); margin: 2px 0 0; }
+.ka-people-body { flex: 1; overflow-y: auto; padding: 14px 18px 24px; }
+
+.ka-people-group + .ka-people-group { margin-top: 16px; }
+.ka-people-stage {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10px; font-weight: 650; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--mx-muted); margin: 0 0 6px;
+}
+.ka-people-n {
+  font-variant-numeric: tabular-nums; letter-spacing: 0;
+  background: var(--mx-surface-3); color: var(--mx-ink-2);
+  border-radius: 999px; padding: 1px 7px; font-size: 10.5px;
+}
+.ka-people-list { list-style: none; margin: 0; padding: 0; }
+.ka-people-list li {
+  display: grid; grid-template-columns: 1fr auto; gap: 2px 10px;
+  padding: 7px 0; border-bottom: 1px solid var(--mx-line-2);
+}
+.ka-people-name { font-size: 12.5px; font-weight: 600; color: var(--mx-ink); }
+.ka-people-day { font-size: 11px; color: var(--mx-faint); font-variant-numeric: tabular-nums; }
+.ka-people-meta {
+  grid-column: 1 / -1;
+  font-size: 11px; color: var(--mx-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }

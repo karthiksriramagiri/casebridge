@@ -140,7 +140,11 @@ export async function POST(request: NextRequest) {
     if (data) firmRow = data
   }
   if (!firmRow) {
-    const { data } = await supabase.from('firms').select('id').order('created_at', { ascending: true }).limit(1).single()
+    /* Never fall back onto an archived firm — an unmatched lead landing on a
+       client we no longer run would be invisible and wrong. Filtered in JS so
+       this keeps working before the archive column exists. */
+    const { data: all } = await supabase.from('firms').select('*').order('created_at', { ascending: true })
+    const data = (all ?? []).find((f: any) => !f.archived) ?? (all ?? [])[0]
     if (data) firmRow = data
   }
 
@@ -234,6 +238,20 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  /* ── New-lead Slack alert ────────────────────────────────────────────────
+     Fired here, on the stage webhook, because this is where a lead actually
+     arrives — /api/webhooks/ghl is the signed-case hook and posting from there
+     would have announced a signature as an arrival.
+
+     Sent before the insert, not after: the ask is that it lands the second the
+     lead does, and Supabase plus the Meta name lookup are not worth waiting on
+     to say "a lead came in". Not awaited either — a Slack outage must never
+     make this endpoint fail, because GHL retries a non-2xx and the retry would
+     write the lead twice. */
+  if (stageParam === 'new_lead' && process.env.SLACK_NEW_LEAD_WEBHOOK) {
+    void postNewLeadToSlack({ adId, adName, adsetId, contactName, firmName: locationName })
+  }
+
   // Insert new pipeline record
   const { data: inserted, error } = await supabase.from('ghl_leads').insert({
     firm_id: firmId,
@@ -262,4 +280,56 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json({ success: true, action: 'created', id: inserted?.id })
+}
+
+
+/* ── New-lead Slack post ────────────────────────────────────────────────────
+   GHL sends ids, not names, so the ad and ad set are resolved from Meta. That
+   lookup is the only slow part, so the message is composed and sent in the
+   background and anything unresolved degrades to a dash rather than delaying
+   the alert or dropping it. */
+async function postNewLeadToSlack(o: {
+  adId: string | null
+  adName: string | null
+  adsetId: string | null
+  contactName: string | null
+  firmName: string | null
+}) {
+  try {
+    let creative = o.adName
+    let adset: string | null = null
+
+    const token = (process.env.FB_ACCESS_TOKEN || '').trim()
+    const cleanId = o.adId && !o.adId.includes('{{') ? o.adId : null
+    if (cleanId && token) {
+      const res = await fetch(
+        `https://graph.facebook.com/v25.0/${cleanId}?fields=name,adset{name}&access_token=${token}`,
+        { cache: 'no-store' })
+      if (res.ok) {
+        const d = await res.json()
+        creative = creative || d.name || null
+        adset = d.adset?.name ?? null
+      }
+    }
+
+    const timePst = new Date().toLocaleString('en-US', {
+      timeZone: 'America/Los_Angeles',
+      month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit', hour12: true,
+    })
+
+    const text = [
+      `Creative : ${creative || '—'}`,
+      `Adset : ${adset || '—'}`,
+      `Time(PST) : ${timePst}`,
+    ].join('\n')
+
+    await fetch(process.env.SLACK_NEW_LEAD_WEBHOOK!, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    })
+  } catch (err) {
+    console.error('[pipeline-stage] new-lead Slack post failed', err)
+  }
 }

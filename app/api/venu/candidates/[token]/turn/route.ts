@@ -88,7 +88,20 @@ export async function POST(req: NextRequest, ctx: { params: Promise<{ token: str
     .join(' ')
     .trim()
 
-  const done = raw.includes(DONE_MARKER)
+  /* The marker is the intended signal, but it is a token the model has to
+     remember to emit and it does not always do so. When it forgets, the
+     interview never ends: the phone box never opens, the recording is never
+     saved, and the candidate reads their number out to nobody. That failure
+     was invisible — every candidate on file had a phone or a recording
+     missing because of it.
+
+     So the close is also recognised from the sentence itself. Asking for a
+     number in the closing breath is unambiguous enough to act on, and acting
+     early costs nothing: the box appears, which is what we wanted anyway. */
+  const asksForNumber = /\b(phone|number|cell|mobile|digits)\b/i.test(raw)
+    && /\b(share|give|leave|send|what(?:'s| is)|can i (?:get|have)|could you)\b/i.test(raw)
+
+  const done = raw.includes(DONE_MARKER) || asksForNumber
   // What the page should put on screen alongside this line. A panel is shown
   // once: she sometimes marks two turns running while she waits for an answer,
   // and the shifts appearing twice in the feed just reads as a glitch.

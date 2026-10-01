@@ -7,7 +7,7 @@
 import { z } from 'zod/v4'
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod'
 import { anthropic } from './anthropic'
-import { CHECKPOINTS, EMPATHY_RUBRIC, TRAIT_THRESHOLDS, FOOTPRINT_STATES, STATE_GATE } from './rubrics'
+import { CHECKPOINTS, EMPATHY_RUBRIC, TRAIT_THRESHOLDS, FOOTPRINT_STATES, STATE_GATE, TAKE_THEIR_WORD } from './rubrics'
 import { describeMetrics, mmss } from './metrics'
 import type { NuanceScenario } from './nuance-scenarios'
 import { getLead } from './nuance-leads'
@@ -135,6 +135,21 @@ Rules:
 - Be specific and useful, not encouraging. A generous score costs this rep money on real
   calls. Do not invent faults either.
 
+TAKE THE CALLER AT THEIR WORD
+${TAKE_THEIR_WORD.rule}
+Never require, suggest, or reward any of these:
+${TAKE_THEIR_WORD.neverRequire.map((r) => `  - ${r}`).join('\n')}
+A setter collects facts; they do not audit them. If the caller says the other driver
+handed over a Mercury card, the insurance checkpoint is satisfied — full stop. Do not mark
+it incomplete because the rep failed to question whether that policy was really in force,
+and never write coaching that asks the rep to go looking for a catch.
+
+This applies to the deciding detail too. The detail that decides a case is something the
+caller knows and would say if asked a normal, human question — not something they are
+hiding and not something the rep has to trap them into. If surfacing it would have
+required doubting the caller, then the rep did not miss it: mark it caught or not
+applicable and say why.
+
 WHAT COACHING IS FOR — and what it is not
 Every piece of advice you give must be one of exactly two things:
   (a) a question from the checkpoint list that was not asked, or was asked and left
@@ -143,6 +158,7 @@ Every piece of advice you give must be one of exactly two things:
       for at a specific moment in this call.
 
 Do NOT coach on:
+  - Verifying anything the caller said, or any question designed to test their honesty.
   - Speaking rate, words per minute, pace, or how fast they talked. It is not what makes
     someone feel cared for, and it is not something a rep can act on mid-call.
   - Invented best-practice questions that are not on the checkpoint list. If a question

@@ -6,11 +6,10 @@ const admin = createClient(
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-function avg(nums: number[]) {
-  if (!nums.length) return null
-  return Math.round(nums.reduce((a, b) => a + b, 0) / nums.length)
-}
-
+/* Median only. A mean response time is dragged around by the one message
+   someone answered the next morning — on a handful of events per rep per week
+   a single outlier can double it, which made the number unusable for exactly
+   the comparison it was there to support. */
 function median(nums: number[]) {
   if (!nums.length) return null
   const sorted = [...nums].sort((a, b) => a - b)
@@ -83,18 +82,14 @@ export async function GET(req: NextRequest) {
     workerName:     w.workerName,
     slack: {
       count:       w.slackTimes.length,
-      avgSeconds:  avg(w.slackTimes),
       medSeconds:  median(w.slackTimes),
-      avgFmt:      fmtSeconds(avg(w.slackTimes)),
       medFmt:      fmtSeconds(median(w.slackTimes)),
       under90:     w.slackTimes.filter(s => s <= 90).length,
       pctUnder90:  w.slackTimes.length ? Math.round(w.slackTimes.filter(s => s <= 90).length / w.slackTimes.length * 100) : 0,
     },
     call: {
       count:       w.callTimes.length,
-      avgSeconds:  avg(w.callTimes),
       medSeconds:  median(w.callTimes),
-      avgFmt:      fmtSeconds(avg(w.callTimes)),
       medFmt:      fmtSeconds(median(w.callTimes)),
       under90:     w.callTimes.filter(s => s <= 90).length,
       pctUnder90:  w.callTimes.length ? Math.round(w.callTimes.filter(s => s <= 90).length / w.callTimes.length * 100) : 0,

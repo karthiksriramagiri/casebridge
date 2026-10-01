@@ -782,7 +782,11 @@ export async function GET(request: NextRequest) {
      how a business ends up surprised by its own bank balance. */
   const cashNetProfit = collectedGross - totalCost
 
+  /* Archived firms stay loaded above, because leads and expenses still point
+     at them and a past month has to keep resolving its own numbers. They are
+     dropped here, from the list people read — history intact, name gone. */
   const firmRows = firms
+    .filter(f => !f.archived)
     .map(f => {
       const s = spendByFirm[f.id] || blankSpend()
       const c = casesByFirm[f.id] || { signed: 0, originals: 0, minors: 0, disqualified: 0, replacements: 0, victims: 0, closed: 0 }

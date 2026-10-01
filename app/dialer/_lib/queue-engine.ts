@@ -370,6 +370,48 @@ export function passesStateFilter(phone: string, filter: StateFilter): boolean {
     : !filter.states.includes(state)
 }
 
+/* ── Firm filter ────────────────────────────────────────────────────────────
+   The same mechanism on a different axis: which clients the floor is dialling
+   at all. A firm is not a state — Fears is Texas, but LHP and J&M both run
+   Texas numbers too — so excluding a state cannot stand in for pausing a
+   client, and pausing a client cannot stand in for excluding a state. Both
+   filters apply, and a lead has to pass both.
+
+   Enforced at serve time like the state filter, so pausing a firm takes
+   effect on the next buffer fill and un-pausing restores its leads with no
+   re-sync. Callbacks are exempt: a rep already promised that call, and the
+   client relationship is not the lead's problem. */
+
+export interface FirmFilter {
+  mode:  'off' | 'include' | 'exclude'
+  firms: string[]
+}
+
+export const NO_FIRM_FILTER: FirmFilter = { mode: 'off', firms: [] }
+
+export async function getFirmFilter(): Promise<FirmFilter> {
+  const db = supabaseAdmin()
+  const { data, error } = await db.from('dialer_queue_settings')
+    .select('firm_filter_mode, firm_filter_list')
+    .eq('id', 1)
+    .maybeSingle()
+  // Table or columns missing (migration not run) → no filtering.
+  if (error || !data) return NO_FIRM_FILTER
+  const firms = (data.firm_filter_list ?? []).map((f: string) => f.toLowerCase())
+  const mode  = (data.firm_filter_mode ?? 'off') as FirmFilter['mode']
+  if (mode === 'off' || firms.length === 0) return NO_FIRM_FILTER
+  return { mode, firms }
+}
+
+/** Firm comes off the attempt row, so there is no unknown case to resolve. */
+export function passesFirmFilter(firm: string | null | undefined, filter: FirmFilter): boolean {
+  if (filter.mode === 'off' || filter.firms.length === 0) return true
+  const f = (firm ?? '').toLowerCase()
+  return filter.mode === 'include'
+    ?  filter.firms.includes(f)
+    : !filter.firms.includes(f)
+}
+
 // ─── Buffer management ────────────────────────────────────────────────────────
 
 // Fill rep's buffer to `count`.
@@ -377,6 +419,88 @@ export function passesStateFilter(phone: string, filter: StateFilter): boolean {
 // at any time (the RPC had a due_from <= now() gate that blocked pre-loading).
 // Concurrency guard: UPDATE ... WHERE status='pending' ensures only one rep
 // wins if two requests race for the same lead.
+/* ── Candidate selection ──────────────────────────────────────────────────
+   Shared by the single-rep and all-reps fills so the two can never order the
+   queue differently.
+
+   The ordering used to be fully static — priority, then attempt number, then
+   created_at — with nothing in it that changed when a lead was called. So the
+   same contacts surfaced at the top of every fill, in the same sequence, and
+   a lead dialed five minutes ago outranked one nobody had touched in a week.
+   Reps worked the same list over and over while the tail was never reached.
+
+   Recency is now part of the sort: within a priority tier, leads nobody has
+   called come first, then the ones dialed longest ago. A contact dialed within
+   the last MIN_REDIAL_GAP is held back entirely, which also stops the
+   due-gate fallback from serving attempt 2 minutes after attempt 1.         */
+
+/** A contact is never dialed twice inside this window, whatever the blocks
+ *  say. Blocks are three hours wide, so this only bites when the due gate has
+ *  been bypassed because no block is currently open. */
+const MIN_REDIAL_GAP_MS = 90 * 60 * 1000
+
+/** PostgREST caps a response at 1000 rows. The candidate pool has to be the
+ *  whole pending set — truncating it silently pins the queue to the same head. */
+async function fetchAllPending(buildQuery: () => any, maxRows = 6000): Promise<Attempt[]> {
+  const out: Attempt[] = []
+  for (let from = 0; from < maxRows; from += 1000) {
+    const { data, error } = await buildQuery().range(from, from + 999)
+    if (error) {
+      console.error('[queue] pending fetch error', error)
+      break
+    }
+    if (!data?.length) break
+    out.push(...(data as Attempt[]))
+    if (data.length < 1000) break
+  }
+  return out
+}
+
+/** contact_id → epoch ms of the last dial, for the contacts in play. */
+async function loadLastDialed(db: any, contactIds: string[]): Promise<Map<string, number>> {
+  const map = new Map<string, number>()
+  for (let i = 0; i < contactIds.length; i += 300) {
+    const { data } = await db.from('dialer_lead_state')
+      .select('contact_id, last_dialed_at')
+      .in('contact_id', contactIds.slice(i, i + 300))
+    for (const row of data ?? []) {
+      if (row.last_dialed_at) map.set(row.contact_id, Date.parse(row.last_dialed_at))
+    }
+  }
+  return map
+}
+
+/** Least-recently-called first, inside the existing priority tiers. */
+function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
+  const bool = (v: unknown) => (v ? 1 : 0)
+  return [...rows].sort((a, b) => {
+    const aDialed = lastDialed.get(a.contact_id)
+    const bDialed = lastDialed.get(b.contact_id)
+    return (
+      bool(b.is_callback) - bool(a.is_callback) ||
+      bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
+      (b.priority ?? 0) - (a.priority ?? 0) ||
+      // Leads nobody has called yet come before any that have been
+      (aDialed === undefined ? 0 : 1) - (bDialed === undefined ? 0 : 1) ||
+      // Freshest stage change first among never-dialed leads
+      String((b as any).stage_changed_at ?? '').localeCompare(String((a as any).stage_changed_at ?? '')) ||
+      // Then the lead waiting longest since its last dial
+      (aDialed ?? 0) - (bDialed ?? 0) ||
+      (a.attempt_number ?? 0) - (b.attempt_number ?? 0) ||
+      String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')) ||
+      String((a as any).created_at ?? '').localeCompare(String((b as any).created_at ?? '')) ||
+      String(a.id).localeCompare(String(b.id))
+    )
+  })
+}
+
+/** Called too recently to call again — callbacks excepted, they are promises. */
+function dialedTooRecently(a: Attempt, lastDialed: Map<string, number>, now: number): boolean {
+  if (a.is_callback) return false
+  const last = lastDialed.get(a.contact_id)
+  return last !== undefined && now - last < MIN_REDIAL_GAP_MS
+}
+
 export async function fillBuffer(repIdentity: string, count = 5): Promise<Attempt[]> {
   const db    = supabaseAdmin()
   const today = todayEastern()
@@ -391,6 +515,7 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   const repSpeaksSpanish = user.spanish === true
 
   const stateFilter = await getStateFilter()
+  const firmFilter  = await getFirmFilter()
 
   // ── Force-buffer due callbacks owned by this rep (bypass buffer limit) ──
   const { data: dueCallbacks } = await db.from('dialer_attempts')
@@ -450,14 +575,18 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
       .order('id',                { ascending: true })
   }
 
-  let { data: pending } = await buildPendingQuery(true)
-  if (!pending?.length) {
+  let pending = await fetchAllPending(() => buildPendingQuery(true))
+  if (!pending.length) {
     // Current block exhausted — fall back to all pending (next block)
-    const res = await buildPendingQuery(false)
-    pending = res.data
+    pending = await fetchAllPending(() => buildPendingQuery(false))
   }
 
-  if (!pending?.length) return []
+  if (!pending.length) return []
+
+  // Order by how long each lead has waited since its last dial, not by the
+  // static keys alone — otherwise every fill hands back the same head.
+  const lastDialed = await loadLastDialed(db, [...new Set(pending.map(a => a.contact_id))])
+  pending = orderByRecency(pending, lastDialed)
 
   // Sequential constraint: only serve attempt N if all earlier attempts are done
   const pendingByContact = new Map<string, number[]>()
@@ -472,12 +601,16 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   // Filter: active contacts + sequential constraint + callback ownership + language (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
+    // Just called — let the lead breathe before dialing again
+    if (dialedTooRecently(a, lastDialed, now.getTime())) return false
     // Callbacks are exclusive to their owner rep — don't assign to anyone else
     if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
     // Spanish leads only go to Spanish-capable reps
     if (a.lang === 'es' && !repSpeaksSpanish) return false
     // State filter — callbacks are exempt (already promised to the lead)
     if (!a.is_callback && !passesStateFilter(a.phone, stateFilter)) return false
+    // Firm filter — callbacks exempt for the same reason
+    if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
     if (!a.is_callback) {
       const nums = pendingByContact.get(a.contact_id) ?? []
       if (a.attempt_number !== Math.min(...nums)) return false
@@ -528,6 +661,7 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   if (readyReps.length === 0) return {}
 
   const stateFilter = await getStateFilter()
+  const firmFilter  = await getFirmFilter()
 
   // Release buffered leads from INVALID identities (admin, agent, unknown)
   // so they go back to the pending pool
@@ -591,13 +725,15 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
       .order('id',                { ascending: true })
   }
 
-  let { data: pending } = await buildPendingQ2(true)
-  if (!pending?.length) {
-    const res = await buildPendingQ2(false)
-    pending = res.data
+  let pending = await fetchAllPending(() => buildPendingQ2(true))
+  if (!pending.length) {
+    pending = await fetchAllPending(() => buildPendingQ2(false))
   }
 
-  if (!pending?.length) return {}
+  if (!pending.length) return {}
+
+  const lastDialed2 = await loadLastDialed(db, [...new Set(pending.map(a => a.contact_id))])
+  pending = orderByRecency(pending, lastDialed2)
 
   // Sequential constraint
   const pendingByContact = new Map<string, number[]>()
@@ -612,8 +748,11 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
+    if (dialedTooRecently(a, lastDialed2, now.getTime())) return false
     // State filter — callbacks are exempt (already promised to the lead)
     if (!a.is_callback && !passesStateFilter(a.phone, stateFilter)) return false
+    // Firm filter — callbacks exempt for the same reason
+    if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
     if (!a.is_callback) {
       const nums = pendingByContact.get(a.contact_id) ?? []
       if (a.attempt_number !== Math.min(...nums)) return false

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getVenuUser, venuAdmin, embedded } from '@/app/venu/_lib/auth'
 import { getNuanceScenario } from '@/app/venu/_lib/nuance-scenarios'
+import { voiceFor } from '@/app/venu/_lib/nuance-leads'
 
 /** Everything the review sidebar shows for one call. */
 export async function GET(req: NextRequest) {
@@ -28,6 +29,7 @@ export async function GET(req: NextRequest) {
     startedAt: session.started_at,
     durationSec: session.duration_sec,
     repName: session.rep_name,
+    voice: voiceFor(session.scenario_id),
     transcript: session.transcript ?? [],
     metrics: session.metrics ?? {},
     scorecard: score?.scorecard ?? null,

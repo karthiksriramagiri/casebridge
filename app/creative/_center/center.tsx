@@ -162,12 +162,33 @@ export default function CreativeCenter({ view }: { view: View }) {
     // "Qualified" is chase-or-beyond, matching the Ops dashboard's CPQ so the
     // two pages cannot disagree.
     const qualified = (o.chaseCount ?? 0) + signed
+    /* The people behind the counts, flattened into one list and stamped with
+       where each sits. The tiles are clickable and a number nobody can open is
+       the thing people stop trusting first. */
+    const stageLists: [string, any[]][] = [
+      ['New lead',      o.newLeadLeads],
+      ['No response',   o.nrLeads],
+      ['Follow up',     o.fuLeads],
+      ['Chase',         o.chaseLeads],
+      ['Appointment',   o.appointmentLeads],
+      ['Contract sent', o.contractSentLeads],
+      ['Pending send',  o.pendingSendLeads],
+      ['Qualified',     o.qualifiedLeads],
+      ['MIA',           o.miaLeads],
+      ['Not qualified', o.nqLeads],
+      ['Closed',        o.closedLeads],
+    ]
+    const leadPeople = stageLists.flatMap(([stage, list]) =>
+      (list ?? []).map((p: any) => ({ ...p, stage })))
+
     return {
       ...a,
       qualified, signed,
       cpq: qualified > 0 ? a.spend / qualified : null,
       cpa: signed > 0 ? a.spend / signed : null,
       firmName: o.firmName ?? a.firmName ?? null,
+      leadPeople,
+      signedPeople: o.signedLeads ?? [],
     }
   }), [ads, outcomes])
 

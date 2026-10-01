@@ -47,6 +47,9 @@ interface Summary {
 
 const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
 
+/** A firm code we have no label for is still a real firm — show the code. */
+const firmLabel = (code: string) => FIRM_LABEL[code] ?? code.toUpperCase()
+
 const STATUS_BADGE: Record<string, { label: (a: Attempt) => string; cls: string }> = {
   pending:   { label: () => 'pending',                                    cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
   buffered:  { label: a => `⏳ ${a.buffered_for ?? ''}`,                  cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' },
@@ -195,10 +198,12 @@ export default function QueueAdminPage() {
       .catch(console.error)
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Calling states — persisted queue filter ───────────────────────────────
-  // Reps are only served leads whose state passes this. Table filters above
-  // are view-only; this one changes what actually gets dialed.
+  // ── Who the floor is dialling — persisted queue filters ───────────────────
+  // Two gates on the same settings row: state (from the lead's area code) and
+  // firm (from the attempt). A lead has to pass both. The table filters above
+  // are view-only; these change what actually gets dialled.
   type FilterMode = 'off' | 'include' | 'exclude'
+
   const [savedMode,   setSavedMode]   = useState<FilterMode>('off')
   const [savedStates, setSavedStates] = useState<string[]>([])
   const [draftMode,   setDraftMode]   = useState<FilterMode>('off')
@@ -206,34 +211,68 @@ export default function QueueAdminPage() {
   const [statesOpen,  setStatesOpen]  = useState(false)
   const [savingStates, setSavingStates] = useState(false)
 
-  const loadStateFilter = useCallback(async () => {
-    const res  = await fetch('/api/dialer/queue/state-filter')
+  const [savedFirmMode,  setSavedFirmMode]  = useState<FilterMode>('off')
+  const [savedFirms,     setSavedFirms]     = useState<string[]>([])
+  const [draftFirmMode,  setDraftFirmMode]  = useState<FilterMode>('off')
+  const [draftFirms,     setDraftFirms]     = useState<string[]>([])
+  const [firmsOpen,      setFirmsOpen]      = useState(false)
+  const [savingFirms,    setSavingFirms]    = useState(false)
+  const [filtersNeedMigration, setFiltersNeedMigration] = useState(false)
+
+  const loadFilters = useCallback(async () => {
+    const res  = await fetch('/api/dialer/queue/filters')
     const data = await res.json()
-    const mode   = (data.mode ?? 'off') as FilterMode
-    const states = (data.states ?? []) as string[]
-    setSavedMode(mode);   setSavedStates(states)
-    setDraftMode(mode);   setDraftStates(states)
+    const sMode   = (data.state?.mode ?? 'off') as FilterMode
+    const sStates = (data.state?.states ?? []) as string[]
+    const fMode   = (data.firm?.mode ?? 'off') as FilterMode
+    const fFirms  = (data.firm?.firms ?? []) as string[]
+    setSavedMode(sMode);      setSavedStates(sStates)
+    setDraftMode(sMode);      setDraftStates(sStates)
+    setSavedFirmMode(fMode);  setSavedFirms(fFirms)
+    setDraftFirmMode(fMode);  setDraftFirms(fFirms)
+    setFiltersNeedMigration(!!data.needsMigration)
   }, [])
 
-  useEffect(() => { loadStateFilter() }, [loadStateFilter])
+  useEffect(() => { loadFilters() }, [loadFilters])
 
   async function saveStateFilter() {
     setSavingStates(true)
-    const res  = await fetch('/api/dialer/queue/state-filter', {
+    const res  = await fetch('/api/dialer/queue/filters', {
       method:  'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ mode: draftMode, states: draftStates }),
+      body:    JSON.stringify({ state: { mode: draftMode, states: draftStates } }),
     })
     const data = await res.json()
     setSavingStates(false)
     if (!res.ok) { showToast(data.error ?? 'Could not save state filter'); return }
-    setSavedMode(data.mode); setSavedStates(data.states ?? [])
+    setSavedMode(data.state.mode); setSavedStates(data.state.states ?? [])
     setStatesOpen(false)
     await Promise.all([fetchData(), fetchReps()])
     showToast(
-      data.mode === 'off'
+      data.state.mode === 'off'
         ? 'Calling every state again'
-        : `${data.mode === 'include' ? 'Calling only' : 'Skipping'} ${(data.states ?? []).join(', ')}` +
+        : `${data.state.mode === 'include' ? 'Calling only' : 'Skipping'} ${(data.state.states ?? []).join(', ')}` +
+          (data.released ? ` — ${data.released} queued lead(s) released` : '')
+    )
+  }
+
+  async function saveFirmFilter() {
+    setSavingFirms(true)
+    const res  = await fetch('/api/dialer/queue/filters', {
+      method:  'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ firm: { mode: draftFirmMode, firms: draftFirms } }),
+    })
+    const data = await res.json()
+    setSavingFirms(false)
+    if (!res.ok) { showToast(data.error ?? 'Could not save firm filter'); return }
+    setSavedFirmMode(data.firm.mode); setSavedFirms(data.firm.firms ?? [])
+    setFirmsOpen(false)
+    await Promise.all([fetchData(), fetchReps()])
+    showToast(
+      data.firm.mode === 'off'
+        ? 'Calling every firm again'
+        : `${data.firm.mode === 'include' ? 'Calling only' : 'Paused'} ${(data.firm.firms ?? []).map(firmLabel).join(', ')}` +
           (data.released ? ` — ${data.released} queued lead(s) released` : '')
     )
   }
@@ -399,6 +438,30 @@ export default function QueueAdminPage() {
   }, [sorted, tab])
 
   // States present in today's plan, with counts — drives the pickers below
+  /* Firms present in today's plan, with counts — drives the picker below.
+     Built from the plan rather than a hardcoded list so a new pipeline shows
+     up without a code change. */
+  const firmCounts = useMemo(() => {
+    const counts = new Map<string, number>()
+    for (const item of items) {
+      if (['cancelled', 'expired', 'merged'].includes(item.status)) continue
+      counts.set(item.firm, (counts.get(item.firm) ?? 0) + 1)
+    }
+    return [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+  }, [items])
+
+  /* How many of today's attempts the saved firm filter holds back. */
+  const heldByFirmFilter = useMemo(() => {
+    if (savedFirmMode === 'off' || savedFirms.length === 0) return 0
+    return items.filter(item => {
+      if (['cancelled', 'expired', 'merged', 'completed'].includes(item.status)) return false
+      if (item.is_callback) return false          // callbacks bypass the filter
+      return savedFirmMode === 'include'
+        ? !savedFirms.includes(item.firm)
+        :  savedFirms.includes(item.firm)
+    }).length
+  }, [items, savedFirmMode, savedFirms])
+
   const stateCounts = useMemo(() => {
     const counts = new Map<string, number>()
     for (const item of items) {
@@ -553,8 +616,105 @@ export default function QueueAdminPage() {
 
         <span className="text-xs text-gray-400">{filtered.length} attempts</span>
 
-        {/* Calling states — what reps actually get served */}
+        {/* Calling firms — which clients the floor is dialling at all */}
         <div className="relative ml-auto">
+          <button onClick={() => setFirmsOpen(o => !o)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors
+              ${savedFirmMode === 'off'
+                ? 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'
+                : 'border-amber-400/40 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300'}`}>
+            <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
+              <path d="M2 14V5.5a.5.5 0 01.28-.45l5-2.5a.5.5 0 01.44 0l5 2.5A.5.5 0 0113 5.5V14h1.5a.5.5 0 010 1h-13a.5.5 0 010-1H2zm3-7a.5.5 0 000 1h1a.5.5 0 000-1H5zm0 2.5a.5.5 0 000 1h1a.5.5 0 000-1H5zM9 7a.5.5 0 000 1h1a.5.5 0 000-1H9zm0 2.5a.5.5 0 000 1h1a.5.5 0 000-1H9z"/>
+            </svg>
+            {savedFirmMode === 'off'
+              ? 'Calling: all firms'
+              : savedFirmMode === 'include'
+                ? `Calling only: ${savedFirms.map(firmLabel).join(', ')}`
+                : `Paused: ${savedFirms.map(firmLabel).join(', ')}`}
+            {heldByFirmFilter > 0 && (
+              <span className="rounded-full bg-amber-200/70 px-1.5 text-[10px] tabular-nums text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                {heldByFirmFilter} held
+              </span>
+            )}
+          </button>
+
+          {firmsOpen && (
+            <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
+              <p className="text-sm font-semibold text-gray-900 dark:text-white">Which firms do reps call?</p>
+              <p className="mt-0.5 text-xs text-gray-500">
+                Pausing a firm stops its leads being served without cancelling them — turn it back
+                on and they return. Callbacks are always served, whatever the filter says.
+              </p>
+
+              {filtersNeedMigration && (
+                <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
+                  Run <code>supabase/migration_dialer_state_filter.sql</code> to enable this.
+                </p>
+              )}
+
+              <div className="mt-3 flex rounded-lg border border-gray-300 overflow-hidden dark:border-gray-700">
+                {([
+                  ['off',     'All firms'],
+                  ['include', 'Only these'],
+                  ['exclude', 'All but these'],
+                ] as const).map(([m, label]) => (
+                  <button key={m} onClick={() => setDraftFirmMode(m)}
+                    className={`flex-1 px-2 py-1.5 text-xs font-medium transition-colors
+                      ${draftFirmMode === m
+                        ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white'
+                        : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {draftFirmMode !== 'off' && (
+                <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                  {firmCounts.length === 0 ? (
+                    <p className="px-3 py-3 text-xs text-gray-400">No leads in today's plan yet — sync from GHL first.</p>
+                  ) : firmCounts.map(([code, n]) => {
+                    const on = draftFirms.includes(code)
+                    return (
+                      <label key={code}
+                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        <input type="checkbox" checked={on}
+                          onChange={() => setDraftFirms(prev =>
+                            on ? prev.filter(x => x !== code) : [...prev, code].sort()
+                          )}
+                          className="h-3.5 w-3.5 accent-cyan-600" />
+                        <span className="font-medium text-gray-700 dark:text-gray-200">{firmLabel(code)}</span>
+                        <span className="ml-auto text-xs tabular-nums text-gray-400">{n}</span>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+
+              {draftFirmMode !== 'off' && draftFirms.length > 0 && (
+                <p className="mt-2 text-xs text-gray-500">
+                  {draftFirmMode === 'include'
+                    ? `Reps will only be served ${draftFirms.map(firmLabel).join(', ')} leads.`
+                    : `${draftFirms.map(firmLabel).join(', ')} will not be dialled.`}
+                </p>
+              )}
+
+              <div className="mt-3 flex items-center justify-end gap-2">
+                <button onClick={() => { setDraftFirmMode(savedFirmMode); setDraftFirms(savedFirms); setFirmsOpen(false) }}
+                  className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                  Cancel
+                </button>
+                <button onClick={saveFirmFilter}
+                  disabled={savingFirms || (draftFirmMode !== 'off' && draftFirms.length === 0)}
+                  className="rounded-lg bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50 transition-colors">
+                  {savingFirms ? 'Saving…' : 'Apply to queue'}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Calling states — what reps actually get served */}
+        <div className="relative">
           <button onClick={() => setStatesOpen(o => !o)}
             className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors
               ${savedMode === 'off'
