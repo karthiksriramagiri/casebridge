@@ -24,7 +24,9 @@ export default function LoginPage() {
     const data = await res.json()
 
     if (data.success) {
-      router.push('/creative')
+      // The landing page belongs to the role, not to this form — a restricted
+      // account sent to /creative lands on a lock screen.
+      router.push(data.home || '/creative')
     } else {
       setError('Invalid username or password')
       setLoading(false)

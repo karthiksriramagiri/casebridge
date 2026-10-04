@@ -643,7 +643,26 @@ function WinnerCard({ ad, rank, medians, isSelected, onSelect, flagged, onFlag }
       }),
     })
     setDoubling(res.ok ? 'done' : 'error')
-    if (res.ok) onFlag?.(ad.id)
+    if (!res.ok) return
+    onFlag?.(ad.id)
+
+    /* Doubling down is a request for more of this creative, so it opens a
+       brief on the assignments board — which is what mirrors it into the
+       creative's Notion workspace. Failing to raise the brief does not undo
+       the decision that was just recorded, so it is not surfaced as an error
+       on this button. */
+    fetch('/api/creative/briefs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: `Double down — ${rowName(ad)}`,
+        status: 'assigned',
+        ad_type: adCodes(ad.name).format || null,
+        launched_ad_id: ad.id,
+        brief: `Winner at ${ad.cpl != null ? money(ad.cpl) : '—'} CPL on ${money(ad.spend || 0)} spend. `
+             + 'Produce variations on this creative.',
+      }),
+    }).catch(() => {})
   }
   const codes = adCodes(ad.name)
   const plays = ad.videoPlays || 0
@@ -700,6 +719,7 @@ function WinnerCard({ ad, rank, medians, isSelected, onSelect, flagged, onFlag }
         )}
 
         <div className="ca-winner-cta">
+          {site.role !== 'creative' && (
           <button className="ca-cta is-primary"
             onClick={doubleDown}
             disabled={doubling === 'saving' || doubling === 'done'}
@@ -709,10 +729,15 @@ function WinnerCard({ ad, rank, medians, isSelected, onSelect, flagged, onFlag }
               : doubling === 'error' ? 'Could not save — retry'
               : 'Double down'}
           </button>
+          )}
+          {/* Creative Analysis is admin-only, so the card must not offer a
+              link into it — the card's own stats are what that role gets. */}
+          {site.role !== 'creative' && (
           <Link className="ca-cta" href={`${site.base}/analysis?ad=${encodeURIComponent(ad.id)}`}
             onClick={e => e.stopPropagation()}>
             View analysis
           </Link>
+          )}
         </div>
       </div>
     </article>

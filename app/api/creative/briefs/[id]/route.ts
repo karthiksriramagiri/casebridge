@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { mirrorUpdate, mirrorDelete } from '../../_notion-mirror'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -36,16 +37,31 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .from('creative_briefs')
     .update(patch)
     .eq('id', id)
-    .select()
+    .select('*, assignee:profiles!creative_briefs_assignee_id_fkey ( name )')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ brief: data })
+
+  /* A drag writes only `position`, which Notion has no column for — mirroring
+     that would be a wasted API call on every card move. */
+  if (Object.keys(patch).some(k => k !== 'position')) {
+    await mirrorUpdate(data, (data as any).assignee?.name ?? null, req.nextUrl.origin)
+  }
+
+  return NextResponse.json({ brief: { ...data, assignee: undefined } })
 }
 
 export async function DELETE(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+
+  // Read the mirrored page id before the row goes, or there is nothing left
+  // to archive it by.
+  const { data: existing } = await supabase
+    .from('creative_briefs').select('*').eq('id', id).maybeSingle()
+
   const { error } = await supabase.from('creative_briefs').delete().eq('id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  await mirrorDelete((existing as any)?.notion_page_id)
   return NextResponse.json({ ok: true })
 }

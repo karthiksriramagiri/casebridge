@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { IconExit, IconRefresh } from './dash'
 import { useSite, type SiteId } from './site'
+import { canOpen } from '@/lib/roles'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    The app bar shared by the Creative and Financial centers.
@@ -22,6 +23,9 @@ type NavItem = {
   label: string
   /** Relative to the center root. '' is the center's front page. */
   sub: string
+  /** Sends the tab somewhere outside the app instead — Assignments currently
+      lives in Notion, so the tab opens that rather than a page we do not have. */
+  external?: string
 }
 
 const NAV: Record<SiteId, { wordmark: string; items: NavItem[] }> = {
@@ -33,7 +37,8 @@ const NAV: Record<SiteId, { wordmark: string; items: NavItem[] }> = {
       { label: 'Winner Analysis',   sub: '/winners' },
       { label: 'Competitors',       sub: '/competitors' },
       { label: 'Angles',            sub: '/angles' },
-      { label: 'Assignments',       sub: '/assignments' },
+      { label: 'Assignments',       sub: '/assignments',
+        external: process.env.NEXT_PUBLIC_NOTION_ASSIGNMENTS_URL || undefined },
     ],
   },
   finance: {
@@ -59,6 +64,12 @@ export function MetricsHeader({ actions, onRefresh, refreshing, badges, below }:
   const site = useSite()
   const { wordmark, items } = NAV[site.id]
 
+  /* A tab the gate would refuse is not shown. The gate is still what enforces
+     it — this only keeps the header from advertising pages that answer with a
+     lock screen. Paths are the center's real ones, not the host-relative
+     `base`, since that is what the gate matches on. */
+  const visible = items.filter(item => canOpen(site.role, site.root + item.sub))
+
   const href = (sub: string) => (site.base + sub) || '/'
 
   async function logout() {
@@ -69,17 +80,26 @@ export function MetricsHeader({ actions, onRefresh, refreshing, badges, below }:
   return (
     <header className="mx-header">
       <div className="mx-header-inner">
-        <Link href={href('')} className="mx-wordmark" style={{ textDecoration: 'none' }}>
+        <Link href={visible[0] ? href(visible[0].sub) : href('')}
+              className="mx-wordmark" style={{ textDecoration: 'none' }}>
           CaseBridge <i>{wordmark}</i>
         </Link>
 
         <nav className="mx-nav" aria-label={`${wordmark} sections`}>
-          {items.map(item => {
+          {visible.map(item => {
             const target = href(item.sub)
             const active = item.sub === ''
               ? pathname === target
               : pathname.startsWith(target)
             const count = badges?.[item.sub]
+            if (item.external) {
+              return (
+                <a key={item.sub} href={item.external} className="mx-tab"
+                   rel="noopener noreferrer">
+                  {item.label}
+                </a>
+              )
+            }
             return (
               <Link key={item.sub} href={target} className="mx-tab"
                 aria-current={active ? 'page' : undefined}>

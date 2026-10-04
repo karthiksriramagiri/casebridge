@@ -1,6 +1,8 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 import { siteRootForHost } from '@/app/_metrics/site-root'
+import { canOpen } from '@/lib/roles'
+import { readSessionCookie } from '@/lib/session'
 
 /* ── Subdomain routing ───────────────────────────────────────────────────────
    The Creative and Financial centers are separate sites on separate hosts but
@@ -77,8 +79,17 @@ export async function proxy(request: NextRequest) {
 
   if (!needsSupabaseAuth) {
     if (effectivePath.startsWith('/creative') || effectivePath.startsWith('/finance') || effectivePath.startsWith('/metrics')) {
-      if (!request.cookies.get('casebridge_session')) {
-        return NextResponse.redirect(new URL('/login', request.url))
+      const raw = request.cookies.get('casebridge_session')?.value
+      if (!raw) return NextResponse.redirect(new URL('/login', request.url))
+
+      /* Not every signed-in person sees every center. The restricted creative
+         account is held to its own pages here, before any of them render, so
+         typing a URL is no better than clicking a tab it does not have. The
+         lock screen is served in place rather than redirected to, so the URL
+         they tried stays in the bar and the back button still works. */
+      const session = await readSessionCookie(raw)
+      if (session && !canOpen(session.role, effectivePath)) {
+        return NextResponse.rewrite(new URL('/no-access', request.url))
       }
     }
     return applyRewrite(supabaseResponse)

@@ -24,6 +24,9 @@ export type SiteInfo = {
   root: string
   /** Prefix to put in front of browser-facing hrefs. '' on the subdomain. */
   base: string
+  /** Who is signed in. Client components use it to drop controls a restricted
+      account should not see; the real gate is on the server. */
+  role?: 'admin' | 'creative'
 }
 
 const SiteContext = createContext<SiteInfo | null>(null)

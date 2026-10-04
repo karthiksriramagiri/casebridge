@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { mirrorCreate } from '../_notion-mirror'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -90,5 +91,11 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  /* Mirrored into Notion after the row exists, and awaited so the card the
+     client gets back is already in both places. It costs one round trip and
+     saves the "it is not in Notion yet" question. */
+  await mirrorCreate(data, null, req.nextUrl.origin)
+
   return NextResponse.json({ brief: { ...data, commentCount: 0, assigneeName: null } })
 }

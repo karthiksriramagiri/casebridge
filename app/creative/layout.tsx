@@ -3,6 +3,7 @@ import { headers } from 'next/headers'
 import '@/app/_metrics/metrics.css'
 import { SiteProvider } from '@/app/_metrics/site'
 import { siteRootForHost } from '@/app/_metrics/site-root'
+import { currentRole } from '@/app/_metrics/access'
 
 export const metadata: Metadata = {
   title: 'Creative Center · CaseBridge',
@@ -14,9 +15,10 @@ export default async function CreativeLayout({ children }: { children: React.Rea
   // On creatives.case-bridge.com the rewrite hides the /creative prefix, so
   // links must omit it. Browsing the same routes on the apex domain keeps it.
   const onOwnHost = siteRootForHost((await headers()).get('host')) === '/creative'
+  const role = await currentRole()
 
   return (
-    <SiteProvider value={{ id: 'creative', root: '/creative', base: onOwnHost ? '' : '/creative' }}>
+    <SiteProvider value={{ id: 'creative', root: '/creative', base: onOwnHost ? '' : '/creative', role }}>
       <div className="mx metrics-page">{children}</div>
     </SiteProvider>
   )

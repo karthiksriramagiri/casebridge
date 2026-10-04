@@ -40,7 +40,11 @@ const DECLARED: Array<Omit<AdAccount, 'id' | 'token'> & { id: string; token: str
   },
   {
     key: 'jm',
-    label: 'Jacoby & Meyers',
+    /* The firm's own name stays out of the Creative Center — the account is
+       shown under the brand its ads actually run as, which is also what an
+       outside creative with access to this center should see. The key stays
+       'jm' because env vars and every stored row are keyed on it. */
+    label: 'Collision Support Desk',
     id: actId(process.env.META_AD_ACCOUNT_JM),
     token: clean(process.env.META_ACCESS_TOKEN_JM),
   },

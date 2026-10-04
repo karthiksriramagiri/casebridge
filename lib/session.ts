@@ -1,8 +1,16 @@
-import { getIronSession, IronSession } from 'iron-session'
+import { getIronSession, IronSession, unsealData } from 'iron-session'
 import { cookies } from 'next/headers'
+
+/* Roles live in lib/roles.ts so the browser can read them too — this module
+   cannot be imported from a client component. Re-exported here so existing
+   server-side imports keep working. */
+export { ROLE_ACCESS, canOpen, type Role } from './roles'
+import type { Role } from './roles'
 
 export interface SessionData {
   isLoggedIn: boolean
+  role?: Role
+  user?: string
 }
 
 const sessionOptions = {
@@ -22,6 +30,21 @@ const sessionOptions = {
 export async function getSession(): Promise<IronSession<SessionData>> {
   const session = await getIronSession<SessionData>(await cookies(), sessionOptions)
   return session
+}
+
+/* The middleware runs on the edge, where next/headers does not exist — it only
+   has the raw cookie string. Unsealing it directly is the same read getSession
+   does, minus the write half it has no use for. A cookie that will not open
+   (tampered, or sealed with an older secret) is treated as no session at all
+   rather than as an admin. */
+export async function readSessionCookie(raw: string | undefined): Promise<SessionData | null> {
+  if (!raw) return null
+  try {
+    const data = await unsealData<SessionData>(raw, { password: sessionOptions.password })
+    return data && typeof data === 'object' && data.isLoggedIn ? data : null
+  } catch {
+    return null
+  }
 }
 
 

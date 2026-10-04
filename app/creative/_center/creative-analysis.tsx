@@ -541,7 +541,9 @@ function CreativeDetail({ ad, benchmarks, onBack }: {
               ))}
             </div>
             <dl className="ka-facts">
-              <Fact k="Firm" v={ad.firmName || ad.firm} />
+              {/* Short code only. The full legal name is not something we want
+                  on screen for anyone outside the company. */}
+              <Fact k="Firm" v={ad.firm || '—'} />
               <Fact k="Angle" v={ad.angle} />
               <Fact k="Campaign" v={ad.campaignName} />
               <Fact k="Ad set" v={ad.adsetName} />

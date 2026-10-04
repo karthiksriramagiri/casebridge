@@ -509,7 +509,8 @@ function CreativeRow({
                 <span>Landing page views <b style={{ color: 'var(--mx-ink-2)', fontWeight: 600 }}>{num(ad.landingPageViews)}</b></span>
                 {ad.reach != null && <span>Reach <b style={{ color: 'var(--mx-ink-2)', fontWeight: 600 }}>{num(ad.reach)}</b></span>}
                 {ad.campaignName && <span>Campaign <b style={{ color: 'var(--mx-ink-2)', fontWeight: 600 }}>{ad.campaignName}</b></span>}
-                {ad.firmName && <span>Firm <b style={{ color: 'var(--mx-ink-2)', fontWeight: 600 }}>{ad.firmName}</b></span>}
+                {/* Abbreviation, not the firm's full legal name. */}
+                {(ad.firm || ad.firmName) && <span>Firm <b style={{ color: 'var(--mx-ink-2)', fontWeight: 600 }}>{ad.firm || ad.firmName}</b></span>}
 
                 {ctx.openTrend && (
                   <button className="mx-btn mx-btn-quiet" style={{ padding: '4px 10px' }}

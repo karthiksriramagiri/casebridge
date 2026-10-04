@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { STATUSES, AD_TYPES } from './statuses'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Creative assignments — the board
@@ -34,20 +35,6 @@ export type Brief = {
 }
 
 type Rep = { id: string; name: string; creative_slug: string | null }
-
-export const STATUSES = [
-  { key: 'assigned',         label: 'Assigned',         tone: 'idle'   },
-  { key: 'in_progress',      label: 'In progress',      tone: 'info'   },
-  { key: 'feedback_process', label: 'Feedback Process', tone: 'warn'   },
-  { key: 'feedback_done',    label: 'Feedback Done',    tone: 'idle'   },
-  { key: 'ready_to_launch',  label: 'Ready To Launch',  tone: 'accent' },
-  { key: 'ad_launched',      label: 'AD Launched',      tone: 'good'   },
-  { key: 'winner',           label: '🏆 Winner',        tone: 'gold'   },
-]
-
-/* The ad families from the angle taxonomy on /creative/angles. Keeping the
-   same six here means a brief can be traced to the angle codes it produced. */
-export const AD_TYPES = ['BR', 'HYB', 'UGC', 'BNR', 'ANM', 'IMG']
 
 const LANGUAGES = [
   { key: 'english', label: 'English' },
