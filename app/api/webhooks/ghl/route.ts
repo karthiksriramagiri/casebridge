@@ -237,32 +237,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Creative commission Slack alert — fire if ad_name or adset contains a creative slug
-  if (resolvedAdName) {
-    const { data: creativeReps } = await supabase
-      .from('profiles')
-      .select('name, creative_slug')
-      .eq('team_type', 'creative')
-      .not('creative_slug', 'is', null)
-
-    const adNameUpper = resolvedAdName.toUpperCase()
-    for (const rep of creativeReps ?? []) {
-      const slug = (rep.creative_slug as string).toUpperCase()
-      if (adNameUpper.includes(slug)) {
-        const slackWebhook = process.env.SLACK_CREATIVE_CASES_WEBHOOK
-        if (slackWebhook) {
-          fetch(slackWebhook, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              text: `🎉 *Case Signed — Creative Attribution*\n*Rep:* ${rep.name}\n*Slug:* ${slug}\n*Client:* ${contactName || 'Unknown'}\n*Ad:* ${resolvedAdName}`,
-            }),
-          }).catch(() => {})
-        }
-        break
-      }
-    }
-  }
+  /* The "Case Signed — Creative Attribution" alert used to fire here, matching
+     the signed lead's ad name against each creative's slug and posting to
+     #3-faisal-performace-updates-casebridge. Removed on 2026-10-05 at the
+     channel's request. The attribution itself is unaffected — it is recorded
+     on the ghl_leads row above and read by the Creative Center; this only
+     stopped the Slack message. Restoring it means this block plus the
+     SLACK_CREATIVE_CASES_WEBHOOK variable, which was deleted with it. */
 
   // Auto score event: +2pt for the rep who closed this lead
   if (closer) {
