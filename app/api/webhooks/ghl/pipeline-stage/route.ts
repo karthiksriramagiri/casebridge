@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { creativeNames } from '@/lib/meta-creative'
 import { createClient } from '@supabase/supabase-js'
 
 const supabase = createClient(
@@ -70,9 +71,14 @@ export async function POST(request: NextRequest) {
   }
 
   // Attribution — from payload first, then inherit from signed record if missing
+  /* The Spanish pipelines carry attribution as custom fields rather than on
+     the opportunity, under their GHL field key and display name — neither of
+     which matches the camelCase spellings checked first. Without these two
+     entries every Spanish lead announced itself with no creative. */
   let adId =
     payload.adId || payload.ad_id ||
     customFields.adId || customFields.ad_id ||
+    customFields['contact.ad_id'] || customFields['Ad ID'] ||
     payload.contact?.attributionSource?.adId ||
     payload.utm_content || customFields.utm_content || null
   let adName =
@@ -81,10 +87,12 @@ export async function POST(request: NextRequest) {
     customFields['Ad Name'] || null
   let adsetId =
     payload.adGroupId || payload.adset_id ||
-    customFields.adGroupId || customFields.adset_id || null
+    customFields.adGroupId || customFields.adset_id ||
+    customFields['contact.adset_id'] || customFields['Adset ID'] || null
   let campaignId =
     payload.campaignId || payload.campaign_id ||
     customFields.campaignId || customFields.campaign_id ||
+    customFields['contact.campaign_id'] || customFields['Campaign ID'] ||
     payload.utm_campaign || customFields.utm_campaign || null
   let utmSource   = payload.utm_source   || customFields.utm_source   || null
   let utmMedium   = payload.utm_medium   || customFields.utm_medium   || null
@@ -317,21 +325,9 @@ async function postNewLeadToSlack(o: {
       if (error && /duplicate key|already exists/i.test(error.message)) return
     }
 
-    let creative = o.adName
-    let adset: string | null = null
-
-    const token = (process.env.FB_ACCESS_TOKEN || '').trim()
-    const cleanId = o.adId && !o.adId.includes('{{') ? o.adId : null
-    if (cleanId && token) {
-      const res = await fetch(
-        `https://graph.facebook.com/v25.0/${cleanId}?fields=name,adset{name}&access_token=${token}`,
-        { cache: 'no-store' })
-      if (res.ok) {
-        const d = await res.json()
-        creative = creative || d.name || null
-        adset = d.adset?.name ?? null
-      }
-    }
+    const names = await creativeNames(o.adId)
+    const creative = o.adName || names.creative
+    const adset = names.adset
 
     const timePst = new Date().toLocaleString('en-US', {
       timeZone: 'America/Los_Angeles',

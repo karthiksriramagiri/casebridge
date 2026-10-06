@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { creativeNames } from '@/lib/meta-creative'
 import { createClient } from '@supabase/supabase-js'
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -38,6 +39,10 @@ const headers = () => ({
     dump hours of history into the channel as though it just arrived. */
 const MAX_AGE_MIN = 90
 
+/* GHL custom field "Ad ID" (key contact.ad_id) on this location. The Spanish
+   pipelines populate it instead of the opportunity's attribution. */
+const AD_ID_FIELD = 'urR2N2iZx0u7L1zhV5j0'
+
 type NewStage = { pipelineId: string; pipelineName: string; stageId: string }
 
 /** Every "New Lead" stage, read from GHL so a new pipeline needs no code. */
@@ -57,18 +62,21 @@ async function newLeadStages(): Promise<NewStage[]> {
   return out
 }
 
-/** Resolve an ad id to its creative and ad set names. */
-async function creativeNames(adId: string | null) {
-  const token = (process.env.FB_ACCESS_TOKEN || '').trim()
-  if (!adId || adId.includes('{{') || !token) return { creative: null, adset: null }
+/* The ad id lives on the opportunity's attribution for most pipelines, but
+   the Spanish ones record it as a contact custom field and leave attributions
+   empty — so a lead with no attribution is not necessarily an unattributed
+   lead. Costs one extra call, and only for the leads that need it. */
+async function adIdFromContact(contactId: string | null): Promise<string | null> {
+  if (!contactId) return null
   try {
-    const res = await fetch(
-      `https://graph.facebook.com/v25.0/${adId}?fields=name,adset{name}&access_token=${token}`,
-      { next: { revalidate: 3600 } })
-    if (!res.ok) return { creative: null, adset: null }
+    const res = await fetch(`${GHL_API}/contacts/${contactId}`,
+      { headers: headers(), cache: 'no-store' })
+    if (!res.ok) return null
     const d: any = await res.json()
-    return { creative: d.name ?? null, adset: d.adset?.name ?? null }
-  } catch { return { creative: null, adset: null } }
+    const fields: any[] = d?.contact?.customFields ?? []
+    const hit = fields.find(f => f?.id === AD_ID_FIELD)
+    return hit?.value ? String(hit.value) : null
+  } catch { return null }
 }
 
 export async function GET(req: NextRequest) {
@@ -110,6 +118,7 @@ export async function GET(req: NextRequest) {
           name: opp.contact?.name || opp.name || null,
           pipeline: st.pipelineName,
           adId: attr?.utmAdId || attr?.utmContent || null,
+          contactId: opp.contact?.id || null,
           createdAt: opp.createdAt,
         })
       }
@@ -151,6 +160,9 @@ export async function GET(req: NextRequest) {
 
     let sent = 0
     for (const lead of fresh) {
+      // Resolved before the claim so the row records the id actually used.
+      const adId = lead.adId || await adIdFromContact(lead.contactId)
+
       /* Claim it before posting. If the write loses a race with the webhook the
          insert conflicts and we skip — better a missed duplicate than two
          messages for one lead. */
@@ -158,12 +170,12 @@ export async function GET(req: NextRequest) {
         opportunity_id: lead.id,
         contact_name: lead.name,
         pipeline: lead.pipeline,
-        ad_id: lead.adId,
+        ad_id: adId,
         lead_created_at: lead.createdAt,
       })
       if (claimErr) continue
 
-      const { creative, adset } = await creativeNames(lead.adId)
+      const { creative, adset } = await creativeNames(adId)
       const timePst = new Date(lead.createdAt).toLocaleString('en-US', {
         timeZone: 'America/Los_Angeles',
         month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit', hour12: true,
