@@ -1,6 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
-import { siteRootForHost } from '@/app/_metrics/site-root'
+import { siteRootForHost, usesSharedLogin } from '@/app/_metrics/site-root'
 import { canOpen } from '@/lib/roles'
 import { readSessionCookie } from '@/lib/session'
 
@@ -41,7 +41,10 @@ export async function proxy(request: NextRequest) {
      unauthenticated. /login has to keep resolving on each host so the
      redirect target exists. */
   const rewritten = Boolean(
-    siteRoot && rawPath !== '/login' && !rawPath.startsWith('/api/') && !rawPath.startsWith(siteRoot)
+    siteRoot
+    && !(usesSharedLogin(siteRoot) && rawPath === '/login')
+    && !rawPath.startsWith('/api/')
+    && !rawPath.startsWith(siteRoot)
   )
   const effectivePath = rewritten ? siteRoot + (rawPath === '/' ? '' : rawPath) : rawPath
 
@@ -193,13 +196,20 @@ export async function proxy(request: NextRequest) {
      have no business waiting on an auth service they do not use. */
 
   // ── Dialer auth ──────────────────────────────────────────────────────────
+  /* On dialer.case-bridge.com the prefix is hidden, so a redirect written as
+     /dialer/login would be collapsed back to /login on the next request — one
+     extra round trip and a URL that flickers. Emit the address the host
+     actually uses. */
+  const dialerUrl = (p: string) =>
+    siteRoot === '/dialer' ? (p.slice('/dialer'.length) || '/') : p
+
   const isDialerLogin = pathname === '/dialer/login'
   const isDialer      = pathname.startsWith('/dialer')
   const isDialerAdmin = pathname.startsWith('/dialer/admin')
 
   if (isDialer && !isDialerLogin) {
     if (!user) {
-      const res = NextResponse.redirect(new URL('/dialer/login', request.url))
+      const res = NextResponse.redirect(new URL(dialerUrl('/dialer/login'), request.url))
       // Carry refreshed auth cookies through redirects
       supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
       return res
@@ -209,7 +219,7 @@ export async function proxy(request: NextRequest) {
       const role = (rawRole ?? 'REP').toUpperCase()
       console.log('[proxy] admin check', { pathname, rawRole, role, email: user.email, metadata: JSON.stringify(user.user_metadata) })
       if (role !== 'ADMIN') {
-        const res = NextResponse.redirect(new URL('/dialer/agent', request.url))
+        const res = NextResponse.redirect(new URL(dialerUrl('/dialer/agent'), request.url))
         supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
         return res
       }
@@ -217,7 +227,7 @@ export async function proxy(request: NextRequest) {
   }
 
   if (isDialerLogin && user) {
-    const res = NextResponse.redirect(new URL('/dialer/agent', request.url))
+    const res = NextResponse.redirect(new URL(dialerUrl('/dialer/agent'), request.url))
     supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
     return res
   }
