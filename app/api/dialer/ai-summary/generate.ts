@@ -88,15 +88,32 @@ Based on the information below, write a concise bullet-point summary of what is 
 ${sections.join('\n\n---\n\n')}`
 
   try {
-    const client = new Anthropic({ apiKey: anthropicKey })
+    /* An org-level key (one not scoped to a workspace) must name a workspace
+       on every request or the API 400s. intake-fill was given this on
+       2026-09-19 when the key changed; this caller was missed, so every
+       summary since has failed into the catch below and nobody saw it —
+       which is why the table stops dead on that date. */
+    const workspace = (process.env.ANTHROPIC_WORKSPACE_ID ?? '').trim()
+    const client = new Anthropic({
+      apiKey: anthropicKey,
+      ...(workspace ? { defaultHeaders: { 'anthropic-workspace-id': workspace } } : {}),
+    })
+
     const msg = await client.messages.create({
       model:      'claude-haiku-4-5-20251001',
       max_tokens: 512,
       messages:   [{ role: 'user', content: prompt }],
     })
 
-    const summary = (msg.content[0] as any)?.text?.trim() ?? ''
-    if (!summary) return
+    /* Read the text block rather than content[0]: a thinking block can come
+       first, and indexing position 0 then yields undefined and silently
+       stores nothing. Same trap intake-fill hit. */
+    const textBlock: any = msg.content.find((b: any) => b.type === 'text')
+    const summary = (textBlock?.text ?? '').trim()
+    if (!summary) {
+      console.error('[ai-summary] empty reply for %s (stop_reason: %s)', contactId, msg.stop_reason)
+      return
+    }
 
     // Upsert into dialer_ai_summaries (one row per contact)
     await db.from('dialer_ai_summaries').upsert({
@@ -106,7 +123,9 @@ ${sections.join('\n\n---\n\n')}`
     }, { onConflict: 'contact_id' })
 
     console.log('[ai-summary] stored for', contactId)
-  } catch (err) {
-    console.error('[ai-summary] Claude error', err)
+  } catch (err: any) {
+    // Logged loudly with the contact id: this failed silently for three weeks
+    // because the message said nothing about which lead or why.
+    console.error('[ai-summary] FAILED for %s — %s', contactId, err?.message || err)
   }
 }

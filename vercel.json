@@ -19,6 +19,10 @@
     {
       "schedule": "*/5 * * * *",
       "path": "/api/cron/new-lead-alerts"
+    },
+    {
+      "path": "/api/cron/ghl-sync",
+      "schedule": "*/10 * * * *"
     }
   ]
 }

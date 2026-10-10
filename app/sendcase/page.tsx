@@ -105,13 +105,22 @@ export default function SendCasePage() {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [running, setRunning] = useState<Set<string>>(new Set())
   const [apiError, setApiError] = useState<string | null>(null)
+  /* A manual pull gets its own flag. Reusing `loading` would blank the list
+     every time someone pressed it, and reusing the poll's state would make the
+     button flicker on its own every two minutes. */
+  const [pulling, setPulling] = useState(false)
+  const [lastPull, setLastPull] = useState<number | null>(null)
   // Photos are loaded per contact on expand — fetching them for every lead on
   // every poll would spend GHL quota for rows nobody opened.
   const [photos, setPhotos] = useState<Record<string, PhotoState>>({})
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeads = useCallback(async ({ manual = false } = {}) => {
+    if (manual) setPulling(true)
     try {
-      const res = await fetch('/api/sendcase')
+      /* A manual re-run has to reach GHL, not whatever the last response was —
+         the reason to press it is that something changed over there. */
+      const res = await fetch(manual ? `/api/sendcase?refresh=${Date.now()}` : '/api/sendcase',
+        manual ? { cache: 'no-store' } : undefined)
       const data = await res.json()
       if (!res.ok || data.error) {
         // A GHL refusal used to arrive here as an empty list, which the UI
@@ -121,12 +130,14 @@ export default function SendCasePage() {
       } else {
         setApiError(data.warning ?? null)
         setLeads(data.leads ?? [])
+        setLastPull(Date.now())
       }
     } catch (err) {
       console.error('Failed to fetch leads', err)
       setApiError(String(err))
     } finally {
       setLoading(false)
+      if (manual) setPulling(false)
     }
   }, [])
 
@@ -194,15 +205,51 @@ export default function SendCasePage() {
 
   return (
     <div style={{ minHeight: '100vh', background: BG, padding: '32px 24px' }}>
+      {/* The page styles inline, so the one keyframe it needs lives here. */}
+      <style>{`
+        @keyframes sc-spin { to { transform: rotate(360deg) } }
+        @media (prefers-reduced-motion: reduce) {
+          @keyframes sc-spin { to { transform: none } }
+        }
+      `}</style>
       <div style={{ maxWidth: 1040, margin: '0 auto' }}>
         {/* Header */}
-        <div style={{ marginBottom: 28 }}>
-          <h1 style={{ fontSize: 26, fontWeight: 700, color: DARK, marginBottom: 4 }}>
-            Send Case — Intake Auto-Fill
-          </h1>
-          <p style={{ fontSize: 13, color: MUTED }}>
-            All leads in the Pending Send pipeline. Fields auto-fill 1 hour after signing, or click Run to fill now.
-          </p>
+        <div style={{
+          marginBottom: 28, display: 'flex', alignItems: 'flex-start',
+          justifyContent: 'space-between', gap: 16, flexWrap: 'wrap',
+        }}>
+          <div>
+            <h1 style={{ fontSize: 26, fontWeight: 700, color: DARK, marginBottom: 4 }}>
+              Send Case — Intake Auto-Fill
+            </h1>
+            <p style={{ fontSize: 13, color: MUTED }}>
+              All leads in the Pending Send pipeline. Fields auto-fill 1 hour after signing, or click Run to fill now.
+            </p>
+          </div>
+
+          <div style={{ textAlign: 'right', flexShrink: 0 }}>
+            <button
+              onClick={() => fetchLeads({ manual: true })}
+              disabled={pulling}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: 7,
+                background: pulling ? '#e2e8f0' : DARK,
+                color: pulling ? MUTED : '#fff',
+                border: 0, borderRadius: 8, padding: '9px 16px',
+                fontSize: 13, fontWeight: 600,
+                cursor: pulling ? 'default' : 'pointer',
+              }}>
+              <span style={{
+                display: 'inline-block',
+                animation: pulling ? 'sc-spin 0.9s linear infinite' : undefined,
+              }}>⟳</span>
+              {pulling ? 'Pulling…' : 'Re-run pull'}
+            </button>
+            <p style={{ fontSize: 11, color: MUTED, margin: '6px 0 0' }}>
+              {lastPull ? `Updated ${timeAgo(new Date(lastPull).toISOString())}` : 'Not pulled yet'}
+              {' · auto every 2 min'}
+            </p>
+          </div>
         </div>
 
         {/* Stats row */}

@@ -7,7 +7,7 @@ import { resolveTimezone, stateForPhone }             from './area-codes'
 import { BLOCKS_BY_COUNT, blockWindows, stagePriority } from './blocks'
 import type { BlockName } from './blocks'
 import { getNumberPool, assignRandomCallerId }         from './number-pool'
-import { getPipelines }                               from '@/lib/ghl-pipelines'
+import { getPipelines, ghlFetch }                     from '@/lib/ghl-pipelines'
 
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
 const PIPELINES = [
@@ -130,6 +130,7 @@ export async function syncGHLToQueue(): Promise<{
   const seenContactIds = new Set<string>()
 
   // Batch accumulators — flushed at the end
+  const queuedKeys = new Set<string>()
   const toInsert:     Record<string, any>[] = []
   const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number }[] = []
   const toReactivate: { id: string; fields: Record<string, any> }[] = []
@@ -187,8 +188,17 @@ export async function syncGHLToQueue(): Promise<{
       if (cursor)   url.searchParams.set('startAfter',   cursor)
       if (cursorId) url.searchParams.set('startAfterId', cursorId)
 
-      const res  = await fetch(url.toString(), { headers })
-      if (!res.ok) break
+      /* ghlFetch, not fetch: this sweep walks every pipeline and stage, and
+         it now runs every ten minutes instead of once a day. Overlapping runs
+         cross GHL's 100-requests-per-10-seconds burst window easily, and a
+         bare fetch would take the 429 and `break` — silently truncating the
+         queue to whatever had loaded so far. */
+      const res  = await ghlFetch(url.toString(), { headers })
+      if (!res.ok) {
+        console.error('[queue:sync] GHL %d on %s / %s — stage truncated',
+          res.status, pipeline.firm, stage.name)
+        break
+      }
       const data = await res.json()
       const opps = data.opportunities ?? []
       if (opps.length === 0) break
@@ -245,6 +255,15 @@ export async function syncGHLToQueue(): Promise<{
             continue
           }
 
+          /* The same contact can sit in two in-scope stages at once — 60 of
+             them do today, mostly a lead present in both the English and the
+             Spanish LHP pipeline. Each stage sweep would queue its own row
+             with the same (contact, day, attempt) key, which the unique index
+             rejects. existingMap only knows what is already in the database,
+             so the run has to remember what it has queued for itself. */
+          if (queuedKeys.has(key)) continue
+          queuedKeys.add(key)
+
           const row: Record<string, any> = {
             contact_id:         opp.contactId,
             contact_name:       opp.name ?? contact.name ?? 'Unknown',
@@ -283,10 +302,32 @@ export async function syncGHLToQueue(): Promise<{
   // ── Flush batches ─────────────────────────────────────────────────────────
   const now = new Date().toISOString()
 
-  // Batch insert in chunks of 500
+  /* Insert in chunks, and check the result.
+
+     A multi-row insert is one statement: a single unique violation rolls back
+     the whole chunk. That silently cost most of the queue — 3,100 attempts
+     were built and 775 landed, with the sync still reporting success. The
+     error is now surfaced, and a failed chunk is retried row by row so one bad
+     row costs one lead instead of five hundred. */
+  let inserted = 0
   for (let i = 0; i < toInsert.length; i += 500) {
-    await db.from('dialer_attempts').insert(toInsert.slice(i, i + 500))
+    const chunk = toInsert.slice(i, i + 500)
+    const { error } = await db.from('dialer_attempts').insert(chunk)
+    if (!error) { inserted += chunk.length; continue }
+
+    console.error(`[sync] chunk of ${chunk.length} failed (${error.code}: ${error.message}) — retrying individually`)
+    for (const row of chunk) {
+      const { error: rowErr } = await db.from('dialer_attempts').insert(row)
+      if (rowErr) {
+        // A duplicate here is expected and harmless; anything else is not.
+        if (rowErr.code !== '23505') console.error('[sync] row insert failed', rowErr.code, rowErr.message, row.contact_id)
+      } else inserted++
+    }
   }
+  if (inserted !== toInsert.length) {
+    console.warn(`[sync] ${toInsert.length - inserted} of ${toInsert.length} attempts did not insert`)
+  }
+  created = inserted
 
   // Batch stage/priority updates for pending rows
   type UpdateGroup = { stage_name: string; stage_id: string; priority: number; ids: string[] }
@@ -361,9 +402,31 @@ export async function getStateFilter(): Promise<StateFilter> {
 // Does this lead's phone pass the filter?
 // Unknown state (unmapped area code) is kept on exclude, dropped on include —
 // "only call CA" shouldn't leak leads we can't place.
-export function passesStateFilter(phone: string, filter: StateFilter): boolean {
+/* A lead's state is the firm's state, not the phone's.
+
+   This used to read the area code, which answers a different question: where
+   the number was issued, not where the client is. Of today's queue it
+   disagreed with the firm on 101 leads and could not classify 19 more — a
+   Fears client in Texas carrying a New York mobile was filtered out as a New
+   Yorker. Every firm we dial for operates in exactly one state, and that is
+   the fact worth filtering on. */
+export const FIRM_STATE: Record<string, string> = {
+  lhp:         'CA',
+  lhp_spanish: 'CA',
+  jm:          'CA',
+  fears:       'TX',
+  fl:          'TX',
+}
+
+export function stateForLead(lead: { firm?: string | null }): string | null {
+  return FIRM_STATE[String(lead.firm ?? '').toLowerCase()] ?? null
+}
+
+export function passesStateFilter(lead: { firm?: string | null }, filter: StateFilter): boolean {
   if (filter.mode === 'off' || filter.states.length === 0) return true
-  const state = stateForPhone(phone)
+  const state = stateForLead(lead)
+  // A firm we have no state for is kept on exclude and dropped on include —
+  // "only call CA" must not leak a client we cannot place.
   if (!state) return filter.mode === 'exclude'
   return filter.mode === 'include'
     ?  filter.states.includes(state)
@@ -470,25 +533,62 @@ async function loadLastDialed(db: any, contactIds: string[]): Promise<Map<string
   return map
 }
 
-/** Least-recently-called first, inside the existing priority tiers. */
+/** When a lead reached its current stage — the only honest recency signal we
+ *  have. `created_at` is when the sync wrote the row, which for a lead still
+ *  sitting pending from July says nothing about how fresh the lead is. */
+function stageChangedMs(a: Attempt): number {
+  const raw = (a as any).stage_changed_at
+  const t = raw ? Date.parse(raw) : NaN
+  return Number.isFinite(t) ? t : 0
+}
+
+/** Did this lead arrive today, in Eastern? Speed to lead is the whole game:
+ *  a lead that came in this morning is worth more than anything from last
+ *  week, whatever stage it sits in. */
+function arrivedToday(a: Attempt, todayEt: string): boolean {
+  const ms = stageChangedMs(a)
+  if (!ms) return false
+  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === todayEt
+}
+
+/* Ordering, most significant first:
+
+     1. callbacks        — a promise made to a lead at a stated time
+     2. carryover        — owed from yesterday
+     3. arrived today    — speed to lead beats everything older
+     4. stage priority   — contract sent still outranks a no-response
+     5. newest first     — within a stage, latest to oldest
+
+   Step 5 is the change that matters. Recency used to sit *below* a
+   dialed/never-dialed split, so it only ever reordered leads nobody had
+   touched; everything else fell through to created_at ASCENDING — oldest
+   first, the exact opposite of what the floor needs. Worse, the key it sorted
+   on (stage_changed_at) did not exist on the table, so that line was dead
+   code reading undefined on every row.
+
+   Never-dialed-before-dialed is kept, but underneath recency rather than
+   above it. MIN_REDIAL_GAP_MS still stops the same contact coming round
+   twice in quick succession, so recency-first cannot turn into redial spam. */
 function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
   const bool = (v: unknown) => (v ? 1 : 0)
+  const todayEt = todayEastern()
   return [...rows].sort((a, b) => {
     const aDialed = lastDialed.get(a.contact_id)
     const bDialed = lastDialed.get(b.contact_id)
     return (
       bool(b.is_callback) - bool(a.is_callback) ||
       bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
+      bool(arrivedToday(b, todayEt)) - bool(arrivedToday(a, todayEt)) ||
       (b.priority ?? 0) - (a.priority ?? 0) ||
-      // Leads nobody has called yet come before any that have been
+      // Latest to oldest — the floor works the freshest lead in the stage next
+      stageChangedMs(b) - stageChangedMs(a) ||
+      // Only then: anyone never called outranks someone already tried
       (aDialed === undefined ? 0 : 1) - (bDialed === undefined ? 0 : 1) ||
-      // Freshest stage change first among never-dialed leads
-      String((b as any).stage_changed_at ?? '').localeCompare(String((a as any).stage_changed_at ?? '')) ||
-      // Then the lead waiting longest since its last dial
       (aDialed ?? 0) - (bDialed ?? 0) ||
       (a.attempt_number ?? 0) - (b.attempt_number ?? 0) ||
       String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')) ||
-      String((a as any).created_at ?? '').localeCompare(String((b as any).created_at ?? '')) ||
+      // Newest row first as the final tiebreak, matching the rule above
+      String((b as any).created_at ?? '').localeCompare(String((a as any).created_at ?? '')) ||
       String(a.id).localeCompare(String(b.id))
     )
   })
@@ -571,7 +671,11 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     if (hasStageCol) q2 = q2.order('stage_changed_at', { ascending: false, nullsFirst: false })
     return q2.order('attempt_number', { ascending: true })
       .order('due_from',          { ascending: true })
-      .order('created_at',        { ascending: true })
+      /* Newest first, matching orderByRecency. The JS sort is authoritative,
+         but this order decides WHICH rows survive the 6000-row fetch cap —
+         ascending here would hand the sorter the oldest leads and throw away
+         exactly the fresh ones it is supposed to put on top. */
+      .order('created_at',        { ascending: false })
       .order('id',                { ascending: true })
   }
 
@@ -608,7 +712,7 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     // Spanish leads only go to Spanish-capable reps
     if (a.lang === 'es' && !repSpeaksSpanish) return false
     // State filter — callbacks are exempt (already promised to the lead)
-    if (!a.is_callback && !passesStateFilter(a.phone, stateFilter)) return false
+    if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
     // Firm filter — callbacks exempt for the same reason
     if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
     if (!a.is_callback) {
@@ -750,7 +854,7 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     if (activeConts.has(a.contact_id)) return false
     if (dialedTooRecently(a, lastDialed2, now.getTime())) return false
     // State filter — callbacks are exempt (already promised to the lead)
-    if (!a.is_callback && !passesStateFilter(a.phone, stateFilter)) return false
+    if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
     // Firm filter — callbacks exempt for the same reason
     if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
     if (!a.is_callback) {

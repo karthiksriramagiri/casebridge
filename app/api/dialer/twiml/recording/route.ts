@@ -20,6 +20,10 @@ export async function POST(req: NextRequest) {
   const recordingUrl    = body.get('RecordingUrl')    ?? ''
   const recordingStatus = body.get('RecordingStatus') ?? ''
   const recordingChannels = parseInt(body.get('RecordingChannels') ?? '1', 10)
+  /* RecordingDuration is how long the RECORDING ran, which is not how long
+     the CALL lasted — a conference recording starts and stops on its own
+     boundaries. It is logged for diagnostics and deliberately not written to
+     dialer_calls.duration; see the update below. */
   const duration        = parseInt(body.get('RecordingDuration') ?? '0', 10)
   const conferenceSid   = body.get('ConferenceSid')   ?? ''
   const rawCallSid      = body.get('CallSid')         ?? ''
@@ -73,11 +77,18 @@ export async function POST(req: NextRequest) {
     return new NextResponse(null, { status: 204 })
   }
 
-  // Persist recording info on the call row
+  /* Persist recording info on the call row — but NOT duration.
+
+     This used to write RecordingDuration into dialer_calls.duration, which
+     the status callback had already filled with Twilio's CallDuration. The
+     recording callback arrives second, so for every recorded call the real
+     talk time was replaced by the recording length. It showed up in the
+     numbers: recorded calls averaged 22s against 30s for unrecorded ones,
+     when a call that connected to a human should be the longer of the two.
+     Every talk-time figure in Reports was computed off that. */
   await db.from('dialer_calls').update({
     recording_url: `${recordingUrl}.mp3`,
     recording_sid: recordingSid,
-    duration,
   }).eq('call_sid', callSid)
 
   // Insert a pending transcript row

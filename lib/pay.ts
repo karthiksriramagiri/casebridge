@@ -39,6 +39,28 @@ export const PERIOD_START_OVERRIDES: Record<string, string> = {
   '2026-07-17': '2026-06-26', // Jul 4 holiday moved Jul 10 payout → Jul 17; period covers Jun 26–Jul 17
 }
 
+/* When a payout slips, the whole cadence slides with it rather than snapping
+   back on the next cycle — snapping back would leave a one-week period behind
+   the delayed date, which is not a pay period anyone works.
+
+   A shift applies to every pay date on or after `from`, so dates already paid
+   keep the schedule they were actually paid on. `from` is the ORIGINAL date
+   being moved, not the new one. */
+const SCHEDULE_SHIFTS: { from: string; days: number; why: string }[] = [
+  { from: '2026-10-09', days: 7, why: 'October payout runs to Oct 16' },
+]
+
+/** Days of accumulated shift that apply to an unshifted pay date. */
+function shiftMsFor(unshiftedMs: number): number {
+  let days = 0
+  for (const s of SCHEDULE_SHIFTS) {
+    if (unshiftedMs >= Date.parse(`${s.from}T00:00:00Z`)) days += s.days
+  }
+  return days * 24 * 60 * 60 * 1000
+}
+
+const applyShift = (ms: number) => new Date(ms + shiftMsFor(ms))
+
 /**
  * Generates bi-weekly pay dates centered around `now`.
  * Every pay date is exactly 14 days apart from the previous.
@@ -47,7 +69,7 @@ function nearbyPayDates(now: Date): Date[] {
   const cycles = Math.round((now.getTime() - ANCHOR_PAY_DATE.getTime()) / TWO_WEEKS_MS)
   const dates: Date[] = []
   for (let i = cycles - 4; i <= cycles + 4; i++) {
-    dates.push(new Date(ANCHOR_PAY_DATE.getTime() + i * TWO_WEEKS_MS))
+    dates.push(applyShift(ANCHOR_PAY_DATE.getTime() + i * TWO_WEEKS_MS))
   }
   return dates.sort((a, b) => a.getTime() - b.getTime())
 }
@@ -60,7 +82,7 @@ export function recentPayDates(now: Date, periodsBack = 8): Date[] {
   const cycles = Math.round((now.getTime() - ANCHOR_PAY_DATE.getTime()) / TWO_WEEKS_MS)
   const dates: Date[] = []
   for (let i = cycles - periodsBack; i <= cycles + 4; i++) {
-    dates.push(new Date(ANCHOR_PAY_DATE.getTime() + i * TWO_WEEKS_MS))
+    dates.push(applyShift(ANCHOR_PAY_DATE.getTime() + i * TWO_WEEKS_MS))
   }
   return dates.sort((a, b) => a.getTime() - b.getTime())
 }

@@ -11,6 +11,11 @@ import {
   ghlKey,
 } from '@/lib/ghl-pipelines'
 
+/* Every response is a live read of the Pending Send pipeline, and the re-run
+   button exists precisely to get a fresh one. Caching the route would hand
+   back the previous answer and make the button look broken. */
+export const dynamic = 'force-dynamic'
+
 // Pipeline IDs per firm
 const PIPELINES: { firm: string; id: string }[] = [
   { firm: 'lhp',         id: 'yMqNixSnChC5lcGQXA1g' },
