@@ -257,8 +257,13 @@ export async function syncGHLToQueue(): Promise<{
            which spreads an aged list across the day instead of firing it all
            at once. */
         const changedAt = opp.lastStageChangeAt ?? opp.updatedAt ?? null
-        const isTodayLead = !!changedAt &&
-          new Date(changedAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === today
+        /* Not for appointments. An appointment is a booked event — it is
+           called at its time, once, and the cadence rule says 1/day. Giving
+           it the six-attempt treatment put one lead in six consecutive slots
+           at the very top of the list. */
+        const isTodayLead = !!changedAt
+          && stage.name.toLowerCase() !== 'appointment scheduled'
+          && new Date(changedAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === today
 
         const blockWins = blockWindows(today, blocks, timezone)
         const dayEndsAt = blockWins[0]?.dayEndsAt ?? new Date()

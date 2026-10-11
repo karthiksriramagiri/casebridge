@@ -32,6 +32,8 @@ interface Attempt {
   is_callback:    boolean
   callback_at:    string | null
   owner_rep:      string | null
+  /* The lead behind the attempt — the list shows one row per lead. */
+  contact_id:     string
   /* When the lead last changed stage — what "newest first" sorts on. */
   stage_changed_at: string | null
   created_at:     string | null
@@ -430,9 +432,23 @@ export default function QueueAdminPage() {
     return isToday ? TODAY_RANK : byStage
   }
 
+  /* One row per lead. A lead carries three to six attempts for the day, and
+     once recency groups them they land in consecutive slots — the top twelve
+     rows of the list were two people repeated six times each. The row shown
+     is the highest-ranked attempt for that lead, and the Attempt column
+     already says which of how many it is. */
+  const onePerLead = useMemo(() => {
+    const seen = new Set<string>()
+    return sorted.filter(item => {
+      if (seen.has(item.contact_id)) return false
+      seen.add(item.contact_id)
+      return true
+    })
+  }, [sorted])
+
   // Apply tab filter
   const tabFiltered = useMemo(() => {
-    let list = sorted.filter(item => {
+    let list = onePerLead.filter(item => {
       if (tab === 'active')    return !['completed', 'cancelled', 'expired', 'merged'].includes(item.status)
       if (tab === 'done')      return item.status === 'completed'
       if (tab === 'callbacks') return item.is_callback || item.disposition === 'Callback'
@@ -448,7 +464,7 @@ export default function QueueAdminPage() {
       })
     }
     return list
-  }, [sorted, tab])
+  }, [onePerLead, tab])
 
   // States present in today's plan, with counts — drives the pickers below
   /* Firms present in today's plan, with counts — drives the picker below.
