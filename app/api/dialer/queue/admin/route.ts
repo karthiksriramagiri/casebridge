@@ -20,6 +20,11 @@ export async function GET(req: NextRequest) {
   const block   = sp.get('block')   ?? ''
   const exhausted = sp.get('exhausted')
   const limit   = parseInt(sp.get('limit')  ?? '10000', 10)
+  /* The Active tab drops completed/cancelled client-side. Sending them anyway
+     cost ~1MB a refresh AND pushed the rows it wanted past the row cap — see
+     the pagination note below. Filtering here is both the fix and the
+     speed-up. */
+  const activeOnly = sp.get('active') === '1'
   const offset  = parseInt(sp.get('offset') ?? '0',   10)
 
   const db    = supabaseAdmin()
@@ -44,6 +49,7 @@ export async function GET(req: NextRequest) {
   if (firm)   q = q.eq('firm', firm)
   if (status) q = q.eq('status', status)
   if (block)  q = q.eq('block', block)
+  if (activeOnly) q = q.not('status', 'in', '(completed,cancelled,expired,merged)')
   if (exhausted === 'false') {
     // Exclude exhausted leads — join isn't directly possible; filter via NOT IN
     const { data: exh } = await db.from('dialer_lead_state')
@@ -63,9 +69,24 @@ export async function GET(req: NextRequest) {
     .order('attempt_number', { ascending: true })
     .order('created_at',     { ascending: true })
     .order('id',             { ascending: true })   // deterministic tiebreaker
-    .range(offset, offset + limit - 1)
 
-  const { data, count, error } = await q
+  /* PostgREST caps a response at 1000 rows no matter what .range() asks for.
+     The page requests 10,000 and quietly got the first 1000 by due_from —
+     the morning block, every row of it already completed or cancelled — so
+     the Active tab rendered "No attempts found" while 3,180 pending leads sat
+     behind the cap. Page through instead of trusting one range call. */
+  let data: any[] = []
+  let count: number | null = null
+  let error: any = null
+  for (let from = offset; from < offset + limit; from += 1000) {
+    const size = Math.min(1000, offset + limit - from)
+    const res = await q.range(from, from + size - 1)
+    if (res.error) { error = res.error; break }
+    if (count === null) count = res.count ?? null
+    const batch = res.data ?? []
+    data = data.concat(batch)
+    if (batch.length < size) break
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // ── Summary stats via count queries (no row-limit cap) ───────────────────

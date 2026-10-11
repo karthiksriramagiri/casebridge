@@ -283,6 +283,9 @@ export default function QueueAdminPage() {
     if (status) params.set('status', status)
     if (block)  params.set('block', block)
     if (tab === 'done') params.set('status', 'completed')
+    // Let the server drop terminal rows for the Active tab rather than
+    // shipping them to be filtered out here.
+    if (tab === 'active') params.set('active', '1')
 
     const res  = await fetch(`/api/dialer/queue/admin?${params}`)
     const data = await res.json()

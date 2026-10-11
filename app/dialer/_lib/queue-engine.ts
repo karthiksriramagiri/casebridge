@@ -175,6 +175,11 @@ export async function syncGHLToQueue(): Promise<{
   }
 
   // Fetch all stages in parallel — pagination within each stage stays sequential
+  /* Set if any stage fetch ends early. The cancellation sweep below keys off
+     "contacts GHL did not return", so a sweep that stopped halfway makes
+     every unseen lead look deleted. */
+  let sweepIncomplete = false
+
   await Promise.all(stageJobs.map(async ({ pipeline, stage, blocks, priority }) => {
     let cursor: string | null   = null
     let cursorId: string | null = null
@@ -197,6 +202,7 @@ export async function syncGHLToQueue(): Promise<{
       if (!res.ok) {
         console.error('[queue:sync] GHL %d on %s / %s — stage truncated',
           res.status, pipeline.firm, stage.name)
+        sweepIncomplete = true
         break
       }
       const data = await res.json()
@@ -381,18 +387,48 @@ export async function syncGHLToQueue(): Promise<{
     )
   }
 
-  // Cancel pending attempts for leads no longer in any included stage
-  const { data: pendingAttempts } = await db.from('dialer_attempts')
-    .select('id, contact_id')
-    .eq('plan_date', today)
-    .eq('status', 'pending')
-    .eq('is_callback', false)
-  const toCancel = (pendingAttempts ?? []).filter(a => !seenContactIds.has(a.contact_id))
-  if (toCancel.length > 0) {
-    await db.from('dialer_attempts')
-      .update({ status: 'cancelled', updated_at: now })
-      .in('id', toCancel.map(a => a.id))
-    cancelled += toCancel.length
+  /* Cancel pending attempts for leads no longer in any included stage.
+
+     This is the most destructive thing the sync does and it infers deletion
+     from absence, so it only runs when the sweep is known to be whole. A
+     partial sweep means "GHL did not answer", not "these leads are gone" —
+     and with the sync moved from daily to every ten minutes, one truncated
+     run emptied an entire day's queue: 3,206 of 3,328 attempts cancelled,
+     leaving the floor with nothing to call.
+
+     The read is paged for the same reason the admin list had to be: a plain
+     select stops at 1000 rows, so this silently saw a fraction of the day. */
+  if (sweepIncomplete) {
+    console.warn('[queue:sync] sweep incomplete — skipping cancellation entirely')
+  } else {
+    const pendingAttempts: { id: string; contact_id: string }[] = []
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data } = await db.from('dialer_attempts')
+        .select('id, contact_id')
+        .eq('plan_date', today)
+        .eq('status', 'pending')
+        .eq('is_callback', false)
+        .range(from, from + 999)
+      if (!data?.length) break
+      pendingAttempts.push(...data)
+      if (data.length < 1000) break
+    }
+    const toCancel = pendingAttempts.filter(a => !seenContactIds.has(a.contact_id))
+
+    /* A sweep that returned nothing, or that would cancel nearly everything,
+       is far more likely to be broken than to mean the pipeline emptied. */
+    const share = pendingAttempts.length > 0 ? toCancel.length / pendingAttempts.length : 0
+    if (seenContactIds.size === 0 || (share > 0.5 && pendingAttempts.length > 50)) {
+      console.error('[queue:sync] refusing to cancel %d of %d pending (%d%%) — seen=%d; this looks like a failed sweep',
+        toCancel.length, pendingAttempts.length, Math.round(share * 100), seenContactIds.size)
+    } else if (toCancel.length > 0) {
+      for (let i = 0; i < toCancel.length; i += 500) {
+        await db.from('dialer_attempts')
+          .update({ status: 'cancelled', updated_at: now })
+          .in('id', toCancel.slice(i, i + 500).map(a => a.id))
+      }
+      cancelled += toCancel.length
+    }
   }
 
   // Re-fill all READY reps so new leads are assigned contiguously
