@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/app/dialer/_lib/supabase'
 import { formatBlockWindow } from '@/app/dialer/_lib/blocks'
 import { stateForPhone } from '@/app/dialer/_lib/area-codes'
-import { stagePriority, TODAY_RANK } from '@/app/dialer/_lib/blocks'
+import { stagePriority, TODAY_RANK, APPOINTMENT_MISSED_RANK, inWindow } from '@/app/dialer/_lib/blocks'
 import type { BlockName } from '@/app/dialer/_lib/blocks'
 
 interface Attempt {
@@ -423,6 +423,12 @@ export default function QueueAdminPage() {
   /* Same ladder the queue engine serves by: first match wins, with today's
      leads slotted between chase and follow-up whatever stage they sit in. */
   function ladderRank(a: any): number {
+    // Appointments top the ladder inside their slot only — see queue-engine.
+    if (String(a.stage_name ?? '').toLowerCase() === 'appointment scheduled') {
+      return inWindow(a.due_from ?? null, a.due_until ?? null)
+        ? stagePriority('appointment scheduled')
+        : APPOINTMENT_MISSED_RANK
+    }
     const byStage = stagePriority(String(a.stage_name ?? ''))
     if (byStage > TODAY_RANK) return byStage
     const sc = a.stage_changed_at ? Date.parse(a.stage_changed_at) : NaN

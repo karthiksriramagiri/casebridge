@@ -118,6 +118,21 @@ export const STAGE_PRIORITY: Record<string, number> = {
 /** The tier today's leads occupy — between chase and follow up required. */
 export const TODAY_RANK = 300
 
+/* An appointment outranks everything DURING ITS SLOT and not otherwise.
+   Ranked top unconditionally it simply floods the list: every appointment in
+   the pipeline sat above every contract sent all day, including ones whose
+   slot had passed hours earlier. Once the slot is gone the appointment was
+   missed, so it is chased like a follow-up rather than shouting from the top
+   of the page. */
+export const APPOINTMENT_MISSED_RANK = 200
+
+/** Is this attempt inside its own calling window right now? */
+export function inWindow(dueFrom: string | null, dueUntil: string | null, now = Date.now()): boolean {
+  if (!dueFrom || !dueUntil) return false
+  const f = Date.parse(dueFrom), u = Date.parse(dueUntil)
+  return Number.isFinite(f) && Number.isFinite(u) && now >= f && now < u
+}
+
 export function stagePriority(stageName: string): number {
   return STAGE_PRIORITY[stageName.toLowerCase()] ?? 100
 }

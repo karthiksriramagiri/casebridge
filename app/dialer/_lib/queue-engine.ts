@@ -8,6 +8,7 @@ import type { BlockName } from './blocks'
 import {
   BLOCKS_BY_COUNT, blockWindows, stagePriority,
   TODAY_RANK, NR_MAX_AGE_DAYS, TODAY_ATTEMPTS, todayWindows,
+  APPOINTMENT_MISSED_RANK, inWindow,
 } from './blocks'
 import { getNumberPool, assignRandomCallerId }         from './number-pool'
 import { getPipelines, ghlFetch }                     from '@/lib/ghl-pipelines'
@@ -693,6 +694,17 @@ function arrivedToday(a: Attempt, todayEt: string): boolean {
 */
 function rankOf(a: Attempt, todayEt: string): number {
   const stage = String(a.stage_name ?? '').toLowerCase()
+
+  /* "Appointment scheduled (at that time)" — the qualifier is the point. It
+     tops the ladder inside its slot; outside it, the slot was missed and it
+     is worked like a follow-up. Without this every appointment in the
+     pipeline sat above every contract sent for the whole day. */
+  if (stage === 'appointment scheduled') {
+    return inWindow(a.due_from ?? null, (a as any).due_until ?? null)
+      ? stagePriority(stage)
+      : APPOINTMENT_MISSED_RANK
+  }
+
   const byStage = stagePriority(stage)
   // Anything ranked above the today tier keeps its stage rank outright.
   if (byStage > TODAY_RANK) return byStage
