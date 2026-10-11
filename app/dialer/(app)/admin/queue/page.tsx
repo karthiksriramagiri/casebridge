@@ -32,6 +32,8 @@ interface Attempt {
   is_callback:    boolean
   callback_at:    string | null
   owner_rep:      string | null
+  /* When the lead last changed stage — what "newest first" sorts on. */
+  stage_changed_at: string | null
   created_at:     string | null
 }
 
@@ -378,51 +380,40 @@ export default function QueueAdminPage() {
     showToast(`Reset complete — ${result.created} attempts planned`)
   }
 
-  // Sort: status group (assigned first) → block chronological (morning→afternoon→evening→night) → priority
-  // This keeps assigned leads contiguous AND blocks in time order.
+  /* One order, the ladder, for everyone.
+
+     This used to group by assigned rep and then by block, which is why
+     Contract Sent leads appeared scattered down the list behind whichever
+     rep's morning happened to sort first. Rep and block no longer influence
+     position at all — the list reads top to bottom as the work to do:
+
+       callbacks (a promise at a stated time)
+       appointment scheduled
+       contract sent
+       chase
+       today's leads   (any stage)
+       follow up required
+       no response     (newest first)
+
+     Firm never enters the sort. */
   const sorted = useMemo(() => {
-    const statusOrder = (s: string) => {
-      if (s === 'leased')   return 0
-      if (s === 'buffered') return 1
-      if (s === 'pending')  return 2
-      return 3
-    }
-    const blockOrder = (b: string) => {
-      if (b === 'morning')   return 0
-      if (b === 'afternoon') return 1
-      if (b === 'evening')   return 2
-      if (b === 'night')     return 3
-      return 4
-    }
     return [...items].sort((a, b) => {
-      // 1. Status group: assigned before pending
-      const sa = statusOrder(a.status)
-      const sb = statusOrder(b.status)
-      if (sa !== sb) return sa - sb
-      // 2. Group by assigned rep (keeps each rep's leads contiguous)
-      const repA = a.buffered_for || a.leased_by || ''
-      const repB = b.buffered_for || b.leased_by || ''
-      if (repA !== repB) return repA.localeCompare(repB)
-      // 3. Block chronological: morning → afternoon → evening → night
-      const ba = blockOrder(a.block)
-      const bb = blockOrder(b.block)
-      if (ba !== bb) return ba - bb
-      // 4. Priority order within same block
       if (a.is_callback !== b.is_callback) return a.is_callback ? -1 : 1
       if (a.is_carryover !== b.is_carryover) return a.is_carryover ? -1 : 1
-      /* Rank from the stage name, not the stored priority column. That
-         column is written at sync time and can lag a ladder change, which is
-         exactly what made Contract Sent rows sort as though they were still
-         rank 400. Deriving it here means the list always shows the order the
-         floor is actually served in. */
+
       const ra = ladderRank(a), rb = ladderRank(b)
       if (ra !== rb) return rb - ra
-      // Within same priority, newest NR leads first (most recent stage change)
-      const scA = (a as any).stage_changed_at ?? ''
-      const scB = (b as any).stage_changed_at ?? ''
-      if (scA !== scB) return scB < scA ? -1 : 1
+
+      // Newest first inside a rank — latest to oldest for no-response.
+      const scA = a.stage_changed_at ? Date.parse(a.stage_changed_at) : 0
+      const scB = b.stage_changed_at ? Date.parse(b.stage_changed_at) : 0
+      if (scA !== scB) return scB - scA
+
+      // Then the earliest window, so a day still reads chronologically
+      // within a rank rather than arbitrarily.
+      const dfA = a.due_from ?? '', dfB = b.due_from ?? ''
+      if (dfA !== dfB) return dfA < dfB ? -1 : 1
       if (a.attempt_number !== b.attempt_number) return a.attempt_number - b.attempt_number
-      if (a.created_at !== b.created_at) return (a.created_at ?? '') < (b.created_at ?? '') ? -1 : 1
       return a.id < b.id ? -1 : 1
     })
   }, [items])
@@ -879,11 +870,6 @@ export default function QueueAdminPage() {
                     <span className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800 dark:text-gray-400">
                       {FIRM_LABEL[item.firm] ?? item.firm}
                     </span>
-                    {item.owner_rep && (
-                      <span className="rounded bg-indigo-50 px-1.5 py-0.5 text-indigo-600 dark:bg-indigo-950/40 dark:text-indigo-300">
-                        {item.owner_rep}
-                      </span>
-                    )}
                     {item.disposition && (
                       <span className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800 dark:text-gray-400">
                         {item.disposition}
@@ -903,7 +889,7 @@ export default function QueueAdminPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
               <tr>
-                {['#', 'Lead', 'State', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Owner', 'Assigned', 'Status', 'Disposition', ''].map(h => (
+                {['#', 'Lead', 'State', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Assigned', 'Status', 'Disposition', ''].map(h => (
                   <th key={h || '_actions'} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
                 ))}
               </tr>
@@ -964,9 +950,6 @@ export default function QueueAdminPage() {
                       {item.is_callback && item.callback_at ? (
                         <span className="text-blue-600 dark:text-blue-400">{fmtTime(item.callback_at)}</span>
                       ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-500">
-                      {item.owner_rep ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {item.buffered_for

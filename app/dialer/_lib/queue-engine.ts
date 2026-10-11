@@ -243,7 +243,12 @@ export async function syncGHLToQueue(): Promise<{
           phone,
           pipeline.defaultTz
         )
-        const ownerRep = ownerMap.get(opp.contactId) ?? null
+        /* Ownership is no longer carried on regular leads: any rep takes the
+           next lead off one shared ladder. Callbacks are the exception and
+           set their own owner when they are booked — a callback is a promise
+           a named rep made for a stated time, and handing it to someone else
+           means a lead is rung by a stranger. */
+        const ownerRep = null
 
         /* A lead that arrived today is chased on its own clock: six attempts
            ninety minutes apart, counted from when it landed, so one that
