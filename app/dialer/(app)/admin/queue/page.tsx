@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/app/dialer/_lib/supabase'
 import { formatBlockWindow } from '@/app/dialer/_lib/blocks'
 import { stateForPhone } from '@/app/dialer/_lib/area-codes'
+import { stagePriority, TODAY_RANK } from '@/app/dialer/_lib/blocks'
 import type { BlockName } from '@/app/dialer/_lib/blocks'
 
 interface Attempt {
@@ -409,7 +410,13 @@ export default function QueueAdminPage() {
       // 4. Priority order within same block
       if (a.is_callback !== b.is_callback) return a.is_callback ? -1 : 1
       if (a.is_carryover !== b.is_carryover) return a.is_carryover ? -1 : 1
-      if (a.priority !== b.priority) return b.priority - a.priority
+      /* Rank from the stage name, not the stored priority column. That
+         column is written at sync time and can lag a ladder change, which is
+         exactly what made Contract Sent rows sort as though they were still
+         rank 400. Deriving it here means the list always shows the order the
+         floor is actually served in. */
+      const ra = ladderRank(a), rb = ladderRank(b)
+      if (ra !== rb) return rb - ra
       // Within same priority, newest NR leads first (most recent stage change)
       const scA = (a as any).stage_changed_at ?? ''
       const scB = (b as any).stage_changed_at ?? ''
@@ -419,6 +426,18 @@ export default function QueueAdminPage() {
       return a.id < b.id ? -1 : 1
     })
   }, [items])
+
+  /* Same ladder the queue engine serves by: first match wins, with today's
+     leads slotted between chase and follow-up whatever stage they sit in. */
+  function ladderRank(a: any): number {
+    const byStage = stagePriority(String(a.stage_name ?? ''))
+    if (byStage > TODAY_RANK) return byStage
+    const sc = a.stage_changed_at ? Date.parse(a.stage_changed_at) : NaN
+    const isToday = Number.isFinite(sc) &&
+      new Date(sc).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) ===
+      new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+    return isToday ? TODAY_RANK : byStage
+  }
 
   // Apply tab filter
   const tabFiltered = useMemo(() => {

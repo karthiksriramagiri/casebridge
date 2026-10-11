@@ -294,7 +294,13 @@ export async function syncGHLToQueue(): Promise<{
                 completed_by:  null, completed_at: null, disposition: null,
               }})
               updated++
-            } else if (existing.status === 'pending') {
+            } else if (existing.status === 'pending' || existing.status === 'buffered') {
+              /* Buffered rows are refreshed too. They are sitting in a rep's
+                 list unanswered, so a stage move or a new priority still
+                 applies — and when the ladder changed, the seven Contract
+                 Sent rows already buffered kept the old rank and sorted below
+                 where they belonged. `leased` is deliberately excluded: a rep
+                 is mid-call on those. */
               /* stage_changed_at is what the queue orders on, and it was only
                  ever written on INSERT. Every row that existed before the
                  column did — which was almost the whole queue — kept a null
