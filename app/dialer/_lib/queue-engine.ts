@@ -4,8 +4,11 @@
 
 import { createClient }                               from '@supabase/supabase-js'
 import { resolveTimezone, stateForPhone }             from './area-codes'
-import { BLOCKS_BY_COUNT, blockWindows, stagePriority } from './blocks'
 import type { BlockName } from './blocks'
+import {
+  BLOCKS_BY_COUNT, blockWindows, stagePriority,
+  TODAY_RANK, NR_MAX_AGE_DAYS, TODAY_ATTEMPTS, todayWindows,
+} from './blocks'
 import { getNumberPool, assignRandomCallerId }         from './number-pool'
 import { getPipelines, ghlFetch }                     from '@/lib/ghl-pipelines'
 
@@ -18,6 +21,9 @@ const PIPELINES = [
 ]
 // Stages synced into the queue (lower-cased for lookup)
 const INCLUDED_STAGES = new Set([
+  // Appointment Scheduled tops the ladder but was never queued — it was
+  // missing from this set, so those leads reached no rep at all.
+  'appointment scheduled',
   'contract sent', 'chase', 'follow up required', 'no response', 'mia',
 ])
 
@@ -218,6 +224,18 @@ export async function syncGHLToQueue(): Promise<{
         if (!phone || !opp.contactId) { skipped++; continue }
         if (skip.has(opp.contactId))  { skipped++; continue }
 
+        /* A no-response lead that has sat untouched for three weeks is not
+           worth a dial against one from this morning. Dropped at sync so it
+           never reaches the queue, rather than filtered at serve time where
+           it would still be counted and shown. */
+        if (stage.name.toLowerCase() === 'no response') {
+          const changed = opp.lastStageChangeAt ?? opp.updatedAt ?? null
+          const ageDays = changed
+            ? (Date.now() - Date.parse(changed)) / 86_400_000
+            : null
+          if (ageDays !== null && ageDays > NR_MAX_AGE_DAYS) { skipped++; continue }
+        }
+
         seenContactIds.add(opp.contactId)
 
         const timezone = resolveTimezone(
@@ -226,7 +244,30 @@ export async function syncGHLToQueue(): Promise<{
           pipeline.defaultTz
         )
         const ownerRep = ownerMap.get(opp.contactId) ?? null
-        const windows  = blockWindows(today, blocks, timezone)
+
+        /* A lead that arrived today is chased on its own clock: six attempts
+           ninety minutes apart, counted from when it landed, so one that
+           comes in at 2pm is called at 2pm rather than waiting for the next
+           fixed block to open. Everything older keeps the block schedule,
+           which spreads an aged list across the day instead of firing it all
+           at once. */
+        const changedAt = opp.lastStageChangeAt ?? opp.updatedAt ?? null
+        const isTodayLead = !!changedAt &&
+          new Date(changedAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === today
+
+        const blockWins = blockWindows(today, blocks, timezone)
+        const dayEndsAt = blockWins[0]?.dayEndsAt ?? new Date()
+        const windows: { block: BlockName; dueFrom: Date; dueUntil: Date; dayEndsAt: Date }[] =
+          isTodayLead
+            ? todayWindows(new Date(changedAt!), dayEndsAt).map((w, i) => ({
+                // The block label still drives the UI grouping, so each
+                // relative window is tagged with the block it falls inside.
+                block: blockFor(w.dueFrom, blockWins),
+                dueFrom: w.dueFrom,
+                dueUntil: w.dueUntil,
+                dayEndsAt,
+              }))
+            : blockWins
 
         for (let i = 0; i < windows.length; i++) {
           const win           = windows[i]
@@ -583,6 +624,12 @@ async function fetchAllPending(buildQuery: () => any, maxRows = 6000): Promise<A
   return out
 }
 
+/** Which named block a relative window falls inside, for display only. */
+function blockFor(at: Date, wins: { block: BlockName; dueFrom: Date; dueUntil: Date }[]): BlockName {
+  for (const w of wins) if (at >= w.dueFrom && at < w.dueUntil) return w.block
+  return at < (wins[0]?.dueFrom ?? at) ? (wins[0]?.block ?? 'morning') : (wins[wins.length - 1]?.block ?? 'night')
+}
+
 /** contact_id → epoch ms of the last dial, for the contacts in play. */
 async function loadLastDialed(db: any, contactIds: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>()
@@ -615,24 +662,37 @@ function arrivedToday(a: Attempt, todayEt: string): boolean {
   return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === todayEt
 }
 
+/* The rank a row is worked at. First match wins, which is what makes the
+   ladder behave: a chase lead that arrived today ranks as chase, because
+   chase sits above the today tier; a no-response that arrived today ranks as
+   today, because today sits above no-response.
+
+     appointment scheduled   600
+     mia                     550
+     contract sent           500
+     chase                   400
+     arrived today           300   <- any stage
+     follow up required      200
+     no response             100
+*/
+function rankOf(a: Attempt, todayEt: string): number {
+  const stage = String(a.stage_name ?? '').toLowerCase()
+  const byStage = stagePriority(stage)
+  // Anything ranked above the today tier keeps its stage rank outright.
+  if (byStage > TODAY_RANK) return byStage
+  return arrivedToday(a, todayEt) ? TODAY_RANK : byStage
+}
+
 /* Ordering, most significant first:
 
      1. callbacks        — a promise made to a lead at a stated time
      2. carryover        — owed from yesterday
-     3. arrived today    — speed to lead beats everything older
-     4. stage priority   — contract sent still outranks a no-response
-     5. newest first     — within a stage, latest to oldest
+     3. the ladder above
+     4. newest first     — within a rank, latest to oldest
 
-   Step 5 is the change that matters. Recency used to sit *below* a
-   dialed/never-dialed split, so it only ever reordered leads nobody had
-   touched; everything else fell through to created_at ASCENDING — oldest
-   first, the exact opposite of what the floor needs. Worse, the key it sorted
-   on (stage_changed_at) did not exist on the table, so that line was dead
-   code reading undefined on every row.
-
-   Never-dialed-before-dialed is kept, but underneath recency rather than
-   above it. MIN_REDIAL_GAP_MS still stops the same contact coming round
-   twice in quick succession, so recency-first cannot turn into redial spam. */
+   Never-dialed-before-dialed sits underneath recency rather than above it,
+   and MIN_REDIAL_GAP_MS still stops the same contact coming round twice in
+   quick succession, so recency-first cannot turn into redial spam. */
 function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
   const bool = (v: unknown) => (v ? 1 : 0)
   const todayEt = todayEastern()
@@ -642,8 +702,7 @@ function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attem
     return (
       bool(b.is_callback) - bool(a.is_callback) ||
       bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
-      bool(arrivedToday(b, todayEt)) - bool(arrivedToday(a, todayEt)) ||
-      (b.priority ?? 0) - (a.priority ?? 0) ||
+      rankOf(b, todayEt) - rankOf(a, todayEt) ||
       // Latest to oldest — the floor works the freshest lead in the stage next
       stageChangedMs(b) - stageChangedMs(a) ||
       // Only then: anyone never called outranks someone already tried

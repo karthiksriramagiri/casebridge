@@ -88,18 +88,61 @@ export function blockWindows(
   })
 }
 
-// Priority by stage (higher = called sooner)
+/* Priority by stage (higher = called sooner).
+
+   The ladder the floor works to:
+
+     appointment scheduled   — at the appointed time
+     contract sent
+     chase
+     [ today's leads ]       — a TIER, not a stage; see TODAY_RANK below
+     follow up required
+     no response             — newest first, nothing older than 21 days
+
+   "Today's leads" cuts across stages — a lead that arrived today may be in
+   No Response, Chase or Follow Up — so it cannot live in this map. It is
+   computed per row in queue-engine and slotted between chase and follow-up,
+   and the ladder is first-match-wins: a chase lead that arrived today ranks
+   as chase, because chase sits higher. */
 export const STAGE_PRIORITY: Record<string, number> = {
-  'mia':                  500,
-  'contract sent':        400,
-  'chase':                300,
-  'follow up required':   200,
-  'no response':          100,
-  'appointment scheduled': 50,
+  'appointment scheduled': 600,
+  // MIA was not named in the ladder. Left above contract sent, where it has
+  // always been, rather than silently demoted.
+  'mia':                   550,
+  'contract sent':         500,
+  'chase':                 400,
+  'follow up required':    200,
+  'no response':           100,
 }
+
+/** The tier today's leads occupy — between chase and follow up required. */
+export const TODAY_RANK = 300
 
 export function stagePriority(stageName: string): number {
   return STAGE_PRIORITY[stageName.toLowerCase()] ?? 100
+}
+
+/* No Response is worked newest first, and a lead that has sat there for three
+   weeks is not worth a rep's time against one from this morning. */
+export const NR_MAX_AGE_DAYS = 21
+
+/* Today's leads are chased hard: six attempts, an hour and a half apart,
+   starting when the lead landed rather than at a fixed block boundary. A lead
+   that arrives at 2pm should be called at 2pm, not held until the evening
+   block opens. */
+export const TODAY_ATTEMPTS = 6
+export const TODAY_GAP_MINUTES = 90
+
+/** Six windows at 90-minute spacing from `addedAt`, clipped to the calling day. */
+export function todayWindows(addedAt: Date, dayEndsAt: Date): { dueFrom: Date; dueUntil: Date }[] {
+  const out: { dueFrom: Date; dueUntil: Date }[] = []
+  const gapMs = TODAY_GAP_MINUTES * 60 * 1000
+  for (let i = 0; i < TODAY_ATTEMPTS; i++) {
+    const dueFrom = new Date(addedAt.getTime() + i * gapMs)
+    if (dueFrom >= dayEndsAt) break
+    out.push({ dueFrom, dueUntil: new Date(Math.min(dueFrom.getTime() + gapMs, dayEndsAt.getTime())) })
+  }
+  return out
 }
 
 // Is the lead currently within 8:30 AM–8:30 PM in their local timezone?
