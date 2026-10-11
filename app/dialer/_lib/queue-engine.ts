@@ -102,7 +102,7 @@ export async function syncGHLToQueue(): Promise<{
     db.from('dialer_cadence_rules').select('stage_name, calls_per_day, enabled'),
     db.from('dialer_lead_state').select('contact_id, suppressed, exhausted, owner_rep'),
     db.from('dialer_attempts')
-      .select('id, contact_id, attempt_number, status, stage_name, priority, is_callback')
+      .select('id, contact_id, attempt_number, status, stage_name, priority, is_callback, stage_changed_at')
       .eq('plan_date', today)
       .eq('is_callback', false),
   ])
@@ -132,7 +132,7 @@ export async function syncGHLToQueue(): Promise<{
   // Batch accumulators — flushed at the end
   const queuedKeys = new Set<string>()
   const toInsert:     Record<string, any>[] = []
-  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number }[] = []
+  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number; stage_changed_at: string | null }[] = []
   const toReactivate: { id: string; fields: Record<string, any> }[] = []
 
   // Fetch both pipeline schemas in parallel
@@ -247,10 +247,28 @@ export async function syncGHLToQueue(): Promise<{
                 completed_by:  null, completed_at: null, disposition: null,
               }})
               updated++
-            } else if (existing.status === 'pending' &&
-                (existing.stage_name !== stage.name || existing.priority !== priority)) {
-              toUpdate.push({ id: existing.id, stage_name: stage.name, stage_id: stage.id, priority })
-              updated++
+            } else if (existing.status === 'pending') {
+              /* stage_changed_at is what the queue orders on, and it was only
+                 ever written on INSERT. Every row that existed before the
+                 column did — which was almost the whole queue — kept a null
+                 and could never rank by recency, so the ordering was inert
+                 for 3,132 of 3,180 leads. Refresh it here too, and not only
+                 when the stage name changes: a lead can re-enter No Response
+                 with the same name and a new timestamp. */
+              const freshStage = hasStageChangedAt
+                ? (opp.lastStageChangeAt ?? opp.updatedAt ?? null)
+                : null
+              const stageMoved = existing.stage_name !== stage.name || existing.priority !== priority
+              const tsMoved = hasStageChangedAt
+                && freshStage
+                && (existing as any).stage_changed_at !== freshStage
+              if (stageMoved || tsMoved) {
+                toUpdate.push({
+                  id: existing.id, stage_name: stage.name, stage_id: stage.id, priority,
+                  stage_changed_at: freshStage,
+                })
+                updated++
+              }
             }
             continue
           }
@@ -330,16 +348,26 @@ export async function syncGHLToQueue(): Promise<{
   created = inserted
 
   // Batch stage/priority updates for pending rows
-  type UpdateGroup = { stage_name: string; stage_id: string; priority: number; ids: string[] }
+  /* Grouped by the whole payload, timestamp included, so rows sharing a value
+     still go in one statement. Leads that changed stage in the same sync tend
+     to share a timestamp, so this stays a handful of requests rather than one
+     per row. */
+  type UpdateGroup = { stage_name: string; stage_id: string; priority: number; stage_changed_at: string | null; ids: string[] }
   const updateGroups = new Map<string, UpdateGroup>()
   for (const u of toUpdate) {
-    const k = `${u.stage_name}:${u.stage_id}:${u.priority}`
-    if (!updateGroups.has(k)) updateGroups.set(k, { stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority, ids: [] })
+    const k = `${u.stage_name}:${u.stage_id}:${u.priority}:${u.stage_changed_at ?? ''}`
+    if (!updateGroups.has(k)) updateGroups.set(k, {
+      stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority,
+      stage_changed_at: u.stage_changed_at, ids: [],
+    })
     updateGroups.get(k)!.ids.push(u.id)
   }
   for (const g of updateGroups.values()) {
     await db.from('dialer_attempts')
-      .update({ stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now })
+      .update({
+        stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now,
+        ...(g.stage_changed_at ? { stage_changed_at: g.stage_changed_at } : {}),
+      })
       .in('id', g.ids)
   }
 
