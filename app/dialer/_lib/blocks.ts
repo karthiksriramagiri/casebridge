@@ -137,9 +137,15 @@ export function stagePriority(stageName: string): number {
   return STAGE_PRIORITY[stageName.toLowerCase()] ?? 100
 }
 
-/* No Response is worked newest first, and a lead that has sat there for three
-   weeks is not worth a rep's time against one from this morning. */
-export const NR_MAX_AGE_DAYS = 21
+/* A lead that has sat in its stage for three weeks is not worth a rep's time
+   against one from this morning. Applies to every stage, not just No Response:
+   a contract sent a month ago is as cold as a lead that never answered.
+   Enforced at sync so a stale lead never reaches the queue, rather than at
+   serve time where it would still be counted and shown. */
+export const MAX_LEAD_AGE_DAYS = 21
+
+/** @deprecated kept so older imports keep resolving — use MAX_LEAD_AGE_DAYS. */
+export const NR_MAX_AGE_DAYS = MAX_LEAD_AGE_DAYS
 
 /* Today's leads are chased hard: six attempts, an hour and a half apart,
    starting when the lead landed rather than at a fixed block boundary. A lead

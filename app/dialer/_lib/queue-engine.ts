@@ -7,7 +7,7 @@ import { resolveTimezone, stateForPhone }             from './area-codes'
 import type { BlockName } from './blocks'
 import {
   BLOCKS_BY_COUNT, blockWindows, stagePriority,
-  TODAY_RANK, NR_MAX_AGE_DAYS, TODAY_ATTEMPTS, todayWindows,
+  TODAY_RANK, MAX_LEAD_AGE_DAYS, TODAY_ATTEMPTS, todayWindows,
   APPOINTMENT_MISSED_RANK, inWindow,
 } from './blocks'
 import { getNumberPool, assignRandomCallerId }         from './number-pool'
@@ -225,17 +225,21 @@ export async function syncGHLToQueue(): Promise<{
         if (!phone || !opp.contactId) { skipped++; continue }
         if (skip.has(opp.contactId))  { skipped++; continue }
 
-        /* A no-response lead that has sat untouched for three weeks is not
-           worth a dial against one from this morning. Dropped at sync so it
-           never reaches the queue, rather than filtered at serve time where
-           it would still be counted and shown. */
-        if (stage.name.toLowerCase() === 'no response') {
-          const changed = opp.lastStageChangeAt ?? opp.updatedAt ?? null
-          const ageDays = changed
-            ? (Date.now() - Date.parse(changed)) / 86_400_000
-            : null
-          if (ageDays !== null && ageDays > NR_MAX_AGE_DAYS) { skipped++; continue }
-        }
+        /* A lead that has sat in its stage for three weeks is not worth a dial
+           against one from this morning. This used to apply only to No
+           Response, which left Contract Sent unbounded — a median age of 30
+           days, with more than half the stage past the limit. Dropped at sync
+           so a stale lead never reaches the queue, rather than filtered at
+           serve time where it would still be counted and shown.
+
+           A lead dropped here is absent from seenContactIds, so its pending
+           attempts are cancelled by the sweep below. Callbacks are exempt from
+           that sweep: a promised time is kept whatever the lead's age. */
+        const stageEnteredAt = opp.lastStageChangeAt ?? opp.updatedAt ?? null
+        const stageAgeDays = stageEnteredAt
+          ? (Date.now() - Date.parse(stageEnteredAt)) / 86_400_000
+          : null
+        if (stageAgeDays !== null && stageAgeDays > MAX_LEAD_AGE_DAYS) { skipped++; continue }
 
         seenContactIds.add(opp.contactId)
 
@@ -810,12 +814,15 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   const { error: colErr } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
   const hasStageCol = !colErr
 
-  function buildPendingQuery(useDueGate: boolean) {
+  /* The block/window is a scheduling hint, not a gate. It used to filter what
+     could be served, which left the floor idle in front of a full queue
+     whenever the next block had not opened yet. The ladder decides order; the
+     window no longer decides eligibility. */
+  function buildPendingQuery(_useDueGate: boolean) {
     let q2 = db.from('dialer_attempts')
       .select('*')
       .eq('status', 'pending')
       .eq('plan_date', today)
-    if (useDueGate) q2 = q2.lte('due_from', now.toISOString())
     q2 = q2.order('is_callback',  { ascending: false })
       .order('is_carryover',      { ascending: false })
       .order('priority',          { ascending: false })
@@ -856,8 +863,6 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   // Filter: active contacts + sequential constraint + callback ownership + language (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
-    // Just called — let the lead breathe before dialing again
-    if (dialedTooRecently(a, lastDialed, now.getTime())) return false
     // Callbacks are exclusive to their owner rep — don't assign to anyone else
     if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
     // Spanish leads only go to Spanish-capable reps
@@ -894,6 +899,9 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
 // Releases existing buffers first, then reassigns from scratch to guarantee
 // contiguity even after new leads are added by sync.
 export async function fillAllReadyReps(count = 5): Promise<Record<string, number>> {
+  // An appointment that just came due outranks anything sitting in a buffer.
+  await preemptForDueAppointments().catch(err => console.error('[queue:preempt]', err))
+
   const db    = supabaseAdmin()
   const today = todayEastern()
   const now   = new Date()
@@ -964,12 +972,12 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   const { error: colErr2 } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
   const hasStageCol2 = !colErr2
 
-  function buildPendingQ2(useDueGate: boolean) {
+  /* Window is a scheduling hint, not a gate — see buildPendingQuery. */
+  function buildPendingQ2(_useDueGate: boolean) {
     let q2 = db.from('dialer_attempts')
       .select('*')
       .eq('status', 'pending')
       .eq('plan_date', today)
-    if (useDueGate) q2 = q2.lte('due_from', now.toISOString())
     q2 = q2.order('is_callback',  { ascending: false })
       .order('is_carryover',      { ascending: false })
       .order('priority',          { ascending: false })
@@ -1003,7 +1011,6 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
-    if (dialedTooRecently(a, lastDialed2, now.getTime())) return false
     // State filter — callbacks are exempt (already promised to the lead)
     if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
     // Firm filter — callbacks exempt for the same reason
@@ -1069,7 +1076,177 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
     result[rep] = data?.length ?? 0
   }))
 
+  /* Trim anything over the cap.
+
+     The count of what a rep already holds is read at the top of this function
+     and acted on at the bottom, and several things trigger a fill — the GHL
+     sync, a rep changing status, a filter edit, a rep asking for their next
+     lead. Two overlapping runs each saw an empty buffer and each handed out
+     five, which is how one rep ended up holding nine. Rather than trying to
+     make the read-then-write atomic across all those callers, the excess is
+     released here: the newest buffered rows go back to pending, where they
+     are picked up again on the next fill. */
+  await enforceBufferCap(count)
+
   return result
+}
+
+/** Release anything a rep holds beyond `count`, newest first. */
+export async function enforceBufferCap(count = 5): Promise<number> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+
+  const { data: held } = await db.from('dialer_attempts')
+    .select('id, buffered_for, buffered_at')
+    .eq('plan_date', today)
+    .eq('status', 'buffered')
+    .order('buffered_at', { ascending: true })
+  if (!held?.length) return 0
+
+  const { data: leased } = await db.from('dialer_attempts')
+    .select('leased_by')
+    .eq('plan_date', today)
+    .eq('status', 'leased')
+  const onCall: Record<string, number> = {}
+  for (const r of leased ?? []) if (r.leased_by) onCall[r.leased_by] = (onCall[r.leased_by] ?? 0) + 1
+
+  const byRep = new Map<string, string[]>()
+  for (const r of held) {
+    if (!r.buffered_for) continue
+    const arr = byRep.get(r.buffered_for) ?? []
+    arr.push(r.id)
+    byRep.set(r.buffered_for, arr)
+  }
+
+  const excess: string[] = []
+  for (const [rep, ids] of byRep) {
+    const room = count - (onCall[rep] ?? 0)
+    if (ids.length > room) excess.push(...ids.slice(Math.max(0, room)))
+  }
+  if (!excess.length) return 0
+
+  const nowIso = new Date().toISOString()
+  for (let i = 0; i < excess.length; i += 500) {
+    await db.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: nowIso })
+      .in('id', excess.slice(i, i + 500))
+      .eq('status', 'buffered')
+  }
+  console.warn('[queue:fill] released %d lead(s) over the %d cap', excess.length, count)
+  return excess.length
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Preemption — an appointment that reaches its time jumps the buffer.
+
+   Ranking alone was not enough. rankOf already puts an appointment at the top
+   of the ladder for exactly as long as its window is open, but the ladder is
+   only consulted when a buffer is refilled. A rep holding five leads at 2:00
+   would not see a 2:15 appointment until they had worked through all five,
+   and by then the window had closed and the appointment was demoted to
+   APPOINTMENT_MISSED_RANK — top of the queue, never served.
+
+   So when a time-bound lead enters its window it is pushed into a rep's
+   buffer, displacing that rep's lowest-ranked lead back to pending. The
+   displaced lead loses nothing: it returns to the pool at its own rank and is
+   picked up again on the next fill.
+   ═══════════════════════════════════════════════════════════════════════════ */
+export async function preemptForDueAppointments(): Promise<number> {
+  const db    = supabaseAdmin()
+  const today = todayEastern()
+  const now   = new Date()
+  const todayEt = todayEastern()
+
+  const [{ data: pendingRows }, { data: heldRows }, { data: users }] = await Promise.all([
+    db.from('dialer_attempts').select('*').eq('plan_date', today).eq('status', 'pending'),
+    db.from('dialer_attempts').select('*').eq('plan_date', today).eq('status', 'buffered'),
+    db.from('dialer_users').select('twilio_identity, role, active'),
+  ])
+  const validRepIds = new Set(
+    (users ?? []).filter(u => u.role === 'REP' && u.active).map(u => u.twilio_identity)
+  )
+
+  /* Time-bound and live right now: an appointment inside its slot, or a
+     callback whose promised time has come. Nothing else preempts — a
+     contract sent is urgent in rank, not in clock time. */
+  const isLive = (a: any) => {
+    const stage = String(a.stage_name ?? '').toLowerCase()
+    if (a.is_callback) return inWindow(a.due_from ?? null, a.due_until ?? null, now.getTime())
+    if (stage !== 'appointment scheduled') return false
+    return inWindow(a.due_from ?? null, a.due_until ?? null, now.getTime())
+  }
+
+  const held = (heldRows ?? []).filter(a => a.buffered_for && validRepIds.has(a.buffered_for))
+  const activeContacts = new Set(held.map(a => a.contact_id))
+  // Anything leased (on a call) is untouchable.
+  const { data: leasedRows } = await db.from('dialer_attempts')
+    .select('contact_id, leased_by').eq('plan_date', today).eq('status', 'leased')
+  for (const r of leasedRows ?? []) activeContacts.add(r.contact_id)
+  const leasedCount: Record<string, number> = {}
+  for (const r of leasedRows ?? []) if (r.leased_by) leasedCount[r.leased_by] = (leasedCount[r.leased_by] ?? 0) + 1
+
+  const due = (pendingRows ?? [])
+    .filter(isLive)
+    .filter(a => !activeContacts.has(a.contact_id))
+    .sort((a, b) => String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')))
+  if (!due.length) return 0
+
+  // A rep's buffer, worst-ranked first — that is who gets displaced.
+  const byRep = new Map<string, any[]>()
+  for (const a of held) {
+    const arr = byRep.get(a.buffered_for) ?? []
+    arr.push(a)
+    byRep.set(a.buffered_for, arr)
+  }
+  for (const [rep, arr] of byRep) {
+    arr.sort((x, y) => rankOf(x, todayEt) - rankOf(y, todayEt) ||
+                       String(x.due_from ?? '').localeCompare(String(y.due_from ?? '')))
+    byRep.set(rep, arr)
+  }
+
+  const reps = [...byRep.keys()]
+  if (!reps.length) return 0
+
+  let moved = 0
+  for (const appt of due) {
+    /* Spread across reps: the one holding the weakest lead takes it, so two
+       appointments landing together do not both displace the same rep. */
+    let target: string | null = null
+    let victim: any = null
+    for (const rep of reps) {
+      const buf = byRep.get(rep) ?? []
+      const capacity = 5 - (buf.length + (leasedCount[rep] ?? 0))
+      if (capacity > 0) { target = rep; victim = null; break }
+      const worst = buf[0]
+      if (!worst) continue
+      if (rankOf(worst, todayEt) >= rankOf(appt, todayEt)) continue  // nothing weaker to displace
+      if (!victim || rankOf(worst, todayEt) < rankOf(victim, todayEt)) { target = rep; victim = worst }
+    }
+    if (!target) continue
+
+    const nowIso = now.toISOString()
+    const { data: claimed } = await db.from('dialer_attempts')
+      .update({ status: 'buffered', buffered_for: target, buffered_at: nowIso, updated_at: nowIso })
+      .eq('id', appt.id).eq('status', 'pending').select('id')
+    if (!claimed?.length) continue
+
+    if (victim) {
+      await db.from('dialer_attempts')
+        .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: nowIso })
+        .eq('id', victim.id).eq('status', 'buffered')
+      const buf = (byRep.get(target) ?? []).filter(x => x.id !== victim.id)
+      byRep.set(target, buf)
+    }
+    const buf = byRep.get(target) ?? []
+    buf.push(appt)
+    buf.sort((x, y) => rankOf(x, todayEt) - rankOf(y, todayEt))
+    byRep.set(target, buf)
+    activeContacts.add(appt.contact_id)
+    moved++
+  }
+
+  if (moved) console.log('[queue:preempt] %d time-bound lead(s) pushed into buffers', moved)
+  return moved
 }
 
 // Release all buffered attempts back to pending (rep went PAUSED/OFFLINE)
