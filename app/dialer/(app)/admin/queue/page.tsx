@@ -398,8 +398,35 @@ export default function QueueAdminPage() {
        no response     (newest first)
 
      Firm never enters the sort. */
+  /* One row per lead — the attempt that is actually next for them.
+
+     The table listed every planned attempt, so a lead with six scheduled
+     calls occupied six rows. Only the lowest pending attempt for a contact
+     can ever be served (the sequential rule in the engine), which meant the
+     other five rows were permanently unassignable and the queue could never
+     read as assigned-from-the-top however correct the engine was. Rows 1-8
+     were two leads wearing eight rows between them.
+
+     Collapsing here rather than in the query keeps the Completed and All
+     tabs showing the full history. */
+  const collapsed = useMemo(() => {
+    const best = new Map<string, any>()
+    for (const it of items) {
+      const key = it.contact_id ?? it.id
+      const cur = best.get(key)
+      if (!cur) { best.set(key, it); continue }
+      const rank = (x: any) =>
+        x.status === 'leased' ? 0 : x.status === 'buffered' ? 1 : x.status === 'pending' ? 2 : 3
+      const ra = rank(it), rc = rank(cur)
+      if (ra < rc || (ra === rc && (it.attempt_number ?? 0) < (cur.attempt_number ?? 0))) {
+        best.set(key, it)
+      }
+    }
+    return [...best.values()]
+  }, [items])
+
   const sorted = useMemo(() => {
-    return [...items].sort((a, b) => {
+    return [...collapsed].sort((a, b) => {
       if (a.is_callback !== b.is_callback) return a.is_callback ? -1 : 1
       if (a.is_carryover !== b.is_carryover) return a.is_carryover ? -1 : 1
 
@@ -418,7 +445,7 @@ export default function QueueAdminPage() {
       if (a.attempt_number !== b.attempt_number) return a.attempt_number - b.attempt_number
       return a.id < b.id ? -1 : 1
     })
-  }, [items])
+  }, [collapsed])
 
   /* Same ladder the queue engine serves by: first match wins, with today's
      leads slotted between chase and follow-up whatever stage they sit in. */

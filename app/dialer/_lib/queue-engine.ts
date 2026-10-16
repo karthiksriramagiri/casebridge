@@ -757,6 +757,9 @@ function dialedTooRecently(a: Attempt, lastDialed: Map<string, number>, now: num
 }
 
 export async function fillBuffer(repIdentity: string, count = 5): Promise<Attempt[]> {
+  // Same cap as the all-reps path — this one can overfill too when it races.
+  await enforceBufferCap(count).catch(err => console.error('[queue:cap]', err))
+
   const db    = supabaseAdmin()
   const today = todayEastern()
   const now   = new Date()
@@ -926,14 +929,26 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   const stateFilter = await getStateFilter()
   const firmFilter  = await getFirmFilter()
 
-  // Release buffered leads from INVALID identities (admin, agent, unknown)
-  // so they go back to the pending pool
+  /* Release buffers held by anyone who should not be holding them.
+
+     Two cases, and the second is the one that bit: an identity that is not a
+     real rep (admin, agent), and a rep who is no longer READY. releaseBuffer
+     runs when a rep changes status, but if that call is missed — a dropped
+     request, a crashed tab, a status written straight to the table — the
+     leads stay locked to someone who is offline. They are then invisible to
+     everyone else, because a contact already buffered is excluded from every
+     other rep's fill. One rep went offline still holding seven leads and the
+     top of the queue could not be served to anybody.
+
+     Reconciling here means the floor recovers on the next fill no matter how
+     the status changed. */
+  const readySet = new Set(readyReps)
   const { data: allBuffered } = await db.from('dialer_attempts')
     .select('id, buffered_for')
     .eq('plan_date', today)
     .eq('status', 'buffered')
   const invalidIds = (allBuffered ?? [])
-    .filter(a => a.buffered_for && !validRepIds.has(a.buffered_for))
+    .filter(a => a.buffered_for && (!validRepIds.has(a.buffered_for) || !readySet.has(a.buffered_for)))
     .map(a => a.id)
   if (invalidIds.length > 0) {
     await db.from('dialer_attempts')
