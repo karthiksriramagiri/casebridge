@@ -1386,6 +1386,17 @@ class SmsBot {
       await this.recordDecision(contact, "skipped", "opted_out_or_terminal", { message, meta: { templateKey: options.templateKey || "" } });
       return null;
     }
+    /* Last line of defence. automationPaused gated scheduling but not the
+       send itself, so a job already in flight could still deliver after the
+       PC replied. Anything that genuinely must go out after a pause — the
+       opt-out confirmation, a human-triggered send — passes allowAfterPause. */
+    if (!options.allowAfterPause && !options.allowAfterOptOut && contact.automationPaused) {
+      await this.recordDecision(contact, "skipped", "automation_paused", {
+        message,
+        meta: { templateKey: options.templateKey || "", reason: contact.automationPauseReason || "" }
+      });
+      return null;
+    }
     if (!options.skipTerminalTagCheck) {
       const tagLookupStartedAt = new Date();
       contact = await this.hydrateContactTags(contact, { force: true });
@@ -2106,8 +2117,59 @@ class SmsBot {
     return `Hey ${firstName}! Thanks for getting back to us. A specialist from Accident Support Desk will be reaching out to you shortly to go over your options. Stay tuned! 🙌`;
   }
 
+  /* A reply from the PC turns the bot off for that person — everywhere.
+
+     handleInboundSms already paused automation and cancelled jobs, but only
+     after two early returns: a contact that is not bot-managed, and a phone
+     with no matching record. Either one left the sequence running while the
+     reply was filed as "ignored". With duplicate GHL contacts for one phone
+     that is easy to hit — the inbound lands on record A while the ladder runs
+     on record B — and the lead keeps being asked the same question after
+     answering it.
+
+     So the stop is applied by phone number, before any of that, and before
+     anything can return early. It is deliberately blunt: once a human has
+     replied, no automated message should follow on any record for that
+     number. */
+  async silenceBotForPhone(phone, reason = "pc_replied") {
+    if (!phone) return 0;
+    const all = (await this.store.findAllContactsByPhone?.(phone)) || [];
+    let stopped = 0;
+    for (const existing of all) {
+      try {
+        await this.store.cancelJobsForContact(existing.id, reason);
+        await this.store.upsertContact({
+          id: existing.id,
+          automationPaused: true,
+          automationPauseReason: reason,
+          currentSequenceName: "",
+          currentSequenceDay: null,
+          currentSequenceSlot: ""
+        });
+        stopped += 1;
+      } catch (error) {
+        console.error("[bot:silence] failed for", existing.id, error.message);
+      }
+    }
+    if (stopped) console.log("[bot:silence] %s — stopped %d contact record(s)", reason, stopped);
+    return stopped;
+  }
+
   async handleInboundSms(payload, options = {}) {
     const inbound = normalizePayload(payload, this.config);
+    /* Before anything else, and before any early return: the PC replied.
+       The phone is taken from the payload when GHL sends one, and otherwise
+       from whatever record the id points at — the stop has to reach every
+       record for that number, so it cannot depend on the payload shape. */
+    if (!isEmptyTextToken(inbound.lastInboundMessage)) {
+      let known = null;
+      if (!inbound.phone) {
+        // getContact is async on the Postgres store and sync on the in-memory
+        // one, so await it rather than chaining .catch on a plain object.
+        try { known = await this.store.getContact(inbound.id); } catch { known = null; }
+      }
+      await this.silenceBotForPhone(inbound.phone || known?.phone, "pc_replied");
+    }
     if (isEmptyTextToken(inbound.lastInboundMessage)) {
       await this.store.setSetting("last_ignored_inbound_sms", {
         contactId: inbound.ghlContactId || inbound.id || "",

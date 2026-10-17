@@ -114,6 +114,16 @@ class PostgresStore {
     return rowData(result.rows[0]);
   }
 
+  /** Every contact on this phone, enrolled or not. A reply has to silence the
+      bot on all of them — a duplicate or de-enrolled record carrying a live
+      job queue is exactly how a lead keeps getting texted after replying. */
+  async findAllContactsByPhone(phone) {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return [];
+    const result = await this.pool.query("select data from contacts");
+    return result.rows.map(rowData).filter((contact) => normalizePhone(contact.phone) === normalized);
+  }
+
   async findActiveContactsByPhone(phone) {
     const normalized = normalizePhone(phone);
     if (!normalized) return [];
@@ -257,12 +267,19 @@ class PostgresStore {
   }
 
   async setSetting(key, value) {
+    /* Stringify explicitly. node-postgres turns a JS array parameter into a
+       Postgres ARRAY literal ({a,b}) rather than JSON, so writing an array to
+       this jsonb column failed with "invalid input syntax for type json".
+       Objects happened to work because those take the JSON.stringify branch,
+       which is why only the array-valued settings broke — the bot error log
+       is an array, so every attempt to record an error threw, and the real
+       error was swallowed by the catch in notifyBotError. 1,395 of them. */
     const result = await this.pool.query(
       `insert into settings (key, value, updated_at)
-       values ($1, $2, now())
+       values ($1, $2::jsonb, now())
        on conflict (key) do update set value = excluded.value, updated_at = now()
        returning key, value, updated_at`,
-      [key, value]
+      [key, JSON.stringify(value ?? null)]
     );
     const row = result.rows[0];
     return { key: row.key, value: row.value, updatedAt: row.updated_at.toISOString() };
@@ -281,9 +298,9 @@ class PostgresStore {
     if (!id) return { inserted: true };
     const result = await this.pool.query(
       `insert into webhook_events (id, payload)
-       values ($1, $2)
+       values ($1, $2::jsonb)
        on conflict (id) do nothing`,
-      [id, payload]
+      [id, JSON.stringify(payload ?? {})]
     );
     return { inserted: result.rowCount === 1 };
   }

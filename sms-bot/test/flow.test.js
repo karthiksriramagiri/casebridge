@@ -4213,3 +4213,57 @@ test("no-response enrollment accepts firm NR tags from GHL payloads", () => {
   assert.equal(isNoResponseSignal({ contact: { tags: ["NR"] } }), false);
   assert.equal(isNoResponseSignal({ disposition: "answered", tags: ["warm"] }), false);
 });
+
+test("a PC reply silences the bot on every record for that phone", async () => {
+  const { bot, store } = makeBot();
+
+  // Two records for one phone — the shape that let the bot keep texting after
+  // a reply: the inbound lands on one, the live sequence runs on the other.
+  store.upsertContact({
+    id: "enrolled",
+    ghlContactId: "enrolled",
+    name: "Octavio",
+    phone: "+15559990000",
+    engagementStatus: ENGAGEMENT.COLD_OUTREACH,
+    qualificationProgress: QUALIFICATION.NEEDS_FAULT
+  });
+  store.upsertContact({
+    id: "duplicate",
+    ghlContactId: "duplicate",
+    name: "Octavio",
+    phone: "+15559990000",
+    engagementStatus: ENGAGEMENT.RE_ENGAGEMENT,
+    qualificationProgress: QUALIFICATION.NEEDS_FAULT
+  });
+  store.addJob({ type: "send_reengagement_template", contactId: "duplicate", runAt: new Date().toISOString(), payload: { sequence: "after_date", day: 1, slot: "am" } });
+  store.addJob({ type: "enter_reengagement", contactId: "duplicate", runAt: new Date().toISOString(), payload: {} });
+
+  await bot.handleInboundSms({ contactId: "enrolled", message: "No soy culpable ami me pegaron" });
+
+  const OUTBOUND_JOBS = [
+    "send_cold_template", "send_reengagement_template", "enter_reengagement",
+    "warm_followup", "fresh_lead_followup", "cold_entry_check"
+  ];
+  for (const id of ["enrolled", "duplicate"]) {
+    const after = store.getContact(id);
+    assert.equal(after.automationPaused, true, `${id} should be paused`);
+    const live = store.listJobs(id)
+      .filter((job) => job.status === "pending" && OUTBOUND_JOBS.includes(job.type));
+    assert.equal(live.length, 0, `${id} should have no outbound jobs left`);
+  }
+});
+
+test("a paused contact receives no further bot messages", async () => {
+  const { bot, store } = makeBot();
+  store.upsertContact({
+    id: "paused",
+    ghlContactId: "paused",
+    name: "Octavio",
+    phone: "+15559991111",
+    automationPaused: true,
+    automationPauseReason: "pc_replied",
+    qualificationProgress: QUALIFICATION.NEEDS_FAULT
+  });
+  const sent = await bot.sendBotMessage(store.getContact("paused"), "were you at fault for the accident?");
+  assert.equal(sent, null, "send must be refused while automation is paused");
+});

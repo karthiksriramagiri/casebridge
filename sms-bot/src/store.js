@@ -54,6 +54,12 @@ class Store {
     return this.data.contacts[id] || null;
   }
 
+  findAllContactsByPhone(phone) {
+    const normalized = normalizePhone(phone);
+    if (!normalized) return [];
+    return Object.values(this.data.contacts).filter((contact) => normalizePhone(contact.phone) === normalized);
+  }
+
   findActiveContactsByPhone(phone) {
     const normalized = normalizePhone(phone);
     if (!normalized) return [];
