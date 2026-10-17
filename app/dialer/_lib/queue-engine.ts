@@ -881,7 +881,26 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     return true
   })
 
-  const toBuffer = eligible.slice(0, needed)
+  /* One attempt per contact per fill.
+
+     A lead carries three to six attempts for the day. Nothing stopped a
+     single fill handing a rep several of the same contact's attempts at once,
+     and the 90-minute redial guard is evaluated when the buffer is built —
+     not between the calls inside it — so once they were in the buffer the rep
+     worked straight through them. One lead was rung six times in 31 minutes:
+     #2 at 02:02, #3 at 02:05, #4 at 02:17, #5 at 02:31, #6 at 02:33.
+
+     Recency ordering made it certain rather than occasional: a contact's
+     attempts share a stage_changed_at, so they now sort adjacently and were
+     always picked together. */
+  const seenContacts = new Set<string>()
+  const toBuffer: Attempt[] = []
+  for (const a of eligible) {
+    if (toBuffer.length >= needed) break
+    if (seenContacts.has(a.contact_id)) continue
+    seenContacts.add(a.contact_id)
+    toBuffer.push(a)
+  }
   if (!toBuffer.length) return []
 
   const nowIso = now.toISOString()
@@ -1059,6 +1078,9 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // Pass 2: language-aware round-robin for non-callback leads
   // Spanish leads only go to Spanish-capable reps
   const assigned = new Set<number>()
+  /* Shared across every rep, not per rep: one contact must not be handed to
+     two people at once any more than to one person twice. */
+  const assignedContacts = new Set<string>()
   for (const { rep } of repsNeedingLeads) {
     let left = repNeeds.get(rep) ?? 0
     const canSpanish = spanishReps.has(rep)
@@ -1066,8 +1088,10 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
       if (assigned.has(i)) continue
       const a = remainingEligible[i]
       if (a.lang === 'es' && !canSpanish) continue
+      if (assignedContacts.has(a.contact_id)) continue
       toUpdate.push({ id: a.id, rep })
       assigned.add(i)
+      assignedContacts.add(a.contact_id)
       left--
     }
   }
