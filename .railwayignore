@@ -16,3 +16,22 @@ lib/AccidentSupportDeskLander_Spanish
 *.wav
 *.mp4
 tsconfig.tsbuildinfo
+
+# Railway builds this repo with Root Directory = sms-bot, so nothing outside
+# that folder is ever read by the build. Uploading it anyway pushed ~34MB on
+# every deploy and the CLI upload kept dying mid-transfer (BadRecordMac,
+# broken pipe, timeouts). Excluding the siblings takes it to ~7MB.
+brag-output
+app
+public
+components
+styles
+hooks
+supabase
+scripts
+sendcase-agent
+ghl-intake-agent
+Nuance Book
+pnpm-lock.yaml
+*.xlsx
+*.txt
