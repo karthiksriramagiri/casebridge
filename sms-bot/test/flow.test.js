@@ -4267,3 +4267,31 @@ test("a paused contact receives no further bot messages", async () => {
   const sent = await bot.sendBotMessage(store.getContact("paused"), "were you at fault for the accident?");
   assert.equal(sent, null, "send must be refused while automation is paused");
 });
+
+test("a no-response disposition cannot restart the bot after the PC replied", async () => {
+  const { bot, store } = makeBot();
+  store.upsertContact({
+    id: "teresa",
+    ghlContactId: "teresa",
+    name: "Teresa",
+    phone: "+15594989636",
+    engagementStatus: ENGAGEMENT.COLD_OUTREACH,
+    qualificationProgress: QUALIFICATION.NEEDS_FAULT
+  });
+
+  // She replies — bot goes quiet.
+  await bot.handleInboundSms({ contactId: "teresa", message: "I will call u later today" });
+  const afterReply = store.getContact("teresa");
+  assert.equal(afterReply.automationPaused, true, "reply should pause the bot");
+
+  // The call is then dispositioned "no response" — which used to reset
+  // qualificationProgress, clear automationPaused and restart the ladder.
+  await bot.startFromNoResponseDisposition({ contactId: "teresa", phone: "+15594989636" });
+
+  const after = store.getContact("teresa");
+  assert.equal(after.automationPaused, true, "must stay paused after the disposition");
+  assert.notEqual(after.engagementStatus, ENGAGEMENT.CALLED_NO_ANSWER, "must not re-enroll");
+  const outbound = store.listJobs("teresa").filter((job) => job.status === "pending" &&
+    ["send_cold_template", "send_reengagement_template", "enter_reengagement", "warm_followup"].includes(job.type));
+  assert.equal(outbound.length, 0, "no outbound sequence may be queued");
+});

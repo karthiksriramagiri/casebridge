@@ -1798,6 +1798,36 @@ class SmsBot {
   async startFromNoResponseDisposition(payload) {
     const normalized = normalizePayload(payload, this.config);
     const existing = await this.store.getContact(normalized.id);
+
+    /* A no-response disposition must never resurrect the bot for someone who
+       has already replied.
+
+       "No response" means the rep did not reach them on the phone. It says
+       nothing about SMS, and the two get conflated: a lead replies by text,
+       the bot goes quiet, then the call is dispositioned no-answer and this
+       handler resets qualificationProgress to NEEDS_FAULT, clears
+       sentColdTemplateKeys and sets automationPaused to false — restarting
+       the fault ladder on someone who answered it hours earlier. That is the
+       loop that kept reappearing after the inbound path was fixed: the
+       inbound was handled correctly and then undone from the other side.
+
+       Once a PC has replied the bot stays off, and a human owns the thread. */
+    if (existing?.lastResponseTimestamp || existing?.lastInboundMessage) {
+      await this.store.cancelJobsForContact(existing.id, "pc already replied — no-response disposition ignored");
+      const held = await this.store.upsertContact({
+        id: existing.id,
+        automationPaused: true,
+        automationPauseReason: existing.automationPauseReason || "pc_replied",
+        currentSequenceName: ""
+      });
+      console.log("[bot:disposition] ignored no-response for %s — PC already replied", existing.id);
+      await this.recordDecision(held, "skipped", "no_response_after_pc_reply", {
+        trigger: "no_response_disposition",
+        meta: { lastResponseTimestamp: existing.lastResponseTimestamp || "" }
+      });
+      return held;
+    }
+
     if (shouldTreatNoResponseAsCallNoAnswer(existing)) {
       let contact = await this.store.upsertContact({
         ...existing,
