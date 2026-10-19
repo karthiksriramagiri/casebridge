@@ -10,7 +10,13 @@ import { createServerSupabase } from '../_lib/supabase-server'
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerSupabase()
   const { data: { user } } = await supabase.auth.getUser()
-  const role = (user?.user_metadata?.role ?? 'REP') as 'REP' | 'ADMIN'
+  /* Case-insensitive on purpose. The dialer stores 'REP'/'ADMIN' but the
+     profiles table constrains its own role column to lowercase, so an account
+     created through that path carries 'rep' — and `role !== 'REP'` then reads
+     lowercase 'rep' as "not a rep" and hands out the admin nav. Normalising
+     here means the comparison cannot be fooled by case again. */
+  const rawRole = String(user?.user_metadata?.role ?? 'REP').toUpperCase()
+  const role = (rawRole === 'ADMIN' ? 'ADMIN' : 'REP') as 'REP' | 'ADMIN'
 
   return (
     <AuthProvider initialUser={user}>

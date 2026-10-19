@@ -103,11 +103,14 @@ interface Props {
   role?: 'REP' | 'SUPERVISOR' | 'ADMIN'
 }
 
-export function DialerNav({ role = 'ADMIN' }: Props) {
+/* Defaults to REP. It defaulted to ADMIN, so any path that failed to pass a
+   role — or passed one in unexpected case — showed the full admin nav. The
+   safe default for a permission check is the lesser privilege. */
+export function DialerNav({ role = 'REP' }: Props) {
   const pathname = usePathname()
   const { theme, toggle } = useTheme()
   const { name, role: authRole, signOut } = useAuth()
-  const isAdmin = role !== 'REP'
+  const isAdmin = String(role).toUpperCase() === 'ADMIN'
   const [unreadSms, setUnreadSms] = useState(0)
   const [ringingCount, setRingingCount] = useState(0)
 
