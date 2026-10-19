@@ -725,28 +725,69 @@ function rankOf(a: Attempt, todayEt: string): number {
    Never-dialed-before-dialed sits underneath recency rather than above it,
    and MIN_REDIAL_GAP_MS still stops the same contact coming round twice in
    quick succession, so recency-first cannot turn into redial spam. */
-export function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
+function compareAttempts(
+  a: Attempt, b: Attempt, lastDialed: Map<string, number>, todayEt: string,
+): number {
   const bool = (v: unknown) => (v ? 1 : 0)
+  const aDialed = lastDialed.get(a.contact_id)
+  const bDialed = lastDialed.get(b.contact_id)
+  return (
+    bool(b.is_callback) - bool(a.is_callback) ||
+    bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
+    rankOf(b, todayEt) - rankOf(a, todayEt) ||
+    // Latest to oldest — the floor works the freshest lead in the stage next
+    stageChangedMs(b) - stageChangedMs(a) ||
+    // Only then: anyone never called outranks someone already tried
+    (aDialed === undefined ? 0 : 1) - (bDialed === undefined ? 0 : 1) ||
+    (aDialed ?? 0) - (bDialed ?? 0) ||
+    (a.attempt_number ?? 0) - (b.attempt_number ?? 0) ||
+    String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')) ||
+    // Newest row first as the final tiebreak, matching the rule above
+    String((b as any).created_at ?? '').localeCompare(String((a as any).created_at ?? '')) ||
+    String(a.id).localeCompare(String(b.id))
+  )
+}
+
+export function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
   const todayEt = todayEastern()
-  return [...rows].sort((a, b) => {
-    const aDialed = lastDialed.get(a.contact_id)
-    const bDialed = lastDialed.get(b.contact_id)
-    return (
-      bool(b.is_callback) - bool(a.is_callback) ||
-      bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
-      rankOf(b, todayEt) - rankOf(a, todayEt) ||
-      // Latest to oldest — the floor works the freshest lead in the stage next
-      stageChangedMs(b) - stageChangedMs(a) ||
-      // Only then: anyone never called outranks someone already tried
-      (aDialed === undefined ? 0 : 1) - (bDialed === undefined ? 0 : 1) ||
-      (aDialed ?? 0) - (bDialed ?? 0) ||
-      (a.attempt_number ?? 0) - (b.attempt_number ?? 0) ||
-      String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')) ||
-      // Newest row first as the final tiebreak, matching the rule above
-      String((b as any).created_at ?? '').localeCompare(String((a as any).created_at ?? '')) ||
-      String(a.id).localeCompare(String(b.id))
-    )
+  return [...rows].sort((a, b) => compareAttempts(a, b, lastDialed, todayEt))
+}
+
+/* Rank a LEAD by the attempt that can actually be dialed.
+
+   A lead carries three to six attempt rows and every one of them used to be
+   ranked on its own. Only the lowest pending attempt is ever servable — the
+   rest are blocked by the sequential rule — so a lead whose att2 said "Chase"
+   sat at position 5 while its att1, demoted to a missed appointment, sat at
+   93. The floor skipped straight over the row on screen, because the row on
+   screen was not the row it could call. Position 5 meant nothing.
+
+   So the lead moves as one: the servable attempt decides where the lead
+   ranks, and its siblings follow it. The top of the list is now the next
+   call, and counting down it is counting down real leads. */
+export function orderQueue(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
+  const todayEt = todayEastern()
+
+  const groups = new Map<string, Attempt[]>()
+  for (const r of rows) {
+    const key = r.is_callback ? `cb:${r.id}` : `c:${r.contact_id}`
+    const g = groups.get(key) ?? []
+    g.push(r)
+    groups.set(key, g)
+  }
+
+  const ranked = [...groups.values()].map(g => {
+    const byAttempt = [...g].sort((x, y) => (x.attempt_number ?? 0) - (y.attempt_number ?? 0))
+    /* The servable one: the earliest attempt still waiting. If none is
+       pending the lead is already in someone's hands, so lead on whatever
+       row it has. */
+    const head = byAttempt.find(r => r.status === 'pending') ?? byAttempt[0]
+    const rest = byAttempt.filter(r => r !== head)
+    return { head, rows: [head, ...rest] }
   })
+
+  ranked.sort((x, y) => compareAttempts(x.head, y.head, lastDialed, todayEt))
+  return ranked.flatMap(r => r.rows)
 }
 
 /* The one queue order.
@@ -760,7 +801,7 @@ export async function sortQueueCanonical(rows: Attempt[]): Promise<Attempt[]> {
   if (rows.length < 2) return rows
   const db = supabaseAdmin()
   const lastDialed = await loadLastDialed(db, [...new Set(rows.map(r => r.contact_id))])
-  return orderByRecency(rows, lastDialed)
+  return orderQueue(rows, lastDialed)
 }
 
 /** Called too recently to call again — callbacks excepted, they are promises. */
@@ -865,7 +906,7 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   // Order by how long each lead has waited since its last dial, not by the
   // static keys alone — otherwise every fill hands back the same head.
   const lastDialed = await loadLastDialed(db, [...new Set(pending.map(a => a.contact_id))])
-  pending = orderByRecency(pending, lastDialed)
+  pending = orderQueue(pending, lastDialed)
 
   // Sequential constraint: only serve attempt N if all earlier attempts are done
   const pendingByContact = new Map<string, number[]>()
