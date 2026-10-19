@@ -855,7 +855,27 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
     .eq('plan_date', today)
     .in('status', ['buffered', 'leased'])
     .or(`buffered_for.eq.${repIdentity},leased_by.eq.${repIdentity}`)
-  const current = existing?.length ?? 0
+
+  /* A buffered row whose window has closed is dead weight: the rep cannot
+     call it, but it still counts toward their five, so no replacement is
+     ever fetched. That is the loop reps were reporting — the same handful of
+     expired leads sitting there while 960 callable ones waited in pending.
+     Release them, then size the top-up from what is actually workable.
+
+     Leased rows are left alone whatever their window says: the rep is on
+     that call right now. */
+  const nowMs = now.getTime()
+  const expired = (existing ?? []).filter((a: any) =>
+    a.status === 'buffered' && a.due_until && Date.parse(a.due_until) <= nowMs)
+
+  if (expired.length) {
+    await db.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null })
+      .in('id', expired.map((a: any) => a.id))
+    console.warn('[queue:fill] released %d expired buffered leads for %s', expired.length, repIdentity)
+  }
+
+  const current = (existing?.length ?? 0) - expired.length
   const needed  = count - current
   if (needed <= 0) return []
 
@@ -1033,12 +1053,31 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // Count existing buffered + leased leads per rep (no release-and-reassign —
   // that pattern races with concurrent fillBuffer calls and causes double-buffering)
   const { data: assignedRes } = await db.from('dialer_attempts')
-    .select('buffered_for, leased_by, status')
+    .select('id, buffered_for, leased_by, status, due_until')
     .eq('plan_date', today)
     .in('status', ['buffered', 'leased'])
     .or(readyReps.map(r => `buffered_for.eq.${r},leased_by.eq.${r}`).join(','))
+
+  /* Same release as fillBuffer: an expired buffered row cannot be called but
+     still counts against the rep's five, so the top-up never happens and the
+     rep stares at the same dead leads. Leased rows are untouched — that call
+     is in progress. */
+  const nowMs2 = now.getTime()
+  const expiredAll = (assignedRes ?? []).filter((r: any) =>
+    r.status === 'buffered' && r.due_until && Date.parse(r.due_until) <= nowMs2)
+  if (expiredAll.length) {
+    for (let i = 0; i < expiredAll.length; i += 500) {
+      await db.from('dialer_attempts')
+        .update({ status: 'pending', buffered_for: null, buffered_at: null })
+        .in('id', expiredAll.slice(i, i + 500).map((r: any) => r.id))
+    }
+    console.warn('[queue:fill-all] released %d expired buffered leads', expiredAll.length)
+  }
+  const expiredIds = new Set(expiredAll.map((r: any) => r.id))
+
   const assignedCounts: Record<string, number> = {}
   for (const r of assignedRes ?? []) {
+    if (expiredIds.has((r as any).id)) continue
     const rep = r.status === 'leased' ? r.leased_by : r.buffered_for
     if (rep) assignedCounts[rep] = (assignedCounts[rep] ?? 0) + 1
   }
