@@ -957,6 +957,16 @@ export async function fillBuffer(repIdentity: string, count = 5): Promise<Attemp
   // Filter: active contacts + sequential constraint + callback ownership + language (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
+    /* A lead just dialled is not served again for MIN_REDIAL_GAP_MS.
+
+       This check existed and was dropped from the filter at some point —
+       dialedTooRecently was still defined but nothing called it, so the
+       90-minute guard had no effect whatever. getNextAttempt calls fillBuffer
+       on every serve, which refills the slot the rep just vacated, and since
+       the contact is no longer buffered or leased nothing excluded them: the
+       lead's next attempt came straight back. One contact burned all six
+       attempts in 75 seconds. */
+    if (dialedTooRecently(a, lastDialed, now.getTime())) return false
     // Callbacks are exclusive to their owner rep — don't assign to anyone else
     if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
     // Spanish leads only go to Spanish-capable reps
@@ -1155,6 +1165,16 @@ export async function fillAllReadyReps(count = 5): Promise<Record<string, number
   // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
   const eligible = (pending as Attempt[]).filter(a => {
     if (activeConts.has(a.contact_id)) return false
+    /* A lead just dialled is not served again for MIN_REDIAL_GAP_MS.
+
+       This check existed and was dropped from the filter at some point —
+       dialedTooRecently was still defined but nothing called it, so the
+       90-minute guard had no effect whatever. getNextAttempt calls fillBuffer
+       on every serve, which refills the slot the rep just vacated, and since
+       the contact is no longer buffered or leased nothing excluded them: the
+       lead's next attempt came straight back. One contact burned all six
+       attempts in 75 seconds. */
+    if (dialedTooRecently(a, lastDialed2, now.getTime())) return false
     // State filter — callbacks are exempt (already promised to the lead)
     if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
     // Firm filter — callbacks exempt for the same reason
