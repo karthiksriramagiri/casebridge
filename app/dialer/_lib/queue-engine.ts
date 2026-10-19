@@ -652,7 +652,7 @@ function blockFor(at: Date, wins: { block: BlockName; dueFrom: Date; dueUntil: D
 }
 
 /** contact_id → epoch ms of the last dial, for the contacts in play. */
-async function loadLastDialed(db: any, contactIds: string[]): Promise<Map<string, number>> {
+export async function loadLastDialed(db: any, contactIds: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>()
   for (let i = 0; i < contactIds.length; i += 300) {
     const { data } = await db.from('dialer_lead_state')
@@ -725,7 +725,7 @@ function rankOf(a: Attempt, todayEt: string): number {
    Never-dialed-before-dialed sits underneath recency rather than above it,
    and MIN_REDIAL_GAP_MS still stops the same contact coming round twice in
    quick succession, so recency-first cannot turn into redial spam. */
-function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
+export function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
   const bool = (v: unknown) => (v ? 1 : 0)
   const todayEt = todayEastern()
   return [...rows].sort((a, b) => {
@@ -747,6 +747,20 @@ function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attem
       String(a.id).localeCompare(String(b.id))
     )
   })
+}
+
+/* The one queue order.
+
+   The admin queue used to be ordered by SQL (due_from first, created_at
+   ascending) while the floor was served from orderByRecency — so the list on
+   the screen and the order leads actually went out in were unrelated, and
+   "start from the top" was not a thing that could be true. Both now call
+   this, so the row at the top of the page is the row the next rep is handed. */
+export async function sortQueueCanonical(rows: Attempt[]): Promise<Attempt[]> {
+  if (rows.length < 2) return rows
+  const db = supabaseAdmin()
+  const lastDialed = await loadLastDialed(db, [...new Set(rows.map(r => r.contact_id))])
+  return orderByRecency(rows, lastDialed)
 }
 
 /** Called too recently to call again — callbacks excepted, they are promises. */

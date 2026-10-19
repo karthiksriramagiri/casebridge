@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { getNextAttempt, todayEastern } from '@/app/dialer/_lib/queue-engine'
+import { getNextAttempt, todayEastern, sortQueueCanonical } from '@/app/dialer/_lib/queue-engine'
 import type { Attempt } from '@/app/dialer/_lib/queue-engine'
 
 // POST /api/dialer/queue/next
@@ -46,7 +46,27 @@ export async function GET(req: NextRequest) {
     .order('id',             { ascending: true })
     .limit(count)
 
-  const leads = (data ?? []).map(a => attemptToLead(a as Attempt))
+  /* Show them in the order they will be dialed, not the order they happened
+     to be buffered in — the same order as the admin queue. */
+  const ordered = await sortQueueCanonical((data ?? []) as Attempt[])
+  const leads = ordered.map(a => attemptToLead(a as Attempt))
+
+  /* An empty queue has two very different causes and they looked identical to
+     the rep. If this identity is not an active REP it can never be served, so
+     say that instead of showing a blank list for the rest of the shift. */
+  if (leads.length === 0) {
+    const { data: who } = await db.from('dialer_users')
+      .select('role, active')
+      .eq('twilio_identity', rep)
+      .maybeSingle()
+    if (!who || who.role !== 'REP' || !who.active) {
+      return NextResponse.json({
+        leads: [],
+        reason: `"${rep}" is not an active dialer rep, so the queue cannot serve it. Check the sign-in identity in dialer_users.`,
+      })
+    }
+  }
+
   return NextResponse.json({ leads })
 }
 

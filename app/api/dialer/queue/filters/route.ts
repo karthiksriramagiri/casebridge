@@ -149,7 +149,7 @@ async function releaseRejected(
 
   const ids = (data ?? []).filter(a => {
     if (a.is_callback) return false
-    if (state && !passesStateFilter(a.phone, state)) return true
+    if (state && !passesStateFilter(a, state)) return true
     if (firm && !passesFirmFilter(a.firm, firm)) return true
     return false
   }).map(a => a.id)

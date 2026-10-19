@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
-import { todayEastern } from '@/app/dialer/_lib/queue-engine'
+import { todayEastern, sortQueueCanonical } from '@/app/dialer/_lib/queue-engine'
 
 function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -88,6 +88,18 @@ export async function GET(req: NextRequest) {
     if (batch.length < size) break
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  /* Re-order into the one queue order the floor is actually served in.
+
+     The SQL order above is only there to decide which rows survive the row
+     cap; it is not the serving order. Leads waiting to be worked go first, in
+     exactly the order fillBuffer will hand them out — so the top of this list
+     is the next call — and everything already dealt with keeps its place
+     underneath. */
+  const WAITING = new Set(['pending', 'buffered', 'leased'])
+  const waiting = data.filter((r: any) => WAITING.has(r.status))
+  const settled = data.filter((r: any) => !WAITING.has(r.status))
+  data = [...(await sortQueueCanonical(waiting as any)) as any[], ...settled]
 
   // ── Summary stats via count queries (no row-limit cap) ───────────────────
   const now = new Date()

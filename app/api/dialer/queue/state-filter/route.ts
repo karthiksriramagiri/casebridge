@@ -89,12 +89,12 @@ async function releaseFilteredBuffers(
   if (filter.mode === 'off') return 0
 
   const { data } = await db.from('dialer_attempts')
-    .select('id, phone, is_callback')
+    .select('id, firm, is_callback')
     .eq('plan_date', todayEastern())
     .eq('status', 'buffered')
 
   const ids = (data ?? [])
-    .filter(a => !a.is_callback && !passesStateFilter(a.phone, filter))
+    .filter(a => !a.is_callback && !passesStateFilter(a, filter))
     .map(a => a.id)
   if (ids.length === 0) return 0
 
