@@ -731,9 +731,25 @@ function compareAttempts(
   const bool = (v: unknown) => (v ? 1 : 0)
   const aDialed = lastDialed.get(a.contact_id)
   const bDialed = lastDialed.get(b.contact_id)
+
+  /* Callable before not-yet-callable.
+
+     The window is deliberately a hint rather than a gate, so the floor is
+     never idle in front of a full queue. But nothing PREFERRED a lead whose
+     window was open, so fills handed out expired rows while 175 callable
+     ones sat in pending — and an expired buffered row cannot be dialled, so
+     the rep had nothing to do and nothing new arrived. Ordering open windows
+     first keeps the gate off while still serving work that can be done now. */
+  const nowMs = Date.now()
+  const callable = (x: Attempt) => {
+    const u = (x as any).due_until
+    return u ? Date.parse(u) > nowMs : true
+  }
+
   return (
     bool(b.is_callback) - bool(a.is_callback) ||
     bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
+    bool(callable(b)) - bool(callable(a)) ||
     rankOf(b, todayEt) - rankOf(a, todayEt) ||
     // Latest to oldest — the floor works the freshest lead in the stage next
     stageChangedMs(b) - stageChangedMs(a) ||
