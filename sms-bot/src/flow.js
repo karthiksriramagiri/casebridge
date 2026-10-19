@@ -498,6 +498,16 @@ function isSoftEscalationReason(reason = "") {
 function canAutoReturnUnacknowledgedEscalation(contact, job = {}) {
   if (!contact?.humanEscalationStatus || contact.humanEscalationStage !== "human_review_pending") return false;
   if (contact.automationPaused) return false;
+  /* If the PC has written since we escalated, they are not waiting on a nudge —
+     they are mid-conversation. Returning here sends "still here with me?" to
+     someone who just answered, which is how a PC ended up being asked twice
+     whether he was still there while he was actively texting. The human-timeout
+     path already guards on this; this one did not. */
+  const repliedSinceEscalation =
+    contact.lastResponseTimestamp &&
+    contact.escalatedAt &&
+    new Date(contact.lastResponseTimestamp) > new Date(contact.escalatedAt);
+  if (repliedSinceEscalation) return false;
   if (
     contact.optOutStatus ||
     hasSignedTag(contact) ||

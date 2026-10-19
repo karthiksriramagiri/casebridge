@@ -152,7 +152,7 @@ function parseFaultAnswer(text) {
     return { value: "unsure_or_partial", confidence: 0.85 };
   }
   if (
-    /\b(other driver|their fault|his fault|her fault|not my fault|i was not at fault|wasn't my fault|i wasn't driving|i was not driving|i wasnt driving|passenger|rideshare passenger|uber passenger|lyft passenger|lyft driver|uber driver|pedestrian|walking|crosswalk|no|not me|they hit me|driver hit me|driver hit my|driver hit|hit my car|hit my vehicle|hit my front|hit my fender|kept going|rear ended me|rear-ended me|i got hit|hit me|parked|otro conductor|culpa del otro|no fue mi culpa|yo no tuve la culpa|no manejaba|no estaba manejando|pasajero|peaton|caminando|cruce peatonal|me chocaron|me pegaron|me golpearon|chocaron mi carro|le pegaron a mi carro|me dieron por detras|estaba estacionado)\b/.test(
+    /\b(other driver|their fault|his fault|her fault|not my fault|not at fault|wasn't at fault|wasnt at fault|wasn t at fault|was not at fault|i was not at fault|wasn't my fault|wasnt my fault|wasn t my fault|other guy|other car|other vehicle|i wasn't driving|i wasn t driving|i was not driving|i wasnt driving|passenger|rideshare passenger|uber passenger|lyft passenger|lyft driver|uber driver|pedestrian|walking|crosswalk|no|not me|they hit me|driver hit me|driver hit my|driver hit|hit my car|hit my vehicle|hit my front|hit my fender|kept going|rear ended me|rear-ended me|i got hit|hit me|parked|otro conductor|culpa del otro|no fue mi culpa|yo no tuve la culpa|no manejaba|no estaba manejando|pasajero|peaton|caminando|cruce peatonal|me chocaron|me pegaron|me golpearon|chocaron mi carro|le pegaron a mi carro|me dieron por detras|estaba estacionado)\b/.test(
       t
     )
   ) {
