@@ -1190,12 +1190,38 @@ export async function enforceBufferCap(count = 5): Promise<number> {
   const db    = supabaseAdmin()
   const today = todayEastern()
 
-  const { data: held } = await db.from('dialer_attempts')
-    .select('id, buffered_for, buffered_at')
-    .eq('plan_date', today)
-    .eq('status', 'buffered')
-    .order('buffered_at', { ascending: true })
-  if (!held?.length) return 0
+  /* Every buffered row, not just today's.
+
+     Scoping this to plan_date = today meant yesterday's buffer was never
+     capped: a rep who finished a shift holding leads kept them forever, and
+     the queue could not serve them to anyone. 885 of 900 buffered rows were
+     from past days, with reps sitting on 150-260 each against a target of 5.
+
+     Paged, because a plain select stops at 1000 rows — at this volume the cap
+     would have been reading a fraction of what it was meant to trim. */
+  const held: { id: string; buffered_for: string | null; buffered_at: string | null }[] = []
+  for (let from = 0; from < 50000; from += 1000) {
+    const { data } = await db.from('dialer_attempts')
+      .select('id, buffered_for, buffered_at, plan_date')
+      .eq('status', 'buffered')
+      .order('buffered_at', { ascending: true })
+      .range(from, from + 999)
+    if (!data?.length) break
+    held.push(...data)
+    if (data.length < 1000) break
+  }
+  if (!held.length) return 0
+
+  /* A buffered row from an earlier day is stale whatever the cap says — the
+     plan it belonged to is over. Released outright rather than counted
+     against the rep's allowance. */
+  const stale = held.filter(r => (r as any).plan_date && (r as any).plan_date !== today).map(r => r.id)
+  for (let i = 0; i < stale.length; i += 500) {
+    await db.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null })
+      .in('id', stale.slice(i, i + 500))
+  }
+  if (stale.length) console.warn('[queue:cap] released %d buffered rows from earlier days', stale.length)
 
   const { data: leased } = await db.from('dialer_attempts')
     .select('leased_by')
@@ -1207,6 +1233,7 @@ export async function enforceBufferCap(count = 5): Promise<number> {
   const byRep = new Map<string, string[]>()
   for (const r of held) {
     if (!r.buffered_for) continue
+    if ((r as any).plan_date !== today) continue   // already released above
     const arr = byRep.get(r.buffered_for) ?? []
     arr.push(r.id)
     byRep.set(r.buffered_for, arr)
