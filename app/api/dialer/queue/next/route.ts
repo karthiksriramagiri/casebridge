@@ -21,7 +21,16 @@ export async function POST(req: NextRequest) {
 export async function GET(req: NextRequest) {
   const rep   = req.nextUrl.searchParams.get('rep') ?? ''
   const count = parseInt(req.nextUrl.searchParams.get('count') ?? '10', 10)
-  if (!rep) return NextResponse.json({ leads: [] })
+  /* An empty rep is a broken session, not an empty queue. It used to return
+     [] and the floor read "no leads" while five sat buffered server-side —
+     Pablo's account was created without twilio_identity in its metadata, so
+     the client sent rep='' and silently got nothing. Say what is wrong. */
+  if (!rep) {
+    return NextResponse.json({
+      leads: [],
+      reason: 'No rep identity on this session. The signed-in user has no twilio_identity in their metadata — sign out and back in, or check dialer_users.',
+    })
+  }
 
   const { createClient } = await import('@supabase/supabase-js')
   const db    = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
