@@ -1,0 +1,185 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Financial Center.
+
+   Deliberately plain: one neutral ground, one accent, numbers in a tabular
+   face so columns line up, and nothing decorative. A page about money should
+   read like a statement, not a product tour.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.fin {
+  --bg:#FBFBFA; --card:#FFFFFF; --sunk:#F4F4F2;
+  --ink:#16161A; --ink-2:#55555E; --ink-3:#8A8A94;
+  --line:#E6E6E2; --line-2:#D4D4CE;
+  --pos:#1F6F43; --neg:#A52A1F; --flag:#9A6A10;
+  --accent:#16161A;
+
+  background:var(--bg); color:var(--ink); min-height:100vh;
+  font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  font-size:14px; line-height:1.55;
+}
+@media (prefers-color-scheme:dark){
+  .fin:not([data-theme="light"]){
+    --bg:#0E0E10; --card:#161619; --sunk:#131316;
+    --ink:#ECECEE; --ink-2:#A2A2AC; --ink-3:#6E6E78;
+    --line:#242428; --line-2:#32323A;
+    --pos:#4FB97C; --neg:#E0796B; --flag:#D4A24A;
+    --accent:#ECECEE;
+  }
+}
+.fin *{box-sizing:border-box}
+.fin-num{font-variant-numeric:tabular-nums; font-feature-settings:"tnum"}
+
+/* shell */
+.fin-bar{
+  position:sticky; top:0; z-index:20; background:var(--bg);
+  border-bottom:1px solid var(--line); display:flex; align-items:center;
+  gap:28px; padding:0 28px; height:54px;
+}
+.fin-brand{font-weight:600; letter-spacing:-.01em; font-size:14.5px; white-space:nowrap}
+.fin-tabs{display:flex; gap:2px; height:100%}
+.fin-tab{
+  display:inline-flex; align-items:center; padding:0 12px; height:100%;
+  font-size:13.5px; color:var(--ink-3); text-decoration:none;
+  border-bottom:2px solid transparent; white-space:nowrap;
+}
+.fin-tab:hover{color:var(--ink-2)}
+.fin-tab[aria-current="page"]{color:var(--ink); border-bottom-color:var(--accent); font-weight:500}
+.fin-main{max-width:1180px; margin:0 auto; padding:30px 28px 80px}
+
+.fin-h1{font-size:21px; font-weight:600; letter-spacing:-.02em; margin:0}
+.fin-sub{color:var(--ink-3); font-size:13px; margin:3px 0 0}
+.fin-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap}
+
+/* figures */
+.fin-figs{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+  border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--line)}
+.fin-fig{background:var(--card); padding:15px 17px; display:flex; flex-direction:column; gap:3px;
+  border-right:1px solid var(--line)}
+.fin-fig:last-child{border-right:0}
+.fin-fig-l{font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.07em; font-weight:500}
+.fin-fig-v{font-size:21px; font-weight:600; letter-spacing:-.02em}
+.fin-fig-v.pos{color:var(--pos)} .fin-fig-v.neg{color:var(--neg)}
+.fin-fig-s{font-size:11.5px; color:var(--ink-3)}
+
+/* the equation */
+.fin-eq{display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  padding:14px 17px; border:1px solid var(--line); border-radius:6px;
+  background:var(--card); margin-top:10px; font-size:13px}
+.fin-eq b{font-weight:600}
+.fin-eq .op{color:var(--ink-3)}
+.fin-eq .res{margin-left:auto; font-weight:600; font-size:15px}
+
+/* cards + tables */
+.fin-card{background:var(--card); border:1px solid var(--line); border-radius:6px; overflow:hidden}
+.fin-card-h{display:flex; align-items:center; justify-content:space-between; gap:12px;
+  padding:12px 16px; border-bottom:1px solid var(--line)}
+.fin-card-t{font-size:13px; font-weight:600}
+.fin-card-n{font-size:11.5px; color:var(--ink-3)}
+.fin-scroll{overflow-x:auto}
+.fin-table{width:100%; border-collapse:collapse; font-size:13px}
+.fin-table th{font-size:10.5px; text-transform:uppercase; letter-spacing:.07em; font-weight:600;
+  color:var(--ink-3); text-align:left; padding:9px 14px; background:var(--sunk);
+  border-bottom:1px solid var(--line); white-space:nowrap}
+.fin-table td{padding:10px 14px; border-bottom:1px solid var(--line); white-space:nowrap}
+.fin-table tr:last-child td{border-bottom:0}
+.fin-table tbody tr:hover{background:var(--sunk)}
+.fin-table td.n, .fin-table th.n{text-align:right; font-variant-numeric:tabular-nums}
+.fin-table td.pos{color:var(--pos)} .fin-table td.neg{color:var(--neg)}
+.fin-table a{color:inherit; text-decoration:none; border-bottom:1px solid var(--line-2)}
+.fin-table a:hover{border-bottom-color:var(--ink)}
+.fin-tfoot td{font-weight:600; background:var(--sunk); border-top:1px solid var(--line-2)}
+
+/* bits */
+.fin-tag{display:inline-block; font-size:10.5px; padding:1px 6px; border-radius:3px;
+  background:var(--sunk); color:var(--ink-3); border:1px solid var(--line); font-weight:500}
+.fin-tag.warn{color:var(--flag); border-color:var(--flag)}
+.fin-btn{font:inherit; font-size:13px; padding:6px 12px; border-radius:5px;
+  border:1px solid var(--line-2); background:var(--card); color:var(--ink); cursor:pointer}
+.fin-btn:hover{background:var(--sunk)}
+.fin-btn.pri{background:var(--accent); color:var(--bg); border-color:var(--accent)}
+.fin-btn:disabled{opacity:.5; cursor:default}
+.fin-input, .fin-select{font:inherit; font-size:13px; padding:7px 10px; border-radius:5px;
+  border:1px solid var(--line-2); background:var(--card); color:var(--ink); width:100%}
+.fin-input:focus, .fin-select:focus{outline:2px solid var(--ink-3); outline-offset:-1px}
+.fin-field{display:grid; gap:4px}
+.fin-field span{font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; font-weight:500}
+.fin-form{display:grid; gap:11px; padding:15px 16px; border-bottom:1px solid var(--line); background:var(--sunk)}
+.fin-row2{display:grid; grid-template-columns:1fr 1fr; gap:11px}
+.fin-row3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:11px}
+.fin-note{font-size:12.5px; color:var(--ink-3)}
+.fin-warn{font-size:12.5px; color:var(--flag); border:1px solid var(--flag); border-radius:6px;
+  padding:11px 14px; background:var(--card)}
+.fin-err{font-size:12.5px; color:var(--neg)}
+.fin-empty{padding:34px 16px; text-align:center; color:var(--ink-3); font-size:13px}
+.fin-sec{margin-top:26px}
+.fin-sec-h{font-size:11px; text-transform:uppercase; letter-spacing:.09em; color:var(--ink-3);
+  font-weight:600; margin:0 0 9px}
+
+@media (max-width:720px){
+  .fin-bar{gap:14px; padding:0 14px}
+  .fin-main{padding:22px 14px 60px}
+  .fin-row2,.fin-row3{grid-template-columns:1fr}
+}
+
+/* ── firm + invoice tiles ─────────────────────────────────────────────────
+   The firms tab keeps its old shape: a grid of firms, each opening onto a
+   grid of invoices, each opening onto one invoice's P&L. Only the skin here
+   is new. */
+.fin-grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:12px}
+.fin-tile{
+  display:block; background:var(--card); border:1px solid var(--line);
+  border-radius:6px; padding:16px 17px; color:inherit; text-decoration:none;
+  transition:border-color .12s, transform .12s;
+}
+.fin-tile:hover{border-color:var(--line-2); transform:translateY(-1px)}
+.fin-tile-h{display:flex; align-items:center; gap:8px; margin-bottom:13px}
+.fin-tile-name{font-weight:600; font-size:14.5px; letter-spacing:-.01em}
+.fin-tile-arrow{margin-left:auto; color:var(--ink-3); font-size:14px}
+.fin-tile:hover .fin-tile-arrow{color:var(--ink)}
+.fin-tile-figs{display:grid; grid-template-columns:repeat(3,1fr); gap:10px}
+.fin-tile-figs > div{display:flex; flex-direction:column; gap:1px; min-width:0}
+.fin-tile-v{font-size:16px; font-weight:600; letter-spacing:-.015em}
+.fin-tile-foot{
+  display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+  margin-top:13px; padding-top:11px; border-top:1px solid var(--line);
+  font-size:11.5px; color:var(--ink-3);
+}
+.fin-inv-code{font-size:11px; color:var(--ink-3); letter-spacing:.06em;
+  text-transform:uppercase; font-weight:600}
+.fin-crumb{font-size:12.5px; color:var(--ink-3); margin:0 0 3px}
+.fin-crumb a{color:inherit; text-decoration:none; border-bottom:1px solid var(--line-2)}
+.fin-crumb a:hover{color:var(--ink)}
+
+/* tabs inside a page — the invoice's two views.
+   Lighter than the top bar on purpose: a switch within one page, not a move
+   to another part of the centre. */
+.fin-subtabs{display:flex; gap:2px; margin:4px 0 22px; border-bottom:1px solid var(--line)}
+.fin-subtab{
+  appearance:none; background:none; border:0; border-bottom:2px solid transparent;
+  margin-bottom:-1px; padding:9px 13px; font:inherit; font-size:13.5px;
+  color:var(--ink-3); cursor:pointer;
+}
+.fin-subtab:hover{color:var(--ink-2)}
+.fin-subtab[aria-selected="true"]{color:var(--ink); border-bottom-color:var(--accent); font-weight:500}
+.fin-subtab:focus-visible{outline:2px solid var(--accent); outline-offset:-3px}
+.fin-count{
+  display:inline-block; margin-left:6px; padding:0 6px; border-radius:999px;
+  background:var(--sunk); border:1px solid var(--line); color:var(--ink-3); font-size:11px;
+}
+
+/* overtime close — a toggle, not a label: pressing it changes what the case
+   costs, so it reads as a control whether it is on or off. */
+.fin-ot{
+  appearance:none; border:1px solid var(--line-2); background:transparent;
+  color:var(--ink-3); font:inherit; font-size:11.5px; letter-spacing:.02em;
+  padding:3px 10px; border-radius:999px; cursor:pointer; white-space:nowrap;
+}
+.fin-ot:hover:not(:disabled){color:var(--ink); border-color:var(--ink-3)}
+.fin-ot.on{color:var(--flag); border-color:var(--flag); font-weight:500}
+.fin-ot:disabled{opacity:.5; cursor:default}
+.fin-ot:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+
+/* the dashboard's window */
+.fin-range{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
+.fin-range .fin-input{width:auto; min-width:150px}
+.fin-range-to{color:var(--ink-3); font-size:12.5px}
