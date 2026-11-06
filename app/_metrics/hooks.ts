@@ -17,7 +17,7 @@
 // ─── Angle lookup tables ─────────────────────────────────────────────────────
 // BR-AD angle (A = visual, B = verbal)
 export const VISUAL_HOOKS: Record<string, string> = {
-  // BR-AD visual hooks
+  // BR-AD visual hooks (A)
   A1:  'Skeleton',
   A2:  'Animated Surgery',
   A3:  'Accident',
@@ -31,25 +31,39 @@ export const VISUAL_HOOKS: Record<string, string> = {
   A11: 'Attention Hook',
   A12: 'Animated Bone',
   A13: 'Simulation Crash',
-  // HYB-AD visual hooks
+  A14: 'Accident with LIGHTS',
+  A15: 'News',
+  A16: 'Police Car',
+  A17: 'Cartoon / Animated',
+  A18: 'SMS / Texting',
+  // HYB-AD visual hooks (C)
   C1:  'Black 30ish Lady Talking Head',
   C2:  'Bold Old Guy',
   C3:  'White Man',
-  // AIUGC-AD visual hooks
+  C4:  'Bold Guy Mustache',
+  C5:  'Meme',
+  C6:  'Black Lady',
+  // AIUGC-AD visual hooks (E)
   E1:  'In the Car',
   E2:  'Gas Station',
   E3:  'Gym',
   E4:  'Black AI Avatar',
   E5:  'Latino AI Avatar',
-  // BNR-AD visual hooks
+  // BNR-AD visual hooks (G)
   G1:  'Accident',
   G2:  'Car Driving',
-  // ANM-AD visual hooks (placeholder)
-  // IMG-AD visual hooks (placeholder)
+  G3:  'Lighting / Siren',
+  G4:  'Dancing',
+  G5:  'Meme',
+  G6:  'AI UGC',
+  G7:  'Pointing',
+  G8:  'Money / Cash / Check',
+  G9:  'New Car',
+  G10: 'Fedex / Mailing',
 }
 
 export const VERBAL_HOOKS: Record<string, string> = {
-  // BR-AD verbal hooks
+  // BR-AD verbal hooks (B)
   B1:  'Insurance Company',
   B2:  "They don't want you to know",
   B3:  'Never Sue',
@@ -66,33 +80,66 @@ export const VERBAL_HOOKS: Record<string, string> = {
   B14: '3 Mistakes',
   B15: 'Eligible for a bigger payout',
   B16: 'Do Not Call Attorney',
-  B17: 'Been in car accident and did not go to the hospital',
+  B17: 'Been in a car accident and did not go to the hospital',
   B18: "Didn't Go To ER",
   B19: "Insurance Company doesn't care you go to ER",
   B20: 'This is Viral Hack',
   B21: "Don't Accept first check from insurance",
-  B22: 'Think you are fine after car accident no ER no AMB',
+  B22: 'Think you are fine after car accident - no ER, no AMB',
   B23: 'Never do this 3 things',
   B24: 'Never call insurance yourself',
   B25: 'Just Now feeling the pain',
   B26: 'Old lady crushed and said I ran green light',
-  B27: 'Car looks like this Body feels like this',
-  // HYB-AD verbal hooks
+  B27: 'Car looks like this, Body feels like this',
+  B28: 'Left Scene w/o Ambulance 2',
+  B29: 'Walked away from minor accident',
+  B30: 'Feels illegal to know after car accident',
+  B31: 'In a crash but no Police Report?',
+  B32: "Passenger + Deadline most people don't know about",
+  B33: "Walkie-Talkie + Didn't Go To ER",
+  B34: 'Moved to TX from CA',
+  B35: 'Doctor visit once',
+  B36: 'Thanks for Brand New Car & Huge Check',
+  B37: 'Rear-ended',
+  B38: 'Regret suing',
+  B39: 'If you took pictures',
+  B40: 'Anxiety | PTSD',
+  // HYB-AD verbal hooks (D)
   D1:  'Settlement Comparison',
   D2:  'You will regret suing the person who hit you in a car accident',
   D3:  'If you skipped ER after your car accident',
-  // AIUGC-AD verbal hooks
+  D4:  'Two Checks',
+  D5:  'Cashing First Check from Insurance',
+  D6:  'Insurance is hoping you cash their first check fast',
+  D7:  'New car',
+  D8:  '$$ Payout w/o going to court',
+  D9:  'Accident last 12 month, check waiting for you',
+  D10: 'Loophole receiving huge check',
+  // AIUGC-AD verbal hooks (F)
   F1:  'I need to tell you something (Whisper)',
   F2:  'How much did you get for the little accident',
   F3:  'First day back at gym after my accident',
   F4:  'Settlement Amount Comparison',
-  // BNR-AD verbal hooks
+  // BNR-AD verbal hooks (H)
   H1:  "Didn't go to the ER",
   H2:  'Never Sue the person who hit you',
   H3:  'I almost let insurance settle my accident for',
   H4:  "I didn't know there were two checks you could get",
   H5:  'Drink Driver hit my car (BNR)',
   H6:  'Biggest Mistake',
+  H7:  "Where's my [State] at?",
+  H8:  'One thing about [State] Driver...',
+  H9:  'Life after getting $$$',
+  H10: 'Rear-ended > settlement $$$',
+  H11: 'Passenger',
+  H12: 'Accident Debt',
+  H13: 'Rear-Ending ~',
+  H14: 'Mom',
+  H15: 'New Car',
+  H16: 'Settlement $$$',
+  H17: "Don't accept Insurance offer",
+  H18: "Didn't break bone?",
+  H19: 'Reason why Getting payout weeks (Faster Payout)',
 }
 
 // Which angle type each letter prefix belongs to

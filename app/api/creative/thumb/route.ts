@@ -53,9 +53,20 @@ function pickUrl(c: any): string | null {
   )
 }
 
+/* The inverse, for a row thumbnail. A table of 171 ads asking for the full
+   asset pulls hundreds of KB each to paint a 36px box — Meta's own 64×64
+   crop is the right size there and arrives in single-digit KB. Callers that
+   do not ask for a size keep the full-resolution behaviour. */
+function pickSmallUrl(c: any): string | null {
+  if (!c) return null
+  const afs = c.asset_feed_spec ?? {}
+  return c.thumbnail_url ?? afs.videos?.[0]?.thumbnail_url ?? pickUrl(c)
+}
+
 export async function GET(req: NextRequest) {
   const id = req.nextUrl.searchParams.get('id')
   const account = req.nextUrl.searchParams.get('account')
+  const small = req.nextUrl.searchParams.get('size') === 'sm'
   if (!id || !/^\d+$/.test(id)) return new Response('bad id', { status: 400 })
 
   const tokens = tokensToTry(account)
@@ -69,7 +80,7 @@ export async function GET(req: NextRequest) {
       metaUrl.searchParams.set('access_token', token)
       const metaRes = await fetch(metaUrl.toString(), { next: { revalidate: 3600 } })
       const json = await metaRes.json()
-      src = pickUrl(json?.creative)
+      src = small ? pickSmallUrl(json?.creative) : pickUrl(json?.creative)
       if (src) break
     }
     if (!src) return new Response('no image', { status: 404 })

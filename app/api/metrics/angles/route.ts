@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import Anthropic from '@anthropic-ai/sdk'
 import { VISUAL_HOOKS, VERBAL_HOOKS, ANGLE_TYPE_BY_PREFIX } from '@/app/_metrics/hooks'
+import { loadHooks } from '@/app/_metrics/hooks-live'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -172,9 +173,13 @@ export async function GET(req: NextRequest) {
       )
     : []
 
-  const [signedRes, ghlResultsArr] = await Promise.all([
+  /* Hook names as they stand now: the shipped table with anything named from
+     the Creative Center merged over it, so a hook named in the UI reads by
+     its name here without waiting for a deploy. */
+  const [signedRes, ghlResultsArr, hookNames] = await Promise.all([
     supabase.from('ghl_leads').select('ad_id, ad_name'),
     Promise.all(ghlPipelineFetches),
+    loadHooks(),
   ])
 
   const signedRows = (signedRes.data || []) as any[]
@@ -263,8 +268,8 @@ export async function GET(req: NextRequest) {
       map[code].adCount++
     }
 
-    if (visualCode) addTo(visualMap, visualCode, VISUAL_HOOKS[visualCode] || visualCode)
-    if (verbalCode) addTo(verbalMap, verbalCode, VERBAL_HOOKS[verbalCode] || verbalCode)
+    if (visualCode) addTo(visualMap, visualCode, hookNames.visual[visualCode] || visualCode)
+    if (verbalCode) addTo(verbalMap, verbalCode, hookNames.verbal[verbalCode] || verbalCode)
 
     if (visualCode && verbalCode) {
       const comboKey = `${visualCode}+${verbalCode}`

@@ -1,0 +1,89 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Creative Center theme.
+
+   The center was designed against Tailwind v4, whose tokens are raw oklch
+   values read straight out of `@theme`. This app is on Tailwind 3.4, where
+   every colour utility is `hsl(var(--token) / <alpha-value>)` — so the same
+   palette is restated here as HSL triplets, converted from the originals:
+
+     background oklch(0.965 0.004 260) → #f2f3f6 → 217 20% 96%
+
+   Scoped to `.cc-root` rather than `:root` on purpose. The tokens share their
+   names with the rest of the app (`--primary`, `--muted`, …), so defining
+   them globally would repaint the dialer, Team Center and metrics pages too.
+   Redefining them on a wrapper element lets the cascade hand the whole
+   Creative Center its own palette and leave every sibling untouched.
+
+   Light only. The original pins `<html class="light">` and ships no dark
+   toggle, so the dark half of its stylesheet was unreachable.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The token block is shared with `.cc-portal`.
+
+   Radix renders dialogs, sheets and tooltips through a portal on <body>,
+   which sits outside `.cc-root` — so none of these tokens were in scope for
+   them, and anything asking for `--success` or `--border` fell through to the
+   app's palette or to nothing. That is why a "Signed/Sent" pill rendered as
+   black text on no background while the same markup inside the page rendered
+   green. The portaled surfaces carry `.cc-portal` and get the tokens without
+   the full-page painting below, which belongs only to `.cc-root`. */
+.cc-root,
+.cc-portal {
+  color-scheme: light;
+
+  --background: 217 20% 96%;            /* #f2f3f6 */
+  --foreground: 217 14% 11%;            /* #181b1f */
+  --card: 0 0% 100%;                    /* #ffffff */
+  --card-foreground: 217 14% 11%;       /* #181b1f */
+  --popover: 0 0% 100%;                 /* #ffffff */
+  --popover-foreground: 217 14% 11%;    /* #181b1f */
+  --primary: 214 86% 51%;               /* #1874ed */
+  --primary-foreground: 0 0% 99%;       /* #fcfcfc */
+  --secondary: 217 21% 94%;             /* #eceff3 */
+  --secondary-foreground: 217 11% 14%;  /* #1f2227 */
+  --muted: 217 19% 94%;                 /* #eef0f4 */
+  --muted-foreground: 217 6% 40%;       /* #5f636a */
+  --accent: 215 100% 94%;               /* #dfecff */
+  --accent-foreground: 213 100% 29%;    /* #004296 */
+  --destructive: 359 75% 50%;           /* #df2225 */
+  --destructive-foreground: 0 0% 100%;  /* #ffffff */
+  --success: 141 61% 37%;               /* #25984d */
+  --warning: 38 79% 51%;                /* #e49e22 */
+  --border: 217 10% 87%;                /* #dcdee2 */
+  --input: 217 8% 85%;                  /* #d5d8db */
+  --ring: 214 86% 51%;                  /* #1874ed */
+
+  --radius: 0.625rem;
+
+  /* The app paints `body` from its own --background, which this wrapper has
+     just shadowed for its subtree only. Painting it here keeps the center on
+     its own ground instead of the app's white. */
+}
+
+.cc-root {
+  min-height: 100dvh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* ── Radius scale ─────────────────────────────────────────────────────────
+   v4 derived every step from --radius by ratio; 3.4's config defines only
+   lg/md/sm by subtraction. These restore the original proportions for the
+   handful of places the center asks for a larger corner. */
+.cc-root .rounded-xl,
+.cc-portal.rounded-xl,
+.cc-portal .rounded-xl {
+  border-radius: calc(var(--radius) * 1.4);
+}
+.cc-root .rounded-2xl,
+.cc-portal .rounded-2xl {
+  border-radius: calc(var(--radius) * 1.8);
+}
+
+/* ── Focus ring ───────────────────────────────────────────────────────────
+   `ring-3` is a v4 width. 3.4 ships 0/1/2/4/8, so the primitives below ask
+   for `ring-[3px]`; this is only here for the base outline the original
+   applied to every element via `outline-ring/50`. */
+.cc-root :focus-visible {
+  outline-color: hsl(var(--ring) / 0.5);
+}

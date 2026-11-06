@@ -21,7 +21,13 @@ export const ROLE_ACCESS: Record<Role, { allow: string[]; home: string }> = {
     // /teams carries its own Supabase sign-in and is listed for completeness:
     // the center gate never sees it, but the allow list should read as the
     // whole truth about where the role may go.
-    allow: ['/creative/winners', '/creative/assignments', '/teams'],
+    //
+    // /creative/team is the revamped Creative Center's own workspace for this
+    // role — the assignment board plus the read-only research pages. Without
+    // it the proxy would bounce Faisal off the one area built for him.
+    // There is no third workspace: the K-Team login was removed and that work
+    // is Jason's, under /creative/admin.
+    allow: ['/creative/winners', '/creative/assignments', '/creative/team', '/teams'],
     home: '/creative/winners',
   },
 }

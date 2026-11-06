@@ -3,7 +3,7 @@ import {
   createAssignment, updateAssignment, archiveAssignment,
   notionConfigured, type MirrorBrief,
 } from '@/lib/notion'
-import { STATUS_LABELS } from '@/app/creative/assignments/statuses'
+import { STATUS_LABELS } from '@/app/creative/(legacy)/assignments/statuses'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Keeping the Notion database in step with the board.
