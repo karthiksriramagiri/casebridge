@@ -648,16 +648,26 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /* The archive is whatever has actually been marked killed. The prototype
      also carried five pre-archived creatives; with live ads there is no such
      thing until someone kills one. */
+  /* Marked fatigued but not yet pulled. The Relaunch / Fatigue list is the
+     record of what wore out, so it has to show the label the moment it is
+     applied rather than waiting for someone to switch the ad off. */
+  const fatiguedIds = useMemo(
+    () => new Set(kill.filter((k) => k.kind === 'fatigue').map((k) => k.creativeId)),
+    [kill],
+  )
+
   const archived = useMemo(
     () =>
       creatives
-        .filter((c) => killedIds.has(c.id))
+        .filter((c) => killedIds.has(c.id) || fatiguedIds.has(c.id))
         .map((c) => ({
           ...c,
           archived: (() => {
             const k = kill.find((x) => x.creativeId === c.id)
             return {
-              killDate: k?.doneAt ?? TODAY,
+              /* The day it was pulled, or — while that is still pending —
+                 the day it landed on the kill list. */
+              killDate: k?.doneAt ?? k?.addedAt ?? TODAY,
               /* The archive used to call everything fatigue, which made the
                  one distinction worth keeping invisible. */
               reason: (k?.kind === 'fatigue' ? 'Fatigue' : 'Relaunch') as 'Fatigue' | 'Relaunch',
@@ -665,7 +675,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           })(),
         })),
-    [creatives, kill, killedIds],
+    [creatives, kill, killedIds, fatiguedIds],
   )
 
   /* Angles come off real ad names via parseAdName, so the list is whatever is
@@ -840,17 +850,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       patchOn('watch', id, { decision: decision ?? null })
     },
     addToKill,
+    /* Fatigue is a label, not an action.
+
+       It used to also mark the kill done, which meant pressing it switched
+       the ad off as far as the rest of the app was concerned — gone from
+       Creative Analysis, gone from the budget — before anyone had touched
+       Ads Manager. Saying "this one wore out" and actually pulling it are
+       two separate moments, and only the second is a kill. */
     markFatigued: (id) => {
       const k = kill.find((x) => x.id === id)
       setKill((prev) =>
-        prev.map((x) =>
-          x.id === id
-            ? { ...x, kind: 'fatigue', status: 'done', doneAt: TODAY, reason: x.reason || 'Fatigued' }
-            : x,
-        ),
+        prev.map((x) => (x.id === id ? { ...x, kind: 'fatigue', reason: x.reason || 'Fatigued' } : x)),
       )
-      patchOn('kill', id, { kind: 'fatigue', status: 'done', doneAt: TODAY, reason: k?.reason || 'Fatigued' })
-      if (k) notify('creative', `“${findCreative(k.creativeId)?.convention ?? 'A creative'}” was archived as fatigued`, '/team/archives')
+      patchOn('kill', id, { kind: 'fatigue', reason: k?.reason || 'Fatigued' })
+      if (k) notify('creative', `“${findCreative(k.creativeId)?.convention ?? 'A creative'}” was marked fatigued`, '/team/archives')
     },
     markKillDone: (id, done, by) => {
       const k = kill.find((x) => x.id === id)

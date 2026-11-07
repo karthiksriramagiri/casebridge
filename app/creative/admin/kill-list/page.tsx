@@ -102,15 +102,17 @@ export default function KillListPage() {
                     </div>
                     {/* Same action in Ads Manager, different meaning here: a
                         fatigued ad is a winner worth pulling back later, so it
-                        is archived apart from the ones that simply failed. */}
+                        is archived apart from the ones that simply failed.
+                        Tagging it does not switch it off — the kill still has
+                        to be carried out and ticked like any other. */}
                     <Button
                       size="sm"
                       variant="outline"
                       className="shrink-0"
-                      title="Worked, but worn out — archive it as fatigued"
+                      title="Worked, but worn out — tag it for the fatigue list. Does not switch it off."
                       onClick={() => {
                         markFatigued(k.id)
-                        toast(`${c.convention} archived as fatigued`)
+                        toast(`${c.convention} marked fatigued — still on the kill list until you pull it`)
                       }}
                     >
                       <BatteryLow aria-hidden /> Fatigue

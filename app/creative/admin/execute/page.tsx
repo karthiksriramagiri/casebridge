@@ -40,6 +40,8 @@ import { cn } from '@/lib/utils'
 type FirmBlockData = {
   key: FirmKey
   toKill: { k: KillItem; c: Creative }[]
+  /** The ones still to do — the done ones stay on screen, struck through. */
+  killPending: { k: KillItem; c: Creative }[]
   watchToday: { w: WatchItem; c: Creative }[]
   watchYesterday: { w: WatchItem; c: Creative }[]
   live: Creative[]
@@ -65,17 +67,25 @@ export default function ExecutePage() {
          ad is not part of the account anyone is about to discuss. */
       const live = creatives.filter((c) => mine(c.firm, key) && !killedIds.has(c.id) && adsetIsOn(c))
 
+      const toKill = kill
+        .filter((k) => k.status === 'pending' || k.doneAt === date)
+        .flatMap((k) => { const c = getCreative(k.creativeId); return c && mine(c.firm, key) ? [{ k, c }] : [] })
+        .sort((a, b) => Number(a.k.status === 'done') - Number(b.k.status === 'done'))
+
       return {
         key,
-        toKill: kill
-          .filter((k) => k.status === 'pending')
-          .flatMap((k) => { const c = getCreative(k.creativeId); return c && mine(c.firm, key) ? [{ k, c }] : [] }),
+        /* Pending, plus anything ticked off today. A kill that vanished the
+           moment it was ticked took the meeting's own record of its work
+           with it — you could not see what had already been done, or undo a
+           mistake. Done ones stay, struck through. */
+        toKill,
         watchToday: watch
           .filter((w) => w.date === date)
           .flatMap((w) => { const c = getCreative(w.creativeId); return c && mine(c.firm, key) ? [{ w, c }] : [] }),
         watchYesterday: watch
           .filter((w) => w.date === addDays(date, -1))
           .flatMap((w) => { const c = getCreative(w.creativeId); return c && mine(c.firm, key) ? [{ w, c }] : [] }),
+        killPending: toKill.filter((r) => r.k.status === 'pending'),
         live,
         launching: assignments
           .filter((a) => a.status === 'Launching' && a.launchDate === date && mine(a.firm, key))
@@ -88,12 +98,12 @@ export default function ExecutePage() {
 
   const total = firms.reduce(
     (a, f) => ({
-      kill: a.kill + f.toKill.length,
+      kill: a.kill + f.killPending.length,
       watch: a.watch + f.watchToday.length,
       live: a.live + f.live.length,
       launching: a.launching + f.launching.length,
       budget: a.budget + f.budget,
-      killBudget: a.killBudget + f.toKill.reduce((s, r) => s + r.c.dailyBudget, 0),
+      killBudget: a.killBudget + f.killPending.reduce((s, r) => s + r.c.dailyBudget, 0),
     }),
     { kill: 0, watch: 0, live: 0, launching: 0, budget: 0, killBudget: 0 },
   )
@@ -159,7 +169,7 @@ export default function ExecutePage() {
               key={f.key}
               f={f}
               date={date}
-              onKill={(k, c) => { markKillDone(k.id, true, role); toast(`${c.convention} marked killed`) }}
+              onKill={(k, c, done) => { markKillDone(k.id, done, role); toast(`${c.convention} ${done ? 'marked killed' : 'put back on the kill list'}`) }}
               onLaunched={(a) => { setAssignmentStatus(a.id, 'Ad Launched', 'admin'); toast(`${a.title} marked launched`) }}
               onOpen={setOpenId}
             />
@@ -177,7 +187,7 @@ function FirmOverview({
 }: {
   f: FirmBlockData
   date: string
-  onKill: (k: KillItem, c: Creative) => void
+  onKill: (k: KillItem, c: Creative, done: boolean) => void
   onLaunched: (a: Assignment) => void
   onOpen: (id: string) => void
 }) {
@@ -199,7 +209,7 @@ function FirmOverview({
         <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
         <span className="truncate font-semibold">{FIRM_KEY_LABEL[f.key]}</span>
         <span className="ml-auto flex shrink-0 flex-wrap items-center gap-1">
-          {f.toKill.length > 0 && <Pill tone="red">{f.toKill.length} to kill</Pill>}
+          {f.killPending.length > 0 && <Pill tone="red">{f.killPending.length} to kill</Pill>}
           {f.watchToday.length > 0 && <Pill tone="amber">{f.watchToday.length} watching</Pill>}
           {f.launching.length > 0 && <Pill tone="green">{f.launching.length} launching</Pill>}
           <Pill>{f.live.length} live · {usd(f.budget, 0)}/day</Pill>
@@ -210,17 +220,27 @@ function FirmOverview({
         <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing for this firm on {formatDate(date)}.</p>
       ) : (
         <div className="divide-y">
-          <Section icon={Skull} label="To kill" tone="red" count={f.toKill.length}>
+          <Section icon={Skull} label="To kill" tone="red" count={f.killPending.length}>
             {f.toKill.length === 0 ? <Nothing>Nothing coming off.</Nothing> : (
               <ul className="flex flex-col gap-1.5">
-                {f.toKill.map(({ k, c }) => (
-                  <li key={k.id} className="flex items-center gap-2.5 text-sm">
-                    <Checkbox aria-label={`Mark ${c.name} killed`} onCheckedChange={() => onKill(k, c)} />
-                    <code className="min-w-0 flex-1 truncate font-mono text-xs">{c.convention}</code>
-                    {k.reason && <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{k.reason}</span>}
-                    <Pill>{usd(c.dailyBudget, 0)}/day</Pill>
-                  </li>
-                ))}
+                {f.toKill.map(({ k, c }) => {
+                  const done = k.status === 'done'
+                  return (
+                    <li key={k.id} className={cn('flex items-center gap-2.5 text-sm', done && 'text-muted-foreground')}>
+                      <Checkbox
+                        aria-label={`Mark ${c.name} killed`}
+                        checked={done}
+                        onCheckedChange={(v) => onKill(k, c, v === true)}
+                      />
+                      <code className={cn('min-w-0 flex-1 truncate font-mono text-xs', done && 'line-through')}>
+                        {c.convention}
+                      </code>
+                      {k.kind === 'fatigue' && <Pill tone="amber">Fatigued</Pill>}
+                      {k.reason && <span className="hidden shrink-0 text-xs text-muted-foreground sm:inline">{k.reason}</span>}
+                      <Pill>{usd(c.dailyBudget, 0)}/day</Pill>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </Section>
