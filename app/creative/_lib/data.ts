@@ -10,27 +10,38 @@ import type { Creative } from './types'
    ═══════════════════════════════════════════════════════════════════════════ */
 
 /* The prototype hardcoded this, which emptied every Today column the moment
-   the date rolled over. It is live now, and pinned to the business day.
+   the date rolled over. It is live now, and pinned to the Creative Center's
+   working day.
 
    It cannot read the browser's local date: this module would then answer
    differently on the server (Vercel runs UTC) than in the browser, and every
    date-dependent render would fail hydration — "Today" headings, the Missed
    pill on a launch, the T&Y window.
 
-   It also cannot be UTC, which is what it used to be. Eastern runs five hours
-   behind it, so from 7pm every evening UTC had already rolled into tomorrow:
-   the whole page — spend, leads, signed, CPA — read zero against a date no
-   data could exist for yet, for the last five hours of every working day.
+   It also cannot be UTC, which is what it used to be. A zone behind UTC rolls
+   over hours later, so from the evening onwards UTC had already moved into
+   tomorrow: the whole page — spend, leads, signed, CPA — read zero against a
+   date no data could exist for yet, for the last hours of every working day.
 
-   Naming the zone explicitly fixes both. Server and browser compute the same
-   instant against the same zone, so hydration holds, and the calendar is the
-   one the business already works to — the dialer's day, the shift reports and
-   the pay periods are all Eastern. */
-export const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+   Pacific, not Eastern. The rest of CaseBridge runs on an Eastern day — the
+   dialer, the shift reports, the pay periods — but the Creative Center's day
+   turns at midnight PST, which is when the ad meeting's lists roll and when
+   Watch List Mode's dismissals clear. Holding the lists on Eastern and the
+   dismissals on Pacific meant that for three hours every night the watch list
+   had already moved to tomorrow while the day's dismissals were still on
+   yesterday. One zone for the whole center.
 
-/* Watch List Mode's dismissals reset on the Pacific day rather than the
-   Eastern one — that is the boundary the team asked for. Computed, not
-   constant, because a tab left open overnight has to notice the roll-over.
+   Worth knowing when reading these numbers: Meta reports its daily rows in
+   each ad account's own timezone, which this does not control. The closer the
+   accounts are set to Pacific, the more exactly a "today" here lines up with
+   a "today" in Ads Manager. */
+export const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+
+/* The same day as TODAY, recomputed on demand.
+
+   TODAY is a module constant, fixed at the moment the bundle first evaluates;
+   a tab left open overnight would keep writing into yesterday. Anything that
+   has to notice the roll-over calls this instead.
 
    Lives here rather than beside the hook that reads it so the store can use
    it too without the two importing each other. */

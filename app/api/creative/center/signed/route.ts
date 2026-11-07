@@ -35,11 +35,19 @@ type Case = {
   isReplacement: boolean
 }
 
-/* Eastern, not UTC. A case signed at 8pm Eastern is stored as tomorrow in
-   UTC, and would then be counted on a day the Creative Center calls tomorrow
-   and Finance calls today — the two would disagree every evening. */
+/* Pacific, matching the Creative Center's day.
+
+   These keys are joined against the center's own daily rows, so they have to
+   turn over at the same moment it does or a case lands on a day the page has
+   no column for. It used to be Eastern, which lined up when the center was
+   Eastern too.
+
+   The consequence is worth stating: Finance counts its day in Eastern, so a
+   case signed between midnight Pacific and midnight Eastern — roughly 9pm to
+   midnight PT — is yesterday's here and today's there. The center is right
+   about its own calendar; the two will not agree for those three hours. */
 const day = (iso: string | null | undefined) =>
-  iso ? new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) : ''
+  iso ? new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' }) : ''
 
 export async function GET(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
