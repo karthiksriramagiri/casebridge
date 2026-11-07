@@ -146,6 +146,25 @@ const seedNotifications: Notification[] = [
   { id: uid('n'), to: 'admin', text: 'Faisal requested feedback on “Truck Accident – 3 hook variants”', href: '/admin/assignments', at: now(), read: false },
 ]
 
+type AddAssignmentInput = {
+  title: string
+  type: AssignmentType
+  angle: string
+  notes?: string
+  sourceCreativeId?: string
+  firm?: AssignmentFirm
+  format?: CreativeFormat
+  visualCode?: string
+  verbalCode?: string
+  batch?: string
+  priority?: number
+  script?: string
+  benchmarkUrl?: string
+  benchmarkName?: string
+  /** Defaults to 'Assigned'. A relaunch comes in at 'Ready to Launch'. */
+  status?: AssignmentStatus
+}
+
 export type ManualLaunchInput = {
   name: string
   angle: string
@@ -191,22 +210,7 @@ type Store = {
   /** Take an ad off as fatigued rather than killed — it worked, it wore out. */
   markFatigued: (id: string) => void
   removeKill: (id: string) => void
-  addAssignment: (a: {
-    title: string
-    type: AssignmentType
-    angle: string
-    notes?: string
-    sourceCreativeId?: string
-    firm?: AssignmentFirm
-    format?: CreativeFormat
-    visualCode?: string
-    verbalCode?: string
-    batch?: string
-    priority?: number
-    script?: string
-    benchmarkUrl?: string
-    benchmarkName?: string
-  }) => void
+  addAssignment: (a: AddAssignmentInput) => void
   updateAssignment: (id: string, patch: Partial<Assignment>) => void
   setAssignmentStatus: (id: string, status: AssignmentStatus, by: Role) => void
   moveAssignment: (id: string, dir: -1 | 1) => void
@@ -573,6 +577,63 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      across people, until the date rolls over and a new day's list is built. */
   const watch = useMemo(() => watchRows.filter((w) => !w.removed), [watchRows])
 
+  /* Hoisted out of the context object so other actions can call it — a
+     relaunch has to raise a Ready to Launch card, and a property of the same
+     object literal is not in scope from its siblings. `status` is a parameter
+     now rather than always 'Assigned': a relaunch skips the brief, because
+     the ad already exists and only needs putting back up. */
+  const addAssignment = useCallback(
+    (a: AddAssignmentInput) => {
+      const order = Math.max(-1, ...assignments.map((p) => p.order)) + 1
+      const temp = uid('a')
+      /* Shown immediately under a temporary id, then swapped for the real one
+         the database hands back — so the card is on the board before the
+         round-trip finishes, and still editable after it. */
+      setAssignments((prev) => [
+        ...prev,
+        {
+          id: temp,
+          title: a.title,
+          type: a.type,
+          angle: a.angle,
+          notes: a.notes ?? '',
+          sourceCreativeId: a.sourceCreativeId,
+          firm: a.firm,
+          format: a.format,
+          visualCode: a.visualCode,
+          verbalCode: a.verbalCode,
+          batch: a.batch,
+          priority: a.priority ?? 3,
+          script: a.script,
+          benchmarkUrl: a.benchmarkUrl,
+          benchmarkName: a.benchmarkName,
+          status: a.status ?? 'Assigned',
+          order,
+          createdAt: TODAY,
+          comments: [],
+          attachments: [],
+        },
+      ])
+      persist(
+        api
+          .createAssignment({
+            title: a.title, type: a.type, angle: a.angle, notes: a.notes ?? '',
+            sourceCreativeId: a.sourceCreativeId,
+            firm: a.firm, format: a.format,
+            visualCode: a.visualCode, verbalCode: a.verbalCode, batch: a.batch,
+            priority: a.priority ?? 3, script: a.script,
+            benchmarkUrl: a.benchmarkUrl, benchmarkName: a.benchmarkName,
+            status: a.status ?? 'Assigned', order, createdBy: 'admin',
+          })
+          .then((d) => {
+            if (d?.id) setAssignments((prev) => prev.map((x) => (x.id === temp ? { ...x, id: d.id } : x)))
+          }),
+      )
+      notify('creative', `New assignment: ${a.title}`, '/team/assignments')
+    },
+    [assignments, persist, notify],
+  )
+
   const killedIds = useMemo(() => new Set(kill.filter((k) => k.status === 'done').map((k) => k.creativeId)), [kill])
 
   const findCreative = useCallback(
@@ -647,19 +708,29 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       /* Already on today's watch list: the row stands, its decision becomes
          KILL. Not on it: a new row is written carrying that decision, because
-         every kill has to be traceable to the watch list it came off. */
+         every kill has to be traceable to the watch list it came off.
+
+         Either way the row comes off the visible list. A killed creative is
+         decided — leaving it on the watch list means the next person reads it
+         as still awaiting a call and the list never shrinks as the meeting
+         works through it. The row stays in the table with its KILL decision,
+         which is the record of where the kill came from. */
       const marked = watchRows.filter((w) => w.date === TODAY && fresh.includes(w.creativeId))
       const added: StoredWatch[] = seedWatchDay(fresh.filter((id) => !onWatchToday.has(id)), TODAY)
-        .map((w) => ({ ...w, decision: 'KILL' as const }))
+        .map((w) => ({ ...w, decision: 'KILL' as const, removed: true }))
 
       setWatch((prev) => [
-        ...prev.map((w) => (w.date === TODAY && fresh.includes(w.creativeId) ? { ...w, decision: 'KILL' as const } : w)),
+        ...prev.map((w) =>
+          w.date === TODAY && fresh.includes(w.creativeId)
+            ? { ...w, decision: 'KILL' as const, removed: true }
+            : w,
+        ),
         ...added,
       ])
-      for (const w of marked) patchOn('watch', w.id, { decision: 'KILL' })
+      for (const w of marked) patchOn('watch', w.id, { decision: 'KILL', removed: true })
       for (const w of added) {
         createOn('watch', setWatch, w, {
-          creativeId: w.creativeId, date: w.date, reason: w.reason, decision: 'KILL', removed: false,
+          creativeId: w.creativeId, date: w.date, reason: w.reason, decision: 'KILL', removed: true,
         })
       }
 
@@ -786,54 +857,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       setKill((prev) => prev.filter((k) => k.id !== id))
       removeOn('kill', id)
     },
-    addAssignment: (a) => {
-      const order = Math.max(-1, ...assignments.map((p) => p.order)) + 1
-      const temp = uid('a')
-      /* Shown immediately under a temporary id, then swapped for the real one
-         the database hands back — so the card is on the board before the
-         round-trip finishes, and still editable after it. */
-      setAssignments((prev) => [
-        ...prev,
-        {
-          id: temp,
-          title: a.title,
-          type: a.type,
-          angle: a.angle,
-          notes: a.notes ?? '',
-          sourceCreativeId: a.sourceCreativeId,
-          firm: a.firm,
-          format: a.format,
-          visualCode: a.visualCode,
-          verbalCode: a.verbalCode,
-          batch: a.batch,
-          priority: a.priority ?? 3,
-          script: a.script,
-          benchmarkUrl: a.benchmarkUrl,
-          benchmarkName: a.benchmarkName,
-          status: 'Assigned',
-          order,
-          createdAt: TODAY,
-          comments: [],
-          attachments: [],
-        },
-      ])
-      persist(
-        api
-          .createAssignment({
-            title: a.title, type: a.type, angle: a.angle, notes: a.notes ?? '',
-            sourceCreativeId: a.sourceCreativeId,
-            firm: a.firm, format: a.format,
-            visualCode: a.visualCode, verbalCode: a.verbalCode, batch: a.batch,
-            priority: a.priority ?? 3, script: a.script,
-            benchmarkUrl: a.benchmarkUrl, benchmarkName: a.benchmarkName,
-            status: 'Assigned', order, createdBy: 'admin',
-          })
-          .then((d) => {
-            if (d?.id) setAssignments((prev) => prev.map((x) => (x.id === temp ? { ...x, id: d.id } : x)))
-          }),
-      )
-      notify('creative', `New assignment: ${a.title}`, '/team/assignments')
-    },
+    addAssignment,
     updateAssignment,
     setAssignmentStatus,
     moveAssignment: (id, dir) =>
@@ -1077,6 +1101,27 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     relaunch: (creativeId) => {
       const c = findCreative(creativeId)
       if (!c) return
+
+      /* A relaunch has to show up on the Launch Lists page, and that page
+         reads the assignment board — anything at Ready to Launch is in the
+         pool — rather than this array. Writing only the LaunchTask below put
+         the relaunch somewhere nothing rendered it, so the button looked like
+         it had done nothing.
+
+         The two are not duplicates of each other: the assignment is the card
+         someone schedules and launches, the LaunchTask is what the Budget
+         Tracker and the Execute view count as pending. The ad's firm code
+         (LHP_SP) is translated to the spelling the board uses (LHP [SPANISH])
+         or the Spanish lists silently split in two. */
+      const SPELLING: Record<string, AssignmentFirm> = { LHP: 'LHP', LHP_SP: 'LHP [SPANISH]', JM: 'JM', JM_SP: 'JM [SPANISH]' }
+      addAssignment({
+        title: `Relaunch – ${c.convention || c.name}`,
+        type: 'New Concept',
+        angle: c.angle,
+        sourceCreativeId: c.id,
+        firm: SPELLING[c.firm],
+        status: 'Ready to Launch',
+      })
       const row: LaunchTask = {
         id: uid('l'),
         sourceCreativeId: c.id,

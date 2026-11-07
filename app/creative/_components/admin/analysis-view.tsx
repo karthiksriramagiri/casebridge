@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, EyeOff, Eye, History, RotateCcw, Search, Skull } from 'lucide-react'
+import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, EyeOff, Eye, History, RotateCcw, Search, Skull, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
@@ -139,7 +139,7 @@ function namesOf(signed: { name: string }[]): string | undefined {
 }
 
 export function AnalysisView() {
-  const { creatives, killedIds, watch, kill, addToWatch, addToKill, accounts, loading, loadError, hasOutcomes } = useStore()
+  const { creatives, killedIds, watch, kill, addToWatch, addToKill, addAssignment, assignments, accounts, loading, loadError, hasOutcomes } = useStore()
   const [range, setRange] = useState<RangeKey>('today')
   const [query, setQuery] = useState('')
   const [account, setAccount] = useState('all')
@@ -268,6 +268,38 @@ export function AnalysisView() {
   }
   const bulkExclude = (ids: string[]) => {
     exclude(ids)
+    setSelected(new Set())
+  }
+
+  /* Double down, from the table the decision is actually made in.
+
+     It used to live only on Winner Analysis, which meant spotting a winner
+     here and acting on it were two different pages: you read the row, went
+     looking for the same ad on another screen, and assigned it there. The
+     assignment it writes is the same one — the Double Down brief Faisal
+     picks up. */
+  const alreadyDoubled = useMemo(
+    () => new Set(assignments.filter((a) => a.type === 'Double Down').map((a) => a.sourceCreativeId)),
+    [assignments],
+  )
+
+  const bulkDoubleDown = (ids: string[]) => {
+    const fresh = ids.filter((id) => !alreadyDoubled.has(id))
+    for (const id of fresh) {
+      const c = creatives.find((x) => x.id === id)
+      if (!c) continue
+      addAssignment({
+        title: `Double Down – ${c.id} ${c.angle}`,
+        type: 'Double Down',
+        angle: c.angle,
+        sourceCreativeId: c.id,
+      })
+    }
+    toast(
+      fresh.length
+        ? `Sent ${fresh.length} to double down`
+        : 'Already sent to double down',
+    )
     setSelected(new Set())
   }
 
@@ -415,6 +447,9 @@ export function AnalysisView() {
                   <span className="text-sm text-muted-foreground">{selectedIds.length} selected</span>
                   <Button variant="outline" size="sm" onClick={() => bulkWatch(selectedIds)}>
                     <Eye aria-hidden /> Add to watch
+                  </Button>
+                  <Button variant="outline" size="sm" onClick={() => bulkDoubleDown(selectedIds)}>
+                    <TrendingUp aria-hidden /> Double down
                   </Button>
                   <Button variant="destructive" size="sm" onClick={() => bulkKill(selectedIds)}>
                     <Skull aria-hidden /> Add to kill

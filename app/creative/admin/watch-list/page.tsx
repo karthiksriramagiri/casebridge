@@ -1,6 +1,6 @@
 'use client'
 
-import { Eye, Skull, Trash2 } from 'lucide-react'
+import { Eye, RefreshCw, Skull, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { EmptyState, PageHeader, Pill, Thumb } from '@/app/creative/_components/admin/shared'
@@ -68,8 +68,14 @@ function TrendStrip({ c }: { c: Creative }) {
 }
 
 export default function WatchListPage() {
-  const { watch, kill, getCreative, killedIds, removeWatch, setWatchDecision, addToKill } = useStore()
-  const live = watch.filter((w) => !killedIds.has(w.creativeId))
+  const { watch, kill, getCreative, killedIds, removeWatch, setWatchDecision, addToKill, relaunch } = useStore()
+  /* Anything already on the kill list is off this list, pending or done.
+     Filtering on `killedIds` alone only caught kills that had been carried
+     out in Ads Manager, so a creative sat here with a KILL decision and an
+     "on today's kill list" tag beside it — decided, but still asking to be
+     decided. */
+  const inKillAny = new Set(kill.map((k) => k.creativeId))
+  const live = watch.filter((w) => !killedIds.has(w.creativeId) && !inKillAny.has(w.creativeId))
   const today = live.filter((w) => w.date === TODAY)
   const yesterday = live.filter((w) => w.date === YESTERDAY)
   const yIds = new Set(yesterday.map((w) => w.creativeId))
@@ -103,6 +109,28 @@ export default function WatchListPage() {
     toast(n ? `Sent ${n} to the kill list` : 'Nothing new to send')
   }
 
+  /* Relaunch: take it down and put a fresh version up, in one action.
+
+     An ad that wore out is still a winner — the audience has had enough of
+     this cut, not of the idea. Killing it and queuing the replacement are
+     always done together, and doing them on two screens is how one of the
+     two gets forgotten. The kill is what comes off today; the launch is what
+     goes up in its place, with the convention bumped to the next version. */
+  /* KILL is the action, not a label. Marking the decision and then pressing
+     a second button to send it was the step that left creatives sitting here
+     already decided — so the button does the thing it says. WATCH stays a
+     toggle, because watching is a decision to wait. */
+  const killOne = (creativeId: string) => {
+    addToKill([creativeId])
+    toast('Sent to the kill list')
+  }
+
+  const relaunchOne = (creativeId: string, name: string) => {
+    addToKill([creativeId])
+    relaunch(creativeId)
+    toast(`“${name}” sent to the kill list and queued to relaunch`)
+  }
+
   const DecisionToggle = ({ w }: { w: WatchItem }) => (
     <div role="radiogroup" aria-label="Decision" className="flex overflow-hidden rounded-md border">
       {(['WATCH', 'KILL'] as Decision[]).map((d) => (
@@ -112,7 +140,11 @@ export default function WatchListPage() {
           role="radio"
           aria-checked={w.decision === d}
           disabled={inKill.has(w.creativeId)}
-          onClick={() => setWatchDecision(w.id, w.decision === d ? undefined : d)}
+          onClick={() =>
+            d === 'KILL'
+              ? killOne(w.creativeId)
+              : setWatchDecision(w.id, w.decision === d ? undefined : d)
+          }
           className={cn(
             'flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50',
             w.decision === d ? (d === 'KILL' ? 'bg-destructive text-white' : 'bg-primary text-primary-foreground') : 'bg-card hover:bg-muted',
@@ -204,6 +236,15 @@ export default function WatchListPage() {
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         <DecisionToggle w={w} />
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          disabled={inKill.has(c.id)}
+                          onClick={() => relaunchOne(c.id, c.convention || c.name)}
+                          title="Kill this version and queue a fresh one in its place"
+                        >
+                          <RefreshCw aria-hidden /> Relaunch
+                        </Button>
                         <Button size="icon-sm" variant="ghost" aria-label="Remove from watch list" onClick={() => removeWatch(w.id)}>
                           <Trash2 aria-hidden />
                         </Button>
