@@ -624,10 +624,20 @@ export function AnalysisView() {
                           ))}
                           <td className="px-3 py-2">
                             <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100">
-                              <Button size="icon-sm" variant="ghost" aria-label={`Add every ad in ${g.adset} to watch list`} onClick={() => bulkWatch(groupIds)}>
+                              <Button size="icon-sm" variant="ghost" aria-label={`Add every ad in ${g.adset} to watch list`} title="Add the whole ad set to the watch list" onClick={() => bulkWatch(groupIds)}>
                                 <Eye aria-hidden />
                               </Button>
-                              <Button size="icon-sm" variant="ghost" aria-label={`Add every ad in ${g.adset} to kill list`} onClick={() => bulkKill(groupIds)}>
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={`Send every ad in ${g.adset} to double down`}
+                                title="Send the whole ad set to double down"
+                                disabled={groupIds.every((id) => alreadyDoubled.has(id))}
+                                onClick={() => bulkDoubleDown(groupIds)}
+                              >
+                                <TrendingUp aria-hidden />
+                              </Button>
+                              <Button size="icon-sm" variant="ghost" aria-label={`Add every ad in ${g.adset} to kill list`} title="Add the whole ad set to the kill list" onClick={() => bulkKill(groupIds)}>
                                 <Skull aria-hidden />
                               </Button>
                               <Button size="icon-sm" variant="ghost" aria-label={`Exclude ${g.adset} from view`} onClick={() => bulkExclude(groupIds)}>
@@ -710,13 +720,23 @@ export function AnalysisView() {
                                 ))}
                                 <td className="px-3 py-2">
                                   <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100">
-                                    <Button size="icon-sm" variant="ghost" aria-label="Add to watch list" onClick={() => bulkWatch([c.id])}>
+                                    <Button size="icon-sm" variant="ghost" aria-label="Add to watch list" title="Add to watch list" onClick={() => bulkWatch([c.id])}>
                                       <Eye aria-hidden />
                                     </Button>
-                                    <Button size="icon-sm" variant="ghost" aria-label="Add to kill list" onClick={() => bulkKill([c.id])}>
+                                    <Button
+                                      size="icon-sm"
+                                      variant="ghost"
+                                      aria-label={alreadyDoubled.has(c.id) ? 'Already sent to double down' : 'Send to double down'}
+                                      title={alreadyDoubled.has(c.id) ? 'Already sent to double down' : 'Send to double down'}
+                                      disabled={alreadyDoubled.has(c.id)}
+                                      onClick={() => bulkDoubleDown([c.id])}
+                                    >
+                                      <TrendingUp aria-hidden />
+                                    </Button>
+                                    <Button size="icon-sm" variant="ghost" aria-label="Add to kill list" title="Add to kill list" onClick={() => bulkKill([c.id])}>
                                       <Skull aria-hidden />
                                     </Button>
-                                    <Button size="icon-sm" variant="ghost" aria-label="Exclude from view" onClick={() => bulkExclude([c.id])}>
+                                    <Button size="icon-sm" variant="ghost" aria-label="Exclude from view" title="Hide for the rest of today" onClick={() => bulkExclude([c.id])}>
                                       <EyeOff aria-hidden />
                                     </Button>
                                   </div>
