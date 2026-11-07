@@ -1,6 +1,6 @@
 'use client'
 
-import type { KillItem, LaunchTask, WatchItem } from './types'
+import type { KillItem, LaunchTask, Notification, WatchItem } from './types'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Talking to the watch, kill and launch tables.
@@ -20,16 +20,22 @@ const URL = '/api/creative/board'
 /** `removed` is a Watch List Mode hide — see the migration. */
 export type StoredWatch = WatchItem & { removed?: boolean }
 
+/** One Watch List Mode dismissal, on one Pacific day. */
+export type StoredExclusion = { id: string; creativeId: string; day: string }
+
 export type BoardState = {
   watch: StoredWatch[]
   kill: KillItem[]
   launches: LaunchTask[]
+  exclusions: StoredExclusion[]
+  notifications: Notification[]
   setupNeeded: boolean
   error: string | null
 }
 
 export const emptyBoardState: BoardState = {
-  watch: [], kill: [], launches: [], setupNeeded: false, error: null,
+  watch: [], kill: [], launches: [], exclusions: [], notifications: [],
+  setupNeeded: false, error: null,
 }
 
 export async function fetchBoardState(): Promise<BoardState> {
@@ -40,6 +46,8 @@ export async function fetchBoardState(): Promise<BoardState> {
       watch: d.watch ?? [],
       kill: d.kill ?? [],
       launches: d.launches ?? [],
+      exclusions: d.exclusions ?? [],
+      notifications: d.notifications ?? [],
       setupNeeded: !!d.setupNeeded,
       error: d.error ?? null,
     }
@@ -48,7 +56,7 @@ export async function fetchBoardState(): Promise<BoardState> {
   }
 }
 
-type Board = 'watch' | 'kill' | 'launches'
+type Board = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
 
 async function send(board: Board, method: 'POST' | 'PATCH', body: unknown): Promise<any> {
   const res = await fetch(`${URL}?board=${board}`, {

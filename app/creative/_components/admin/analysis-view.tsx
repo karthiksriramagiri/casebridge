@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { CreativeDetail } from './creative-detail'
 import { PeopleDialog } from './people-dialog'
 import { PageHeader, Pill, RangeSelect, StatCard, Thumb } from './shared'
+import { BoardStatus } from './board-status'
 
 type SortKey = 'spend' | 'leads' | 'cpl' | 'acquisitions' | 'cpa' | 'hookRate' | 'ctr' | 'cpm' | 'impressions'
 
@@ -314,6 +315,10 @@ export function AnalysisView() {
       />
 
       <div className="flex flex-col gap-4 p-6">
+        {/* Watch List Mode's dismissals are database rows now, so this page
+            has to say when that table is missing — otherwise removing a
+            creative looks like it worked and it reappears on the next poll. */}
+        <BoardStatus migration="supabase/migration_creative_board_2.sql" />
         {/* One account can fail while the other answers — naming which is
             the difference between a fixable token and a blank page. */}
         {loadError && (

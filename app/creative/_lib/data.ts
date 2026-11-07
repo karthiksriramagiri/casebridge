@@ -28,6 +28,16 @@ import type { Creative } from './types'
    the pay periods are all Eastern. */
 export const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
 
+/* Watch List Mode's dismissals reset on the Pacific day rather than the
+   Eastern one — that is the boundary the team asked for. Computed, not
+   constant, because a tab left open overnight has to notice the roll-over.
+
+   Lives here rather than beside the hook that reads it so the store can use
+   it too without the two importing each other. */
+export function pacificDay(now = new Date()): string {
+  return now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
 export function addDays(iso: string, delta: number) {
   const d = new Date(`${iso}T00:00:00Z`)
   d.setUTCDate(d.getUTCDate() + delta)

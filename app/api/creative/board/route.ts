@@ -29,7 +29,7 @@ const MISSING = (msg: string) =>
   /could not find the table/i.test(msg) || /relation .* does not exist/i.test(msg)
 
 const SETUP =
-  'Run supabase/migration_creative_board.sql in the Supabase SQL editor to create the watch, kill and launch tables.'
+  'Run supabase/migration_creative_board.sql and migration_creative_board_2.sql in the Supabase SQL editor to create the board tables.'
 
 const day = (iso: string | null | undefined) => (iso ? String(iso).slice(0, 10) : '')
 
@@ -54,6 +54,21 @@ const toKill = (r: Row) => ({
   status: (r.status as 'pending' | 'done') ?? 'pending',
   doneAt: r.done_at ? day(r.done_at as string) : undefined,
   kind: (r.kind as 'kill' | 'fatigue') ?? 'kill',
+})
+
+const toExclusion = (r: Row) => ({
+  id: String(r.id),
+  creativeId: String(r.creative_id),
+  day: day(r.excluded_on as string),
+})
+
+const toNotification = (r: Row) => ({
+  id: String(r.id),
+  to: (r.recipient as string) ?? 'admin',
+  text: (r.body as string) ?? '',
+  href: (r.href as string) ?? '',
+  at: String(r.created_at ?? ''),
+  read: Boolean(r.read),
 })
 
 const toLaunch = (r: Row) => ({
@@ -90,10 +105,19 @@ const LAUNCH_COLS: Record<string, string> = {
   doneAt: 'done_at', isNewTestBatch: 'is_new_test_batch', requestedBy: 'requested_by',
 }
 
+const EXCLUSION_COLS: Record<string, string> = {
+  creativeId: 'creative_id', day: 'excluded_on', createdBy: 'created_by',
+}
+const NOTIFICATION_COLS: Record<string, string> = {
+  to: 'recipient', text: 'body', href: 'href', read: 'read',
+}
+
 const BOARDS = {
-  watch:    { table: 'creative_watch',     cols: WATCH_COLS,  to: toWatch,  order: 'watch_date' },
-  kill:     { table: 'creative_kill',      cols: KILL_COLS,   to: toKill,   order: 'added_at' },
-  launches: { table: 'creative_launches',  cols: LAUNCH_COLS, to: toLaunch, order: 'launch_date' },
+  watch:         { table: 'creative_watch',         cols: WATCH_COLS,        to: toWatch,        order: 'watch_date' },
+  kill:          { table: 'creative_kill',          cols: KILL_COLS,         to: toKill,         order: 'added_at' },
+  launches:      { table: 'creative_launches',      cols: LAUNCH_COLS,       to: toLaunch,       order: 'launch_date' },
+  exclusions:    { table: 'creative_exclusions',    cols: EXCLUSION_COLS,    to: toExclusion,    order: 'excluded_on' },
+  notifications: { table: 'creative_notifications', cols: NOTIFICATION_COLS, to: toNotification, order: 'created_at' },
 } as const
 
 type BoardKey = keyof typeof BOARDS
@@ -107,7 +131,7 @@ const columnsFrom = (board: BoardKey, body: Record<string, unknown>) => {
   return out
 }
 
-const empty = { watch: [], kill: [], launches: [] }
+const empty = { watch: [], kill: [], launches: [], exclusions: [], notifications: [] }
 
 /* ── GET: all three boards ───────────────────────────────────────────────── */
 
@@ -115,22 +139,48 @@ export async function GET() {
   const supabase = db()
   if (!supabase) return NextResponse.json({ ...empty, setupNeeded: true, setup: 'Supabase env vars are missing.' })
 
-  const [w, k, l] = await Promise.all([
+  const [w, k, l, x, n] = await Promise.all([
     supabase.from('creative_watch').select('*').order('watch_date', { ascending: false }),
     supabase.from('creative_kill').select('*').order('added_at', { ascending: false }),
     supabase.from('creative_launches').select('*').order('launch_date', { ascending: false }),
+    supabase.from('creative_exclusions').select('*').order('excluded_on', { ascending: false }),
+    /* The bell only ever shows the recent end of the list, and an unbounded
+       read grows forever. */
+    supabase.from('creative_notifications').select('*').order('created_at', { ascending: false }).limit(100),
   ])
 
-  const err = w.error ?? k.error ?? l.error
-  if (err) {
-    if (MISSING(err.message)) return NextResponse.json({ ...empty, setupNeeded: true, setup: SETUP })
-    return NextResponse.json({ ...empty, error: err.message }, { status: 500 })
+  /* Each table answers for itself.
+
+     Failing the whole request because one table is missing would mean the
+     day a new migration lands and has not been run yet, the boards that do
+     exist go blank — the working lists punished for the absence of a table
+     they have nothing to do with. A missing table reports its own absence
+     and returns nothing; the rest come back as usual. */
+  const missing: string[] = []
+  const errors: string[] = []
+  const rows = <T,>(
+    res: { data: Row[] | null; error: { message: string } | null },
+    table: string,
+    to: (r: Row) => T,
+  ): T[] => {
+    if (!res.error) return (res.data ?? []).map(to)
+    if (MISSING(res.error.message)) missing.push(table)
+    else errors.push(`${table}: ${res.error.message}`)
+    return []
+  }
+
+  const body = {
+    watch:         rows(w, 'creative_watch', toWatch),
+    kill:          rows(k, 'creative_kill', toKill),
+    launches:      rows(l, 'creative_launches', toLaunch),
+    exclusions:    rows(x, 'creative_exclusions', toExclusion),
+    notifications: rows(n, 'creative_notifications', toNotification),
   }
 
   return NextResponse.json({
-    watch:    (w.data ?? []).map(toWatch),
-    kill:     (k.data ?? []).map(toKill),
-    launches: (l.data ?? []).map(toLaunch),
+    ...body,
+    ...(missing.length ? { setupNeeded: true, setup: `${SETUP} Missing: ${missing.join(', ')}.` } : {}),
+    ...(errors.length ? { error: errors.join(' · ') } : {}),
   })
 }
 
@@ -143,7 +193,7 @@ function board(req: NextRequest): BoardKey | null {
 
 export async function POST(req: NextRequest) {
   const b = board(req)
-  if (!b) return NextResponse.json({ error: 'board must be watch, kill or launches' }, { status: 400 })
+  if (!b) return NextResponse.json({ error: `board must be one of ${Object.keys(BOARDS).join(', ')}` }, { status: 400 })
   const supabase = db()
   if (!supabase) return NextResponse.json({ error: 'Supabase env vars are missing.' }, { status: 500 })
 
@@ -159,8 +209,8 @@ export async function POST(req: NextRequest) {
        that as "already on the list" rather than as an error, so hand back the
        row that is there instead of making the caller re-read it. */
     if (/duplicate key/i.test(error.message)) {
-      const key = b === 'watch' ? 'watch_date' : 'added_at'
-      const on = b === 'watch' ? body.date : body.addedAt
+      const key = b === 'watch' ? 'watch_date' : b === 'exclusions' ? 'excluded_on' : 'added_at'
+      const on = b === 'watch' ? body.date : b === 'exclusions' ? body.day : body.addedAt
       const { data: existing } = await supabase.from(BOARDS[b].table)
         .select('*').eq('creative_id', body.creativeId).eq(key, on).maybeSingle()
       if (existing) return NextResponse.json({ item: BOARDS[b].to(existing), existed: true })
@@ -173,7 +223,7 @@ export async function POST(req: NextRequest) {
 
 export async function PATCH(req: NextRequest) {
   const b = board(req)
-  if (!b) return NextResponse.json({ error: 'board must be watch, kill or launches' }, { status: 400 })
+  if (!b) return NextResponse.json({ error: `board must be one of ${Object.keys(BOARDS).join(', ')}` }, { status: 400 })
   const supabase = db()
   if (!supabase) return NextResponse.json({ error: 'Supabase env vars are missing.' }, { status: 500 })
 
@@ -197,7 +247,7 @@ export async function PATCH(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   const b = board(req)
-  if (!b) return NextResponse.json({ error: 'board must be watch, kill or launches' }, { status: 400 })
+  if (!b) return NextResponse.json({ error: `board must be one of ${Object.keys(BOARDS).join(', ')}` }, { status: 400 })
   const id = req.nextUrl.searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
 

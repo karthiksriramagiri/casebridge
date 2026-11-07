@@ -1,10 +1,13 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
-import { TODAY, YESTERDAY, addDays } from './data'
+import { TODAY, YESTERDAY, addDays, pacificDay } from './data'
 import { adsetIndex, bumpConvention, buildConvention, killReason, watchReason, type AdsetTotals } from './metrics'
+
+/** The row collections /api/creative/board writes. */
+type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
 import { api, fetchBoard, isPersisted } from './assignments-api'
-import { boardApi, fetchBoardState, type StoredWatch } from './board-api'
+import { boardApi, fetchBoardState, type StoredExclusion, type StoredWatch } from './board-api'
 import {
   ROLE_LABEL,
   type Assignment,
@@ -247,6 +250,10 @@ type Store = {
   markLaunchDone: (id: string, done: boolean, by: Role) => void
   cancelLaunch: (id: string) => void
   markNotificationsRead: (role: Role) => void
+  /** Watch List Mode dismissals, by Pacific day — shared, not per-browser. */
+  exclusions: StoredExclusion[]
+  exclude: (ids: string[]) => void
+  restoreExclusions: () => void
 }
 
 const StoreContext = createContext<Store | null>(null)
@@ -467,6 +474,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setWatch(b.watch)
     setKill(b.kill)
     setLaunches(b.launches)
+    setExclusions(b.exclusions)
+    setNotifications(b.notifications)
     setBoardSetupNeeded(d.setupNeeded || b.setupNeeded)
     setBoardError(d.error ?? b.error)
     if (opts?.initial) setBoardLoading(false)
@@ -510,7 +519,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      nothing. */
   const createOn = useCallback(
     <T extends { id: string }>(
-      board: 'watch' | 'kill' | 'launches',
+      board: BoardName,
       setList: React.Dispatch<React.SetStateAction<T[]>>,
       temp: T,
       row: Record<string, unknown>,
@@ -526,7 +535,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   /** Update one row, skipping anything not yet saved. */
   const patchOn = useCallback(
-    (board: 'watch' | 'kill' | 'launches', id: string, patch: Record<string, unknown>) => {
+    (board: BoardName, id: string, patch: Record<string, unknown>) => {
       if (!isPersisted(id)) return
       persist(boardApi.patch(board, id, patch))
     },
@@ -534,7 +543,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   )
 
   const removeOn = useCallback(
-    (board: 'watch' | 'kill' | 'launches', id: string) => {
+    (board: BoardName, id: string) => {
       if (!isPersisted(id)) return
       persist(boardApi.remove(board, id))
     },
@@ -571,10 +580,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      from the database a moment later, and seeding them would show two
      launches that do not exist and then take them away again. */
   const [launches, setLaunches] = useState<LaunchTask[]>([])
-  const [notifications, setNotifications] = useState(seedNotifications)
+  /* Both start empty and arrive from the database a moment later. Seeding
+     them would show a bell count and a set of dismissals that are not real
+     and then take them away. */
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [exclusions, setExclusions] = useState<StoredExclusion[]>([])
 
   const notify = useCallback((to: Role, text: string, href: string) => {
-    setNotifications((prev) => [{ id: uid('n'), to, text, href, at: now(), read: false }, ...prev])
+    const temp: Notification = { id: uid('n'), to, text, href, at: now(), read: false }
+    setNotifications((prev) => [temp, ...prev])
+    inFlight.current += 1
+    boardApi.create('notifications', { to, text, href, read: false })
+      .then((saved) => setNotifications((prev) => prev.map((x) => (x.id === temp.id ? { ...x, id: saved.id } : x))))
+      .catch((e: Error) => setBoardError(e.message))
+      .finally(() => { inFlight.current -= 1 })
   }, [])
 
   /* What the pages see: today's hidden rows stay hidden, across reloads and
@@ -1195,7 +1214,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       patchOn('launches', id, { status: 'cancelled' })
       if (l?.assignmentId) updateAssignment(l.assignmentId, { status: 'Ready to Launch' })
     },
-    markNotificationsRead: (role) => setNotifications((prev) => prev.map((n) => (n.to === role ? { ...n, read: true } : n))),
+    markNotificationsRead: (role) => {
+      const unread = notifications.filter((n) => n.to === role && !n.read)
+      setNotifications((prev) => prev.map((n) => (n.to === role ? { ...n, read: true } : n)))
+      for (const n of unread) patchOn('notifications', n.id, { read: true })
+    },
+
+    /* Watch List Mode dismissals, shared and dated. Keyed to the Pacific day
+       so the slate clears itself at midnight PST without anything having to
+       run — yesterday's rows are simply never matched again. */
+    exclusions,
+    exclude: (ids: string[]) => {
+      const day = pacificDay()
+      const already = new Set(exclusions.filter((x) => x.day === day).map((x) => x.creativeId))
+      const fresh = ids.filter((id) => !already.has(id))
+      const rows: StoredExclusion[] = fresh.map((id) => ({ id: uid('x'), creativeId: id, day }))
+      setExclusions((prev) => [...prev, ...rows])
+      for (const r of rows) {
+        createOn('exclusions', setExclusions, r, { creativeId: r.creativeId, day: r.day, createdBy: 'admin' })
+      }
+    },
+    restoreExclusions: () => {
+      const day = pacificDay()
+      const today = exclusions.filter((x) => x.day === day)
+      setExclusions((prev) => prev.filter((x) => x.day !== day))
+      for (const x of today) removeOn('exclusions', x.id)
+    },
   }
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>
