@@ -161,8 +161,10 @@ type AddAssignmentInput = {
   script?: string
   benchmarkUrl?: string
   benchmarkName?: string
-  /** Defaults to 'Assigned'. A relaunch comes in at 'Ready to Launch'. */
+  /** Defaults to 'Assigned'. A relaunch comes in already queued. */
   status?: AssignmentStatus
+  /** The day it is queued for. Set with status 'Launching'. */
+  launchDate?: string
 }
 
 export type ManualLaunchInput = {
@@ -608,6 +610,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           benchmarkUrl: a.benchmarkUrl,
           benchmarkName: a.benchmarkName,
           status: a.status ?? 'Assigned',
+          launchDate: a.launchDate,
           order,
           createdAt: TODAY,
           comments: [],
@@ -623,7 +626,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             visualCode: a.visualCode, verbalCode: a.verbalCode, batch: a.batch,
             priority: a.priority ?? 3, script: a.script,
             benchmarkUrl: a.benchmarkUrl, benchmarkName: a.benchmarkName,
-            status: a.status ?? 'Assigned', order, createdBy: 'admin',
+            status: a.status ?? 'Assigned', launchDate: a.launchDate,
+            order, createdBy: 'admin',
           })
           .then((d) => {
             if (d?.id) setAssignments((prev) => prev.map((x) => (x.id === temp ? { ...x, id: d.id } : x)))
@@ -1103,16 +1107,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!c) return
 
       /* A relaunch has to show up on the Launch Lists page, and that page
-         reads the assignment board — anything at Ready to Launch is in the
-         pool — rather than this array. Writing only the LaunchTask below put
-         the relaunch somewhere nothing rendered it, so the button looked like
-         it had done nothing.
+         reads the assignment board rather than this array. Writing only the
+         LaunchTask below put the relaunch somewhere nothing rendered it, so
+         the button looked like it had done nothing.
 
-         The two are not duplicates of each other: the assignment is the card
-         someone schedules and launches, the LaunchTask is what the Budget
-         Tracker and the Execute view count as pending. The ad's firm code
-         (LHP_SP) is translated to the spelling the board uses (LHP [SPANISH])
-         or the Spanish lists silently split in two. */
+         It goes straight into today's queue — 'Launching', dated today — not
+         into the Ready to Launch pool. The pool is for finished work nobody
+         has picked a day for; a relaunch has already had its day picked, by
+         the act of relaunching it. Leaving it in the pool would mean
+         scheduling something that was only ever going out today.
+
+         The two records are not duplicates: the assignment is the card
+         someone launches, the LaunchTask is what the Budget Tracker and the
+         Execute view count as pending. The ad's firm code (LHP_SP) is
+         translated to the spelling the board uses (LHP [SPANISH]) or the
+         Spanish lists silently split in two. */
       const SPELLING: Record<string, AssignmentFirm> = { LHP: 'LHP', LHP_SP: 'LHP [SPANISH]', JM: 'JM', JM_SP: 'JM [SPANISH]' }
       addAssignment({
         title: `Relaunch – ${c.convention || c.name}`,
@@ -1120,7 +1129,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         angle: c.angle,
         sourceCreativeId: c.id,
         firm: SPELLING[c.firm],
-        status: 'Ready to Launch',
+        status: 'Launching',
+        launchDate: TODAY,
       })
       const row: LaunchTask = {
         id: uid('l'),

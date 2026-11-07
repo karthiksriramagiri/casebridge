@@ -128,7 +128,7 @@ export default function WatchListPage() {
   const relaunchOne = (creativeId: string, name: string) => {
     addToKill([creativeId])
     relaunch(creativeId)
-    toast(`“${name}” sent to the kill list and queued to relaunch`)
+    toast(`“${name}” killed and queued to relaunch today`)
   }
 
   const DecisionToggle = ({ w }: { w: WatchItem }) => (
@@ -241,7 +241,7 @@ export default function WatchListPage() {
                           variant="outline"
                           disabled={inKill.has(c.id)}
                           onClick={() => relaunchOne(c.id, c.convention || c.name)}
-                          title="Kill this version and queue a fresh one in its place"
+                          title="Kill this version and put a fresh one in today's launch queue"
                         >
                           <RefreshCw aria-hidden /> Relaunch
                         </Button>
