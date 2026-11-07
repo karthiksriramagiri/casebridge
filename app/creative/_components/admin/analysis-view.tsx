@@ -139,7 +139,7 @@ function namesOf(signed: { name: string }[]): string | undefined {
 }
 
 export function AnalysisView() {
-  const { creatives, killedIds, watch, kill, addToWatch, addToKill, addAssignment, assignments, accounts, loading, loadError, hasOutcomes } = useStore()
+  const { creatives, killedIds, watch, kill, addToWatch, addToKill, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals } = useStore()
   const [range, setRange] = useState<RangeKey>('today')
   const [query, setQuery] = useState('')
   const [account, setAccount] = useState('all')
@@ -193,7 +193,9 @@ export function AnalysisView() {
       .filter((c) => firm === 'all' || c.firm === firm)
       .filter((c) => !q || c.name.toLowerCase().includes(q) || c.adId.includes(q) || c.angle.toLowerCase().includes(q))
       .filter((c) => stage === 'all' || stageOf(c) === stage)
-      .filter((c) => !watchMode || isWatchCandidate(c))
+      /* Judged on the ad set the creative sits in, not the creative — one
+         ad going quiet inside a converting ad set is not watch-worthy. */
+      .filter((c) => !watchMode || isWatchCandidate(c, adsetTotals))
       /* The one filter: an ad set that has been turned off takes its ads out
          of the table. Nothing else is hidden — not by spend, not by range. */
       .filter(adsetIsOn)
@@ -203,7 +205,7 @@ export function AnalysisView() {
         const bv = b.t[sort.key] ?? Number.POSITIVE_INFINITY
         return (av - bv) * sort.dir
       })
-  }, [creatives, killedIds, excluded, account, firm, stage, query, watchMode, range, sort])
+  }, [creatives, killedIds, excluded, account, firm, stage, query, watchMode, range, sort, adsetTotals])
 
   /* ── Ad sets ────────────────────────────────────────────────────────────
      Rows are ad sets; the ads inside are revealed by the chevron. Worth
@@ -428,7 +430,7 @@ export function AnalysisView() {
               variant={watchMode ? 'default' : 'outline'}
               aria-pressed={watchMode}
               onClick={() => setWatchMode((v) => !v)}
-              title={`Hides creatives with a lead today or T&Y CPL under $${WATCH_CPL}`}
+              title={`Ad-set level: hides ads whose ad set got a lead today or is under $${WATCH_CPL} T&Y CPL`}
             >
               <Eye aria-hidden /> Watch List Mode
             </Button>
@@ -471,7 +473,7 @@ export function AnalysisView() {
 
           {watchMode && (
             <p className="border-b bg-accent/60 px-4 py-2 text-xs text-accent-foreground">
-              {`Watch List Mode: hiding creatives that got a lead today or have Today & Yesterday CPL under $${WATCH_CPL}.`}
+              {`Watch List Mode: judged on the ad set, not the single ad — hiding anything whose ad set got a lead today or whose ad set is under $${WATCH_CPL} Today & Yesterday CPL.`}
             </p>
           )}
 

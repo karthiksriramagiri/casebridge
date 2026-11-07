@@ -192,37 +192,107 @@ export function stageOf(c: Creative): Stage {
 
 export type WatchBand = 'exclude' | 'review' | 'keep'
 
-/** T&Y CPL: under $250 exclude, $250–299 review, $300+ (or 0 leads) keep. */
-export function watchBand(c: Creative): WatchBand {
-  const ty = totalsFor(c, 'ty')
+/* ═══════════════════════════════════════════════════════════════════════════
+   The watch list is judged on the ad set, not the ad.
+
+   An ad set holds several creatives and Meta spends across them as it likes.
+   One of them going two days without a lead says almost nothing on its own —
+   it may have taken a tenth of the budget while a sibling in the same ad set
+   took the rest and converted. Judging each ad separately put most of an
+   account on the watch list every morning and buried the ad sets that were
+   actually failing.
+
+   So the spend and the leads are totalled across the ad set first, and the
+   CPL band is read off that. Every creative in a qualifying ad set comes
+   onto the list together, which is also how the decision gets made: you kill
+   or keep an ad set, not one cut inside it.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** Groups a creative with its siblings. Falls back to the name, scoped to the
+ *  account, for rows carrying no id. */
+export const adsetKey = (c: Creative) => c.adsetId ?? `${c.account}:${c.adset}`
+
+export type AdsetTotals = { today: Totals; ty: Totals; d7: Totals; ads: number }
+
+/** Spend and leads per ad set, over the ranges the watch rules read. Built
+ *  once per creative list rather than per row — the alternative is re-summing
+ *  an ad set's whole history for every ad inside it. */
+export function adsetIndex(creatives: Creative[]): Map<string, AdsetTotals> {
+  const groups = new Map<string, Creative[]>()
+  for (const c of creatives) {
+    const k = adsetKey(c)
+    groups.set(k, [...(groups.get(k) ?? []), c])
+  }
+  const out = new Map<string, AdsetTotals>()
+  for (const [k, list] of groups) {
+    out.set(k, {
+      today: sumTotals(list.map((c) => totalsFor(c, 'today'))),
+      ty: sumTotals(list.map((c) => totalsFor(c, 'ty'))),
+      d7: sumTotals(list.map((c) => totalsFor(c, '7d'))),
+      ads: list.length,
+    })
+  }
+  return out
+}
+
+/** The ad set's own numbers, or this ad's alone if the index has no entry —
+ *  which only happens for a creative that is not in the list it was built
+ *  from. Never silently reports zero. */
+export function adsetOf(c: Creative, index?: Map<string, AdsetTotals>): AdsetTotals {
+  return (
+    index?.get(adsetKey(c)) ?? {
+      today: totalsFor(c, 'today'),
+      ty: totalsFor(c, 'ty'),
+      d7: totalsFor(c, '7d'),
+      ads: 1,
+    }
+  )
+}
+
+/** T&Y CPL across the ad set: under $250 exclude, $250–299 review, $300+ (or
+ *  0 leads) keep. */
+export function watchBand(c: Creative, index?: Map<string, AdsetTotals>): WatchBand {
+  const { ty } = adsetOf(c, index)
   if (ty.cpl === null) return 'keep'
   if (ty.cpl < WATCH_CPL) return 'exclude'
   if (ty.cpl < REVIEW_CPL) return 'review'
   return 'keep'
 }
 
-/** Watch List Mode: exclude anything with a lead today, then apply the T&Y CPL band. */
-export function isWatchCandidate(c: Creative) {
-  if (totalsFor(c, 'today').leads > 0) return false
-  return watchBand(c) !== 'exclude'
+/** Watch List Mode: exclude ad sets that got a lead today, then apply the
+ *  T&Y CPL band to the ad set's totals. */
+export function isWatchCandidate(c: Creative, index?: Map<string, AdsetTotals>) {
+  if (adsetOf(c, index).today.leads > 0) return false
+  return watchBand(c, index) !== 'exclude'
 }
 
-export function watchReason(c: Creative) {
+export function watchReason(c: Creative, index?: Map<string, AdsetTotals>) {
   const stage = stageOf(c)
   if (stage === 'NEW') {
     const t = totalsFor(c, 'max')
     if (t.leads === 0) return `NEW · 0 leads on $${t.spend.toFixed(0)} since launch`
     return `NEW · launch CPL $${t.cpl!.toFixed(0)} (${t.leads} leads on $${t.spend.toFixed(0)})`
   }
-  const ty = totalsFor(c, 'ty')
-  const t7 = totalsFor(c, '7d')
-  const parts = [ty.cpl === null ? `0 leads T&Y on $${ty.spend.toFixed(0)}` : `T&Y CPL $${ty.cpl.toFixed(0)}`]
-  parts.push(`7d CPL ${t7.cpl === null ? '—' : `$${t7.cpl.toFixed(0)}`}`)
+  const { ty, d7, ads } = adsetOf(c, index)
+  /* Named as the ad set's numbers, because that is what they are — reading
+     "T&Y CPL $310" off a row and finding the ad spent $40 is how someone
+     stops trusting the list. */
+  const scope = ads > 1 ? `ad set (${ads} ads)` : 'ad set'
+  const parts = [
+    ty.cpl === null
+      ? `${scope}: 0 leads T&Y on $${ty.spend.toFixed(0)}`
+      : `${scope}: T&Y CPL $${ty.cpl.toFixed(0)}`,
+  ]
+  parts.push(`7d CPL ${d7.cpl === null ? '—' : `$${d7.cpl.toFixed(0)}`}`)
   return parts.join(' · ')
 }
 
 /** Suggested decision per the v4 kill logic. Admin always makes the final call. */
-export function suggestDecision(c: Creative, streak: number): { decision: Decision; why: string } {
+export function suggestDecision(
+  c: Creative,
+  streak: number,
+  index?: Map<string, AdsetTotals>,
+): { decision: Decision; why: string } {
   const life = totalsFor(c, 'max')
   if (stageOf(c) === 'NEW') {
     if (life.leads === 0 && life.spend >= NEW_KILL_SPEND) return { decision: 'KILL', why: `0 leads after $${NEW_KILL_SPEND}+ spend` }
@@ -232,7 +302,12 @@ export function suggestDecision(c: Creative, streak: number): { decision: Decisi
     }
     return { decision: 'WATCH', why: 'Too early — keep monitoring' }
   }
-  const t7 = totalsFor(c, '7d')
+  /* Read off the ad set, like the band that put this row on the list. The
+     single ad's 7d CPL is the same thin slice the ad-set rule exists to look
+     past, and advising a kill on it would contradict the reason the row is
+     here at all. Lifetime CPA stays the ad's own — that is this creative's
+     signed cases, not the ad set's. */
+  const t7 = adsetOf(c, index).d7
   const weak = t7.cpl === null || t7.cpl >= REVIEW_CPL
   const cpaOk = life.cpa !== null && life.cpa <= GOOD_CPA
   if (streak >= 3 && weak && !cpaOk) return { decision: 'KILL', why: `${streak} days in a row, weak 7d trend, no good CPA` }

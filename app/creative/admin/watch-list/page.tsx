@@ -68,7 +68,7 @@ function TrendStrip({ c }: { c: Creative }) {
 }
 
 export default function WatchListPage() {
-  const { watch, kill, getCreative, killedIds, removeWatch, setWatchDecision, addToKill, relaunch } = useStore()
+  const { watch, kill, getCreative, killedIds, removeWatch, setWatchDecision, addToKill, relaunch, adsetTotals } = useStore()
   /* Anything already on the kill list is off this list, pending or done.
      Filtering on `killedIds` alone only caught kills that had been carried
      out in Ads Manager, so a creative sat here with a KILL decision and an
@@ -199,7 +199,7 @@ export default function WatchListPage() {
                 {items.map(({ w, c }) => {
                   const streak = watchStreak(c.id, watch)
                   const stage = stageOf(c)
-                  const suggestion = suggestDecision(c, streak)
+                  const suggestion = suggestDecision(c, streak, adsetTotals)
                   const ty = totalsFor(c, 'ty')
                   const life = totalsFor(c, 'max')
                   const repeat = streak >= 2
@@ -212,7 +212,7 @@ export default function WatchListPage() {
                         <div className="flex flex-wrap gap-1">
                           <Pill tone={stage === 'NEW' ? 'blue' : 'muted'}>{stage}</Pill>
                           {streak >= 2 && <Pill tone="red">Day {streak} in a row</Pill>}
-                          {watchBand(c) === 'review' && <Pill tone="amber">Review band</Pill>}
+                          {watchBand(c, adsetTotals) === 'review' && <Pill tone="amber">Review band</Pill>}
                           {/* Same wording as the tag on Creative Analysis — the
                               two lists describe the same state and should not
                               call it two different things. */}

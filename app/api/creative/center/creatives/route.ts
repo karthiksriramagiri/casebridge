@@ -192,6 +192,9 @@ export async function GET(req: NextRequest) {
           convention: name,
           campaign: head.campaign_name ?? '—',
           adset: head.adset_name ?? '—',
+          /* The id, not just the name: the watch list groups on the ad set, and
+             two accounts can carry ad sets of the same name. */
+          adsetId: head.adset_id,
           angle: parsed.angle ?? 'Unassigned',
           /* The firm the ad runs for, read off its name. Campaign names carry
              the same code, and the two agree across all 171 live ads — the ad

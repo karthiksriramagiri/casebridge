@@ -51,6 +51,8 @@ export type Creative = {
   adId: string
   campaign: string
   adset: string
+  /** Meta's ad set id. Absent on rows from before it was carried. */
+  adsetId?: string
   /** Firm code off the ad name — LHP | LHP_SP | JM | JM_SP | … */
   firm: string
   angle: string

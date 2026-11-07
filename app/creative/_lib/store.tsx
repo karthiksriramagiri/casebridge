@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { TODAY, YESTERDAY, addDays } from './data'
-import { bumpConvention, buildConvention, killReason, watchReason } from './metrics'
+import { adsetIndex, bumpConvention, buildConvention, killReason, watchReason, type AdsetTotals } from './metrics'
 import { api, fetchBoard, isPersisted } from './assignments-api'
 import { boardApi, fetchBoardState, type StoredWatch } from './board-api'
 import {
@@ -207,6 +207,8 @@ type Store = {
   addToWatch: (ids: string[]) => number
   removeWatch: (id: string) => void
   setWatchDecision: (id: string, decision: Decision | undefined) => void
+  /** Spend and leads totalled per ad set — what the watch rules are read off. */
+  adsetTotals: Map<string, AdsetTotals>
   addToKill: (ids: string[]) => number
   markKillDone: (id: string, done: boolean, by: Role) => void
   /** Take an ad off as fatigued rather than killed — it worked, it wore out. */
@@ -638,6 +640,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [assignments, persist, notify],
   )
 
+  /* The watch list is judged on the ad set, so its totals are built once here
+     and handed to everything that reads a watch rule. Rebuilding it per row
+     would re-sum an ad set's history for every ad inside it. */
+  const adsetTotals = useMemo(() => adsetIndex(creatives), [creatives])
+
   const killedIds = useMemo(() => new Set(kill.filter((k) => k.status === 'done').map((k) => k.creativeId)), [kill])
 
   const findCreative = useCallback(
@@ -690,10 +697,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       ids
         .map((id) => {
           const c = findCreative(id)
-          return c ? { id: uid('w'), creativeId: id, date, reason: watchReason(c) } : null
+          return c ? { id: uid('w'), creativeId: id, date, reason: watchReason(c, adsetTotals) } : null
         })
         .filter((w): w is WatchItem => w !== null),
-    [findCreative],
+    [findCreative, adsetTotals],
   )
 
   const addToWatch = useCallback(
@@ -837,6 +844,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     launches,
     notifications,
     getCreative: findCreative,
+    adsetTotals,
     addToWatch,
     /* Watch List Mode's remove. Flagged rather than deleted: the hide has to
        hold for the rest of the day, and a deleted row would simply be put
