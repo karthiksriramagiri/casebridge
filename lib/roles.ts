@@ -27,6 +27,10 @@ export const ROLE_ACCESS: Record<Role, { allow: string[]; home: string }> = {
     // it the proxy would bounce Faisal off the one area built for him.
     // There is no third workspace: the K-Team login was removed and that work
     // is Jason's, under /creative/admin.
+    //
+    // '/creative' itself is the center's front door — the sign-in. It has to
+    // be openable by both roles or a signed-in creative who types the bare
+    // URL gets a lock screen instead of being sent to their own workspace.
     allow: ['/creative/winners', '/creative/assignments', '/creative/team', '/teams'],
     home: '/creative/winners',
   },
@@ -38,6 +42,7 @@ export function canOpen(role: Role | undefined, path: string): boolean {
   // No role on the session means a cookie predating roles — treat as admin.
   const r = role ?? 'admin'
   if (r === 'admin') return true
+  if (path === '/creative' || path === '/creative/') return true
   return ROLE_ACCESS[r].allow.some(
     p => path === p || path.startsWith(p + '/') || path.startsWith(p + '?')
   )

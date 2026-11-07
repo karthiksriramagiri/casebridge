@@ -108,6 +108,14 @@ export type WatchItem = {
   decision?: Decision
 }
 
+/* Why an ad came off, which is not the same question as whether it came off.
+
+   A killed ad did not work. A fatigued ad worked and wore out — same action
+   in Ads Manager, opposite meaning afterwards: one is a dead end, the other
+   is a winner to pull back when the audience has had a rest. Recording them
+   the same way is what made the archive a single undifferentiated list. */
+export type KillKind = 'kill' | 'fatigue'
+
 export type KillItem = {
   id: string
   creativeId: string
@@ -115,6 +123,8 @@ export type KillItem = {
   reason: string
   status: 'pending' | 'done'
   doneAt?: string
+  /** Absent on rows written before fatigue was tracked; those read as kills. */
+  kind?: KillKind
 }
 
 export const ASSIGNMENT_STATUSES = [
@@ -204,6 +214,50 @@ export type Attachment = {
 export const ASSIGNMENT_FIRMS = ['LHP', 'LHP [SPANISH]', 'JM', 'JM [SPANISH]'] as const
 export type AssignmentFirm = (typeof ASSIGNMENT_FIRMS)[number]
 
+/* The code is what goes in the ad name; this is what a person is called by.
+   The launch list groups on firms and is read down a page rather than
+   scanned across a row, so it uses the long form. */
+export const ASSIGNMENT_FIRM_LABEL: Record<string, string> = {
+  'LHP': 'Larry H. Parker',
+  'LHP [SPANISH]': 'Larry H. Parker [SPANISH]',
+  'JM': 'Jacoby & Meyers',
+  'JM [SPANISH]': 'Jacoby & Meyers [SPANISH]',
+}
+
+/** The firm as a person would say it; falls back to the code. */
+export const firmLabel = (code: string | undefined | null) =>
+  (code && ASSIGNMENT_FIRM_LABEL[code]) || code || 'No firm set'
+
+/* Two spellings of the same firm exist in this app and both are load-bearing.
+
+   A live Meta ad carries the code parsed out of its name — LHP, LHP_SP, JM,
+   JM_SP — because that is literally the segment in the ad. An assignment
+   carries the one a person picked on a form — 'LHP', 'LHP [SPANISH]'. Any
+   page that puts live ads next to planned ones has to put both on the same
+   footing first, or the Spanish boards silently split in two. */
+export const FIRM_KEYS = ['LHP', 'LHP_SP', 'JM', 'JM_SP'] as const
+export type FirmKey = (typeof FIRM_KEYS)[number]
+
+const TO_KEY: Record<string, FirmKey> = {
+  LHP: 'LHP',
+  LHP_SP: 'LHP_SP',
+  'LHP [SPANISH]': 'LHP_SP',
+  JM: 'JM',
+  JM_SP: 'JM_SP',
+  'JM [SPANISH]': 'JM_SP',
+}
+
+/** Either spelling → the one key both sides agree on. */
+export const firmKey = (code: string | undefined | null): FirmKey | null =>
+  code ? TO_KEY[code] ?? null : null
+
+export const FIRM_KEY_LABEL: Record<FirmKey, string> = {
+  LHP: 'Larry H. Parker',
+  LHP_SP: 'Larry H. Parker [SPANISH]',
+  JM: 'Jacoby & Meyers',
+  JM_SP: 'Jacoby & Meyers [SPANISH]',
+}
+
 /* The production style, and the angle family it draws its hooks from.
 
    These are the same six families the Angles page ranks, named by the segment
@@ -247,6 +301,10 @@ export type Assignment = {
      top of every column is what matters most — the board stops being a
      queue in creation order and starts being a queue in importance order. */
   priority?: number
+  /* The day this is queued to go live. Absent while it is still in the ready
+     pool — a creative can be finished without anyone having decided which
+     day it launches, and those are two different states. */
+  launchDate?: string
   /* The ad this was built from. Not asked for on the new-assignment form any
      more — it is set automatically by the Double Down and Remake buttons,
      which already know which creative they came from, and it is what

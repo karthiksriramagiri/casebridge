@@ -43,6 +43,10 @@ async function send(method: 'POST' | 'PATCH', body: unknown): Promise<any> {
   })
   const d = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(d.error ?? `${method} failed`)
+  /* A 200 carrying an error means the write partly landed — some field had
+     nowhere to go. Raised like a failure so the page says so, because the
+     half that did not save is invisible otherwise. */
+  if (d?.error) throw new Error(d.error)
   return d
 }
 

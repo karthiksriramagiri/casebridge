@@ -81,7 +81,13 @@ export async function proxy(request: NextRequest) {
     effectivePath.startsWith('/dialer')
 
   if (!needsSupabaseAuth) {
-    if (effectivePath.startsWith('/creative') || effectivePath.startsWith('/finance') || effectivePath.startsWith('/metrics')) {
+    /* The Creative Center's front door is its own sign-in — one login per
+       workspace — so it has to resolve without a session, the way /login
+       does. Everything under /creative stays gated. */
+    const isCreativeDoor = effectivePath === '/creative' || effectivePath === '/creative/'
+
+    if (!isCreativeDoor
+      && (effectivePath.startsWith('/creative') || effectivePath.startsWith('/finance') || effectivePath.startsWith('/metrics'))) {
       const raw = request.cookies.get('casebridge_session')?.value
       if (!raw) return NextResponse.redirect(new URL('/login', request.url))
 

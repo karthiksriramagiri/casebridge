@@ -196,3 +196,13 @@ alter table public.creative_tasks add constraint creative_tasks_priority_range
 
 create index if not exists creative_tasks_priority_idx
   on public.creative_tasks (status, priority desc, sort_order);
+
+-- The day a finished creative is queued to go live.
+--
+-- Null while it sits in the ready pool: a cut can be finished without anyone
+-- having decided which day it launches, and conflating those two states is
+-- what made the launch list a separate thing to keep in step by hand.
+alter table public.creative_assignments add column if not exists launch_date date;
+
+create index if not exists creative_assignments_launch_date_idx
+  on public.creative_assignments (launch_date, firm);

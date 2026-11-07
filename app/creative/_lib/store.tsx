@@ -181,13 +181,14 @@ type Store = {
   ktasks: KTask[]
   launches: LaunchTask[]
   notifications: Notification[]
-  competitorNotes: Record<string, string>
   getCreative: (id?: string) => Creative | undefined
   addToWatch: (ids: string[]) => number
   removeWatch: (id: string) => void
   setWatchDecision: (id: string, decision: Decision | undefined) => void
   addToKill: (ids: string[]) => number
   markKillDone: (id: string, done: boolean, by: Role) => void
+  /** Take an ad off as fatigued rather than killed — it worked, it wore out. */
+  markFatigued: (id: string) => void
   removeKill: (id: string) => void
   addAssignment: (a: {
     title: string
@@ -237,7 +238,6 @@ type Store = {
   markLaunchDone: (id: string, done: boolean, by: Role) => void
   cancelLaunch: (id: string) => void
   markNotificationsRead: (role: Role) => void
-  setCompetitorNote: (name: string, note: string) => void
 }
 
 const StoreContext = createContext<Store | null>(null)
@@ -509,7 +509,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [ktasks, setKTasks] = useState<KTask[]>([])
   const [launches, setLaunches] = useState(seedLaunches)
   const [notifications, setNotifications] = useState(seedNotifications)
-  const [competitorNotes, setCompetitorNotes] = useState<Record<string, string>>({})
 
   const notify = useCallback((to: Role, text: string, href: string) => {
     setNotifications((prev) => [{ id: uid('n'), to, text, href, at: now(), read: false }, ...prev])
@@ -531,7 +530,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         .filter((c) => killedIds.has(c.id))
         .map((c) => ({
           ...c,
-          archived: { killDate: kill.find((k) => k.creativeId === c.id)?.doneAt ?? TODAY, reason: 'Fatigue' as const },
+          archived: (() => {
+            const k = kill.find((x) => x.creativeId === c.id)
+            return {
+              killDate: k?.doneAt ?? TODAY,
+              /* The archive used to call everything fatigue, which made the
+                 one distinction worth keeping invisible. */
+              reason: (k?.kind === 'fatigue' ? 'Fatigue' : 'Relaunch') as 'Fatigue' | 'Relaunch',
+              fatigueDate: k?.kind === 'fatigue' ? k?.doneAt : undefined,
+            }
+          })(),
         })),
     [creatives, kill, killedIds],
   )
@@ -660,12 +668,22 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     ktasks,
     launches,
     notifications,
-    competitorNotes,
     getCreative: findCreative,
     addToWatch,
     removeWatch: (id) => setWatch((prev) => prev.filter((w) => w.id !== id)),
     setWatchDecision: (id, decision) => setWatch((prev) => prev.map((w) => (w.id === id ? { ...w, decision } : w))),
     addToKill,
+    markFatigued: (id) => {
+      const k = kill.find((x) => x.id === id)
+      setKill((prev) =>
+        prev.map((x) =>
+          x.id === id
+            ? { ...x, kind: 'fatigue', status: 'done', doneAt: TODAY, reason: x.reason || 'Fatigued' }
+            : x,
+        ),
+      )
+      if (k) notify('creative', `“${findCreative(k.creativeId)?.convention ?? 'A creative'}” was archived as fatigued`, '/team/archives')
+    },
     markKillDone: (id, done, by) => {
       const k = kill.find((x) => x.id === id)
       setKill((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
@@ -988,7 +1006,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (l?.assignmentId) updateAssignment(l.assignmentId, { status: 'Ready to Launch' })
     },
     markNotificationsRead: (role) => setNotifications((prev) => prev.map((n) => (n.to === role ? { ...n, read: true } : n))),
-    setCompetitorNote: (name, note) => setCompetitorNotes((prev) => ({ ...prev, [name]: note })),
   }
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>

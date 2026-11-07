@@ -22,14 +22,14 @@ export async function POST(req: NextRequest) {
   const { username, password } = await req.json()
   const role = roleFor(String(username ?? ''), String(password ?? ''))
 
-  if (role) {
-    const session = await getSession()
-    session.isLoggedIn = true
-    session.role = role
-    session.user = String(username)
-    await session.save()
-    return NextResponse.json({ success: true, role, home: ROLE_ACCESS[role].home })
+  if (!role) {
+    return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 })
   }
 
-  return NextResponse.json({ success: false, error: 'Invalid credentials' }, { status: 401 })
+  const session = await getSession()
+  session.isLoggedIn = true
+  session.role = role
+  session.user = String(username)
+  await session.save()
+  return NextResponse.json({ success: true, role, home: ROLE_ACCESS[role].home })
 }

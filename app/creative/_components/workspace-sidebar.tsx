@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -13,6 +14,8 @@ import {
   Swords,
   Trophy,
   Wallet,
+  ListChecks,
+  LogOut,
   type LucideIcon,
 } from 'lucide-react'
 import { NotificationBell } from '@/app/creative/_components/notification-bell'
@@ -48,6 +51,7 @@ const NAV: Record<Role, Group[]> = {
     {
       label: 'Track',
       items: [
+        { slug: 'execute', label: 'Execute', icon: ListChecks },
         { slug: 'budget', label: 'Budget Tracker', icon: Wallet },
         { slug: 'archives', label: 'Relaunch / Fatigue', icon: Archive },
       ],
@@ -146,9 +150,7 @@ export function WorkspaceSidebar() {
           ))}
         </nav>
         <div className="border-t p-3">
-          <Link href={centerHref('/')} className="block rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted">
-            Switch workspace
-          </Link>
+          <SwitchWorkspace href={centerHref('/')} />
         </div>
       </aside>
 
@@ -181,5 +183,36 @@ export function WorkspaceSidebar() {
         </nav>
       </header>
     </>
+  )
+}
+
+/* Signing out is the only way back to the front door: a plain link there
+   would be bounced straight here again by the session that is still open. */
+function SwitchWorkspace({ href }: { href: string }) {
+  const [busy, setBusy] = useState(false)
+
+  const leave = async () => {
+    setBusy(true)
+    try {
+      await fetch('/api/auth/logout', { method: 'POST' })
+    } finally {
+      /* A full document navigation rather than router.replace: the session
+         cookie has just been destroyed and the front door is gated in
+         middleware, which a client-side transition does not re-run against
+         the new cookie state. */
+      window.location.href = href.replace(/\/$/, '') || '/'
+    }
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={leave}
+      disabled={busy}
+      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-muted-foreground hover:bg-muted disabled:opacity-60"
+    >
+      <LogOut className="size-3.5" aria-hidden />
+      {busy ? 'Signing out…' : 'Sign out'}
+    </button>
   )
 }

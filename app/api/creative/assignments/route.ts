@@ -82,6 +82,7 @@ export async function GET() {
       benchmarkUrl: r.benchmark_url ?? undefined,
       benchmarkName: r.benchmark_name ?? undefined,
       script: r.script ?? undefined,
+      launchDate: r.launch_date ?? undefined,
       order: r.sort_order ?? 0,
       createdAt: day(r.created_at),
       attachments: Array.isArray(r.attachments) ? r.attachments : [],
@@ -204,6 +205,7 @@ export async function POST(req: NextRequest) {
       benchmark_url: body.benchmarkUrl ?? null,
       benchmark_name: body.benchmarkName ?? null,
       script: body.script ?? null,
+    launch_date: body.launchDate ?? null,
     sort_order: Number(body.order ?? 0),
     created_by: body.createdBy ?? null,
   }
@@ -260,14 +262,43 @@ export async function PATCH(req: NextRequest) {
     set('benchmark_url', body.benchmarkUrl)
     set('benchmark_name', body.benchmarkName)
     set('script', body.script)
+    set('launch_date', body.launchDate)
     set('attachments', body.attachments)
     if (body.visualCode !== undefined) patch.visual_code = upperCode(body.visualCode)
     if (body.verbalCode !== undefined) patch.verbal_code = upperCode(body.verbalCode)
   }
   if (Object.keys(patch).length === 0) return NextResponse.json({ ok: true })
 
-  const { error } = await s.from(task ? 'creative_tasks' : 'creative_assignments').update(patch).eq('id', id)
+  const table = task ? 'creative_tasks' : 'creative_assignments'
+
+  /* One update can carry several fields, and a column this build knows about
+     may not be in the database yet. Failing the whole call would throw away
+     the fields that *could* have been written — queueing an ad for a day also
+     moves it to Launching, and losing the move because the date has nowhere
+     to go is the worse half to drop.
+
+     So the columns the database does not have are peeled off and the rest is
+     applied — but never silently: the names come back, and the page says what
+     did not save. */
+  const dropped: string[] = []
+  let { error } = await s.from(table).update(patch).eq('id', id)
+  while (error && MISSING_COLUMN(error.message)) {
+    const col = error.message.match(/'([a-z_]+)' column/i)?.[1] ?? error.message.match(/column "?([a-z_]+)"?/i)?.[1]
+    if (!col || !(col in patch)) break
+    delete patch[col]
+    dropped.push(col)
+    if (Object.keys(patch).length === 0) break
+    ;({ error } = await s.from(table).update(patch).eq('id', id))
+  }
+
   if (error) return fail(error.message)
+  if (dropped.length > 0) {
+    return NextResponse.json({
+      ok: true,
+      dropped,
+      error: `Saved, but the database has no ${dropped.map((c) => `“${c}”`).join(' or ')} column yet — run supabase/migration_creative_assignments.sql.`,
+    })
+  }
   return NextResponse.json({ ok: true })
 }
 

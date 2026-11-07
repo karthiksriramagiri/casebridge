@@ -1,7 +1,7 @@
 'use client'
 
 import { PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
-import { totalsFor, usd } from '@/app/creative/_lib/metrics'
+import { isDelivering, totalsFor, usd } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName, firmOf } from '@/app/_metrics/firms'
 
@@ -12,7 +12,11 @@ export default function BudgetPage() {
 
   const rows: Row[] = [
     ...creatives
-      .filter((c) => !killedIds.has(c.id))
+      /* Only what is actually delivering. A paused ad — or any ad under a
+         paused ad set or campaign — spends nothing and holds no budget, so
+         listing it overstated "Daily budget (live)" by the budget of every
+         ad that had been switched off. */
+      .filter((c) => !killedIds.has(c.id) && isDelivering(c))
       .map((c) => ({
         id: c.id,
         name: c.name,
@@ -35,9 +39,14 @@ export default function BudgetPage() {
 
   const totalBudget = rows.reduce((a, r) => a + r.budget, 0)
   const totalSpent = rows.reduce((a, r) => a + r.spent, 0)
+  /* Only kills whose ad is still delivering: one already switched off in Meta
+     has nothing left to drop, and counting it promised a saving twice. */
   const pendingKillBudget = kill
     .filter((k) => k.status === 'pending')
-    .reduce((a, k) => a + (creatives.find((c) => c.id === k.creativeId)?.dailyBudget ?? 0), 0)
+    .reduce((a, k) => {
+      const c = creatives.find((x) => x.id === k.creativeId)
+      return a + (c && isDelivering(c) ? c.dailyBudget : 0)
+    }, 0)
   const pendingLaunchBudget = launches.filter((l) => l.status === 'pending').reduce((a, l) => a + l.dailyBudget, 0)
 
   /* Grouped by firm, not by Meta campaign. A campaign name is an ad-account
@@ -57,12 +66,12 @@ export default function BudgetPage() {
     <div className="flex flex-col">
       <PageHeader
         title="Budget Tracker"
-        description="Updates only when a launch or kill is marked done — not when it’s just listed."
+        description="Active ad sets and ads only. Updates when a launch or kill is marked done — not when it’s just listed."
       />
       <div className="flex flex-col gap-4 p-6">
         <section aria-label="Budget totals" className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           <StatCard label="Daily budget (live)" value={usd(totalBudget, 0)} hint={`${rows.length} ads running`} />
-          <StatCard label="Spent today" value={usd(totalSpent, 0)} hint={`${Math.round((totalSpent / totalBudget) * 100)}% of budget`} />
+          <StatCard label="Spent today" value={usd(totalSpent, 0)} hint={totalBudget ? `${Math.round((totalSpent / totalBudget) * 100)}% of budget` : 'no live budget'} />
           <StatCard label="Pending kills" value={`−${usd(pendingKillBudget, 0)}`} hint="Drops once killed" tone="bad" />
           <StatCard label="Pending launches" value={`+${usd(pendingLaunchBudget, 0)}`} hint="Adds once launched" tone="good" />
         </section>

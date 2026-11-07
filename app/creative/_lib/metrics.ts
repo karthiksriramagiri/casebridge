@@ -67,23 +67,42 @@ export function sumDays(days: DayMetric[]): Totals {
   }
 }
 
+/* Switched on, at either level.
+
+   Meta answers this through `effective_status`, which rolls the parents in —
+   an ad set left on inside a paused campaign reports CAMPAIGN_PAUSED, not
+   ACTIVE, and is just as off.
+
+   An unknown status counts as on. Hiding something because a field was
+   missing from the status sweep would be the worst of the options: a live ad
+   spending real money would vanish. */
+const OFF_STATUSES = new Set(['PAUSED', 'ADSET_PAUSED', 'CAMPAIGN_PAUSED', 'ARCHIVED', 'DELETED'])
+
 /* Is this ad's ad set switched on?
 
-   The only filter the table needs. Meta answers it through
-   `effective_status`, which rolls the campaign in — an ad set left on inside
-   a paused campaign reports CAMPAIGN_PAUSED, not ACTIVE, and is just as off.
-
-   Deliberately read at the ad-set level and not the ad's. An ad paused on its
-   own inside a live ad set is still part of that ad set's work and belongs in
-   the table; it is the ad set being turned off that makes its ads irrelevant.
-
-   An unknown status shows the row. Hiding something because a field was
-   missing from the sweep would be the worst of the options. */
-const ADSET_OFF = new Set(['PAUSED', 'ADSET_PAUSED', 'CAMPAIGN_PAUSED', 'ARCHIVED', 'DELETED'])
-
+   Read at the ad-set level and not the ad's, which is what the analysis table
+   wants: an ad paused on its own inside a live ad set is still part of that
+   ad set's work and belongs in the table. It is the ad set being turned off
+   that makes its ads irrelevant. */
 export function adsetIsOn(c: Creative): boolean {
   if (!c.adsetStatus) return true
-  return !ADSET_OFF.has(c.adsetStatus)
+  return !OFF_STATUSES.has(c.adsetStatus)
+}
+
+/** Is this ad itself switched on, ignoring its parents? */
+export function adIsOn(c: Creative): boolean {
+  if (!c.status) return true
+  return !OFF_STATUSES.has(c.status)
+}
+
+/* Delivering: the ad is on and so is everything above it.
+
+   The budget tracker wants both halves, where the analysis table wants only
+   the ad set. A paused ad inside a live ad set spends nothing and holds no
+   budget, so counting it inflates the daily figure this page exists to
+   report. */
+export function isDelivering(c: Creative): boolean {
+  return adsetIsOn(c) && adIsOn(c)
 }
 
 /** Switched on, but Meta is reporting a problem with it. */
