@@ -4,6 +4,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { TODAY, YESTERDAY, addDays } from './data'
 import { bumpConvention, buildConvention, killReason, watchReason } from './metrics'
 import { api, fetchBoard, isPersisted } from './assignments-api'
+import { boardApi, fetchBoardState, type StoredWatch } from './board-api'
 import {
   ROLE_LABEL,
   type Assignment,
@@ -449,11 +450,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const refreshBoard = useCallback(async (opts?: { initial?: boolean }) => {
     if (inFlight.current > 0) return
-    const d = await fetchBoard()
+    const [d, b] = await Promise.all([fetchBoard(), fetchBoardState()])
     setAssignments(d.assignments)
     setKTasks(d.tasks)
-    setBoardSetupNeeded(d.setupNeeded)
-    setBoardError(d.error)
+    /* The watch, kill and launch lists come back on the same beat. They used
+       to be React state with no backing table at all, which is why a refresh
+       threw away the day's decisions. */
+    setWatch(b.watch)
+    setKill(b.kill)
+    setLaunches(b.launches)
+    setBoardSetupNeeded(d.setupNeeded || b.setupNeeded)
+    setBoardError(d.error ?? b.error)
     if (opts?.initial) setBoardLoading(false)
   }, [])
 
@@ -486,8 +493,53 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     p.catch((e: Error) => setBoardError(e.message)).finally(() => { inFlight.current -= 1 })
   }, [])
 
-  const [watch, setWatch] = useState(seedWatch)
-  const [kill, setKill] = useState(seedKill)
+  /* Create a row on one of the three boards.
+
+     The row is shown immediately under a temporary id and the database's uuid
+     is swapped in when the write lands — the same trick the assignment board
+     uses. Without the swap the card appears, but every later edit to it is
+     sent against an id the database has never heard of and silently does
+     nothing. */
+  const createOn = useCallback(
+    <T extends { id: string }>(
+      board: 'watch' | 'kill' | 'launches',
+      setList: React.Dispatch<React.SetStateAction<T[]>>,
+      temp: T,
+      row: Record<string, unknown>,
+    ) => {
+      inFlight.current += 1
+      boardApi.create(board, row)
+        .then((saved) => setList((prev) => prev.map((x) => (x.id === temp.id ? { ...x, id: saved.id } : x))))
+        .catch((e: Error) => setBoardError(e.message))
+        .finally(() => { inFlight.current -= 1 })
+    },
+    [],
+  )
+
+  /** Update one row, skipping anything not yet saved. */
+  const patchOn = useCallback(
+    (board: 'watch' | 'kill' | 'launches', id: string, patch: Record<string, unknown>) => {
+      if (!isPersisted(id)) return
+      persist(boardApi.patch(board, id, patch))
+    },
+    [persist],
+  )
+
+  const removeOn = useCallback(
+    (board: 'watch' | 'kill' | 'launches', id: string) => {
+      if (!isPersisted(id)) return
+      persist(boardApi.remove(board, id))
+    },
+    [persist],
+  )
+
+  /* Every watch row, hidden ones included. A Watch List Mode removal flags
+     its row rather than deleting it, so the raw list is what answers "is this
+     ad already on today's list" — re-adding one that was deliberately hidden
+     is exactly the bug the flag exists to prevent. The pages read `watch`
+     below, which is this minus the hidden rows. */
+  const [watchRows, setWatch] = useState<StoredWatch[]>(seedWatch)
+  const [kill, setKill] = useState<KillItem[]>(seedKill)
   /* The two boards start empty and are filled from the database. They used to
      start from seed arrays, which made every brief and comment vanish on
      reload — a board that forgets is a mockup. The seeds remain below only as
@@ -507,12 +559,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [boardSetupNeeded, setBoardSetupNeeded] = useState(false)
   const [boardError, setBoardError] = useState<string | null>(null)
   const [ktasks, setKTasks] = useState<KTask[]>([])
-  const [launches, setLaunches] = useState(seedLaunches)
+  /* Empty for the same reason the assignment board is: the real rows come
+     from the database a moment later, and seeding them would show two
+     launches that do not exist and then take them away again. */
+  const [launches, setLaunches] = useState<LaunchTask[]>([])
   const [notifications, setNotifications] = useState(seedNotifications)
 
   const notify = useCallback((to: Role, text: string, href: string) => {
     setNotifications((prev) => [{ id: uid('n'), to, text, href, at: now(), read: false }, ...prev])
   }, [])
+
+  /* What the pages see: today's hidden rows stay hidden, across reloads and
+     across people, until the date rolls over and a new day's list is built. */
+  const watch = useMemo(() => watchRows.filter((w) => !w.removed), [watchRows])
 
   const killedIds = useMemo(() => new Set(kill.filter((k) => k.status === 'done').map((k) => k.creativeId)), [kill])
 
@@ -564,12 +623,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addToWatch = useCallback(
     (ids: string[]) => {
-      const existing = new Set(watch.filter((w) => w.date === TODAY).map((w) => w.creativeId))
+      const existing = new Set(watchRows.filter((w) => w.date === TODAY).map((w) => w.creativeId))
       const fresh = ids.filter((id) => !existing.has(id))
-      setWatch((prev) => [...prev, ...seedWatchDay(fresh, TODAY)])
+      const rows = seedWatchDay(fresh, TODAY)
+      setWatch((prev) => [...prev, ...rows])
+      for (const w of rows) {
+        createOn('watch', setWatch, w, {
+          creativeId: w.creativeId, date: w.date, reason: w.reason, removed: false,
+        })
+      }
       return fresh.length
     },
-    [watch, seedWatchDay],
+    [watchRows, seedWatchDay, createOn],
   )
 
   /** Every kill must originate from the watch list, so direct kills also log a KILL decision on today's watch list. */
@@ -578,21 +643,39 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const existing = new Set(kill.map((k) => k.creativeId))
       const fresh = ids.filter((id) => !existing.has(id))
       if (!fresh.length) return 0
-      const onWatchToday = new Set(watch.filter((w) => w.date === TODAY).map((w) => w.creativeId))
+      const onWatchToday = new Set(watchRows.filter((w) => w.date === TODAY).map((w) => w.creativeId))
+
+      /* Already on today's watch list: the row stands, its decision becomes
+         KILL. Not on it: a new row is written carrying that decision, because
+         every kill has to be traceable to the watch list it came off. */
+      const marked = watchRows.filter((w) => w.date === TODAY && fresh.includes(w.creativeId))
+      const added: StoredWatch[] = seedWatchDay(fresh.filter((id) => !onWatchToday.has(id)), TODAY)
+        .map((w) => ({ ...w, decision: 'KILL' as const }))
+
       setWatch((prev) => [
         ...prev.map((w) => (w.date === TODAY && fresh.includes(w.creativeId) ? { ...w, decision: 'KILL' as const } : w)),
-        ...seedWatchDay(fresh.filter((id) => !onWatchToday.has(id)), TODAY).map((w) => ({ ...w, decision: 'KILL' as const })),
+        ...added,
       ])
-      setKill((prev) => [
-        ...prev,
-        ...fresh.map((id) => {
-          const c = findCreative(id)
-          return { id: uid('k'), creativeId: id, addedAt: TODAY, reason: c ? killReason(c) : '', status: 'pending' as const }
-        }),
-      ])
+      for (const w of marked) patchOn('watch', w.id, { decision: 'KILL' })
+      for (const w of added) {
+        createOn('watch', setWatch, w, {
+          creativeId: w.creativeId, date: w.date, reason: w.reason, decision: 'KILL', removed: false,
+        })
+      }
+
+      const killRows: KillItem[] = fresh.map((id) => {
+        const c = findCreative(id)
+        return { id: uid('k'), creativeId: id, addedAt: TODAY, reason: c ? killReason(c) : '', status: 'pending' as const }
+      })
+      setKill((prev) => [...prev, ...killRows])
+      for (const k of killRows) {
+        createOn('kill', setKill, k, {
+          creativeId: k.creativeId, addedAt: k.addedAt, reason: k.reason, status: 'pending', kind: 'kill',
+        })
+      }
       return fresh.length
     },
-    [kill, watch, notify, findCreative, seedWatchDay],
+    [kill, watchRows, notify, findCreative, seedWatchDay, createOn, patchOn],
   )
 
   const updateAssignment = useCallback(
@@ -670,8 +753,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     notifications,
     getCreative: findCreative,
     addToWatch,
-    removeWatch: (id) => setWatch((prev) => prev.filter((w) => w.id !== id)),
-    setWatchDecision: (id, decision) => setWatch((prev) => prev.map((w) => (w.id === id ? { ...w, decision } : w))),
+    /* Watch List Mode's remove. Flagged rather than deleted: the hide has to
+       hold for the rest of the day, and a deleted row would simply be put
+       back by the next sweep that still finds the ad qualifying. */
+    removeWatch: (id) => {
+      setWatch((prev) => prev.map((w) => (w.id === id ? { ...w, removed: true } : w)))
+      patchOn('watch', id, { removed: true })
+    },
+    setWatchDecision: (id, decision) => {
+      setWatch((prev) => prev.map((w) => (w.id === id ? { ...w, decision } : w)))
+      patchOn('watch', id, { decision: decision ?? null })
+    },
     addToKill,
     markFatigued: (id) => {
       const k = kill.find((x) => x.id === id)
@@ -682,13 +774,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             : x,
         ),
       )
+      patchOn('kill', id, { kind: 'fatigue', status: 'done', doneAt: TODAY, reason: k?.reason || 'Fatigued' })
       if (k) notify('creative', `“${findCreative(k.creativeId)?.convention ?? 'A creative'}” was archived as fatigued`, '/team/archives')
     },
     markKillDone: (id, done, by) => {
       const k = kill.find((x) => x.id === id)
       setKill((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
+      patchOn('kill', id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
     },
-    removeKill: (id) => setKill((prev) => prev.filter((k) => k.id !== id)),
+    removeKill: (id) => {
+      setKill((prev) => prev.filter((k) => k.id !== id))
+      removeOn('kill', id)
+    },
     addAssignment: (a) => {
       const order = Math.max(-1, ...assignments.map((p) => p.order)) + 1
       const temp = uid('a')
@@ -930,70 +1027,86 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const a = assignments.find((x) => x.id === assignmentId)
       if (!a) return
       const isNewTestBatch = a.type === 'New Test Batch'
-      setLaunches((prev) => [
-        ...prev,
-        {
-          id: uid('l'),
-          assignmentId,
-          sourceCreativeId: a.sourceCreativeId,
-          name: a.title,
-          angle: a.angle,
-          campaign: findCreative(a.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
-          convention: nextConvention({ angle: a.angle, type: a.type, sourceCreativeId: a.sourceCreativeId, isNewTestBatch }),
-          tags,
-          date: TODAY,
-          dailyBudget,
-          status: 'pending',
-          isNewTestBatch,
-          requestedBy: 'assignment',
-        },
-      ])
+      const row: LaunchTask = {
+        id: uid('l'),
+        assignmentId,
+        sourceCreativeId: a.sourceCreativeId,
+        name: a.title,
+        angle: a.angle,
+        campaign: findCreative(a.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
+        convention: nextConvention({ angle: a.angle, type: a.type, sourceCreativeId: a.sourceCreativeId, isNewTestBatch }),
+        tags,
+        date: TODAY,
+        dailyBudget,
+        status: 'pending',
+        isNewTestBatch,
+        requestedBy: 'assignment',
+      }
+      setLaunches((prev) => [...prev, row])
+      createOn('launches', setLaunches, row, {
+          assignmentId: row.assignmentId ?? null, sourceCreativeId: row.sourceCreativeId ?? null,
+          name: row.name, angle: row.angle, campaign: row.campaign, convention: row.convention,
+          tags: row.tags, date: row.date, dailyBudget: row.dailyBudget, status: row.status,
+          isNewTestBatch: row.isNewTestBatch, requestedBy: row.requestedBy,
+        })
       updateAssignment(assignmentId, { status: 'Launching' })
     },
     manualLaunch: (input) => {
-      setLaunches((prev) => [
-        ...prev,
-        {
-          id: uid('l'),
-          sourceCreativeId: input.sourceCreativeId,
-          name: input.name,
-          angle: input.angle,
-          campaign: findCreative(input.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
-          convention: nextConvention({ angle: input.angle, type: 'New Concept', sourceCreativeId: input.sourceCreativeId, isNewTestBatch: input.isNewTestBatch }),
-          tags: input.tags,
-          date: TODAY,
-          dailyBudget: input.dailyBudget,
-          status: 'pending',
-          isNewTestBatch: input.isNewTestBatch,
-          requestedBy: 'manual',
-        },
-      ])
+      const row: LaunchTask = {
+        id: uid('l'),
+        sourceCreativeId: input.sourceCreativeId,
+        name: input.name,
+        angle: input.angle,
+        campaign: findCreative(input.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
+        convention: nextConvention({ angle: input.angle, type: 'New Concept', sourceCreativeId: input.sourceCreativeId, isNewTestBatch: input.isNewTestBatch }),
+        tags: input.tags,
+        date: TODAY,
+        dailyBudget: input.dailyBudget,
+        status: 'pending',
+        isNewTestBatch: input.isNewTestBatch,
+        requestedBy: 'manual',
+      }
+      setLaunches((prev) => [...prev, row])
+      createOn('launches', setLaunches, row, {
+          assignmentId: row.assignmentId ?? null, sourceCreativeId: row.sourceCreativeId ?? null,
+          name: row.name, angle: row.angle, campaign: row.campaign, convention: row.convention,
+          tags: row.tags, date: row.date, dailyBudget: row.dailyBudget, status: row.status,
+          isNewTestBatch: row.isNewTestBatch, requestedBy: row.requestedBy,
+        })
     },
     relaunch: (creativeId) => {
       const c = findCreative(creativeId)
       if (!c) return
-      setLaunches((prev) => [
-        ...prev,
-        {
-          id: uid('l'),
-          sourceCreativeId: c.id,
-          name: `Relaunch – ${c.name}`,
-          angle: c.angle,
-          campaign: c.campaign,
-          convention: bumpConvention(c.convention),
-          tags: { resize: false, disclaimer: null, asIs: true },
-          date: TODAY,
-          dailyBudget: c.dailyBudget,
-          status: 'pending',
-          isNewTestBatch: false,
-          requestedBy: 'relaunch',
-        },
-      ])
+      const row: LaunchTask = {
+        id: uid('l'),
+        sourceCreativeId: c.id,
+        name: `Relaunch – ${c.name}`,
+        angle: c.angle,
+        campaign: c.campaign,
+        convention: bumpConvention(c.convention),
+        tags: { resize: false, disclaimer: null, asIs: true },
+        date: TODAY,
+        dailyBudget: c.dailyBudget,
+        status: 'pending',
+        isNewTestBatch: false,
+        requestedBy: 'relaunch',
+      }
+      setLaunches((prev) => [...prev, row])
+      createOn('launches', setLaunches, row, {
+          assignmentId: row.assignmentId ?? null, sourceCreativeId: row.sourceCreativeId ?? null,
+          name: row.name, angle: row.angle, campaign: row.campaign, convention: row.convention,
+          tags: row.tags, date: row.date, dailyBudget: row.dailyBudget, status: row.status,
+          isNewTestBatch: row.isNewTestBatch, requestedBy: row.requestedBy,
+        })
     },
-    updateLaunch: (id, patch) => setLaunches((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l))),
+    updateLaunch: (id, patch) => {
+      setLaunches((prev) => prev.map((l) => (l.id === id ? { ...l, ...patch } : l)))
+      patchOn('launches', id, patch as Record<string, unknown>)
+    },
     markLaunchDone: (id, done, by) => {
       const l = launches.find((x) => x.id === id)
       setLaunches((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
+      patchOn('launches', id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
       if (l?.assignmentId) updateAssignment(l.assignmentId, { status: done ? 'Ad Launched' : 'Launching' })
       /* The only notification worth keeping here: Faisal cannot see the
          launch list, so this is how the maker learns their ad went live.
@@ -1003,6 +1116,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     cancelLaunch: (id) => {
       const l = launches.find((x) => x.id === id)
       setLaunches((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'cancelled' } : x)))
+      patchOn('launches', id, { status: 'cancelled' })
       if (l?.assignmentId) updateAssignment(l.assignmentId, { status: 'Ready to Launch' })
     },
     markNotificationsRead: (role) => setNotifications((prev) => prev.map((n) => (n.to === role ? { ...n, read: true } : n))),

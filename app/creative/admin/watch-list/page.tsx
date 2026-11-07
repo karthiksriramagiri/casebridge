@@ -20,6 +20,7 @@ import {
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
 import type { Creative, Decision, WatchItem } from '@/app/creative/_lib/types'
+import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { cn } from '@/lib/utils'
 
 /** NEW: launch-to-date only. ACTIVE: 3D/5D/7D/14D/30D/Life CPL, Week on Week and spend since last lead. */
@@ -136,6 +137,7 @@ export default function WatchListPage() {
         }
       />
       <div className="flex flex-col gap-4 p-6">
+        <BoardStatus migration="supabase/migration_creative_board.sql" />
         <div className="flex flex-wrap gap-2 text-xs">
           <Pill tone="blue">NEW = Day 1–3, judged on launch-to-date</Pill>
           <Pill>ACTIVE = Day 4+, judged on 7d trend</Pill>

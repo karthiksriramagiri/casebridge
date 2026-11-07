@@ -11,6 +11,7 @@ import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
 import type { Creative, KillItem } from '@/app/creative/_lib/types'
+import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { cn } from '@/lib/utils'
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -67,6 +68,7 @@ export default function KillListPage() {
       />
 
       <div className="flex flex-col gap-4 p-6">
+        <BoardStatus migration="supabase/migration_creative_board.sql" />
         <section aria-label="Kill totals" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <StatCard label="To kill" value={String(pending.length)} tone={pending.length > 0 ? 'bad' : undefined} hint="still running" />
           <StatCard label="Daily spend on them" value={usd(spend, 0)} hint="drops once they are off" />

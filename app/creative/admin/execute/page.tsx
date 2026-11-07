@@ -15,6 +15,7 @@ import { TODAY, addDays } from '@/app/creative/_lib/data'
 import { adsetIsOn, formatDate, totalsFor, usd, WINNER_CPL } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
+import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import {
   FIRM_KEYS, FIRM_KEY_LABEL, firmKey,
   type Assignment, type Creative, type FirmKey, type KillItem, type WatchItem,
@@ -123,6 +124,7 @@ export default function ExecutePage() {
       />
 
       <div className="flex flex-col gap-4 p-6">
+        <BoardStatus migration="supabase/migration_creative_board.sql" />
         <section aria-label="Meeting totals" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatCard label="Killing" value={String(total.kill)} tone={total.kill > 0 ? 'bad' : undefined} hint={`${usd(total.killBudget, 0)}/day comes off`} />
           <StatCard label="Watching" value={String(total.watch)} hint="decisions due" />

@@ -16,6 +16,7 @@ import { PriorityStars } from '@/app/creative/_components/admin/priority-stars'
 import { TODAY, addDays } from '@/app/creative/_lib/data'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
+import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import {
   ASSIGNMENT_FIRMS, firmLabel,
   type Assignment, type AssignmentFirm,
@@ -172,6 +173,7 @@ export default function LaunchListsPage() {
       />
 
       <div className="flex flex-col gap-4 p-6">
+        <BoardStatus migration="supabase/migration_creative_board.sql" />
         {boardError && (
           <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-4 py-2.5 text-sm text-destructive">
             {boardError}
