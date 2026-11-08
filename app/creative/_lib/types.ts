@@ -153,7 +153,22 @@ export const CREATIVE_TYPES = [
   'New Concept',
   'New Test Batch',
 ] as const
-export type AssignmentType = (typeof CREATIVE_TYPES)[number]
+
+/* A relaunch is not creative work.
+
+   Nothing is made for one — an ad that already exists goes back up, with
+   its name stepped. It still needs a card so the launch list and the ad
+   meeting can show it, but it has no place on the Creative Team board,
+   where every other card is something Faisal has to build.
+
+   Kept out of CREATIVE_TYPES so it cannot be picked on the new-assignment
+   form; it is only ever set by the Relaunch button. */
+export const RELAUNCH_TYPE = 'Relaunch'
+
+export type AssignmentType = (typeof CREATIVE_TYPES)[number] | typeof RELAUNCH_TYPE
+
+/** Cards the Creative Team board shows — everything somebody has to make. */
+export const isCreativeWork = (a: { type: AssignmentType }) => a.type !== RELAUNCH_TYPE
 
 /* Production tasks — the hands-on work that turns an approved creative into
    something launchable. Formerly the K-Team board; the work is the same, it
@@ -213,6 +228,48 @@ export type Attachment = {
 /* The firms a creative can be cut for. The Spanish boards are separate firms
    here because they are separate pipelines, separate ad sets and separate
    hooks — the same split the rest of the center already makes. */
+/* The standing requests, and the one escape hatch.
+
+   A short fixed list keeps the common instructions identical on every brief
+   — "Add LHP Disclaimer" is one thing, not four spellings of it — and
+   "Other" exists because no fixed list survives contact with a real ask. */
+/* The frame the cut is delivered in. 9x16 is the default because almost
+   everything runs in feed and reels. */
+export const AD_SIZES = ['9x16', '4x5', '1x1', '16x9'] as const
+export type AdSize = (typeof AD_SIZES)[number]
+
+/* The state a launch targets, paired with the firm — "California-LHP" on the
+   brief. Only the states the firms are licensed in. */
+export const LAUNCH_STATES = ['California', 'Georgia', 'Texas', 'Florida', 'Nationwide'] as const
+export type LaunchState = (typeof LAUNCH_STATES)[number]
+
+export const CREATIVE_REQUESTS = [
+  'Same as benchmark',
+  'Add LHP Disclaimer',
+  'Add JM Disclaimer',
+  'Add AI Disclaimer',
+] as const
+export type CreativeRequest = (typeof CREATIVE_REQUESTS)[number]
+
+/** Joined form, so one text column holds the choices and the free text. */
+export const REQUEST_SEP = ' · '
+
+export function parseRequests(value: string | undefined): { picked: string[]; other: string } {
+  if (!value?.trim()) return { picked: [], other: '' }
+  const parts = value.split(REQUEST_SEP).map((p) => p.trim()).filter(Boolean)
+  const known = new Set<string>(CREATIVE_REQUESTS)
+  return {
+    picked: parts.filter((p) => known.has(p)),
+    /* Anything not on the list is what somebody typed. Joined back with the
+       same separator so a brief written before this list existed survives a
+       round trip unchanged. */
+    other: parts.filter((p) => !known.has(p)).join(REQUEST_SEP),
+  }
+}
+
+export const joinRequests = (picked: string[], other: string) =>
+  [...picked, other.trim()].filter(Boolean).join(REQUEST_SEP)
+
 export const ASSIGNMENT_FIRMS = ['LHP', 'LHP [SPANISH]', 'JM', 'JM [SPANISH]'] as const
 export type AssignmentFirm = (typeof ASSIGNMENT_FIRMS)[number]
 
@@ -299,6 +356,18 @@ export type Assignment = {
   verbalCode?: string
   /** The batch this belongs to, as it appears in the ad name. */
   batch?: string
+  /* The two names this brief produces, generated from the fields above.
+
+     The ad set is copied verbatim by a double down — it runs in the same ad
+     set, so a new name would create a second one — while the creative name
+     steps a version. Stored rather than re-derived at launch, which is where
+     a cut ends up in an ad set that differs by a segment. */
+  adsetName?: string
+  creativeName?: string
+  /** The offer segment both names share — OG | RIP. */
+  offer?: string
+  /** Campaign type — INV | VAR. */
+  campaignType?: string
   /* 1 to 5 stars, 5 being the most urgent. Cards sort on this first, so the
      top of every column is what matters most — the board stops being a
      queue in creation order and starts being a queue in importance order. */
@@ -315,8 +384,13 @@ export type Assignment = {
   /** The reference creative to build against, uploaded rather than linked. */
   benchmarkUrl?: string
   benchmarkName?: string
-  /* The script the cut should use, handed over with the brief. Often just
-     "same as the benchmark", which is still worth saying explicitly. */
+  /* What is being asked for, handed over with the brief.
+
+     Stored as one string — the chosen requests joined, with anything typed
+     under "Other" on the end. It was a free-text script box, and the same
+     few instructions were retyped into it every day with small differences
+     that made them hard to read at a glance. The column is unchanged, so
+     briefs written before this still read correctly as a single Other. */
   script?: string
   notes: string
   status: AssignmentStatus

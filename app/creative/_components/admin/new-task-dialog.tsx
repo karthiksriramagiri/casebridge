@@ -16,6 +16,7 @@ import {
   type AssignmentFirm, type CreativeFormat, type KTaskType,
 } from '@/app/creative/_lib/types'
 import { PriorityStars } from './priority-stars'
+import { RequestPicker } from './request-picker'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Jason briefing himself.
@@ -259,8 +260,8 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
           </Field>
 
-          <Field label="Script to use" htmlFor="t-script" hint="What the cut should say. “Same as the benchmark” is a complete answer.">
-            <Textarea id="t-script" rows={2} value={script} onChange={(e) => setScript(e.target.value)} />
+          <Field label="Request" hint="What is being asked for. Pick as many as apply.">
+            <RequestPicker value={script} onChange={setScript} idPrefix="t" />
           </Field>
 
           <Field label="Brief / notes" htmlFor="t-notes">

@@ -13,6 +13,12 @@ export const RANGES: { key: RangeKey; label: string }[] = [
 ]
 
 export const WINNER_CPL = 120
+/* Winner Analysis qualifies on the ad set, and an ad set pools the spend of
+   several creatives, so its CPL sits higher than any single winning cut
+   inside it. $120 at the ad level and $160 at the ad-set level describe the
+   same standard from two places. The archive and the Execute view still
+   count winners per ad at WINNER_CPL. */
+export const WINNER_ADSET_CPL = 160
 export const WATCH_CPL = 250
 export const GOOD_HOOK = 0.3
 export const LOW_HOOK = 0.2
@@ -156,8 +162,18 @@ export function lastNDays(c: Creative, n: number, offset = 0) {
 
 /** Week on Week CPL: last 7 days vs the 7 days before. Positive change = CPL got worse. */
 export function weekOnWeek(c: Creative) {
-  const cur = lastNDays(c, 7).cpl
-  const prev = lastNDays(c, 7, 7).cpl
+  return weekOnWeekOf([c])
+}
+
+/* The same comparison over a set of ads, summed before the CPL is taken.
+
+   Summed, not averaged: an ad set's CPL is its total spend over its total
+   leads, and averaging the members' CPLs would weight a $5 ad the same as a
+   $500 one. The two windows are the last 7 days including today, and the 7
+   before that. */
+export function weekOnWeekOf(list: Creative[]) {
+  const cur = sumTotals(list.map((c) => lastNDays(c, 7))).cpl
+  const prev = sumTotals(list.map((c) => lastNDays(c, 7, 7))).cpl
   const change = cur !== null && prev !== null && prev > 0 ? (cur - prev) / prev : null
   return { cur, prev, change }
 }
@@ -208,9 +224,66 @@ export type WatchBand = 'exclude' | 'review' | 'keep'
    or keep an ad set, not one cut inside it.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-/** Groups a creative with its siblings. Falls back to the name, scoped to the
- *  account, for rows carrying no id. */
-export const adsetKey = (c: Creative) => c.adsetId ?? `${c.account}:${c.adset}`
+/* Groups a creative with its siblings — by Meta's ad set id.
+
+   Not by name. The account holds two ad sets both called
+   "JM | Broad | BNR | RIP | INV | 20261104 | B000124", each with its own
+   $200/day and one ad inside it. Grouping on the name merged them into one
+   row that appeared to hold two creatives and carry $400, which is neither
+   how Meta is structured nor how the budget behaves: switching one off
+   frees $200 and leaves the other running.
+
+   The id is the only thing that identifies an ad set. Where two share a
+   name, `adsetLabels` below numbers them so the rows can be told apart. */
+export const adsetKey = (c: Creative) => c.adsetId ?? `${c.account}::${c.adset}`
+
+/** Budget groups the same way, since the budget belongs to the ad set. */
+export const adsetBudgetKey = adsetKey
+
+/* Which ad sets share their name with another, and where each sits.
+
+   Two ad sets with one name render as two identical rows, which reads as a
+   rendering fault rather than as a fact about the account. Returns "1 of 2"
+   for those and nothing for the rest, so a caller can show it as a tag
+   beside the name rather than running it into the name itself — the name is
+   what gets copied into Ads Manager and must stay exact.
+
+   Numbered in a stable order so an ad set keeps the same tag between
+   renders. */
+export function adsetDupeTags(creatives: Creative[]): Map<string, string> {
+  const byName = new Map<string, string[]>()
+  for (const c of creatives) {
+    const k = adsetKey(c)
+    const seen = byName.get(c.adset) ?? []
+    if (!seen.includes(k)) byName.set(c.adset, [...seen, k])
+  }
+  const out = new Map<string, string>()
+  for (const keys of byName.values()) {
+    if (keys.length < 2) continue
+    const sorted = [...keys].sort()
+    for (const [i, k] of sorted.entries()) out.set(k, `${i + 1} of ${sorted.length}`)
+  }
+  return out
+}
+
+/* Daily budget across a set of ads, counted once per ad set.
+
+   `dailyBudget` on a creative is its AD SET's budget — Meta sets the budget
+   on the ad set and the API copies it onto every ad inside. Adding it up
+   across creatives therefore counts the same money once per cut: an ad set
+   holding three ads at $200/day reported $600.
+
+   It also means killing one cut out of an ad set frees nothing. The ad set
+   keeps its budget and spends it on the cuts that remain, so only an ad set
+   going off entirely changes what is being spent. */
+export function adsetBudget(ads: Creative[]): number {
+  const seen = new Map<string, number>()
+  for (const c of ads) {
+    const k = adsetBudgetKey(c)
+    if (!seen.has(k)) seen.set(k, c.dailyBudget ?? 0)
+  }
+  return [...seen.values()].reduce((a, b) => a + b, 0)
+}
 
 export type AdsetTotals = { today: Totals; ty: Totals; d7: Totals; ads: number }
 
@@ -238,6 +311,19 @@ export function adsetIndex(creatives: Creative[]): Map<string, AdsetTotals> {
 /** The ad set's own numbers, or this ad's alone if the index has no entry —
  *  which only happens for a creative that is not in the list it was built
  *  from. Never silently reports zero. */
+/** Totals per ad set over one of the named ranges. The watch rules read
+ *  fixed windows; this is for pages that follow the range selector. */
+export function adsetTotalsFor(creatives: Creative[], range: RangeKey): Map<string, Totals> {
+  const groups = new Map<string, Creative[]>()
+  for (const c of creatives) {
+    const k = adsetKey(c)
+    groups.set(k, [...(groups.get(k) ?? []), c])
+  }
+  const out = new Map<string, Totals>()
+  for (const [k, list] of groups) out.set(k, sumTotals(list.map((c) => totalsFor(c, range))))
+  return out
+}
+
 export function adsetOf(c: Creative, index?: Map<string, AdsetTotals>): AdsetTotals {
   return (
     index?.get(adsetKey(c)) ?? {
@@ -337,6 +423,269 @@ export function killReason(c: Creative) {
 /** Existing creatives keep their naming and bump the version: V1 → V2, BNR1 → BNR2, IMG1 → IMG2. */
 export function bumpConvention(convention: string) {
   return convention.replace(/_V(\d+)$/, (_, n) => `_V${Number(n) + 1}`)
+}
+
+/* The next version of a creative's name.
+
+   A double down keeps the ad set exactly as it is — same audience, same
+   placement, same batch — and changes only which cut runs in it. So the ad
+   set name is copied verbatim and the creative name steps forward:
+
+     0908 | B000108_V1 | LHP | HYB | RIP | C6 | D10
+     0908 | B000108_V2 | LHP | HYB | RIP | C6 | D10
+
+   The version lives in the batch segment, the second one, not at the end of
+   the string — which is why bumpConvention above does not apply here. The
+   trailing number of that segment's suffix is what moves, whatever the
+   letters are: _V1 → _V2, _IMG4 → _IMG5, _BNR1 → _BNR2.
+
+   `step` is how far to move, so a second double down on the same cut lands
+   on _V3 rather than colliding with the _V2 someone already has in hand.
+
+   A name that does not follow the convention is left to speak for itself
+   with a version appended — inventing structure for it would produce an ad
+   name nobody can file. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   The two names a brief produces.
+
+   Every one of the 146 live ad sets follows one shape, and every one of the
+   169 live ads follows the matching one:
+
+     ad set    LHP | Broad | HYB | RIP | INV | 20260908 | B000108
+     creative  0908 | B000108_V1 | LHP | HYB | RIP | C6 | D10
+
+   They are not independent. Checked against the live account, all 169 ads
+   agree with their ad set on both the date (YYYYMMDD there, MMDD here) and
+   the offer segment, which is why one form can produce both and they cannot
+   drift apart.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/** The offer segment, shared by both names. */
+export const CREATIVE_OFFERS = ['OG', 'RIP'] as const
+export type CreativeOffer = (typeof CREATIVE_OFFERS)[number]
+
+/** Campaign type. INV 125, VAR 21 live. */
+export const CAMPAIGN_TYPES = ['INV', 'VAR'] as const
+export type CampaignType = (typeof CAMPAIGN_TYPES)[number]
+
+/* The suffix letters on a creative's batch segment say what kind of cut it
+   is, and they follow the format:
+
+     IMG   → _IMG1, _IMG2 …   static images
+     BNR   → _BNR1, _BNR2 …   banners
+     BR    → _V1, _V2 …       b-roll
+     HYB   → _V1, _V2 …       hybrid
+     AIUGC → _V1, _V2 …       AI UGC
+     ANM   → _V1, _V2 …       animation, which follows the video cuts
+
+   Video of any kind shares the _V series, so a batch's b-roll and hybrid
+   cuts number through one sequence rather than two that collide. */
+const SUFFIX: Record<string, string> = { IMG: 'IMG', BNR: 'BNR' }
+export const creativeSuffix = (format: string) => SUFFIX[format] ?? 'V'
+
+export type NameParts = {
+  /** Firm code as it appears in the ad name — LHP | LHP_SP | JM | JM_SP. */
+  firm: string
+  format: string
+  offer: string
+  campaignType: string
+  /** ISO day. The ad set carries YYYYMMDD, the creative MMDD. */
+  date: string
+  batch: string
+  visualCode?: string
+  verbalCode?: string
+  /** Which cut in the batch — the number after the suffix letters. */
+  seq?: number
+}
+
+export function buildAdsetName(p: NameParts): string {
+  const ymd = p.date.replace(/-/g, '')
+  return [p.firm, 'Broad', p.format, p.offer, p.campaignType, ymd, p.batch].join(' | ')
+}
+
+export function buildCreativeName(p: NameParts): string {
+  const mmdd = p.date.slice(5).replace('-', '')
+  return [
+    mmdd,
+    `${p.batch}_${creativeSuffix(p.format)}${p.seq ?? 1}`,
+    p.firm,
+    p.format,
+    p.offer,
+    p.visualCode,
+    p.verbalCode,
+  ]
+    .filter((x) => x !== undefined && x !== '')
+    .join(' | ')
+}
+
+/* Which cut numbers a batch has already used, and the next free one.
+
+   Scoped three ways, and all three matter:
+
+     firm    B000123 at Larry H. Parker and B000123 at Jacoby & Meyers are
+             unrelated batches that happen to share a number. Numbering
+             across them is already wrong in the account — LHP_SP's first
+             cut of B00019SP came out as BNR4 because JM_SP had BNR1–3.
+     batch   the obvious one.
+     suffix  a batch can hold B000108_IMG1 and B000108_V1 at once, and the
+             two series run independently.
+
+   Both the live account and the briefs already written are searched: a cut
+   that is queued but not launched has still claimed its number, and handing
+   the same one out twice is how two different ads end up filed as the same
+   thing.
+
+   `used` is what the warning reads from. A batch nobody has touched returns
+   an empty list and seq 1. */
+export function batchUsage(names: string[], batch: string, format: string, firm: string) {
+  const b = batch.trim()
+  const f = firm.trim().toUpperCase()
+  if (!b || !f) return { used: [] as string[], seq: 1 }
+  const suffix = creativeSuffix(format)
+  const anySuffix = new RegExp(`^${b}_([A-Za-z]+)(\\d+)$`)
+  /* Deduplicated: the same cut appears in the live account and in the brief
+     that asked for it, and listing it twice makes the warning look like two
+     different ads. */
+  const seen = new Set<string>()
+  let max = 0
+  for (const name of names) {
+    const parts = name.split('|')
+    const seg = parts[1]?.trim()
+    if (!seg) continue
+    /* The firm segment, exactly as the convention writes it: LHP and LHP_SP
+       are different firms and number their batches separately. */
+    if ((parts[2]?.trim().toUpperCase() ?? '') !== f) continue
+    const m = seg.match(anySuffix)
+    if (!m) continue
+    seen.add(seg)
+    if (m[1].toUpperCase() === suffix.toUpperCase()) max = Math.max(max, Number(m[2]))
+  }
+  /* Grouped by suffix then in number order, so a run reads as a run. */
+  const used = [...seen].sort((a, b) => {
+    const pa = a.match(anySuffix)!
+    const pb = b.match(anySuffix)!
+    return pa[1].localeCompare(pb[1]) || Number(pa[2]) - Number(pb[2])
+  })
+  return { used, seq: max + 1 }
+}
+
+/* Read a creative name back into its parts.
+
+   Positional, not a search: the convention is fixed at seven segments and
+   every live ad follows it, so the offer is segment 4 whatever it says. A
+   heuristic that hunts for a recognisable token gets this wrong the moment
+   an angle happens to look like a format code.
+
+     0908 | B000108_V1 | LHP | HYB | RIP | C6 | D10
+       0        1        2     3     4     5    6
+
+   The hook codes are taken only when they look like hook codes — some older
+   names carry a word there instead ("Relief"), and copying that into a hook
+   field would put a brief under an angle that does not exist. */
+const HOOK_CODE = /^[A-Z]\d{1,3}$/i
+
+export function parseCreativeName(convention: string) {
+  const p = convention.split('|').map((x) => x.trim())
+  const batchSeg = p[1] ?? ''
+  const m = batchSeg.match(/^(.*?)_([A-Za-z]+)(\d+)$/)
+  return {
+    date: p[0] || undefined,
+    batch: (m ? m[1] : batchSeg) || undefined,
+    suffix: m?.[2],
+    seq: m ? Number(m[3]) : undefined,
+    firm: p[2] || undefined,
+    format: p[3] || undefined,
+    offer: p[4] || undefined,
+    visualCode: p[5] && HOOK_CODE.test(p[5]) ? p[5].toUpperCase() : undefined,
+    verbalCode: p[6] && HOOK_CODE.test(p[6]) ? p[6].toUpperCase() : undefined,
+  }
+}
+
+/* Re-stamp a name with a given day.
+
+   A double down is a new cut going up now, so both names carry today — the
+   ad set it runs in is today's ad set, not the one the winner launched in.
+   The rest of the name is untouched: same firm, format, offer, campaign
+   type and batch, so the pair still reads as the same idea.
+
+     ad set    JM | Broad | IMG | OG | VAR | 20261019 | B000138
+            →  JM | Broad | IMG | OG | VAR | 20261107 | B000138
+
+     creative  1019 | B000138_IMG3 | JM | IMG | OG | Man
+            →  1107 | B000138_IMG4 | JM | IMG | OG | Man
+
+   Both edit one segment by position and leave the spacing as found, so a
+   name that does not match the convention comes back unchanged rather than
+   rebuilt into something nobody can file. */
+const restamp = (name: string, index: number, stamp: string, shape: RegExp) => {
+  const parts = name.split('|')
+  if (parts.length <= index) return name
+  const m = parts[index].match(/^(\s*)(.*?)(\s*)$/)!
+  if (!shape.test(m[2])) return name
+  parts[index] = `${m[1]}${stamp}${m[3]}`
+  return parts.join('|')
+}
+
+/** The ad set's date segment — YYYYMMDD, sixth of seven. */
+export const withAdsetDate = (adset: string, iso: string) =>
+  restamp(adset, 5, iso.replace(/-/g, ''), /^\d{8}$/)
+
+/** The creative's date segment — MMDD, the first. */
+export const withCreativeDate = (convention: string, iso: string) =>
+  restamp(convention, 0, iso.slice(5).replace('-', ''), /^\d{4}$/)
+
+/* The next batch number a firm has not used.
+
+   Per firm, like the cut numbering inside a batch: Larry H. Parker's
+   batches and Jacoby's run as separate sequences, and the two sharing a
+   number is normal rather than a collision to design around.
+
+   The width is preserved from the highest one seen, so B000123 gives
+   B000124 rather than B124. */
+export function nextBatchNumber(names: string[], firm: string, fallback = 'B000001'): string {
+  const f = firm.trim().toUpperCase()
+  if (!f) return fallback
+  let max = 0
+  let width = 6
+  /* The Spanish boards tag the batch itself — B00032SP, not B00032 — so the
+     suffix is carried onto the new number rather than dropped. Taken from
+     the highest batch seen for this firm, which is the one being continued. */
+  let suffix = ''
+  for (const name of names) {
+    const parts = name.split('|')
+    /* The firm segment as the convention writes it — LHP and LHP_SP number
+       their batches separately. */
+    if ((parts[2]?.trim().toUpperCase() ?? '') !== f) continue
+    const m = (parts[1]?.trim() ?? '').match(/^B(\d+)([A-Za-z]*?)(?:_|$)/)
+    if (!m) continue
+    const n = Number(m[1])
+    if (n > max) { max = n; width = m[1].length; suffix = m[2] }
+  }
+  return max === 0 ? fallback : `B${String(max + 1).padStart(width, '0')}${suffix}`
+}
+
+/** Set the cut number on a creative name outright, rather than stepping it. */
+export function withCreativeSeq(convention: string, seq: number): string {
+  const parts = convention.split('|')
+  if (parts.length < 2) return `${convention.trim()}_V${seq}`
+  const lead = parts[1].match(/^(\s*)(.*?)(\s*)$/)!
+  const seg = lead[2]
+  const set = seg.replace(/_([A-Za-z]*)\d+$/, (_, letters: string) => `_${letters}${seq}`)
+  parts[1] = `${lead[1]}${set === seg ? `${seg}_V${seq}` : set}${lead[3]}`
+  return parts.join('|')
+}
+
+export function nextCreativeName(convention: string, step = 1): string {
+  const parts = convention.split('|')
+  if (parts.length < 2) return `${convention.trim()}_V${step + 1}`
+
+  const lead = parts[1].match(/^(\s*)(.*?)(\s*)$/)!
+  const seg = lead[2]
+  const bumped = seg.replace(/_([A-Za-z]*)(\d+)$/, (_, letters: string, n: string) =>
+    `_${letters}${Number(n) + step}`,
+  )
+  parts[1] = `${lead[1]}${bumped === seg ? `${seg}_V${step + 1}` : bumped}${lead[3]}`
+  return parts.join('|')
 }
 
 export type RemakeSuggestion = 'Remake - Improve Hook' | 'Remake - Improve Body'

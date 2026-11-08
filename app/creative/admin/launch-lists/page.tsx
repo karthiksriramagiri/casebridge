@@ -52,8 +52,11 @@ const byPriority = (a: Assignment, b: Assignment) =>
   (b.priority ?? 3) - (a.priority ?? 3) || a.order - b.order
 
 export default function LaunchListsPage() {
-  const { assignments, updateAssignment, setAssignmentStatus, manualLaunch, boardLoading, boardError } = useStore()
-  const [date, setDate] = useState(TODAY)
+  const { assignments, updateAssignment, setLaunched, manualLaunch, boardLoading, boardError } = useStore()
+  /* The day comes from the store, not from here. Every page in the center
+     reads the same one, so the numbers and the boards can never disagree
+     about what day it is. */
+  const { day: date, setDay: setDate } = useStore()
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [manualOpen, setManualOpen] = useState(false)
@@ -125,7 +128,7 @@ export default function LaunchListsPage() {
   }
 
   const launch = (a: Assignment) => {
-    setAssignmentStatus(a.id, 'Ad Launched', 'admin')
+    setLaunched(a.id, true)
     toast(`${a.title} marked launched`)
   }
 
@@ -133,7 +136,7 @@ export default function LaunchListsPage() {
      one-click mistake. Undo puts it back in the day's queue rather than the
      ready pool — the day was not wrong, only the "it is live" part. */
   const unlaunch = (a: Assignment) => {
-    updateAssignment(a.id, { status: 'Launching' })
+    setLaunched(a.id, false)
     toast(`${a.title} back in the ${formatDate(date)} queue`)
   }
 
@@ -208,7 +211,7 @@ export default function LaunchListsPage() {
         {/* ── The day ─────────────────────────────────────────────────── */}
         <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
           <CalendarDays className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <Button variant="outline" size="icon-sm" aria-label="Previous day" onClick={() => setDate((d) => addDays(d, -1))}>
+          <Button variant="outline" size="icon-sm" aria-label="Previous day" onClick={() => setDate(addDays(date, -1))}>
             <ChevronLeft aria-hidden />
           </Button>
           <input
@@ -218,7 +221,7 @@ export default function LaunchListsPage() {
             onChange={(e) => e.target.value && setDate(e.target.value)}
             className="rounded-md border bg-background px-2.5 py-1.5 text-sm"
           />
-          <Button variant="outline" size="icon-sm" aria-label="Next day" onClick={() => setDate((d) => addDays(d, 1))}>
+          <Button variant="outline" size="icon-sm" aria-label="Next day" onClick={() => setDate(addDays(date, 1))}>
             <ChevronRight aria-hidden />
           </Button>
           {date !== TODAY && (

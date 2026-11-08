@@ -1,16 +1,15 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  CalendarDays, Check, ChevronDown, ChevronLeft, ChevronRight,
-  ExternalLink, Loader2, Save, TriangleAlert,
-} from 'lucide-react'
+import { Check, ChevronDown, ExternalLink, Loader2, Save, TriangleAlert } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
 import { Textarea } from '@/app/creative/_ui/textarea'
 import { PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
-import { COMPETITORS, TODAY, addDays } from '@/app/creative/_lib/data'
+import { DayNav } from '@/app/creative/_components/admin/day-nav'
+import { COMPETITORS, TODAY } from '@/app/creative/_lib/data'
 import { formatDate, libraryUrl } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
+import { useStore } from '@/app/creative/_lib/store'
 import { ROLE_LABEL } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
 
@@ -30,7 +29,10 @@ type Note = { id: string; competitor: string; date: string; body: string; author
 
 export default function CompetitorsPage() {
   const role = useRole()
-  const [date, setDate] = useState(TODAY)
+  /* The day comes from the store, not from here. Every page in the center
+     reads the same one, so the numbers and the boards can never disagree
+     about what day it is. */
+  const { day: date, setDay: setDate } = useStore()
   const [notes, setNotes] = useState<Note[]>([])
   const [loading, setLoading] = useState(true)
   const [setupNeeded, setSetupNeeded] = useState(false)
@@ -144,47 +146,37 @@ export default function CompetitorsPage() {
           />
         </section>
 
-        <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
-          <CalendarDays className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-          <Button variant="outline" size="icon-sm" aria-label="Previous day" onClick={() => setDate((d) => addDays(d, -1))}>
-            <ChevronLeft aria-hidden />
-          </Button>
-          <input
-            type="date"
-            value={date}
-            aria-label="Note day"
-            onChange={(e) => e.target.value && setDate(e.target.value)}
-            className="rounded-md border bg-background px-2.5 py-1.5 text-sm"
-          />
-          <Button variant="outline" size="icon-sm" aria-label="Next day" onClick={() => setDate((d) => addDays(d, 1))}>
-            <ChevronRight aria-hidden />
-          </Button>
-          {date !== TODAY && <Button variant="ghost" size="sm" onClick={() => setDate(TODAY)}>Today</Button>}
-          <span className="ml-auto text-xs text-muted-foreground">
-            Writing {formatDate(date)} · earlier notes stay readable below each box
-          </span>
-        </div>
+        <DayNav date={date} onChange={setDate} label="Note day" />
 
         {loading ? (
           <div className="h-80 animate-pulse rounded-lg border bg-card" />
         ) : (
-          <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {COMPETITORS.map((c) => {
-              const all = byCompetitor.get(c.name) ?? []
-              return (
-                <CompetitorCard
-                  key={c.name}
-                  name={c.name}
-                  url={c.url}
-                  date={date}
-                  today={all.find((n) => n.date === date) ?? null}
-                  history={all.filter((n) => n.date !== date)}
-                  onSave={(body) => save(c.name, body)}
-                  onDirtyChange={(d) => markDirty(c.name, d)}
-                />
-              )
-            })}
-          </ul>
+          <>
+            <div className="flex items-baseline justify-between">
+              <h2 className="text-sm font-semibold">
+                Writing <span className="font-normal text-muted-foreground">{formatDate(date)}</span>
+              </h2>
+              <span className="text-xs text-muted-foreground">{writtenToday} of {COMPETITORS.length} covered</span>
+            </div>
+            <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+              {COMPETITORS.map((c) => {
+                const all = byCompetitor.get(c.name) ?? []
+                return (
+                  <CompetitorCard
+                    key={c.name}
+                    name={c.name}
+                    url={c.url}
+                    date={date}
+                    today={all.find((n) => n.date === date) ?? null}
+                    onSave={(body) => save(c.name, body)}
+                    onDirtyChange={(d) => markDirty(c.name, d)}
+                  />
+                )
+              })}
+            </ul>
+
+            <PastPasses notes={notes} writing={date} onPick={setDate} />
+          </>
         )}
       </div>
     </div>
@@ -192,19 +184,17 @@ export default function CompetitorsPage() {
 }
 
 function CompetitorCard({
-  name, url, date, today, history, onSave, onDirtyChange,
+  name, url, date, today, onSave, onDirtyChange,
 }: {
   name: string
   url: string
   date: string
   today: Note | null
-  history: Note[]
   onSave: (body: string) => Promise<boolean>
   onDirtyChange: (dirty: boolean) => void
 }) {
   const [draft, setDraft] = useState(today?.body ?? '')
   const [state, setState] = useState<'idle' | 'saving' | 'saved'>('idle')
-  const [showHistory, setShowHistory] = useState(false)
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const stored = today?.body ?? ''
@@ -240,7 +230,6 @@ function CompetitorCard({
     }
   }
 
-  const latest = history[0]
 
   return (
     <li className={cn('flex flex-col gap-3 rounded-lg border bg-card p-4', dirty && 'border-primary/40')}>
@@ -295,44 +284,91 @@ function CompetitorCard({
         </div>
       </div>
 
-      {history.length === 0 ? (
-        <p className="text-xs text-muted-foreground">No earlier notes.</p>
-      ) : (
-        <div className="flex flex-col gap-2 border-t pt-2">
-          {/* The most recent earlier note is shown without asking, because it
-              is the thing to read before writing today's. */}
-          <PastNote n={latest} />
-          {history.length > 1 && (
-            <>
-              <button
-                type="button"
-                onClick={() => setShowHistory((v) => !v)}
-                className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-              >
-                <ChevronDown className={cn('size-3 transition-transform', !showHistory && '-rotate-90')} aria-hidden />
-                {history.length - 1} earlier {history.length - 1 === 1 ? 'note' : 'notes'}
-              </button>
-              {showHistory && (
-                <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
-                  {history.slice(1).map((n) => <PastNote key={n.id} n={n} />)}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      )}
     </li>
   )
 }
 
-function PastNote({ n }: { n: Note }) {
+/* Every earlier pass, by the day it was written.
+
+   The notes were only ever reachable through the competitor that wrote them
+   — six cards each holding their own little history, so "what did we see on
+   the 5th" meant opening six collapsibles and reading across them. A pass is
+   a sitting: one person goes down the list on one day. This shows it that
+   way, newest first, with the day you are writing excluded because it is
+   already on screen above. */
+function PastPasses({
+  notes, writing, onPick,
+}: {
+  notes: Note[]
+  writing: string
+  onPick: (d: string) => void
+}) {
+  const byDate = useMemo(() => {
+    const m = new Map<string, Note[]>()
+    for (const n of notes) {
+      if (n.date === writing) continue
+      m.set(n.date, [...(m.get(n.date) ?? []), n])
+    }
+    for (const list of m.values()) list.sort((a, b) => a.competitor.localeCompare(b.competitor))
+    return [...m.entries()].sort(([a], [b]) => b.localeCompare(a))
+  }, [notes, writing])
+
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  /* The most recent pass is open on arrival — it is the one worth reading
+     before writing today's. The rest stay shut so the page is a list of
+     days rather than a wall of text. */
+  const isOpen = (d: string, i: number) => (open.size === 0 ? i === 0 : open.has(d))
+  const toggle = (d: string) =>
+    setOpen((prev) => {
+      const next = new Set(prev.size === 0 ? byDate.slice(0, 1).map(([x]) => x) : prev)
+      next.has(d) ? next.delete(d) : next.add(d)
+      return next
+    })
+
+  if (byDate.length === 0) return null
+
   return (
-    <div className="flex flex-col gap-0.5">
-      <div className="flex items-center gap-1.5">
-        <Pill>{formatDate(n.date)}</Pill>
-        {n.author && <span className="text-[11px] text-muted-foreground">{n.author}</span>}
+    <section className="flex flex-col gap-2">
+      <h2 className="text-sm font-semibold">
+        Earlier passes <span className="font-normal text-muted-foreground">· {byDate.length}</span>
+      </h2>
+      <div className="overflow-hidden rounded-lg border bg-card">
+        {byDate.map(([d, list], i) => {
+          const shown = isOpen(d, i)
+          return (
+            <div key={d} className="border-b last:border-b-0">
+              <div className="flex items-center gap-2 px-4 py-2.5">
+                <button
+                  type="button"
+                  onClick={() => toggle(d)}
+                  aria-expanded={shown}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', !shown && '-rotate-90')} aria-hidden />
+                  <span className="text-sm font-medium">{formatDate(d)}</span>
+                  <span className="text-xs text-muted-foreground">
+                    {list.length} of {COMPETITORS.length} competitors
+                  </span>
+                </button>
+                <Button size="sm" variant="ghost" onClick={() => onPick(d)}>Open that day</Button>
+              </div>
+              {shown && (
+                <ul className="divide-y border-t">
+                  {list.map((n) => (
+                    <li key={n.id} className="flex flex-col gap-0.5 px-4 py-2.5 sm:flex-row sm:gap-4">
+                      <div className="flex shrink-0 items-baseline gap-2 sm:w-52">
+                        <span className="text-sm font-medium">{n.competitor}</span>
+                        {n.author && <span className="text-[11px] text-muted-foreground">{n.author}</span>}
+                      </div>
+                      <p className="whitespace-pre-wrap text-pretty text-sm leading-relaxed text-muted-foreground">{n.body}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )
+        })}
       </div>
-      <p className="whitespace-pre-wrap text-pretty text-xs leading-relaxed text-muted-foreground">{n.body}</p>
-    </div>
+    </section>
   )
 }

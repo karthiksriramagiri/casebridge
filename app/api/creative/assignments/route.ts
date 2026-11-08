@@ -81,6 +81,10 @@ export async function GET() {
       priority: r.priority ?? 3,
       benchmarkUrl: r.benchmark_url ?? undefined,
       benchmarkName: r.benchmark_name ?? undefined,
+      adsetName: r.adset_name ?? undefined,
+      creativeName: r.creative_name ?? undefined,
+      offer: r.offer ?? undefined,
+      campaignType: r.campaign_type ?? undefined,
       script: r.script ?? undefined,
       launchDate: r.launch_date ?? undefined,
       order: r.sort_order ?? 0,
@@ -105,6 +109,10 @@ export async function GET() {
       script: r.script ?? undefined,
       benchmarkUrl: r.benchmark_url ?? undefined,
       benchmarkName: r.benchmark_name ?? undefined,
+      adsetName: r.adset_name ?? undefined,
+      creativeName: r.creative_name ?? undefined,
+      offer: r.offer ?? undefined,
+      campaignType: r.campaign_type ?? undefined,
       attachments: Array.isArray(r.attachments) ? r.attachments : [],
       order: r.sort_order ?? 0,
       createdAt: day(r.created_at),
@@ -171,6 +179,10 @@ export async function POST(req: NextRequest) {
       script: body.script ?? null,
       benchmark_url: body.benchmarkUrl ?? null,
       benchmark_name: body.benchmarkName ?? null,
+      adset_name: body.adsetName ?? null,
+      creative_name: body.creativeName ?? null,
+      offer: body.offer ?? null,
+      campaign_type: body.campaignType ?? null,
       sort_order: Number(body.order ?? 0),
       created_by: body.createdBy ?? null,
     }
@@ -204,21 +216,39 @@ export async function POST(req: NextRequest) {
       priority: clampPriority(body.priority),
       benchmark_url: body.benchmarkUrl ?? null,
       benchmark_name: body.benchmarkName ?? null,
+      adset_name: body.adsetName ?? null,
+      creative_name: body.creativeName ?? null,
+      offer: body.offer ?? null,
+      campaign_type: body.campaignType ?? null,
       script: body.script ?? null,
     launch_date: body.launchDate ?? null,
     sort_order: Number(body.order ?? 0),
     created_by: body.createdBy ?? null,
   }
 
+  /* Columns this build knows about that the database has not been given yet
+     are dropped so the brief still saves — but they are named back to the
+     caller. A silent drop is how a brief gets created with no ad set name
+     and nobody finds out until someone is in Ads Manager looking for it. */
+  const dropped: string[] = []
   let { data, error } = await s.from('creative_assignments').insert(row).select('id').single()
   while (error && MISSING_COLUMN(error.message)) {
     const col = error.message.match(/'([a-z_]+)' column/i)?.[1] ?? error.message.match(/column "?([a-z_]+)"?/i)?.[1]
     if (!col || !(col in row)) break
+    if (row[col] !== null && row[col] !== '') dropped.push(col)
     delete row[col]
     ;({ data, error } = await s.from('creative_assignments').insert(row).select('id').single())
   }
   if (error || !data) return fail(error?.message ?? 'The assignment was not saved.')
-  return NextResponse.json({ id: data.id })
+  return NextResponse.json({
+    id: data.id,
+    ...(dropped.length
+      ? {
+          dropped,
+          setup: `Saved without ${dropped.join(', ')} — run supabase/migration_creative_names.sql in the Supabase SQL editor.`,
+        }
+      : {}),
+  })
 }
 
 /* PATCH — update one assignment or task. Only the fields present are written,
@@ -246,6 +276,10 @@ export async function PATCH(req: NextRequest) {
     set('script', body.script)
     set('benchmark_url', body.benchmarkUrl)
     set('benchmark_name', body.benchmarkName)
+    set('adset_name', body.adsetName)
+    set('creative_name', body.creativeName)
+    set('offer', body.offer)
+    set('campaign_type', body.campaignType)
     set('attachments', body.attachments)
     if (body.priority !== undefined) patch.priority = clampPriority(body.priority)
     if (body.visualCode !== undefined) patch.visual_code = upperCode(body.visualCode)
@@ -261,6 +295,10 @@ export async function PATCH(req: NextRequest) {
     if (body.priority !== undefined) patch.priority = clampPriority(body.priority)
     set('benchmark_url', body.benchmarkUrl)
     set('benchmark_name', body.benchmarkName)
+    set('adset_name', body.adsetName)
+    set('creative_name', body.creativeName)
+    set('offer', body.offer)
+    set('campaign_type', body.campaignType)
     set('script', body.script)
     set('launch_date', body.launchDate)
     set('attachments', body.attachments)

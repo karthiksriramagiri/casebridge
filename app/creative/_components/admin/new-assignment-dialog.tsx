@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Paperclip, X } from 'lucide-react'
+import { Loader2, Paperclip, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
@@ -9,8 +9,11 @@ import {
 import { Input } from '@/app/creative/_ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
 import { Textarea } from '@/app/creative/_ui/textarea'
+import { batchUsage, buildAdsetName, buildCreativeName, CAMPAIGN_TYPES, CREATIVE_OFFERS } from '@/app/creative/_lib/metrics'
+import { useStore } from '@/app/creative/_lib/store'
 import { TODAY } from '@/app/creative/_lib/data'
 import { PriorityStars } from './priority-stars'
+import { RequestPicker } from './request-picker'
 import {
   ASSIGNMENT_FIRMS, CREATIVE_FORMATS, CREATIVE_TYPES,
   type AssignmentFirm, type AssignmentType, type CreativeFormat,
@@ -52,6 +55,10 @@ export function NewAssignmentDialog({
     visualCode?: string
     verbalCode?: string
     batch?: string
+    adsetName?: string
+    creativeName?: string
+    offer?: string
+    campaignType?: string
     priority?: number
     script?: string
     benchmarkUrl?: string
@@ -65,6 +72,8 @@ export function NewAssignmentDialog({
   const [visualCode, setVisualCode] = useState(NONE)
   const [verbalCode, setVerbalCode] = useState(NONE)
   const [batch, setBatch] = useState('')
+  const [offer, setOffer] = useState<string>(CREATIVE_OFFERS[0])
+  const [campaignType, setCampaignType] = useState<string>(CAMPAIGN_TYPES[0])
   const [priority, setPriority] = useState(3)
   const [script, setScript] = useState('')
   const [notes, setNotes] = useState('')
@@ -144,15 +153,52 @@ export function NewAssignmentDialog({
      It opens with today's date as MMDD — the first segment of every ad name
      in the account, and the one piece nobody should have to type. Eastern,
      because that is the day the rest of the center is keeping. */
-  const datePrefix = `${TODAY.slice(5, 7)}${TODAY.slice(8, 10)}`
-  const preview = [
-    datePrefix,
-    batch.trim() || '······',
-    firm,
-    format,
-    visualCode !== NONE ? visualCode : '··',
-    verbalCode !== NONE ? verbalCode : '··',
-  ].join(' | ')
+  /* Both names, built from the fields above and from the same inputs, so
+     they cannot disagree about the date, the offer or the batch — which is
+     what puts a cut in an ad set one segment away from the intended one.
+
+     The firm code in a name is the short form the ad carries (LHP_SP), not
+     the long one the form shows (LHP [SPANISH]). */
+  const firmCode = firm.replace(' [SPANISH]', '_SP')
+
+  /* The cut number is worked out, not typed.
+
+     Every creative name already in the account and every one already briefed
+     is searched for this batch, and the new cut takes the next number after
+     the highest. Typing it meant remembering what a batch was up to, and
+     being wrong produced two different ads filed under one name. */
+  const { creatives, assignments } = useStore()
+  const knownNames = useMemo(
+    () => [
+      ...creatives.map((c) => c.convention || c.name),
+      ...assignments.map((a) => a.creativeName ?? a.title),
+    ],
+    [creatives, assignments],
+  )
+  const { used, seq } = useMemo(
+    () => batchUsage(knownNames, batch, format, firmCode),
+    [knownNames, batch, format, firmCode],
+  )
+
+  const base = { firm: firmCode, format, offer, campaignType, date: TODAY, seq }
+
+  /* Two readings of the same name. The preview fills the gaps with dots so a
+     missing field is visible; what gets saved leaves them out, because a
+     literal "··" written into an ad name is worse than a short one. */
+  const shown = {
+    ...base,
+    batch: batch.trim() || '······',
+    visualCode: visualCode !== NONE ? visualCode : '··',
+    verbalCode: verbalCode !== NONE ? verbalCode : '··',
+  }
+  const real = {
+    ...base,
+    batch: batch.trim(),
+    visualCode: visualCode !== NONE ? visualCode : undefined,
+    verbalCode: verbalCode !== NONE ? verbalCode : undefined,
+  }
+  const adsetName = buildAdsetName(shown)
+  const creativeName = buildCreativeName(shown)
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -178,6 +224,10 @@ export function NewAssignmentDialog({
               visualCode: visualCode === NONE ? undefined : visualCode,
               verbalCode: verbalCode === NONE ? undefined : verbalCode,
               batch: batch.trim() || undefined,
+              offer,
+              campaignType,
+              adsetName: buildAdsetName(real),
+              creativeName: buildCreativeName(real),
               priority,
               script: script.trim() || undefined,
               benchmarkUrl: bench?.url,
@@ -186,9 +236,60 @@ export function NewAssignmentDialog({
             reset()
           }}
         >
+          {/* Both names, assembling as the form is filled, each labelled —
+              they look alike at a glance and putting a cut in the wrong one
+              is the mistake this is here to prevent. */}
+          <div className="sticky top-0 z-10 flex flex-col gap-2 rounded-md border bg-card px-3 py-2.5 shadow-sm">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Ad set</span>
+              <code className="break-all font-mono text-xs">{adsetName}</code>
+            </div>
+            <div className="flex flex-col gap-0.5 border-t pt-2">
+              <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Creative</span>
+              <code className="break-all font-mono text-xs">{creativeName}</code>
+            </div>
+
+            {/* A batch that has run before is not an error — a second cut in
+                the same batch is normal — but it decides the number on the
+                end of the creative name, so it is worth seeing. */}
+            {used.length > 0 && (
+              <p className="flex items-start gap-1.5 border-t pt-2 text-xs text-warning-foreground">
+                <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden />
+                <span>
+                  Batch <strong>{batch.trim()}</strong> has been used before —{' '}
+                  {used.slice(0, 4).join(', ')}
+                  {used.length > 4 ? ` and ${used.length - 4} more` : ''}. This cut continues the
+                  series as <strong>{creativeName.split('|')[1]?.trim()}</strong>.
+                </span>
+              </p>
+            )}
+          </div>
+
           <Field label="Title" htmlFor="a-title">
             <Input id="a-title" required value={title} onChange={(e) => setTitle(e.target.value)} />
           </Field>
+
+          {/* The two segments both names share and nothing else on the form
+              supplies. Every live ad set carries them, so a brief without
+              them cannot name itself. */}
+          <div className="grid gap-3 sm:grid-cols-2">
+            <Field label="Offer" htmlFor="a-offer" hint="The segment both names share.">
+              <Select value={offer} onValueChange={setOffer}>
+                <SelectTrigger id="a-offer" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CREATIVE_OFFERS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+            <Field label="Campaign type" htmlFor="a-camp">
+              <Select value={campaignType} onValueChange={setCampaignType}>
+                <SelectTrigger id="a-camp" className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CAMPAIGN_TYPES.map((t) => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </Field>
+          </div>
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Firm" htmlFor="a-firm">
@@ -315,19 +416,14 @@ export function NewAssignmentDialog({
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
           </Field>
 
-          <Field label="Script to use" htmlFor="a-script" hint="What the cut should say. “Same as the benchmark” is a complete answer.">
-            <Textarea id="a-script" rows={2} value={script} onChange={(e) => setScript(e.target.value)} />
+          <Field label="Request" hint="What is being asked for. Pick as many as apply.">
+            <RequestPicker value={script} onChange={setScript} idPrefix="a" />
           </Field>
 
           <Field label="Brief / notes" htmlFor="a-notes">
             <Textarea id="a-notes" rows={3} value={notes} onChange={(e) => setNotes(e.target.value)} />
           </Field>
 
-          {/* What the finished ad will be called, assembling as the form is
-              filled. It is the quickest way to see a field is still missing. */}
-          <p className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs text-muted-foreground">
-            {preview}
-          </p>
         </form>
 
         <DialogFooter>

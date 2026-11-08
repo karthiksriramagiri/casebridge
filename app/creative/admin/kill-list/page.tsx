@@ -1,17 +1,19 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { BatteryLow, ChevronRight, Skull, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, BatteryLow, ChevronRight, Skull, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
 import { EmptyState, PageHeader, Pill, StatCard, Thumb } from '@/app/creative/_components/admin/shared'
-import { formatDate, totalsFor, usd } from '@/app/creative/_lib/metrics'
+import { adsetBudget, adsetKey, formatDate, totalsFor, usd } from '@/app/creative/_lib/metrics'
+import { TODAY } from '@/app/creative/_lib/data'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
 import type { Creative, KillItem } from '@/app/creative/_lib/types'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
+import { DayNav } from '@/app/creative/_components/admin/day-nav'
 import { cn } from '@/lib/utils'
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -37,7 +39,7 @@ type Row = { k: KillItem; c: Creative }
 export default function KillListPage() {
   const role = useRole()
   const isAdmin = role === 'admin'
-  const { kill, getCreative, markKillDone, markFatigued, removeKill } = useStore()
+  const { kill, creatives, killedIds, getCreative, markKillDone, markFatigued, removeKill } = useStore()
 
   /* An entry whose creative is no longer in the account cannot be rendered or
      acted on, so it is dropped here rather than returning null per row. */
@@ -46,15 +48,106 @@ export default function KillListPage() {
     [kill, getCreative],
   )
 
-  const pending = rows.filter((r) => r.k.status === 'pending')
-  const done = rows.filter((r) => r.k.status === 'done')
-  const spend = pending.reduce((s, r) => s + r.c.dailyBudget, 0)
+  /* The day being looked at. Every kill carries the day it was decided, so
+     an earlier list reads back as it was rather than being reconstructed. */
+  /* The day comes from the store, not from here. Every page in the center
+     reads the same one, so the numbers and the boards can never disagree
+     about what day it is. */
+  const { day: date, setDay: setDate } = useStore()
+  const isToday = date === TODAY
+
+  /* On today, pending means pending — including kills decided on an earlier
+     day that nobody has carried out yet. Hiding those behind their original
+     date would quietly drop real work off the list, which is the opposite of
+     what a kill list is for; they are tagged with the day instead.
+
+     On a past day the list is a record: exactly what was decided then. */
+  const pending = isToday
+    ? rows.filter((r) => r.k.status === 'pending')
+    : rows.filter((r) => r.k.status === 'pending' && r.k.addedAt === date)
+  const done = isToday
+    ? rows.filter((r) => r.k.status === 'done' && r.k.doneAt === TODAY)
+    : rows.filter((r) => r.k.status === 'done' && (r.k.doneAt === date || r.k.addedAt === date))
+  const carriedOver = isToday ? pending.filter((r) => r.k.addedAt !== TODAY).length : 0
+  /* How many ads the ad set is actually running, so a kill that takes only
+     some of them can say so. Counted off the live account rather than off
+     this list — the whole point is what is NOT here. */
+  const adsetAds = useMemo(() => {
+    const m = new Map<string, Creative[]>()
+    for (const c of creatives) {
+      if (killedIds.has(c.id)) continue
+      const k = adsetKey(c)
+      m.set(k, [...(m.get(k) ?? []), c])
+    }
+    return m
+  }, [creatives, killedIds])
+
+  /* What killing these actually frees.
+
+     An ad set's budget is spent by the ad set, not by the cut — pulling one
+     of three leaves the other two spending the same $200/day. So only ad
+     sets going off entirely count, and the budget is counted once per set
+     rather than once per cut. */
+  const spend = useMemo(() => {
+    const whole: Creative[] = []
+    const byKey = new Map<string, Row[]>()
+    for (const r of pending) {
+      const k = adsetKey(r.c)
+      byKey.set(k, [...(byKey.get(k) ?? []), r])
+    }
+    for (const [k, rows] of byKey) {
+      const running = adsetAds.get(k)?.length ?? rows.length
+      if (rows.length >= running) whole.push(rows[0].c)
+    }
+    return adsetBudget(whole)
+  }, [pending, adsetAds])
+
+  const partialSets = useMemo(() => {
+    const byKey = new Map<string, number>()
+    for (const r of pending) {
+      const k = adsetKey(r.c)
+      byKey.set(k, (byKey.get(k) ?? 0) + 1)
+    }
+    let n = 0
+    for (const [k, count] of byKey) if (count < (adsetAds.get(k)?.length ?? count)) n++
+    return n
+  }, [pending, adsetAds])
+
+  /* Firm → ad set → the cuts being killed inside it.
+
+     The kill list is read against Ads Manager, where the thing you have open
+     is an ad set — a flat list of creative names means finding each one's ad
+     set yourself. Grouping them the way the account is arranged means you
+     open an ad set once and do everything in it. */
+  type SetGroup = { key: string; adset: string; items: Row[]; freed?: number }
 
   const byFirm = (list: Row[]) => {
-    const map = new Map<string, Row[]>()
-    for (const r of list) map.set(r.c.firm, [...(map.get(r.c.firm) ?? []), r])
-    return [...map.entries()].sort(([a], [b]) => firmRank(a) - firmRank(b) || a.localeCompare(b))
+    const firms = new Map<string, Map<string, SetGroup>>()
+    for (const r of list) {
+      const sets = firms.get(r.c.firm) ?? new Map<string, SetGroup>()
+      const k = adsetKey(r.c)
+      const g = sets.get(k) ?? { key: k, adset: r.c.adset, items: [] }
+      g.items.push(r)
+      sets.set(k, g)
+      firms.set(r.c.firm, sets)
+    }
+    return [...firms.entries()]
+      .sort(([a], [b]) => firmRank(a) - firmRank(b) || a.localeCompare(b))
+      .map(([firm, sets]) => {
+        const out = [...sets.values()]
+        /* What each set actually frees: nothing unless every delivering cut
+           in it is on the list, and then its budget — via adsetBudget, which
+           counts per Meta ad set, so a name backed by two real ad sets frees
+           both their budgets rather than one. */
+        for (const g of out) {
+          const running = adsetAds.get(g.key)?.length ?? g.items.length
+          g.freed = g.items.length >= running ? adsetBudget(g.items.map((r) => r.c)) : 0
+        }
+        return [firm, out] as const
+      })
   }
+
+
 
   return (
     <div className="flex flex-col">
@@ -69,10 +162,24 @@ export default function KillListPage() {
 
       <div className="flex flex-col gap-4 p-6">
         <BoardStatus migration="supabase/migration_creative_board.sql" />
+        <DayNav date={date} onChange={setDate} label="Kill list day" />
         <section aria-label="Kill totals" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <StatCard label="To kill" value={String(pending.length)} tone={pending.length > 0 ? 'bad' : undefined} hint="still running" />
-          <StatCard label="Daily spend on them" value={usd(spend, 0)} hint="drops once they are off" />
-          <StatCard label="Killed" value={String(done.length)} hint="moved to archives" />
+          <StatCard
+            label="To kill"
+            value={String(pending.length)}
+            tone={pending.length > 0 ? 'bad' : undefined}
+            hint={carriedOver > 0 ? `${carriedOver} carried over from earlier days` : 'still running'}
+          />
+          <StatCard
+            label="Daily budget freed"
+            value={usd(spend, 0)}
+            hint={
+              partialSets > 0
+                ? `${partialSets} ad set${partialSets === 1 ? '' : 's'} only part-killed — ${partialSets === 1 ? 'it keeps' : 'they keep'} spending`
+                : 'once the whole ad set is off'
+            }
+          />
+          <StatCard label="Killed" value={String(done.length)} hint={isToday ? 'turned off today' : `turned off on ${formatDate(date)}`} />
         </section>
 
         {/* ── Still running ────────────────────────────────────────────── */}
@@ -82,21 +189,29 @@ export default function KillListPage() {
           </h2>
 
           {pending.length === 0 ? (
-            <EmptyState title="No pending kills">
+            <EmptyState title={isToday ? 'No pending kills' : `Nothing was pending on ${formatDate(date)}`}>
               A creative lands here from a <strong>KILL</strong> decision on the watch list.
             </EmptyState>
           ) : (
-            byFirm(pending).map(([firm, items]) => (
-              <FirmBlock key={firm} firm={firm} items={items}>
-                {items.map(({ k, c }) => (
+            byFirm(pending).map(([firm, sets]) => (
+              <FirmBlock key={firm} firm={firm} sets={sets}>
+                {sets.map((g) => (
+                  <AdsetGroup key={g.key} g={g} siblings={adsetAds.get(g.key) ?? []}>
+                {g.items.map(({ k, c }) => (
                   <li key={k.id} className="flex items-center gap-3 px-3 py-2.5">
-                    <Checkbox aria-label={`Mark ${c.name} as killed`} onCheckedChange={() => markKillDone(k.id, true, role)} />
+                    <Checkbox
+                      aria-label={`Mark ${c.name} as killed`}
+                      disabled={!isToday}
+                      onCheckedChange={() => markKillDone(k.id, true, role)}
+                    />
                     <Thumb c={c} />
                     <div className="min-w-0 flex-1">
                       <code className="block truncate font-mono text-sm font-medium">{c.convention}</code>
                       <div className="flex flex-wrap items-center gap-1 pt-1">
                         <Pill>{usd(c.dailyBudget, 0)}/day</Pill>
-                        <Pill>Added {formatDate(k.addedAt)}</Pill>
+                        <Pill tone={isToday && k.addedAt !== TODAY ? 'amber' : undefined}>
+                          Added {formatDate(k.addedAt)}
+                        </Pill>
                         {k.reason && <span className="truncate text-xs text-muted-foreground">{k.reason}</span>}
                       </div>
                     </div>
@@ -109,6 +224,7 @@ export default function KillListPage() {
                       size="sm"
                       variant="outline"
                       className="shrink-0"
+                      disabled={!isToday}
                       title="Worked, but worn out — tag it for the fatigue list. Does not switch it off."
                       onClick={() => {
                         markFatigued(k.id)
@@ -118,11 +234,13 @@ export default function KillListPage() {
                       <BatteryLow aria-hidden /> Fatigue
                     </Button>
                     {isAdmin && (
-                      <Button size="icon-sm" variant="ghost" aria-label="Remove from kill list" onClick={() => removeKill(k.id)}>
+                      <Button size="icon-sm" variant="ghost" disabled={!isToday} aria-label="Remove from kill list" onClick={() => removeKill(k.id)}>
                         <Trash2 aria-hidden />
                       </Button>
                     )}
                   </li>
+                ))}
+                  </AdsetGroup>
                 ))}
               </FirmBlock>
             ))
@@ -135,9 +253,11 @@ export default function KillListPage() {
             <h2 className="pt-2 text-sm font-semibold text-muted-foreground">
               Killed <span className="font-normal">· {done.length} done, moved to archives</span>
             </h2>
-            {byFirm(done).map(([firm, items]) => (
-              <FirmBlock key={firm} firm={firm} items={items} muted>
-                {items.map(({ k, c }) => {
+            {byFirm(done).map(([firm, sets]) => (
+              <FirmBlock key={firm} firm={firm} sets={sets} muted>
+                {sets.map((g) => (
+                  <AdsetGroup key={g.key} g={g} siblings={adsetAds.get(g.key) ?? []} muted>
+                {g.items.map(({ k, c }) => {
                   const t = totalsFor(c, 'max')
                   return (
                     <li key={k.id} className="flex items-center gap-3 px-3 py-2.5 text-muted-foreground">
@@ -145,12 +265,16 @@ export default function KillListPage() {
                       <code className="min-w-0 flex-1 truncate font-mono text-sm line-through">{c.convention}</code>
                       <Pill>Lifetime CPL {usd(t.cpl, 0)}</Pill>
                       <Pill tone="green">Killed {k.doneAt && formatDate(k.doneAt)}</Pill>
-                      <Button size="sm" variant="ghost" className="shrink-0" onClick={() => markKillDone(k.id, false, role)}>
-                        <Undo2 aria-hidden /> Undo
-                      </Button>
+                      {isToday && (
+                        <Button size="sm" variant="ghost" className="shrink-0" onClick={() => markKillDone(k.id, false, role)}>
+                          <Undo2 aria-hidden /> Undo
+                        </Button>
+                      )}
                     </li>
                   )
                 })}
+                  </AdsetGroup>
+                ))}
               </FirmBlock>
             ))}
           </div>
@@ -163,15 +287,19 @@ export default function KillListPage() {
 /* One firm's ads. Collapsible, and the header carries what it costs to leave
    them running — the number that decides whether this group is today's job. */
 function FirmBlock({
-  firm, items, children, muted,
+  firm, sets, children, muted,
 }: {
   firm: string
-  items: Row[]
+  sets: readonly { items: Row[]; freed?: number }[]
   children: React.ReactNode
   muted?: boolean
 }) {
   const [open, setOpen] = useState(true)
-  const spend = items.reduce((s, r) => s + r.c.dailyBudget, 0)
+  const items = sets.flatMap((g) => g.items)
+  /* Same rule as the rows below: once per ad set, and only for sets going
+     off entirely. A firm header that adds up per cut reported $400 for one
+     $200 ad set holding two ads. */
+  const spend = sets.reduce((t, g) => t + (g.freed ?? 0), 0)
 
   return (
     <div className={cn('overflow-hidden rounded-lg border bg-card', muted && 'opacity-70')}>
@@ -184,10 +312,89 @@ function FirmBlock({
         <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
         <Skull className="size-4 shrink-0 text-muted-foreground" aria-hidden />
         <span className="truncate text-sm font-medium">{firmName(firm)}</span>
-        <span className="shrink-0 text-xs text-muted-foreground">{items.length}</span>
+        <span className="shrink-0 text-xs text-muted-foreground">
+          {sets.length} ad set{sets.length === 1 ? '' : 's'} · {items.length} ad{items.length === 1 ? '' : 's'}
+        </span>
         {!muted && spend > 0 && <Pill tone="red">{usd(spend, 0)}/day</Pill>}
       </button>
-      {open && <ul className="divide-y">{children}</ul>}
+      {open && <div className="divide-y">{children}</div>}
+    </div>
+  )
+}
+
+/* One ad set, and the cuts of it being killed.
+
+   The count says how much of the set is going: "2 of 2" is the whole thing,
+   and anything less is called out. Killing one cut out of three leaves the
+   ad set running — obvious when you are looking at Ads Manager, easy to
+   forget from a list that only shows what you picked. */
+function AdsetGroup({
+  g, siblings, children, muted,
+}: {
+  g: { key: string; adset: string; items: Row[]; freed?: number }
+  /** Every ad still delivering in this ad set, killed or not. */
+  siblings: Creative[]
+  children: React.ReactNode
+  muted?: boolean
+}) {
+  const [open, setOpen] = useState(true)
+  const killing = g.items.length
+  const running = Math.max(siblings.length, killing)
+  const partial = running > killing
+
+  /* The ad set's own budget, once — not the per-cut figure times the number
+     of cuts. And it is only freed if the whole set goes: the two cuts left
+     behind keep spending it. */
+  const spend = g.freed ?? 0
+
+  /* The cuts in this ad set that are NOT on the list, so the dropdown shows
+     the whole ad set rather than only the part being pulled. Seeing what
+     survives is the point — it is what the ad set will still be running
+     tomorrow. */
+  const killedIdsHere = new Set(g.items.map((r) => r.c.id))
+  const surviving = siblings.filter((c) => !killedIdsHere.has(c.id))
+
+  return (
+    <div>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={`${open ? 'Collapse' : 'Expand'} ${g.adset}`}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/40"
+      >
+        <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
+        <code className="min-w-0 flex-1 truncate font-mono text-xs">{g.adset}</code>
+        {partial ? (
+          <Pill tone="amber">
+            <AlertTriangle className="size-3" aria-hidden /> {killing} of {running} — ad set keeps running
+          </Pill>
+        ) : (
+          <Pill tone="red">whole ad set · {killing}</Pill>
+        )}
+        {!muted && (
+          <span className="shrink-0 text-xs text-muted-foreground">
+            {partial ? 'budget unchanged' : `${usd(spend, 0)}/day frees up`}
+          </span>
+        )}
+      </button>
+      {open && (
+        <>
+          <ul className="divide-y border-t bg-muted/20">{children}</ul>
+          {surviving.length > 0 && (
+            <ul className="divide-y border-t bg-muted/20">
+              {surviving.map((c) => (
+                <li key={c.id} className="flex items-center gap-3 px-3 py-2 opacity-60">
+                  <span className="w-4 shrink-0" />
+                  <Thumb c={c} />
+                  <code className="min-w-0 flex-1 truncate font-mono text-xs">{c.convention}</code>
+                  <Pill tone="green">staying on</Pill>
+                </li>
+              ))}
+            </ul>
+          )}
+        </>
+      )}
     </div>
   )
 }

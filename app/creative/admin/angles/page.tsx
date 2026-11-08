@@ -119,7 +119,14 @@ export default function AnglesPage() {
         )}
       </div>
 
-      <NewHookDialog open={newHook} onOpenChange={setNewHook} onCreated={() => load(datePreset)} />
+      {/* Codes already running in ads, so the suggested number skips them
+          even when nobody has named them yet. */}
+      <NewHookDialog
+        open={newHook}
+        onOpenChange={setNewHook}
+        onCreated={() => load(datePreset)}
+        inUse={[...(data?.visual ?? []), ...(data?.verbal ?? [])].map((h) => h.code)}
+      />
 
       <PeopleDialog
         open={people !== null}

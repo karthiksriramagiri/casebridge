@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { RequestPicker } from './admin/request-picker'
 import {
   Building2, CalendarDays, Clapperboard, Eye, FileText, Hash, Layers,
   Loader2, Maximize2, MessageSquare, Minimize2, Paperclip, ScrollText, Signal, Sparkles, Star, Type,
@@ -16,6 +17,7 @@ import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import {
   ASSIGNMENT_FIRMS, ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, ROLE_LABEL,
+  parseRequests,
   type AssignmentFirm, type AssignmentStatus, type AssignmentType, type CreativeFormat,
 } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
@@ -217,6 +219,24 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
               ) : a.batch ? <Pill>{a.batch}</Pill> : <Empty />}
             </PropertyRow>
 
+            {/* The two names this brief produces. Shown together because
+                they are only correct together: the ad set is the one the
+                cut runs in, and the creative is what it is filed as. */}
+            {(a.adsetName || a.creativeName) && (
+              <>
+                <PropertyRow icon={Hash} label="Ad set">
+                  {a.adsetName
+                    ? <code className="font-mono text-xs">{a.adsetName}</code>
+                    : <Empty />}
+                </PropertyRow>
+                <PropertyRow icon={Hash} label="Creative name">
+                  {a.creativeName
+                    ? <code className="font-mono text-xs">{a.creativeName}</code>
+                    : <Empty />}
+                </PropertyRow>
+              </>
+            )}
+
             <PropertyRow icon={Paperclip} label="Benchmark">
               <input
                 ref={benchRef}
@@ -267,10 +287,22 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
               </PropertyRow>
             )}
 
-            <PropertyRow icon={ScrollText} label="Script to use" align="start">
+            <PropertyRow icon={ScrollText} label="Request" align="start">
               {isAdmin ? (
-                <InlineArea value={a.script ?? ''} placeholder="Empty — e.g. same as the benchmark" onCommit={(v) => set({ script: v })} />
-              ) : a.script ? <p className="text-pretty py-1 leading-relaxed">{a.script}</p> : <Empty />}
+                /* Edited with the same picker the brief was written with, so
+                   a change made here cannot produce a request shaped
+                   differently from one made there. */
+                <div className="py-1">
+                  <RequestPicker value={a.script ?? ''} onChange={(v) => set({ script: v })} idPrefix={`sheet-${a.id}`} />
+                </div>
+              ) : a.script ? (
+                <div className="flex flex-wrap gap-1 py-1">
+                  {parseRequests(a.script).picked.map((r) => <Pill key={r}>{r}</Pill>)}
+                  {parseRequests(a.script).other && (
+                    <p className="w-full text-pretty leading-relaxed">{parseRequests(a.script).other}</p>
+                  )}
+                </div>
+              ) : <Empty />}
             </PropertyRow>
 
             <PropertyRow icon={Type} label="Brief" align="start">

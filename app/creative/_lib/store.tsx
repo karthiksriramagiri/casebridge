@@ -1,8 +1,9 @@
 'use client'
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { toast } from 'sonner'
 import { TODAY, YESTERDAY, addDays, pacificDay } from './data'
-import { adsetIndex, bumpConvention, buildConvention, killReason, watchReason, type AdsetTotals } from './metrics'
+import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildConvention, creativeSuffix, killReason, watchReason, type AdsetTotals } from './metrics'
 
 /** The row collections /api/creative/board writes. */
 type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
@@ -31,10 +32,20 @@ import {
   type Notification,
   type Role,
   type WatchItem,
+  RELAUNCH_TYPE,
 } from './types'
 
 let idSeq = 1000
 const uid = (p: string) => `${p}_${++idSeq}`
+
+/* The cut number a name already carries, so an edit to the batch or a hook
+   code keeps the number this brief was given rather than renumbering it and
+   colliding with whatever has been made since. */
+const seqOf = (name: string | undefined, format: string): number => {
+  const seg = name?.split('|')[1]?.trim()
+  const m = seg?.match(new RegExp(`_${creativeSuffix(format)}(\\d+)$`, 'i')) ?? seg?.match(/_[A-Za-z]*(\d+)$/)
+  return m ? Number(m[1]) : 1
+}
 const now = () => new Date().toISOString()
 const DEFAULT_CAMPAIGN = 'CB | MVA | Broad | CBO'
 
@@ -160,6 +171,10 @@ type AddAssignmentInput = {
   visualCode?: string
   verbalCode?: string
   batch?: string
+  adsetName?: string
+  creativeName?: string
+  offer?: string
+  campaignType?: string
   priority?: number
   script?: string
   benchmarkUrl?: string
@@ -177,6 +192,27 @@ export type ManualLaunchInput = {
   isNewTestBatch: boolean
   tags: LaunchTags
   dailyBudget: number
+  /* What the launch sheet records. A manual launch never had a brief, so
+     this is the only place these are captured — they have to come through
+     or the cut lands on the list with no idea what it is. */
+  firm?: AssignmentFirm
+  format?: CreativeFormat
+  visualCode?: string
+  verbalCode?: string
+  batch?: string
+  offer?: string
+  campaignType?: string
+  /** 9x16 and friends — the frame it is delivered in. */
+  size?: string
+  /** The state it targets, paired with the firm on the sheet. */
+  state?: string
+  launchDate?: string
+  adsetName?: string
+  creativeName?: string
+  notes?: string
+  /** The cut itself, already uploaded. */
+  fileUrl?: string
+  fileName?: string
 }
 
 type Store = {
@@ -187,6 +223,27 @@ type Store = {
   angles: string[]
   loading: boolean
   loadError: string | null
+  /* ── The day the whole center is looking at ──────────────────────────
+     One value, shared by every page, because the numbers and the boards
+     have to agree on what day it is. Moving the day nav on the kill list
+     moves Creative Analysis with it; otherwise you read one day's lists
+     against another day's CPLs. */
+  /** Pacific day under view. `TODAY` unless someone has stepped back. */
+  day: string
+  setDay: (day: string) => void
+  /** Viewing a day that is finished. Its numbers are a record: frozen, and
+      nothing on it can be changed. */
+  dayLocked: boolean
+  /** No numbers were ever written down for the day being viewed — it is
+      before the day lock existed, so there is nothing to show. */
+  dayMissing: boolean
+  /** The day lock is switched on, i.e. its table exists. False means every
+      day is showing live Meta, whatever date is on screen. */
+  lockAvailable: boolean
+  /** When the day under view was written down, and how many ads it holds. */
+  snapshot: { takenAt: string; ads: number } | null
+  /** Re-take today's numbers from Meta. Today only; a past day is a record. */
+  refreshDay: () => void
   /** False until the GHL sweep lands; Signed and CPA are unknown rather than
       zero while it is. */
   hasOutcomes: boolean
@@ -248,8 +305,13 @@ type Store = {
   relaunch: (creativeId: string) => void
   updateLaunch: (id: string, patch: Partial<LaunchTask>) => void
   markLaunchDone: (id: string, done: boolean, by: Role) => void
+  /** Tick an assignment live, or put it back in the day's queue. */
+  setLaunched: (assignmentId: string, done: boolean) => void
   cancelLaunch: (id: string) => void
   markNotificationsRead: (role: Role) => void
+  /** Every watch row including ones taken off the list, for reading a past
+   *  day back as it actually was. */
+  watchAll: StoredWatch[]
   /** Watch List Mode dismissals, by Pacific day — shared, not per-browser. */
   exclusions: StoredExclusion[]
   exclude: (ids: string[]) => void
@@ -395,23 +457,54 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   const [outcomes, setOutcomes] = useState<Record<string, AdOutcome>>({})
   const [signedIdx, setSignedIdx] = useState<SignedIndex | null>(null)
 
+  /* The day the center is looking at, and the numbers that belong to it.
+
+     Meta's figures move all day; the boards beside them are dated and do
+     not. Reading live Meta under a dated board meant last Tuesday's kill
+     list sat next to this morning's CPLs. So the server writes the day's
+     numbers down once and serves that copy back — see the day lock in
+     /api/creative/center/creatives. This holds which day that is, and
+     refetches when it changes. */
+  const [day, setDay] = useState(TODAY)
+  const [snapshot, setSnapshot] = useState<{ takenAt: string; ads: number } | null>(null)
+  const [dayMissing, setDayMissing] = useState(false)
+  const [lockAvailable, setLockAvailable] = useState(true)
+  const [dayTick, setDayTick] = useState(0)
+
+  /* A finished day is a record of what the room decided that day, against
+     the numbers it had. Writing to it would make the record wrong, so every
+     action scoped to a day refuses while the day nav is stepped back — and
+     says why, rather than looking broken by doing nothing. Assignments and
+     tasks are not dated to the day under view and stay editable. */
+  const lockedDay = useCallback(() => {
+    if (day >= TODAY) return false
+    toast.error('That day is locked', {
+      description: 'It is a record of what was decided. Go back to today to make changes.',
+    })
+    return true
+  }, [day])
+
   useEffect(() => {
     let live = true
     setLoading(true)
-    fetch('/api/creative/center/creatives?days=30')
+    const url = `/api/creative/center/creatives?days=30&day=${day}${dayTick ? '&refresh=1' : ''}`
+    fetch(url)
       .then((r) => r.json())
       .then((d) => {
         if (!live) return
         setMetaAds(d.creatives ?? [])
         setAccounts(d.accounts ?? [])
         setLoadError(d.error ?? null)
+        setSnapshot(d.snapshot ?? null)
+        setDayMissing(!!d.missing)
+        setLockAvailable(d.lockAvailable !== false)
       })
       .catch((e) => live && setLoadError(e.message))
       .finally(() => live && setLoading(false))
     return () => {
       live = false
     }
-  }, [])
+  }, [day, dayTick])
 
   /* Signed cases, from the Financial Center's source. One Supabase query, so
      Signed and CPA are filled in almost immediately — long before the
@@ -607,6 +700,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      the ad already exists and only needs putting back up. */
   const addAssignment = useCallback(
     (a: AddAssignmentInput) => {
+      /* A double down is always top priority.
+
+         It is the one brief that is known to pay: the ad set it comes from
+         has already earned its CPL, so the sooner the next cut is in the
+         account the sooner that keeps happening. Set here rather than at
+         each button, so a new way of raising one cannot forget it. */
+      if (a.type === 'Double Down') a = { ...a, priority: 5 }
       const order = Math.max(-1, ...assignments.map((p) => p.order)) + 1
       const temp = uid('a')
       /* Shown immediately under a temporary id, then swapped for the real one
@@ -626,6 +726,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           visualCode: a.visualCode,
           verbalCode: a.verbalCode,
           batch: a.batch,
+          adsetName: a.adsetName,
+          creativeName: a.creativeName,
+          offer: a.offer,
+          campaignType: a.campaignType,
           priority: a.priority ?? 3,
           script: a.script,
           benchmarkUrl: a.benchmarkUrl,
@@ -645,6 +749,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             sourceCreativeId: a.sourceCreativeId,
             firm: a.firm, format: a.format,
             visualCode: a.visualCode, verbalCode: a.verbalCode, batch: a.batch,
+            adsetName: a.adsetName, creativeName: a.creativeName,
+            offer: a.offer, campaignType: a.campaignType,
             priority: a.priority ?? 3, script: a.script,
             benchmarkUrl: a.benchmarkUrl, benchmarkName: a.benchmarkName,
             status: a.status ?? 'Assigned', launchDate: a.launchDate,
@@ -652,6 +758,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           })
           .then((d) => {
             if (d?.id) setAssignments((prev) => prev.map((x) => (x.id === temp ? { ...x, id: d.id } : x)))
+            /* The brief saved, but some of it had nowhere to go. Said out
+               loud: a Double Down whose ad set name was quietly dropped
+               looks finished and sends someone hunting in Ads Manager. */
+            if (d?.dropped?.length) setBoardError(d.setup ?? `Saved without ${d.dropped.join(', ')}.`)
           }),
       )
       notify('creative', `New assignment: ${a.title}`, '/team/assignments')
@@ -724,7 +834,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
   const addToWatch = useCallback(
     (ids: string[]) => {
-      const existing = new Set(watchRows.filter((w) => w.date === TODAY).map((w) => w.creativeId))
+      if (lockedDay()) return 0
+      /* Rows flagged `removed` by the old behaviour are not on the list any
+         more, so they must not block an add. Without this, every creative
+         taken off the list before this change stayed un-addable forever. */
+      const existing = new Set(
+        watchRows.filter((w) => w.date === TODAY && !w.removed).map((w) => w.creativeId),
+      )
       const fresh = ids.filter((id) => !existing.has(id))
       const rows = seedWatchDay(fresh, TODAY)
       setWatch((prev) => [...prev, ...rows])
@@ -735,16 +851,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return fresh.length
     },
-    [watchRows, seedWatchDay, createOn],
+    [watchRows, seedWatchDay, createOn, lockedDay],
   )
 
   /** Every kill must originate from the watch list, so direct kills also log a KILL decision on today's watch list. */
   const addToKill = useCallback(
     (ids: string[]) => {
+      if (lockedDay()) return 0
       const existing = new Set(kill.map((k) => k.creativeId))
       const fresh = ids.filter((id) => !existing.has(id))
       if (!fresh.length) return 0
-      const onWatchToday = new Set(watchRows.filter((w) => w.date === TODAY).map((w) => w.creativeId))
+      const onWatchToday = new Set(
+        watchRows.filter((w) => w.date === TODAY && !w.removed).map((w) => w.creativeId),
+      )
 
       /* Already on today's watch list: the row stands, its decision becomes
          KILL. Not on it: a new row is written carrying that decision, because
@@ -786,16 +905,78 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return fresh.length
     },
-    [kill, watchRows, notify, findCreative, seedWatchDay, createOn, patchOn],
+    [kill, watchRows, notify, findCreative, seedWatchDay, createOn, patchOn, lockedDay],
   )
+
+  /* The fields both names are built from. Changing any of them changes what
+     the ad should be called. */
+  const NAMING_FIELDS: (keyof Assignment)[] = [
+    'firm', 'format', 'offer', 'campaignType', 'batch', 'visualCode', 'verbalCode',
+  ]
 
   const updateAssignment = useCallback(
     (id: string, patch: Partial<Assignment>) => {
-      setAssignments((prev) => prev.map((a) => (a.id === id ? { ...a, ...patch } : a)))
+      const before = assignmentsRef.current.find((a) => a.id === id)
+
+      /* Rename when a naming field moves.
+
+         The names used to be written once, at creation, and then stood
+         still — change the batch number or a hook code afterwards and the
+         card kept advertising the old name, which is the one somebody would
+         then go and type into Ads Manager.
+
+         Only on a card that already has names: a brief written before this
+         existed should not acquire them from an unrelated edit, and a double
+         down's ad set is deliberately the live one and must not be rebuilt
+         from the form's fields. */
+      /* Switching a card to Double Down promotes it, same rule as creating
+         one. A priority the person set by hand afterwards is left alone —
+         reverting a deliberate choice is worse than the inconsistency. */
+      if (patch.type === 'Double Down' && before?.type !== 'Double Down' && patch.priority === undefined) {
+        patch = { ...patch, priority: 5 }
+      }
+
+      const touchesNaming = NAMING_FIELDS.some((k) => k in patch)
+      let renamed: Partial<Assignment> = {}
+      if (before && touchesNaming && (before.adsetName || before.creativeName)) {
+        const next = { ...before, ...patch }
+        const parts = {
+          firm: (next.firm ?? '').replace(' [SPANISH]', '_SP'),
+          format: next.format ?? '',
+          offer: next.offer ?? '',
+          campaignType: next.campaignType ?? '',
+          date: next.createdAt || TODAY,
+          batch: next.batch ?? '',
+          visualCode: next.visualCode,
+          verbalCode: next.verbalCode,
+          seq: seqOf(next.creativeName, next.format ?? ''),
+        }
+        /* Keep the date segment the name already carries.
+
+           A brief written on the 5th and edited on the 7th keeps the 5th:
+           the date is when the cut was briefed, not when somebody last
+           touched a field on it. Double downs are stamped with the day they
+           are raised, which this then leaves alone. */
+        const built = buildCreativeName(parts)
+        const keptDate = next.creativeName?.split('|')[0]?.trim()
+        const creativeName = keptDate
+          ? built.replace(/^[^|]*/, `${keptDate} `)
+          : built
+
+        renamed = {
+          /* A double down runs in an existing ad set, so its ad set name is
+             a fact about Meta rather than something to regenerate. */
+          ...(next.type === 'Double Down' ? {} : { adsetName: buildAdsetName(parts) }),
+          creativeName,
+        }
+      }
+
+      const full = { ...patch, ...renamed }
+      setAssignments((prev) => prev.map((a) => (a.id === id ? { ...a, ...full } : a)))
       /* Comments are rows of their own and are written by addComment; sending
          them here too would duplicate every one. Everything else on the card
          is a column and goes straight through. */
-      const { comments, ...columns } = patch
+      const { comments, ...columns } = full
       if (isPersisted(id) && Object.keys(columns).length > 0) persist(api.patchAssignment(id, columns))
     },
     [persist],
@@ -850,6 +1031,20 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     loading,
     loadError,
     hasOutcomes,
+    day,
+    setDay,
+    /* A finished day is a record. Nothing on it can be changed — not the
+       kill list, not a launch tick — or the record stops being one. A
+       forward date is not a record: Launch Lists queues tomorrow's ads on
+       it, so it stays open. */
+    dayLocked: day < TODAY,
+    dayMissing,
+    lockAvailable,
+    snapshot,
+    /* Only today can be re-taken. `dayTick` forces the effect to run with
+       refresh=1, which is what tells the server to ask Meta again and
+       replace today's copy. */
+    refreshDay: () => setDayTick((n) => n + 1),
     boardLoading,
     boardSetupNeeded,
     boardError,
@@ -864,15 +1059,23 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     notifications,
     getCreative: findCreative,
     adsetTotals,
+    watchAll: watchRows,
     addToWatch,
-    /* Watch List Mode's remove. Flagged rather than deleted: the hide has to
-       hold for the rest of the day, and a deleted row would simply be put
-       back by the next sweep that still finds the ad qualifying. */
+    /* Taking a creative off the watch list deletes the row.
+
+       It used to flag the row instead, back when that flag was also how
+       Watch List Mode's hides survived a reload. Those live in their own
+       table now, so the flag's only remaining effect was to block the ad
+       from ever being added again — deleting it from the list and then
+       trying to put it back reported "already on today's watch list" and
+       did nothing, with no row on screen to explain why. */
     removeWatch: (id) => {
-      setWatch((prev) => prev.map((w) => (w.id === id ? { ...w, removed: true } : w)))
-      patchOn('watch', id, { removed: true })
+      if (lockedDay()) return
+      setWatch((prev) => prev.filter((w) => w.id !== id))
+      removeOn('watch', id)
     },
     setWatchDecision: (id, decision) => {
+      if (lockedDay()) return
       setWatch((prev) => prev.map((w) => (w.id === id ? { ...w, decision } : w)))
       patchOn('watch', id, { decision: decision ?? null })
     },
@@ -885,6 +1088,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
        Ads Manager. Saying "this one wore out" and actually pulling it are
        two separate moments, and only the second is a kill. */
     markFatigued: (id) => {
+      if (lockedDay()) return
       const k = kill.find((x) => x.id === id)
       setKill((prev) =>
         prev.map((x) => (x.id === id ? { ...x, kind: 'fatigue', reason: x.reason || 'Fatigued' } : x)),
@@ -893,11 +1097,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (k) notify('creative', `“${findCreative(k.creativeId)?.convention ?? 'A creative'}” was marked fatigued`, '/team/archives')
     },
     markKillDone: (id, done, by) => {
+      if (lockedDay()) return
       const k = kill.find((x) => x.id === id)
       setKill((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
       patchOn('kill', id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
     },
     removeKill: (id) => {
+      if (lockedDay()) return
       setKill((prev) => prev.filter((k) => k.id !== id))
       removeOn('kill', id)
     },
@@ -1120,15 +1326,47 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       updateAssignment(assignmentId, { status: 'Launching' })
     },
     manualLaunch: (input) => {
+      /* Raise the card the Launch Lists page actually renders.
+
+         That page reads the assignment board — anything at Launching with
+         today's date is on the list — not this LaunchTask array. Writing
+         only the task put a manual launch somewhere nothing showed it, the
+         same gap relaunch had. */
+      addAssignment({
+        title: input.creativeName ?? input.name,
+        type: 'New Concept',
+        angle: input.angle,
+        sourceCreativeId: input.sourceCreativeId,
+        firm: input.firm,
+        format: input.format,
+        visualCode: input.visualCode,
+        verbalCode: input.verbalCode,
+        batch: input.batch,
+        offer: input.offer,
+        campaignType: input.campaignType,
+        adsetName: input.adsetName,
+        creativeName: input.creativeName,
+        status: 'Launching',
+        launchDate: input.launchDate ?? TODAY,
+        notes: [
+          input.adsetName && `Ad set: ${input.adsetName}`,
+          input.size && `Size: ${input.size}`,
+          input.state && input.firm && `${input.state} – ${input.firm}`,
+          `Budget: $${input.dailyBudget}/day`,
+          input.fileName && `File: ${input.fileName}`,
+          input.notes,
+        ].filter(Boolean).join('\n'),
+      })
+
       const row: LaunchTask = {
         id: uid('l'),
         sourceCreativeId: input.sourceCreativeId,
-        name: input.name,
+        name: input.creativeName ?? input.name,
         angle: input.angle,
-        campaign: findCreative(input.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
-        convention: nextConvention({ angle: input.angle, type: 'New Concept', sourceCreativeId: input.sourceCreativeId, isNewTestBatch: input.isNewTestBatch }),
+        campaign: input.adsetName ?? findCreative(input.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
+        convention: input.creativeName ?? nextConvention({ angle: input.angle, type: 'New Concept', sourceCreativeId: input.sourceCreativeId, isNewTestBatch: input.isNewTestBatch }),
         tags: input.tags,
-        date: TODAY,
+        date: input.launchDate ?? TODAY,
         dailyBudget: input.dailyBudget,
         status: 'pending',
         isNewTestBatch: input.isNewTestBatch,
@@ -1143,6 +1381,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         })
     },
     relaunch: (creativeId) => {
+      if (lockedDay()) return
       const c = findCreative(creativeId)
       if (!c) return
 
@@ -1165,7 +1404,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const SPELLING: Record<string, AssignmentFirm> = { LHP: 'LHP', LHP_SP: 'LHP [SPANISH]', JM: 'JM', JM_SP: 'JM [SPANISH]' }
       addAssignment({
         title: `Relaunch – ${c.convention || c.name}`,
-        type: 'New Concept',
+        /* Not creative work: nothing is made, the ad already exists. It is
+           kept off the Creative Team board and goes straight to the launch
+           queue. */
+        type: RELAUNCH_TYPE,
         angle: c.angle,
         sourceCreativeId: c.id,
         firm: SPELLING[c.firm],
@@ -1199,6 +1441,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       patchOn('launches', id, patch as Record<string, unknown>)
     },
     markLaunchDone: (id, done, by) => {
+      if (lockedDay()) return
       const l = launches.find((x) => x.id === id)
       setLaunches((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
       patchOn('launches', id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
@@ -1207,6 +1450,24 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          launch list, so this is how the maker learns their ad went live.
          Jason marking his own launch done needs no telling. */
       if (l && done && l.assignmentId) notify('creative', `Your ad “${l.name}” is live`, '/team/assignments')
+    },
+
+    /* "Launched" is one fact kept in two places: the status on the card, and
+       the launch row that raised it. Ticking it on the launch row synced
+       both; ticking it on the card — which is what Launch Lists and Execute
+       actually do — did not. The row stayed `done` through an undo, and the
+       Budget Tracker went on counting the ad as live money. Both ends go
+       through here now, so reverting a launch walks the whole way back. */
+    setLaunched: (assignmentId, done) => {
+      if (lockedDay()) return
+      updateAssignment(assignmentId, { status: done ? 'Ad Launched' : 'Launching' })
+      const row = launches.find((l) => l.assignmentId === assignmentId)
+      if (!row) return
+      setLaunches((prev) => prev.map((x) => (
+        x.id === row.id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x
+      )))
+      patchOn('launches', row.id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
+      if (done) notify('creative', `Your ad “${row.name}” is live`, '/team/assignments')
     },
     cancelLaunch: (id) => {
       const l = launches.find((x) => x.id === id)

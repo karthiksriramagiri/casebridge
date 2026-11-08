@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@supabase/supabase-js'
 import { adAccounts, type AdAccount } from '@/app/_metrics/ad-accounts'
 import { parseAdName } from '@/app/_metrics/ad-meta'
 import { firmOf } from '@/app/_metrics/firms'
@@ -119,20 +120,15 @@ async function budgetsFor(acct: AdAccount) {
   return { byAdset, byCampaign, adStatus, adsetStatus }
 }
 
-export async function GET(req: NextRequest) {
-  const sp = req.nextUrl.searchParams
-  const days = Math.min(Math.max(parseInt(sp.get('days') || '30', 10) || 30, 7), 90)
-
+/** Ask Meta. One call per account, the window ending today. */
+async function fetchLive(days: number) {
   const until = new Date()
   const since = new Date()
   since.setDate(since.getDate() - (days - 1))
 
   const accounts = adAccounts()
   if (accounts.length === 0) {
-    return NextResponse.json(
-      { creatives: [], accounts: [], outcomes: false, error: 'No Meta ad account is configured.' },
-      { status: 200 },
-    )
+    return { creatives: [], accounts: [], outcomes: false, error: 'No Meta ad account is configured.' }
   }
 
   const perAccount = await Promise.all(
@@ -233,7 +229,7 @@ export async function GET(req: NextRequest) {
   // configured leaves nobody knowing which half of the page is missing.
   const failures = perAccount.filter((p) => p.error).map((p) => `${p.acct.label}: ${p.error}`)
 
-  return NextResponse.json({
+  return {
     creatives,
     accounts: perAccount.map((p) => ({
       key: p.acct.key,
@@ -247,5 +243,115 @@ export async function GET(req: NextRequest) {
        sweep — until they arrive the UI must not read 0 as fact. */
     outcomes: false,
     error: failures.length ? failures.join(' · ') : null,
-  })
+  }
+}
+
+/* ───────────────────────────── the day lock ─────────────────────────────
+
+   Meta's numbers move all day. The center's decisions do not: a kill is
+   dated, a watch row is dated, a launch is dated. Reading live Meta under a
+   dated board meant stepping the day nav back showed last Tuesday's kill
+   list against this morning's CPLs — the one combination nobody can reason
+   from, because it is not what the room was looking at when it decided.
+
+   So the numbers are written down once per Pacific day and that copy is
+   what the whole center reads for the rest of it. Past days are served from
+   their copy and never rewritten. Today's can be re-taken on demand, which
+   is the only write that replaces a row.
+
+   The table is optional. Without it the route behaves exactly as it did
+   before — live Meta, nothing frozen — and says so in `locked: false`, so
+   the center keeps working before the migration is run. */
+
+const SNAPSHOT_TABLE = 'creative_day_snapshot'
+
+/** The Pacific day, which is the day the whole center works to. */
+function pacificDay(d = new Date()) {
+  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
+function db() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
+  return url && key ? createClient(url, key) : null
+}
+
+/** A missing table must read as "no snapshot", not as an outage. */
+const noTable = (e: { code?: string; message?: string } | null) =>
+  !!e && (e.code === 'PGRST205' || e.code === '42P01' || /schema cache|does not exist/i.test(e.message ?? ''))
+
+export async function GET(req: NextRequest) {
+  const sp = req.nextUrl.searchParams
+  const days = Math.min(Math.max(parseInt(sp.get('days') || '30', 10) || 30, 7), 90)
+  const today = pacificDay()
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(sp.get('day') || '') ? sp.get('day')! : today
+  const isToday = day === today
+  /* Only a day that is over is a record. Tomorrow is not — Launch Lists
+     queues ads for it, and a day you cannot write to is no use for that —
+     so a forward date reads today's live numbers and stays open. */
+  const isPast = day < today
+  const isFuture = day > today
+  // Re-taking the numbers is a thing you can only do to today. A past day is
+  // a record; a record you can overwrite is not one.
+  const refresh = sp.get('refresh') === '1' && isToday
+
+  const supa = db()
+  /* Whether the day lock is actually switched on — the table is added by
+     hand, and until it is, every day shows live Meta. The client has to be
+     able to tell that apart from a day that was simply never written down,
+     or the banner claims a past day is frozen when it is showing today's
+     figures. */
+  let lockAvailable = !!supa
+
+  if (supa && !isFuture && !refresh) {
+    const { data, error } = await supa
+      .from(SNAPSHOT_TABLE)
+      .select('day, payload, ad_count, taken_at')
+      .eq('day', day)
+      .maybeSingle()
+
+    if (noTable(error)) lockAvailable = false
+
+    if (data?.payload) {
+      return NextResponse.json({
+        ...(data.payload as object),
+        day,
+        locked: isPast,
+        lockAvailable: true,
+        snapshot: { day: data.day, takenAt: data.taken_at, ads: data.ad_count },
+      })
+    }
+    /* A past day with nothing written down cannot be reconstructed — Meta
+       will only ever answer with the series as it stands now. Say so rather
+       than quietly showing today's numbers under yesterday's date. */
+    if (isPast && !noTable(error)) {
+      return NextResponse.json({
+        creatives: [], accounts: [], outcomes: false, error: null,
+        day, locked: true, lockAvailable: true, snapshot: null, missing: true,
+      })
+    }
+  }
+
+  const payload = await fetchLive(days)
+
+  // Only a good read gets written down: a day frozen on a Meta outage would
+  // keep that outage forever.
+  if (supa && isToday && !payload.error && payload.creatives.length > 0) {
+    const { error } = await supa.from(SNAPSHOT_TABLE).upsert({
+      day,
+      payload,
+      ad_count: payload.creatives.length,
+      taken_at: new Date().toISOString(),
+    }, { onConflict: 'day' })
+    if (noTable(error)) lockAvailable = false
+    else if (error) console.error('[creatives] snapshot write failed', error.message)
+    if (!error) {
+      return NextResponse.json({
+        ...payload, day, locked: false, lockAvailable: true,
+        snapshot: { day, takenAt: new Date().toISOString(), ads: payload.creatives.length },
+      })
+    }
+  }
+
+  return NextResponse.json({ ...payload, day, locked: isPast, lockAvailable, snapshot: null })
 }

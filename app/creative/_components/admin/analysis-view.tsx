@@ -1,22 +1,23 @@
 'use client'
 
-import { Fragment, useEffect, useMemo, useState } from 'react'
-import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, EyeOff, Eye, History, RotateCcw, Search, Skull, TrendingUp } from 'lucide-react'
+import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
+import { ArrowDown, Copy, ArrowUp, ChevronDown, ChevronRight, EyeOff, Eye, History, RotateCcw, Search, Skull, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
 import { Input } from '@/app/creative/_ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
 import { TODAY, YESTERDAY } from '@/app/creative/_lib/data'
-import { adsetIsOn, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, signedIn, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
+import { adsetIsOn, adsetDupeTags, adsetKey, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, signedIn, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import { useDailyExclusions } from '@/app/creative/_lib/use-daily-exclusions'
-import type { RangeKey, SignedLead, Stage, Totals } from '@/app/creative/_lib/types'
+import type { Creative, RangeKey, SignedLead, Stage, Totals } from '@/app/creative/_lib/types'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
 import { cn } from '@/lib/utils'
 import { CreativeDetail } from './creative-detail'
 import { PeopleDialog } from './people-dialog'
 import { PageHeader, Pill, RangeSelect, StatCard, Thumb } from './shared'
+import { WeekOnWeek } from './week-on-week'
 import { BoardStatus } from './board-status'
 
 type SortKey = 'spend' | 'leads' | 'cpl' | 'acquisitions' | 'cpa' | 'hookRate' | 'ctr' | 'cpm' | 'impressions'
@@ -25,7 +26,18 @@ type SortKey = 'spend' | 'leads' | 'cpl' | 'acquisitions' | 'cpa' | 'hookRate' |
    ad by the Meta ad id the case was attributed to. When that join has not
    loaded they render as "—": printing 0 would say every ad signed nobody,
    which is a claim the page cannot make. */
-const columnsFor = (hasOutcomes: boolean): { key: SortKey; label: string; render: (t: Totals) => string }[] => [
+type Column = {
+  key: SortKey | 'wow'
+  label: string
+  render: (t: Totals) => string
+  /* A column whose value does not come from the visible range's totals. The
+     week-on-week window is fixed — last 7 days against the 7 before — so it
+     ignores the range selector and has to read the ads themselves. */
+  fromAds?: (ads: Creative[]) => ReactNode
+  sortable?: boolean
+}
+
+const columnsFor = (hasOutcomes: boolean): Column[] => [
   { key: 'spend', label: 'Amount spent', render: (t) => usd(t.spend) },
   { key: 'leads', label: 'Leads', render: (t) => num(t.leads) },
   { key: 'cpl', label: 'Cost per lead', render: (t) => usd(t.cpl) },
@@ -35,7 +47,17 @@ const columnsFor = (hasOutcomes: boolean): { key: SortKey; label: string; render
   { key: 'ctr', label: 'CTR (link)', render: (t) => pct(t.ctr) },
   { key: 'cpm', label: 'CPM', render: (t) => usd(t.cpm) },
   { key: 'impressions', label: 'Impressions', render: (t) => num(t.impressions) },
+  {
+    key: 'wow',
+    label: 'CPL last / this week',
+    render: () => '',
+    fromAds: (ads) => <WeekOnWeek ads={ads} />,
+    /* Not sortable: the sort runs off the range totals, and this column is
+       not one of them. */
+    sortable: false,
+  },
 ]
+
 
 /* The list tags, rendered the same way at both row levels.
 
@@ -43,17 +65,26 @@ const columnsFor = (hasOutcomes: boolean): { key: SortKey; label: string; render
    only some of them — otherwise a set holding one watched ad out of nine
    reads exactly like a set where every ad is watched. */
 function ListTags({
-  watchedToday, watchedYesterday, inKill, of,
+  watchedToday, watchedYesterday, inKill, of, dupe,
 }: {
   watchedToday: number
   watchedYesterday: number
   inKill: number
+  /** "1 of 2" when another ad set carries the same name. */
+  dupe?: string
   /** How many ads the counts are out of; omitted for a single creative. */
   of?: number
 }) {
   const part = (n: number) => (of && of > 1 && n < of ? `${n} of ${of} ` : '')
   return (
     <>
+      {/* First, because it says which of two identically named ad sets this
+          row is — the rest of the tags are about its state. */}
+      {dupe && (
+        <Pill tone="amber">
+          <Copy className="size-3" aria-hidden /> {dupe} with this name
+        </Pill>
+      )}
       {watchedToday > 0 && (
         <Pill tone="blue">
           <Eye className="size-3" aria-hidden /> {part(watchedToday)}on today’s watch list
@@ -81,7 +112,7 @@ function ListTags({
 function PeopleCell({
   col, t, hasOutcomes, onOpen,
 }: {
-  col: { key: SortKey; render: (t: Totals) => string }
+  col: Column
   t: Totals
   hasOutcomes: boolean
   onOpen: (which: 'signed' | 'leads') => void
@@ -215,10 +246,18 @@ export function AnalysisView() {
      ad. The parent therefore carries the first ad's still, so the creative is
      visible without expanding anything, and the aggregate only really earns
      its keep on the handful of sets running 2–3 variants. */
+  /* Two ad sets can carry one name. Tagged rather than renamed — the name
+     is what gets copied into Ads Manager and has to stay exact. Built from
+     every ad, not the filtered rows, so a set keeps the same tag whatever
+     the filter is showing. */
+  const dupeTags = useMemo(() => adsetDupeTags(creatives), [creatives])
+
   const groups = useMemo(() => {
     const map = new Map<string, { key: string; adset: string; firm: string; accountLabel: string; ads: typeof rows }>()
     for (const r of rows) {
-      const key = `${r.c.account}::${r.c.adset}`
+      /* adsetKey is this same rule, shared so every list in the center
+         draws the same ad-set boundaries. */
+      const key = adsetKey(r.c)
       const g = map.get(key)
       if (g) g.ads.push(r)
       else map.set(key, { key, adset: r.c.adset, firm: firmName(r.c.firm), accountLabel: r.c.accountLabel, ads: [r] })
@@ -498,16 +537,20 @@ export function AnalysisView() {
                   </th>
                   {COLUMNS.map((col) => (
                     <th key={col.key} scope="col" className="px-3 py-2.5 text-right font-medium">
-                      <button
-                        className="inline-flex items-center gap-1 hover:text-foreground"
-                        onClick={() =>
-                          setSort((s) => ({ key: col.key, dir: s.key === col.key ? ((s.dir * -1) as 1 | -1) : -1 }))
-                        }
-                      >
-                        {col.label}
-                        {sort.key === col.key &&
-                          (sort.dir === -1 ? <ArrowDown className="size-3" aria-hidden /> : <ArrowUp className="size-3" aria-hidden />)}
-                      </button>
+                      {col.sortable === false ? (
+                        <span title="Last 7 days vs the 7 before — fixed window, not the range above">{col.label}</span>
+                      ) : (
+                        <button
+                          className="inline-flex items-center gap-1 hover:text-foreground"
+                          onClick={() =>
+                            setSort((s) => ({ key: col.key as SortKey, dir: s.key === col.key ? ((s.dir * -1) as 1 | -1) : -1 }))
+                          }
+                        >
+                          {col.label}
+                          {sort.key === col.key &&
+                            (sort.dir === -1 ? <ArrowDown className="size-3" aria-hidden /> : <ArrowUp className="size-3" aria-hidden />)}
+                        </button>
+                      )}
                     </th>
                   ))}
                   <th scope="col" className="px-3 py-2.5 text-right font-medium">
@@ -592,6 +635,7 @@ export function AnalysisView() {
                                     watchedYesterday={g.ads.filter((a) => yesterdayWatch.has(a.c.id)).length}
                                     inKill={g.ads.filter((a) => pendingKill.has(a.c.id)).length}
                                     of={g.ads.length}
+                                    dupe={dupeTags.get(g.key)}
                                   />
                                 </div>
                               </div>
@@ -608,6 +652,7 @@ export function AnalysisView() {
                                 col.key === 'acquisitions' && gt.acquisitions > 0 && 'font-semibold text-success',
                               )}
                             >
+                              {col.fromAds ? col.fromAds(g.ads.map((a) => a.c)) : (
                               <PeopleCell
                                 col={col}
                                 t={gt}
@@ -625,6 +670,7 @@ export function AnalysisView() {
                                   })
                                 }
                               />
+                              )}
                             </td>
                           ))}
                           <td className="px-3 py-2">
@@ -707,6 +753,7 @@ export function AnalysisView() {
                                       col.key === 'acquisitions' && t.acquisitions > 0 && 'font-semibold text-success',
                                     )}
                                   >
+                                    {col.fromAds ? col.fromAds([c]) : (
                                     <PeopleCell
                                       col={col}
                                       t={t}
@@ -721,6 +768,7 @@ export function AnalysisView() {
                                         })
                                       }
                                     />
+                                    )}
                                   </td>
                                 ))}
                                 <td className="px-3 py-2">

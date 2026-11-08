@@ -1,5 +1,6 @@
 'use client'
 
+import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, MessageSquare, Paperclip, Pencil, Rocket, Trash2 } from 'lucide-react'
 import { PriorityStars } from './admin/priority-stars'
 import { Button } from '@/app/creative/_ui/button'
@@ -8,7 +9,7 @@ import { Pill } from '@/app/creative/_components/admin/shared'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
-import { ASSIGNMENT_STATUSES, CREATIVE_EDITABLE_STATUSES, type Assignment, type AssignmentStatus } from '@/app/creative/_lib/types'
+import { ASSIGNMENT_STATUSES, CREATIVE_EDITABLE_STATUSES, type Assignment, type AssignmentStatus , isCreativeWork } from '@/app/creative/_lib/types'
 
 const TYPE_TONE: Partial<Record<string, 'blue' | 'green' | 'amber' | 'muted' | 'red'>> = {
   'Double Down': 'green',
@@ -30,7 +31,12 @@ export function CreativeBoard({
 }) {
   const role = useRole()
   const isAdmin = role === 'admin'
-  const { assignments, moveAssignment, removeAssignment } = useStore()
+  const { assignments: allAssignments, moveAssignment, removeAssignment } = useStore()
+
+  /* Relaunches are not creative work — an ad that already exists going back
+     up, with nothing for anyone to make. They live on the launch list and
+     the ad meeting; this board is what Faisal has to build. */
+  const assignments = useMemo(() => allAssignments.filter(isCreativeWork), [allAssignments])
   const options = isAdmin ? [...ASSIGNMENT_STATUSES] : CREATIVE_EDITABLE_STATUSES
 
   return (
@@ -82,14 +88,25 @@ export function CreativeBoard({
                     <div className="flex flex-wrap items-center gap-1">
                       <PriorityStars value={a.priority ?? 3} size="sm" />
                       <Pill tone={TYPE_TONE[a.type] ?? 'muted'}>{a.type}</Pill>
-                      {a.angle && <Pill>{a.angle}</Pill>}
                       {a.firm && <Pill>{a.firm}</Pill>}
-                      {/* The hook pairing, which is what the maker actually
-                          builds from — shown as one chip, not two. */}
-                      {(a.visualCode || a.verbalCode) && (
+                      {/* One angle chip.
+
+                          The hook pairing when it is set, because that is
+                          what the maker builds from and it names the angle
+                          in two characters. Otherwise the angle itself.
+
+                          It used to be both, and `angle` often holds the
+                          whole hook line — "I didn't know there were two
+                          checks you could get" — which filled the card and
+                          pushed everything else out of sight. Alongside it
+                          sat the source ad's Meta id, a number nobody reads
+                          off a card. Both are in the brief, which is where
+                          you go when you need them. */}
+                      {(a.visualCode || a.verbalCode) ? (
                         <Pill>{[a.visualCode, a.verbalCode].filter(Boolean).join(' × ')}</Pill>
-                      )}
-                      {a.sourceCreativeId && <Pill>from {a.sourceCreativeId}</Pill>}
+                      ) : a.angle ? (
+                        <Pill>{a.angle.length > 28 ? `${a.angle.slice(0, 28)}…` : a.angle}</Pill>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-1.5">
                       {canEdit ? (

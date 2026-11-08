@@ -1,15 +1,18 @@
 'use client'
 
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { toast } from 'sonner'
 import { AssignmentDetailSheet } from '@/app/creative/_components/assignment-detail-sheet'
 import { CreativeBoard } from '@/app/creative/_components/creative-board'
 import { PageHeader, Pill } from '@/app/creative/_components/admin/shared'
 import { useStore } from '@/app/creative/_lib/store'
+import { isCreativeWork } from '@/app/creative/_lib/types'
 import type { Assignment, AssignmentStatus } from '@/app/creative/_lib/types'
 
 export default function CreativeAssignmentsPage() {
-  const { assignments, setAssignmentStatus } = useStore()
+  const { assignments: allAssignments, setAssignmentStatus } = useStore()
+  /* Relaunches are not something anyone makes, so they are not shown. */
+  const assignments = useMemo(() => allAssignments.filter(isCreativeWork), [allAssignments])
   const [openId, setOpenId] = useState<string | null>(null)
   const needsWork = assignments.filter((a) => a.status === 'Assigned' || a.status === 'Feedback Done').length
 

@@ -2,6 +2,7 @@
 
 import type { ReactNode } from 'react'
 import { WorkspaceSidebar } from '@/app/creative/_components/workspace-sidebar'
+import { DayBar } from '@/app/creative/_components/admin/day-bar'
 import { Toaster } from '@/app/creative/_ui/sonner'
 import { RoleProvider } from '@/app/creative/_lib/role'
 import type { Role } from '@/app/creative/_lib/types'
@@ -24,7 +25,12 @@ export function WorkspaceShell({ role, children }: { role: Role; children: React
       <div className="cc-root">
         <div className="flex min-h-dvh flex-col md:flex-row">
           <WorkspaceSidebar />
-          <main className="min-w-0 flex-1">{children}</main>
+          <main className="min-w-0 flex-1">
+            {/* Which day is on screen. Above the page rather than inside it,
+                so no surface can show a past day's numbers without saying so. */}
+            {role === 'admin' && <DayBar />}
+            {children}
+          </main>
         </div>
       </div>
       <Toaster position="bottom-center" />

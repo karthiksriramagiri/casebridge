@@ -205,12 +205,22 @@ export async function POST(req: NextRequest) {
 
   if (error) {
     if (MISSING(error.message)) return NextResponse.json({ setupNeeded: true, setup: SETUP }, { status: 503 })
-    /* A watch or kill row already exists for this ad today. The board treats
-       that as "already on the list" rather than as an error, so hand back the
-       row that is there instead of making the caller re-read it. */
+    /* A row already exists for this ad on this day.
+
+       Treated as a re-add rather than an error, and the posted values are
+       written over the row that is there. Simply handing the old row back
+       would resurrect whatever state it was left in — a watch row taken off
+       the list earlier carries `removed`, so re-adding it would appear to
+       work and then vanish on the next poll. */
     if (/duplicate key/i.test(error.message)) {
       const key = b === 'watch' ? 'watch_date' : b === 'exclusions' ? 'excluded_on' : 'added_at'
       const on = b === 'watch' ? body.date : b === 'exclusions' ? body.day : body.addedAt
+      const { data: revived, error: reviveError } = await supabase.from(BOARDS[b].table)
+        .update({ ...columnsFrom(b, body), updated_at: new Date().toISOString() })
+        .eq('creative_id', body.creativeId).eq(key, on)
+        .select('*').maybeSingle()
+      if (revived && !reviveError) return NextResponse.json({ item: BOARDS[b].to(revived), existed: true })
+      /* The table may predate updated_at; fall back to reading it back. */
       const { data: existing } = await supabase.from(BOARDS[b].table)
         .select('*').eq('creative_id', body.creativeId).eq(key, on).maybeSingle()
       if (existing) return NextResponse.json({ item: BOARDS[b].to(existing), existed: true })

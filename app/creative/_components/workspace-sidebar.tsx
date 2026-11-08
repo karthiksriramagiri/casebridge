@@ -22,6 +22,7 @@ import { NotificationBell } from '@/app/creative/_components/notification-bell'
 import { TODAY } from '@/app/creative/_lib/data'
 import { useCenterHref, useRole, useRoleBase } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
+import { isCreativeWork } from '@/app/creative/_lib/types'
 import type { Role } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
 
@@ -84,17 +85,26 @@ export function WorkspaceSidebar() {
   const base = useRoleBase()
   const centerHref = useCenterHref()
   const pathname = usePathname()
-  const { watch, kill, launches, assignments, ktasks } = useStore()
+  const { watch, kill, assignments, ktasks } = useStore()
 
   const counts: Record<string, number> = {
     'watch-list': watch.filter((w) => w.date === TODAY).length,
     'kill-list': kill.filter((k) => k.status === 'pending').length,
-    'launch-lists': launches.filter((l) => l.status === 'pending').length,
+    /* What is actually going out, not what is merely finished.
+
+       Read off the assignment board, which is what the Launch Lists page
+       itself renders — the badge was counting the creative_launches table, a
+       parallel record the page does not show, so it carried rows that were
+       nowhere on screen. And it counted the Ready to Launch pool, which is
+       work waiting for a day to be picked rather than work being launched.
+
+       `Launching` is the one that means scheduled and going out. */
+    'launch-lists': assignments.filter((a) => a.status === 'Launching').length,
     /* Jason's Assignments page holds both boards — Faisal's briefs and his
        own production queue — so his badge counts both. Faisal only ever sees
        his own. */
     assignments:
-      assignments.filter((a) => a.status !== 'Ad Launched' && a.status !== 'Winner Ad').length +
+      assignments.filter((a) => isCreativeWork(a) && a.status !== 'Ad Launched' && a.status !== 'Winner Ad').length +
       (role === 'admin' ? ktasks.filter((t) => t.status !== 'Done').length : 0),
   }
 

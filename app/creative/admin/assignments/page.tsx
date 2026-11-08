@@ -13,7 +13,7 @@ import { NewAssignmentDialog } from '@/app/creative/_components/admin/new-assign
 import { NewTaskDialog } from '@/app/creative/_components/admin/new-task-dialog'
 import { PageHeader, StatCard } from '@/app/creative/_components/admin/shared'
 import { useStore } from '@/app/creative/_lib/store'
-import { ASSIGNMENT_STATUSES, type Assignment, type AssignmentStatus } from '@/app/creative/_lib/types'
+import { ASSIGNMENT_STATUSES, type Assignment, type AssignmentStatus , isCreativeWork } from '@/app/creative/_lib/types'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Assignments
@@ -34,9 +34,13 @@ const WAITING_ON_JASON: AssignmentStatus[] = ['Feedback Request', 'Ready to Laun
 
 export default function AssignmentsPage() {
   const {
-    assignments, ktasks, addAssignment, setAssignmentStatus, pushToLaunch,
+    assignments: allAssignments, ktasks, addAssignment, setAssignmentStatus, pushToLaunch,
     boardLoading, boardSetupNeeded, boardError, refreshBoard,
   } = useStore()
+
+  /* Relaunches are not creative work — an ad that already exists going back
+     up — so they live on the launch list and the ad meeting, not here. */
+  const assignments = useMemo(() => allAssignments.filter(isCreativeWork), [allAssignments])
   const [tab, setTab] = useState('creative')
   const [creating, setCreating] = useState(false)
   const [creatingTask, setCreatingTask] = useState(false)

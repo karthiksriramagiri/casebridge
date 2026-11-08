@@ -1,92 +1,174 @@
 'use client'
 
-import { useState } from 'react'
-import { Send } from 'lucide-react'
+import { useMemo } from 'react'
+import { TODAY } from '@/app/creative/_lib/data'
+import { ChevronDown, ChevronRight, RotateCcw, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
-import { EmptyState, PageHeader, Pill, RangeSelect, Thumb } from '@/app/creative/_components/admin/shared'
-import { pct, totalsFor, usd, WINNER_CPL } from '@/app/creative/_lib/metrics'
+import { EmptyState, PageHeader, Pill, Thumb } from '@/app/creative/_components/admin/shared'
+import { adsetDupeTags, adsetKey, adsetTotalsFor, batchUsage, parseCreativeName, pct, totalsFor, usd, WINNER_ADSET_CPL, withAdsetDate, withCreativeDate, withCreativeSeq } from '@/app/creative/_lib/metrics'
+import { useExpanded } from '@/app/creative/_lib/use-expanded'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
-import type { Creative, RangeKey, Totals } from '@/app/creative/_lib/types'
+import type { AssignmentFirm, CreativeFormat, Creative, Totals } from '@/app/creative/_lib/types'
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Winner Analysis — what is working, and what to make more of.
+   Winner Analysis — which ad sets are working, and what to make more of.
 
-   Remake candidates used to sit in a second column here. They were a
-   different question: a remake is a near-miss being rescued, judged on hook
-   and CTR, while this page is about ads that are already winning. Mixing the
-   two meant the winners got half the width and half the attention, and the
-   page answered neither question well.
+   An ad set is the unit. Meta spends across the cuts inside one as it likes,
+   so a single creative showing a cheap CPL off a sliver of the budget is not
+   a winner; the ad set is what is working, and doubling down means making
+   more for that ad set. The cuts sit behind a chevron, the way they do in
+   Creative Analysis — there when you want to see which one is carrying the
+   set, out of the way while you work down the list.
 
-   Grouped by firm, like every other list in the center: a winner for Larry H.
-   Parker is not a winner the Jacoby board can use, and budget is decided per
-   firm.
+   Lifetime only, with no range selector. A winner is an ad set that has
+   earned its CPL over its whole run; the same list read over "last 3 days"
+   is a different question wearing the same name, and the answer flipped
+   depending on which one happened to be selected.
    ═══════════════════════════════════════════════════════════════════════════ */
+
+const firmRank = (code: string) => {
+  const i = FIRMS.findIndex((f) => f.code === code)
+  return i === -1 ? FIRMS.length : i
+}
 
 export default function WinnersPage() {
   const { creatives, killedIds, assignments, addAssignment } = useStore()
   const isAdmin = useRole() === 'admin'
-  const [range, setRange] = useState<RangeKey>('7d')
+  const { open, toggle } = useExpanded('cc:winners-open')
 
-  const winners = creatives
-    .filter((c) => !killedIds.has(c.id))
-    .map((c) => ({ c, t: totalsFor(c, range) }))
-    .filter((r) => r.t.cpl !== null && r.t.cpl < WINNER_CPL)
-    .sort((a, b) => a.t.cpl! - b.t.cpl!)
+  const live = useMemo(() => creatives.filter((c) => !killedIds.has(c.id)), [creatives, killedIds])
+  /* Two ad sets can share a name; tagged beside it rather than renamed. */
+  const dupeTags = useMemo(() => adsetDupeTags(creatives), [creatives])
+  const adsets = useMemo(() => adsetTotalsFor(live, 'max'), [live])
 
-  /* Ordered by the canonical FIRMS list so a firm and its Spanish board stay
-     adjacent, with anything unattributed last. */
-  const byFirm = Object.entries(
-    winners.reduce<Record<string, typeof winners>>((acc, r) => {
-      ;(acc[r.c.firm] ??= []).push(r)
-      return acc
-    }, {}),
-  ).sort(([a], [b]) => {
-    const rank = (code: string) => {
-      const i = FIRMS.findIndex((f) => f.code === code)
-      return i === -1 ? FIRMS.length : i
+  /* Firm → qualifying ad sets → the cuts inside them, cheapest set first. */
+  const byFirm = useMemo(() => {
+    const groups = new Map<string, { key: string; adset: string; firm: string; ads: Creative[]; t: Totals }>()
+    for (const c of live) {
+      const k = adsetKey(c)
+      const t = adsets.get(k)
+      if (!t || t.cpl === null || t.cpl >= WINNER_ADSET_CPL) continue
+      const g = groups.get(k) ?? { key: k, adset: c.adset, firm: c.firm, ads: [] as Creative[], t }
+      g.ads.push(c)
+      groups.set(k, g)
     }
-    return rank(a) - rank(b) || a.localeCompare(b)
-  })
+    const byCode = new Map<string, typeof groups extends Map<string, infer V> ? V[] : never>()
+    for (const g of groups.values()) {
+      g.ads.sort((a, b) => (totalsFor(a, 'max').cpl ?? Infinity) - (totalsFor(b, 'max').cpl ?? Infinity))
+      byCode.set(g.firm, [...(byCode.get(g.firm) ?? []), g])
+    }
+    return [...byCode.entries()]
+      .sort(([a], [b]) => firmRank(a) - firmRank(b) || a.localeCompare(b))
+      .map(([firm, sets]) => [firm, sets.sort((a, b) => a.t.cpl! - b.t.cpl!)] as const)
+  }, [live, adsets])
 
-  const assigned = new Set(assignments.map((a) => `${a.sourceCreativeId}:${a.type}`))
+  const total = byFirm.reduce((n, [, sets]) => n + sets.length, 0)
 
-  const push = (c: Creative) => {
-    addAssignment({
-      title: `Double Down – ${c.id} ${c.angle}`,
-      type: 'Double Down',
-      angle: c.angle,
-      sourceCreativeId: c.id,
-    })
-    toast('Double Down assigned to Faisal')
+  /* How many double downs each cut already has — for the button's label. */
+  const doubledCount = useMemo(() => {
+    const m = new Map<string, number>()
+    for (const a of assignments) {
+      if (a.type !== 'Double Down' || !a.sourceCreativeId) continue
+      m.set(a.sourceCreativeId, (m.get(a.sourceCreativeId) ?? 0) + 1)
+    }
+    return m
+  }, [assignments])
+
+  /* Every creative name in play — live in the account and already briefed.
+
+     The next cut number is read off the whole batch, not off the cut being
+     doubled. An ad set holding IMG1 and IMG2 was producing IMG2 again when
+     you doubled down off IMG1, because the old rule stepped from the source
+     rather than looking at what the batch had already used. Same rule the
+     new-assignment form uses when you type a batch number. */
+  const knownNames = useMemo(
+    () => [
+      ...creatives.map((c) => c.convention || c.name),
+      ...assignments.map((a) => a.creativeName ?? a.title),
+    ],
+    [creatives, assignments],
+  )
+
+  /** The ad set the new cut runs in — the winner's, stamped with today. */
+  const adsetFor = (c: Creative) => withAdsetDate(c.adset, TODAY)
+
+  /** What this cut's next double down will be called. `taken` holds names
+   *  claimed earlier in the same click, so sending a whole ad set numbers
+   *  its cuts in sequence instead of giving them all the same one. */
+  const nextNameFor = (c: Creative, taken: string[] = []) => {
+    const from = c.convention || c.name
+    const src = parseCreativeName(from)
+    /* Scoped to the winner's own firm — another firm's B000123 is a
+       different batch that happens to share a number. */
+    const { seq } = batchUsage([...knownNames, ...taken], src.batch ?? '', src.format ?? '', src.firm ?? '')
+    /* Today's date, and the next free cut number. The rest of the name —
+       firm, format, offer, batch, hooks — carries over from the winner. */
+    return withCreativeDate(withCreativeSeq(from, seq), TODAY)
   }
 
-  const Row = ({ c, t }: { c: Creative; t: Totals }) => {
-    const done = assigned.has(`${c.id}:Double Down`)
-    return (
-      <li className="flex flex-wrap items-center gap-3 px-4 py-3">
-        <Thumb c={c} />
-        <div className="flex min-w-0 flex-1 flex-col gap-1">
-          <p className="truncate text-sm font-medium">{c.name}</p>
-          <p className="text-xs text-muted-foreground">
-            {t.leads} leads · {t.acquisitions} signed · {c.angle}
-          </p>
-        </div>
-        <div className="flex gap-1">
-          <Pill>CPL {usd(t.cpl, 0)}</Pill>
-          <Pill>Hook {pct(t.hookRate)}</Pill>
-          <Pill>CTR {pct(t.ctr)}</Pill>
-        </div>
-        {isAdmin ? (
-          <Button size="sm" variant={done ? 'outline' : 'default'} disabled={done} onClick={() => push(c)}>
-            <Send aria-hidden /> {done ? 'Assigned' : 'Double Down'}
-          </Button>
-        ) : (
-          <Pill tone={done ? 'green' : 'muted'}>{done ? 'Assigned to you' : 'Double Down'}</Pill>
-        )}
-      </li>
+  /* The brief.
+
+     The ad set is copied exactly — a double down runs in the same ad set,
+     so renaming it would create a second one. The creative name is the only
+     thing that moves. Both go in the notes because they are what Faisal
+     files the finished cut under, and the title is the new name so the card
+     reads as the thing to build rather than as a reference to the old one. */
+  /* Back to the long firm spelling the board's own fields use — the ad name
+     carries LHP_SP, the form carries LHP [SPANISH], and the two have to meet
+     somewhere or the Spanish boards split in two. */
+  const FIRM_FROM_CODE: Record<string, AssignmentFirm> = {
+    LHP: 'LHP', LHP_SP: 'LHP [SPANISH]', JM: 'JM', JM_SP: 'JM [SPANISH]',
+  }
+
+  const push = (list: Creative[], label: string) => {
+    const taken: string[] = []
+    for (const c of list) {
+      const from = c.convention || c.name
+      const to = nextNameFor(c, taken)
+      taken.push(to)
+
+      /* Everything the winning cut was built from, carried over.
+
+         A double down is the same idea made again: same batch, same hooks,
+         same ad set. Leaving those blank meant Jason retyping from the old
+         ad name, which is both the tedious part and the part that goes
+         wrong. The offer and campaign type come off the ad set, which is
+         the one that is definitely live. */
+      const src = parseCreativeName(from)
+      const setParts = c.adset.split('|').map((x) => x.trim())
+
+      addAssignment({
+        title: `[DD] ${to}`,
+        type: 'Double Down',
+        angle: c.angle,
+        sourceCreativeId: c.id,
+        firm: FIRM_FROM_CODE[src.firm ?? ''] ?? undefined,
+        format: (src.format as CreativeFormat) ?? undefined,
+        batch: src.batch,
+        visualCode: src.visualCode,
+        verbalCode: src.verbalCode,
+        offer: setParts[3] ?? src.offer,
+        campaignType: setParts[4],
+        /* Both names on the brief itself, not only in the prose. The ad set
+           is the winner's, re-dated to today: same firm, format, offer,
+           campaign type and batch, going up now rather than on the day the
+           winner launched. */
+        adsetName: adsetFor(c),
+        creativeName: to,
+        notes: [
+          `Ad set: ${adsetFor(c)}`,
+          `New creative name: ${to}`,
+          `Doubling down on: ${from}  (${c.adset})`,
+        ].join('\n'),
+      })
+    }
+    toast(
+      list.length === 1
+        ? `${nextNameFor(list[0])} sent to Faisal`
+        : `${label} — ${list.length} sent to Faisal`,
     )
   }
 
@@ -96,30 +178,124 @@ export default function WinnersPage() {
         title="Winner Analysis"
         description={
           isAdmin
-            ? `Ads under $${WINNER_CPL} CPL, by firm. Send one to Faisal to make more of it.`
-            : `View only. Ads under $${WINNER_CPL} CPL that Jason can assign to you.`
+            ? `Ad sets under $${WINNER_ADSET_CPL} lifetime CPL, by firm. Open one to see its cuts.`
+            : `View only. Ad sets under $${WINNER_ADSET_CPL} lifetime CPL that Jason can assign to you.`
         }
-        actions={<RangeSelect value={range} onChange={setRange} />}
       />
       <div className="flex flex-col gap-4 p-6">
-        {winners.length === 0 ? (
+        {total === 0 ? (
           <div className="rounded-lg border bg-card p-4">
-            <EmptyState title="No winners in this range" />
+            <EmptyState title="No winning ad sets yet">
+              {`An ad set lands here once its lifetime CPL is under $${WINNER_ADSET_CPL}.`}
+            </EmptyState>
           </div>
         ) : (
-          byFirm.map(([firm, rows]) => (
+          byFirm.map(([firm, sets]) => (
             <section key={firm} className="overflow-hidden rounded-lg border bg-card">
               <div className="flex items-center justify-between border-b px-4 py-2.5">
                 <h2 className="text-sm font-semibold">{firmName(firm)}</h2>
                 <span className="text-sm text-muted-foreground">
-                  {rows.length} {rows.length === 1 ? 'winner' : 'winners'}
+                  {sets.length} ad set{sets.length === 1 ? '' : 's'} · {sets.reduce((n, g) => n + g.ads.length, 0)} ads
                 </span>
               </div>
-              <ul className="divide-y">
-                {rows.map(({ c, t }) => (
-                  <Row key={c.id} c={c} t={t} />
-                ))}
-              </ul>
+
+              {sets.map((g) => {
+                const isOpen = open.has(g.key)
+                const done = g.ads.every((c) => (doubledCount.get(c.id) ?? 0) > 0)
+                return (
+                  <div key={g.key} className="border-b last:border-b-0">
+                    <div className="flex flex-wrap items-center gap-3 px-4 py-3">
+                      <button
+                        type="button"
+                        onClick={() => toggle(g.key)}
+                        aria-expanded={isOpen}
+                        aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${g.adset}`}
+                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                      >
+                        {isOpen ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
+                      </button>
+                      <div className="flex min-w-0 flex-1 flex-col gap-1">
+                        <button
+                          type="button"
+                          onClick={() => toggle(g.key)}
+                          className="truncate text-left font-mono text-sm font-medium hover:underline"
+                        >
+                          {g.adset}
+                        </button>
+                        <p className="text-xs text-muted-foreground">
+                          {g.ads.length} ad{g.ads.length === 1 ? '' : 's'} · {g.t.leads} leads · {g.t.acquisitions} signed ·{' '}
+                          {usd(g.t.spend, 0)} spent
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {dupeTags.get(g.key) && <Pill tone="amber">{dupeTags.get(g.key)} with this name</Pill>}
+                        <Pill tone="green">CPL {usd(g.t.cpl, 0)}</Pill>
+                        <Pill>CPA {usd(g.t.cpa, 0)}</Pill>
+                        <Pill>Hook {pct(g.t.hookRate)}</Pill>
+                        <Pill>CTR {pct(g.t.ctr)}</Pill>
+                      </div>
+                      {isAdmin ? (
+                        /* Once assigned the button becomes Reassign rather
+                           than going dead: a cut that earned one double down
+                           often earns another, and the version carries on
+                           from where the last one left off. */
+                        <Button
+                          size="sm"
+                          variant={done ? 'outline' : 'default'}
+                          onClick={() => push(g.ads, g.adset)}
+                          title={done ? 'Raise another Double Down, next version up' : undefined}
+                        >
+                          {done ? <RotateCcw aria-hidden /> : <Send aria-hidden />} {done ? 'Reassign' : 'Double Down'}
+                        </Button>
+                      ) : (
+                        <Pill tone={done ? 'green' : 'muted'}>{done ? 'Assigned to you' : 'Double Down'}</Pill>
+                      )}
+                    </div>
+
+                    {isOpen && (
+                      <ul className="divide-y border-t bg-muted/20">
+                        {g.ads.map((c) => {
+                          const t = totalsFor(c, 'max')
+                          const times = doubledCount.get(c.id) ?? 0
+                          const next = nextNameFor(c)
+                          return (
+                            <li key={c.id} className="flex flex-wrap items-center gap-3 py-2.5 pl-12 pr-4">
+                              <Thumb c={c} />
+                              <div className="flex min-w-0 flex-1 flex-col">
+                                <code className="truncate font-mono text-xs font-medium">{c.convention || c.name}</code>
+                                <p className="truncate text-xs text-muted-foreground">
+                                  {t.leads} leads · {t.acquisitions} signed · {c.angle}
+                                  {times > 0 && ` · ${times} double down${times === 1 ? '' : 's'} assigned`}
+                                </p>
+                              </div>
+                              <div className="flex gap-1">
+                                {/* The cut's own CPL, labelled as such. The set's
+                                    is what qualified the row above it. */}
+                                <Pill tone={t.cpl !== null && t.cpl < WINNER_ADSET_CPL ? 'green' : undefined}>
+                                  This ad {usd(t.cpl, 0)}
+                                </Pill>
+                                <Pill>Hook {pct(t.hookRate)}</Pill>
+                                <Pill>CTR {pct(t.ctr)}</Pill>
+                              </div>
+                              {isAdmin && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => push([c], c.convention || c.name)}
+                                  title={`Brief Faisal for ${next}`}
+                                >
+                                  {times > 0 ? <RotateCcw aria-hidden /> : <Send aria-hidden />}{' '}
+                                  {times > 0 ? `Reassign → ${next.split('|')[1]?.trim() ?? 'next'}` : 'Double Down'}
+                                </Button>
+                              )}
+                            </li>
+                          )
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )
+              })}
             </section>
           ))
         )}
