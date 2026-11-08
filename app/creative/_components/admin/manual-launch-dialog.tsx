@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Loader2, Paperclip, TriangleAlert, X } from 'lucide-react'
+import { Loader2, Paperclip, Plus, TriangleAlert, X } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/app/creative/_ui/dialog'
 import { Input } from '@/app/creative/_ui/input'
@@ -67,6 +67,35 @@ export function ManualLaunchDialog({
   const [budget, setBudget] = useState('200')
   const [notes, setNotes] = useState('')
 
+  /* A VAR ad set is one ad set holding more than one cut — that is what
+     VAR means. The form built exactly one, so a VAR launch had to be
+     entered twice and the two halves had no way of agreeing they were the
+     same ad set. The second cut lives here: it inherits the ad set (firm,
+     format, offer, campaign type, date, batch, budget) and brings only
+     what is its own — its angles, its size, its file. */
+  type SecondCut = {
+    firm: AssignmentFirm
+    format: CreativeFormat
+    visualCode: string
+    verbalCode: string
+    size: AdSize
+    state: LaunchState
+    offer: string
+    batch: string
+    launchDate: string
+    budget: string
+    file: { url: string; name: string } | null
+    notes: string
+  }
+  const [extras, setExtras] = useState<SecondCut[]>([])
+  const patchExtra = (i: number, p: Partial<SecondCut>) =>
+    setExtras((xs) => xs.map((x, n) => (n === i ? { ...x, ...p } : x)))
+  const dropExtra = (i: number) => setExtras((xs) => xs.filter((_, n) => n !== i))
+  /* Which extra is mid-upload, by index — one shared flag would spin every
+     block's button at once. */
+  const [uploadingExtra, setUploadingExtra] = useState<number | null>(null)
+  const extraFileRefs = useRef<(HTMLInputElement | null)[]>([])
+
   const [batch, setBatch] = useState('')
   const [batchTouched, setBatchTouched] = useState(false)
   const [file, setFile] = useState<{ url: string; name: string } | null>(null)
@@ -88,7 +117,10 @@ export function ManualLaunchDialog({
   /* Offered when the dialog opens and whenever the suggestion moves, unless
      it has been typed over. */
   useEffect(() => { if (!batchTouched) setBatch(suggestedBatch) }, [suggestedBatch, batchTouched])
-  useEffect(() => { if (!open) { setBatchTouched(false); setFile(null); setUploadError(null) } }, [open])
+  useEffect(() => { if (!open) { setBatchTouched(false); setFile(null); setUploadError(null); setExtras([]) } }, [open])
+  /* Leaving VAR drops the second cut: an INV ad set holds one creative, so
+     keeping it would file a cut into an ad set that cannot hold it. */
+  useEffect(() => { if (campaignType !== 'VAR') setExtras([]) }, [campaignType])
   /* Switching firm re-offers: each firm has its own next free number, and
      carrying one firm's suggestion across to another is how the two
      sequences get tangled. A number typed by hand still stands. */
@@ -111,24 +143,100 @@ export function ManualLaunchDialog({
   const shown = { ...parts, batch: batch.trim() || '······' }
   const adsetName = buildAdsetName(shown)
   const creativeName = buildCreativeName(shown)
+  /* Each extra cut's own names, built from its own fields.
 
+     An extra starts as a copy of the one before it, which is what makes
+     them one ad set: the ad set name is firm | Broad | format | offer |
+     type | date | batch, so they land together only while all of those
+     still agree. Changing one on an extra is allowed — it is a real thing
+     to want — and its ad set name updates to say so, with a warning when
+     it has parted company with the first.
+
+     The cut number is the next in the series while the series is shared:
+     V1, V2, V3 … Point an extra at a different batch, format or firm and
+     it takes that series' own next number instead. Extras sharing a series
+     are numbered by their position so two of them never collide. */
   const visualOptions = Object.entries(hooks.visual).filter(([c]) => c.startsWith(config.visual)) as [string, string][]
   const verbalOptions = Object.entries(hooks.verbal).filter(([c]) => c.startsWith(config.verbal)) as [string, string][]
+
+  const describe = (x: SecondCut, i: number) => {
+    const code = x.firm.replace(' [SPANISH]', '_SP')
+    const shared = x.batch.trim() === batch.trim() && x.format === format && code === firmCode
+    /* How many earlier extras are in this same series — the first shared
+       extra is +1 on the lead cut, the second +2, and so on. */
+    const ahead = extras.slice(0, i).filter(
+      (y) => y.batch.trim() === x.batch.trim() && y.format === x.format && y.firm.replace(' [SPANISH]', '_SP') === code,
+    ).length
+    const own = batchUsage(knownNames, x.batch, x.format, code)
+    const parts = {
+      firm: code,
+      format: x.format,
+      offer: x.offer,
+      campaignType,
+      date: x.launchDate,
+      batch: x.batch.trim() || '······',
+      visualCode: x.visualCode !== NONE ? x.visualCode : undefined,
+      verbalCode: x.verbalCode !== NONE ? x.verbalCode : undefined,
+      seq: (shared ? (seq ?? 1) : (own.seq ?? 1)) + ahead + 1,
+    }
+    const cfg = CREATIVE_FORMATS.find((f) => f.code === x.format) ?? config
+    const set = buildAdsetName(parts)
+    return {
+      adsetName: set,
+      creativeName: buildCreativeName(parts),
+      /* Two ad set names means two ad sets, which is not what VAR is for.
+         Said out loud rather than discovered in Ads Manager. */
+      split: set !== adsetName,
+      sameSeries: shared,
+      visualOptions: Object.entries(hooks.visual).filter(([c]) => c.startsWith(cfg.visual)) as [string, string][],
+      verbalOptions: Object.entries(hooks.verbal).filter(([c]) => c.startsWith(cfg.verbal)) as [string, string][],
+      config: cfg,
+    }
+  }
+  const described = extras.map(describe)
+
+  /* A new extra copies the last cut in the set — the one just filled in —
+     so adding a third to a VAR set carries the work already done rather
+     than starting from the firm's defaults again. */
+  const blankExtra = (): SecondCut => {
+    const from = extras[extras.length - 1]
+    return from
+      ? { ...from, visualCode: NONE, verbalCode: NONE, file: null, notes: '' }
+      : { firm, format, visualCode: NONE, verbalCode: NONE, size, state, offer, batch, launchDate, budget, file: null, notes: '' }
+  }
+
+  async function send(f: File): Promise<{ url: string; name: string } | null> {
+    const body = new FormData()
+    body.append('file', f)
+    const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body })
+    const d = await res.json()
+    if (!res.ok) { setUploadError(d.error ?? 'Upload failed.'); return null }
+    return { url: d.url, name: d.name }
+  }
 
   async function upload(f: File) {
     setUploading(true)
     setUploadError(null)
     try {
-      const body = new FormData()
-      body.append('file', f)
-      const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body })
-      const d = await res.json()
-      if (!res.ok) { setUploadError(d.error ?? 'Upload failed.'); return }
-      setFile({ url: d.url, name: d.name })
+      const got = await send(f)
+      if (got) setFile(got)
     } catch {
       setUploadError('Could not reach the server.')
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function uploadExtra(i: number, f: File) {
+    setUploadingExtra(i)
+    setUploadError(null)
+    try {
+      const got = await send(f)
+      if (got) patchExtra(i, { file: got })
+    } catch {
+      setUploadError('Could not reach the server.')
+    } finally {
+      setUploadingExtra(null)
     }
   }
 
@@ -146,6 +254,40 @@ export function ManualLaunchDialog({
           onSubmit={(e) => {
             e.preventDefault()
             if (!batch.trim()) return
+            /* The second cut is raised first so the two land on the list in
+               the order they were filled in. Every field is its own — only
+               the campaign type is inherited, because that is the one thing
+               the ad set owns rather than the cut. */
+            /* The extras are raised first so the set lands on the list in
+               the order it was filled in. Every field is each cut's own —
+               only the campaign type is inherited, because that is the one
+               thing the ad set owns rather than the cut. */
+            extras.forEach((x, i) => {
+              const d = described[i]
+              onCreate({
+                name: d.creativeName,
+                angle: [x.visualCode, x.verbalCode].filter((v) => v !== NONE).join(' × ') || x.format,
+                isNewTestBatch: true,
+                tags: { resize: false, asIs: false, disclaimer: null },
+                dailyBudget: Number(x.budget) || 0,
+                firm: x.firm,
+                format: x.format,
+                visualCode: x.visualCode === NONE ? undefined : x.visualCode,
+                verbalCode: x.verbalCode === NONE ? undefined : x.verbalCode,
+                batch: x.batch.trim(),
+                offer: x.offer,
+                campaignType,
+                size: x.format === 'IMG' ? x.size : undefined,
+                state: x.state,
+                launchDate: x.launchDate,
+                adsetName: d.adsetName,
+                creativeName: d.creativeName,
+                notes: x.notes,
+                fileUrl: x.file?.url,
+                fileName: x.file?.name,
+              })
+            })
+
             onCreate({
               name: creativeName,
               angle: [visualCode, verbalCode].filter((v) => v !== NONE).join(' × ') || format,
@@ -350,11 +492,230 @@ export function ManualLaunchDialog({
           <Field label="Notes" htmlFor="m-notes">
             <Input id="m-notes" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Anything the launcher needs to know" />
           </Field>
+
+          {/* ── The second cut, for a VAR ad set ──────────────────────────
+              VAR means an ad set holding more than one creative, so the form
+              offers the second one here rather than making you open the
+              dialog twice and hope the two halves agree on a name. It
+              inherits the ad set — firm, format, offer, campaign type, date,
+              batch, budget — and is asked only what is its own. The campaign
+              type is not repeated: it belongs to the ad set, and asking
+              again invites two cuts that disagree about which set they are
+              in. */}
+          {/* ── The rest of the VAR set ───────────────────────────────────
+              VAR means an ad set holding more than one creative — two, three,
+              however many are being tested — so the button stays after every
+              one you add. Each cut inherits nothing but the campaign type,
+              which belongs to the ad set rather than to the cut; everything
+              else is its own and starts as a copy of the cut before it. */}
+          {campaignType === 'VAR' && (
+            <>
+              {extras.map((x, i) => {
+                const d = described[i]
+                return (
+                  <section key={i} className="flex flex-col gap-3 rounded-md border border-dashed bg-muted/30 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex min-w-0 flex-col gap-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          Creative {i + 2}
+                        </span>
+                        {/* Its own ad set name as well as its creative name.
+                            The whole point of VAR is that this matches the
+                            one at the top; showing it is how you can tell at
+                            a glance that it still does. */}
+                        <code className={cn('break-all font-mono text-xs', d.split && 'text-destructive')}>
+                          {d.adsetName}
+                        </code>
+                        <code className="break-all font-mono text-xs">{d.creativeName}</code>
+                      </div>
+                      <Button type="button" size="icon-sm" variant="ghost" aria-label={`Remove creative ${i + 2}`} onClick={() => dropExtra(i)}>
+                        <X aria-hidden />
+                      </Button>
+                    </div>
+
+                    {d.split && (
+                      <p className="flex items-start gap-1.5 text-xs text-destructive">
+                        <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+                        This is a different ad set from the one above, so it will launch separately
+                        rather than as part of the same VAR set. Match the firm, format, offer, date
+                        and batch to put them back together.
+                      </p>
+                    )}
+
+                    <Field
+                      label="Batch number"
+                      htmlFor={`m2-batch-${i}`}
+                      hint={d.sameSeries ? 'Same batch as the cut above — this is its next number.' : 'A different batch from the cut above.'}
+                    >
+                      <Input
+                        id={`m2-batch-${i}`}
+                        value={x.batch}
+                        onChange={(e) => patchExtra(i, { batch: e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '') })}
+                        className="font-mono"
+                      />
+                    </Field>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <Field label="State – Firm">
+                        <div className="flex gap-2">
+                          <Select value={x.state} onValueChange={(v) => patchExtra(i, { state: v as LaunchState })}>
+                            <SelectTrigger className="w-full" aria-label="State"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {LAUNCH_STATES.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                          <Select value={x.firm} onValueChange={(v) => patchExtra(i, { firm: v as AssignmentFirm })}>
+                            <SelectTrigger className="w-full" aria-label="Firm"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {ASSIGNMENT_FIRMS.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </Field>
+
+                      <Field label="Ad format" htmlFor={`m2-format-${i}`}>
+                        <Select
+                          value={x.format}
+                          /* The angle codes are drawn from the format's own
+                             families, so they cannot survive a format change. */
+                          onValueChange={(v) => patchExtra(i, { format: v as CreativeFormat, visualCode: NONE, verbalCode: NONE })}
+                        >
+                          <SelectTrigger id={`m2-format-${i}`} className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {CREATIVE_FORMATS.map((f) => (
+                              <SelectItem key={f.code} value={f.code}>{f.code} · {f.label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+
+                      <Field label={`Visual angle (${d.config.visual})`} htmlFor={`m2-visual-${i}`}>
+                        <Select value={x.visualCode} onValueChange={(v) => patchExtra(i, { visualCode: v })}>
+                          <SelectTrigger id={`m2-visual-${i}`} className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NONE}>Not set</SelectItem>
+                            {d.visualOptions.map(([code, label]) => (
+                              <SelectItem key={code} value={code}>{code} · {label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+
+                      <Field label={`Verbal angle (${d.config.verbal})`} htmlFor={`m2-verbal-${i}`}>
+                        <Select value={x.verbalCode} onValueChange={(v) => patchExtra(i, { verbalCode: v })}>
+                          <SelectTrigger id={`m2-verbal-${i}`} className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={NONE}>Not set</SelectItem>
+                            {d.verbalOptions.map(([code, label]) => (
+                              <SelectItem key={code} value={code}>{code} · {label}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+
+                      {x.format === 'IMG' && (
+                        <Field label="Ad size" htmlFor={`m2-size-${i}`}>
+                          <Select value={x.size} onValueChange={(v) => patchExtra(i, { size: v as AdSize })}>
+                            <SelectTrigger id={`m2-size-${i}`} className="w-full"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              {AD_SIZES.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </Field>
+                      )}
+
+                      <Field label="Offer" htmlFor={`m2-offer-${i}`}>
+                        <Select value={x.offer} onValueChange={(v) => patchExtra(i, { offer: v })}>
+                          <SelectTrigger id={`m2-offer-${i}`} className="w-full"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            {CREATIVE_OFFERS.map((o) => <SelectItem key={o} value={o}>{o}</SelectItem>)}
+                          </SelectContent>
+                        </Select>
+                      </Field>
+
+                      {/* No campaign type. It belongs to the ad set, not to
+                          the cut, and asking per cut is how the cuts end up
+                          disagreeing about which ad set they are in. */}
+
+                      <Field label="Launch date" htmlFor={`m2-date-${i}`} hint="Drives the date in both names.">
+                        <Input
+                          id={`m2-date-${i}`}
+                          type="date"
+                          value={x.launchDate}
+                          onChange={(e) => e.target.value && patchExtra(i, { launchDate: e.target.value })}
+                        />
+                      </Field>
+
+                      <Field label="Daily budget" htmlFor={`m2-budget-${i}`} hint="Shared across the set — one ad set, one budget.">
+                        <Input
+                          id={`m2-budget-${i}`}
+                          inputMode="numeric"
+                          value={x.budget}
+                          onChange={(e) => patchExtra(i, { budget: e.target.value.replace(/[^\d.]/g, '') })}
+                        />
+                      </Field>
+                    </div>
+
+                    <Field label="Creative file" hint="The cut itself — an image or a video, up to 50MB.">
+                      <input
+                        ref={(el) => { extraFileRefs.current[i] = el }}
+                        type="file"
+                        accept="image/*,video/*"
+                        className="sr-only"
+                        onChange={(e) => { const f = e.target.files?.[0]; if (f) void uploadExtra(i, f); e.target.value = '' }}
+                      />
+                      {x.file ? (
+                        <div className="flex items-center gap-2 rounded-md border bg-card px-3 py-2 text-sm">
+                          <Paperclip className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+                          <span className="min-w-0 flex-1 truncate">{x.file.name}</span>
+                          <Button type="button" size="icon-sm" variant="ghost" aria-label="Remove file" onClick={() => patchExtra(i, { file: null })}>
+                            <X aria-hidden />
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={uploadingExtra === i}
+                          onClick={() => extraFileRefs.current[i]?.click()}
+                        >
+                          {uploadingExtra === i
+                            ? <><Loader2 className="animate-spin" aria-hidden /> Uploading…</>
+                            : <><Paperclip aria-hidden /> Upload creative</>}
+                        </Button>
+                      )}
+                    </Field>
+
+                    <Field label="Notes" htmlFor={`m2-notes-${i}`}>
+                      <Input
+                        id={`m2-notes-${i}`}
+                        value={x.notes}
+                        onChange={(e) => patchExtra(i, { notes: e.target.value })}
+                        placeholder="Anything specific to this cut"
+                      />
+                    </Field>
+                  </section>
+                )
+              })}
+
+              {/* Always offered, however many are already in the set. */}
+              <Button
+                type="button"
+                variant="outline"
+                className="self-start"
+                onClick={() => setExtras((xs) => [...xs, blankExtra()])}
+              >
+                <Plus aria-hidden /> {extras.length === 0 ? 'Add the second creative' : 'Add another creative'}
+              </Button>
+            </>
+          )}
         </form>
 
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button type="submit" form="manual-launch" disabled={uploading || !batch.trim()}>Add to launch list</Button>
+          <Button type="submit" form="manual-launch" disabled={uploading || uploadingExtra !== null || !batch.trim()}>
+            Add {extras.length === 0 ? 'to launch list' : `all ${extras.length + 1} creatives`}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

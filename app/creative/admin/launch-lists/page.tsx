@@ -107,6 +107,25 @@ export default function LaunchListsPage() {
     return [...map.entries()].sort(([a], [b]) => firmRank(a) - firmRank(b) || a.localeCompare(b))
   }
 
+  /* Cuts that share an ad set, shown as one ad set.
+
+     A VAR ad set is one ad set holding more than one creative. Listed flat,
+     its two cuts read as two separate launches and nothing said they were
+     going into the same place — the person launching had to notice the
+     shared name. Grouped on the generated ad set name, which is exactly
+     what makes them one ad set in Ads Manager.
+
+     A card on its own keeps its plain row: wrapping every single-cut launch
+     in an ad-set header would be noise on the common case. */
+  const byAdset = (items: Assignment[]) => {
+    const m = new Map<string, Assignment[]>()
+    for (const a of items) {
+      const k = a.adsetName?.trim() || `__one:${a.id}`
+      m.set(k, [...(m.get(k) ?? []), a])
+    }
+    return [...m.entries()]
+  }
+
   /* Picking an ad for a day is a move on the board, not a label on it: the
      card goes to Launching, and putting it back returns it to Ready to
      Launch. Written as one patch per card rather than through
@@ -282,22 +301,29 @@ export default function LaunchListsPage() {
                       })
                     }}
                   >
-                    {items.map((a) => (
-                      <Row
-                        key={a.id}
-                        a={a}
-                        selected={picked.has(a.id)}
-                        onSelect={() => toggle(a.id)}
-                        onOpen={() => setOpenId(a.id)}
-                      >
-                        <Checkbox
-                          aria-label={`Select ${a.title}`}
-                          checked={picked.has(a.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          onCheckedChange={() => toggle(a.id)}
-                        />
-                      </Row>
-                    ))}
+                    {byAdset(items).map(([key, group]) => {
+                      const rows = group.map((a) => (
+                        <Row
+                          key={a.id}
+                          a={a}
+                          selected={picked.has(a.id)}
+                          onSelect={() => toggle(a.id)}
+                          onOpen={() => setOpenId(a.id)}
+                        >
+                          <Checkbox
+                            aria-label={`Select ${a.title}`}
+                            checked={picked.has(a.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            onCheckedChange={() => toggle(a.id)}
+                          />
+                        </Row>
+                      ))
+                      return group.length === 1 ? rows : (
+                        <AdsetBlock key={key} name={group[0].adsetName ?? ''} count={group.length}>
+                          {rows}
+                        </AdsetBlock>
+                      )
+                    })}
                   </FirmGroup>
                 ))
               )}
@@ -317,24 +343,31 @@ export default function LaunchListsPage() {
               ) : (
                 groupByFirm(scheduled).map(([firm, items]) => (
                   <FirmGroup key={firm || 'none'} firm={firm} items={items} defaultOpen>
-                    {items.map((a) => (
-                      <Row key={a.id} a={a} onOpen={() => setOpenId(a.id)}>
-                        <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
-                          <Button size="icon-sm" aria-label={`Mark ${a.title} launched`} title="Mark launched" onClick={() => launch(a)}>
-                            <Rocket aria-hidden />
-                          </Button>
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            aria-label={`Put ${a.title} back in the pool`}
-                            title="Back to ready pool"
-                            onClick={() => schedule([a.id], undefined)}
-                          >
-                            <Undo2 aria-hidden />
-                          </Button>
-                        </div>
-                      </Row>
-                    ))}
+                    {byAdset(items).map(([key, group]) => {
+                      const rows = group.map((a) => (
+                        <Row key={a.id} a={a} onOpen={() => setOpenId(a.id)}>
+                          <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                            <Button size="icon-sm" aria-label={`Mark ${a.title} launched`} title="Mark launched" onClick={() => launch(a)}>
+                              <Rocket aria-hidden />
+                            </Button>
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              aria-label={`Put ${a.title} back in the pool`}
+                              title="Back to ready pool"
+                              onClick={() => schedule([a.id], undefined)}
+                            >
+                              <Undo2 aria-hidden />
+                            </Button>
+                          </div>
+                        </Row>
+                      ))
+                      return group.length === 1 ? rows : (
+                        <AdsetBlock key={key} name={group[0].adsetName ?? ''} count={group.length}>
+                          {rows}
+                        </AdsetBlock>
+                      )
+                    })}
                   </FirmGroup>
                 ))
               )}
@@ -434,6 +467,31 @@ function FirmGroup({
       </div>
       {open && <ul className="divide-y">{children}</ul>}
     </div>
+  )
+}
+
+/* One ad set and the cuts going into it.
+
+   Only drawn when a set holds more than one, which is what VAR means. The
+   header is the ad set name as it will be created in Ads Manager, so the
+   person launching can read it straight across. */
+function AdsetBlock({ name, count, children }: { name: string; count: number; children: React.ReactNode }) {
+  const [open, setOpen] = useState(true)
+  return (
+    <li className="bg-muted/30">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        aria-label={`${open ? 'Collapse' : 'Expand'} ${name}`}
+        className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-muted/60"
+      >
+        <ChevronRight className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
+        <code className="min-w-0 flex-1 truncate font-mono text-xs">{name}</code>
+        <Pill tone="blue">VAR · {count} creatives</Pill>
+      </button>
+      {open && <ul className="divide-y border-t bg-card">{children}</ul>}
+    </li>
   )
 }
 

@@ -24,16 +24,23 @@ export function WeekOnWeek({ ads, className }: { ads: Creative[]; className?: st
   if (cur === null && prev === null) return <span className="text-muted-foreground">—</span>
 
   return (
-    <span className={cn('whitespace-nowrap tabular-nums', className)}>
-      <span className="text-muted-foreground">{prev === null ? '—' : usd(prev)}</span>
-      <span className="text-muted-foreground">/</span>
-      <span className="font-medium">{cur === null ? '—' : usd(cur)}</span>
+    /* The two figures hold together on one line; the note after them is
+       allowed to fall to a second. Held all on one line this was the widest
+       column in the table by far and the one that pushed the row off the
+       page — "$466.54/$230.82 (first week)" needs 190px, where every other
+       figure needs 60. */
+    <span className={cn('tabular-nums', className)}>
+      <span className="whitespace-nowrap">
+        <span className="text-muted-foreground">{prev === null ? '—' : usd(prev)}</span>
+        <span className="text-muted-foreground">/</span>
+        <span className="font-medium">{cur === null ? '—' : usd(cur)}</span>
+      </span>
       {change === null ? (
         /* One of the two weeks produced no leads, so there is no ratio to
            report. "+100%" for "went from nothing to something" is a number
            someone would act on. */
-        <span className="ml-1 text-xs text-muted-foreground">
-          ({prev === null ? 'first week' : 'no leads this week'})
+        <span className="ml-1 whitespace-nowrap text-xs text-muted-foreground">
+          ({prev === null ? '1st wk' : 'no leads'})
         </span>
       ) : (
         <span

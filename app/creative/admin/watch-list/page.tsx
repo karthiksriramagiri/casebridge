@@ -1,21 +1,17 @@
 'use client'
 
 import { useMemo, useState } from 'react'
-import { ChevronDown, ChevronRight, Eye, RefreshCw, Skull, Trash2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, RefreshCw, Skull, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
-import { EmptyState, PageHeader, Pill, Thumb } from '@/app/creative/_components/admin/shared'
+import { EmptyState, FirmSelect, PageHeader, Pill, RangeSelect, Thumb } from '@/app/creative/_components/admin/shared'
 import { TODAY, addDays } from '@/app/creative/_lib/data'
 import {
   formatDate,
-  lastNDays,
-  spendSinceLastLead,
+  isDelivering,
   stageOf,
   adsetKey,
   adsetDupeTags,
-  adsetOf,
-  GOOD_CPA,
-  sumTotals,
   suggestDecision,
   totalsFor,
   usd,
@@ -24,57 +20,30 @@ import {
 } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
-import type { Creative, Decision } from '@/app/creative/_lib/types'
+import type { Creative, Decision, RangeKey } from '@/app/creative/_lib/types'
 import type { StoredWatch } from '@/app/creative/_lib/board-api'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { DayNav } from '@/app/creative/_components/admin/day-nav'
-import { WeekOnWeek } from '@/app/creative/_components/admin/week-on-week'
+import { MetricCells, MetricHead, metricColumns, stickyCell, stickyTint, totalsOf } from '@/app/creative/_components/admin/metric-table'
 import { useExpanded } from '@/app/creative/_lib/use-expanded'
 import { cn } from '@/lib/utils'
 
-/** NEW: launch-to-date only. ACTIVE: 3D/5D/7D/14D/30D/Life CPL, Week on Week and spend since last lead. */
-function TrendStrip({ c }: { c: Creative }) {
-  const life = totalsFor(c, 'max')
-  if (stageOf(c) === 'NEW') {
-    return (
-      <p className="text-xs text-muted-foreground">
-        Since launch: <span className="font-medium text-foreground">{usd(life.spend, 0)}</span> spend ·{' '}
-        <span className="font-medium text-foreground">{life.leads}</span> leads · CPL{' '}
-        <span className="font-medium text-foreground">{usd(life.cpl, 0)}</span>
-      </p>
-    )
-  }
-  const cells = [
-    { label: '3D', v: lastNDays(c, 3).cpl },
-    { label: '5D', v: lastNDays(c, 5).cpl },
-    { label: '7D', v: lastNDays(c, 7).cpl },
-    { label: '14D', v: lastNDays(c, 14).cpl },
-    { label: '30D', v: lastNDays(c, 30).cpl },
-    { label: 'Life', v: life.cpl },
-  ]
-  const sinceLead = spendSinceLastLead(c)
-  return (
-    <dl className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
-      {cells.map((x) => (
-        <div key={x.label} className="flex gap-1">
-          <dt className="text-muted-foreground">{x.label}</dt>
-          <dd className={cn('font-medium tabular-nums', (x.v === null || x.v >= 300) && 'text-destructive')}>{usd(x.v, 0)}</dd>
-        </div>
-      ))}
-      <div className="flex gap-1">
-        <dt className="text-muted-foreground">WoW</dt>
-        <dd><WeekOnWeek ads={[c]} /></dd>
-      </div>
-      <div className="flex gap-1">
-        <dt className="text-muted-foreground">Since last lead</dt>
-        <dd className="font-medium tabular-nums">{usd(sinceLead, 0)}</dd>
-      </div>
-    </dl>
-  )
-}
 
 export default function WatchListPage() {
-  const { watch, watchAll, kill, creatives, getCreative, killedIds, removeWatch, setWatchDecision, addToKill, relaunch, adsetTotals } = useStore()
+  const { watch, watchAll, kill, creatives, getCreative, killedIds, removeWatch, setWatchDecision, addToKill, relaunch, adsetTotals, hasOutcomes } = useStore()
+  /* The same columns Creative Analysis shows, in the same order. */
+  const columns = useMemo(() => metricColumns(hasOutcomes), [hasOutcomes])
+  /* And the same range selector driving them. The watch list was fixed to
+     lifetime, so the figures beside a decision could not be narrowed to the
+     window the decision is actually made on — the rules talk about the last
+     3 and 7 days. The day nav above picks which day's LIST you are reading;
+     this picks how far back its NUMBERS reach. They are different questions
+     and now have different controls. */
+  const [range, setRange] = useState<RangeKey>('max')
+  /* Narrow the list to one firm, the same control Creative Analysis has.
+     The list is already grouped by firm; this is for the days when only
+     one of them is the job. */
+  const [firmFilter, setFirmFilter] = useState('all')
   /* Two ad sets can share a name. Tagged beside the name rather than run
      into it — the name is copied into Ads Manager and must stay exact. */
   const dupeTags = useMemo(() => adsetDupeTags(creatives), [creatives])
@@ -97,8 +66,15 @@ export default function WatchListPage() {
      still awaiting a decision. On a past day they stay, because the record
      of what was on that list is the point of looking. */
   const isToday = date === TODAY
+  /* And anything switched off in Ads Manager, whether or not it went
+     through the kill list. A paused ad is not awaiting a decision — the
+     decision has been made somewhere else. */
+  const offInMeta = (id: string) => {
+    const c = getCreative(id)
+    return !!c && !isDelivering(c)
+  }
   const live = isToday
-    ? watch.filter((w) => !killedIds.has(w.creativeId) && !inKillAny.has(w.creativeId))
+    ? watch.filter((w) => !killedIds.has(w.creativeId) && !inKillAny.has(w.creativeId) && !offInMeta(w.creativeId))
     /* A past day reads back as it was, dismissed rows included — they were on
        that list and someone took them off, which is part of the record. */
     : watchAll
@@ -107,7 +83,11 @@ export default function WatchListPage() {
   const yIds = new Set(yesterday.map((w) => w.creativeId))
   const inKill = new Set(kill.map((k) => k.creativeId))
   const decidedKill = today.filter((w) => w.decision === 'KILL' && !inKill.has(w.creativeId))
-  const undecided = today.filter((w) => !w.decision).length
+  /* Marked for the kill list but not sent yet — the work the header
+     button is waiting on. "Undecided" used to count anything without a
+     WATCH or KILL label, which on a page where everything is already
+     being watched meant counting the normal state as an outstanding job. */
+  const markedToKill = decidedKill.length
 
   /* Grouped by firm, not by Meta campaign — the campaign name is an
      ad-account artefact, while the decision being made here is a firm's.
@@ -122,10 +102,14 @@ export default function WatchListPage() {
      chevron the way they do in Creative Analysis — there when you want to
      see which cut is carrying the set, out of the way when you are working
      down the list. */
-  const rows = today
+  const allRows = today
     .map((w) => ({ w, c: getCreative(w.creativeId) }))
     .filter((r): r is { w: StoredWatch; c: Creative } => !!r.c)
     .sort((a, b) => (a.c.launchDate < b.c.launchDate ? 1 : -1))
+  /* Offered from the day's own rows, so the dropdown never lists a firm
+     that would empty the page. */
+  const firmsPresent = [...new Set(allRows.map((r) => r.c.firm))]
+  const rows = firmFilter === 'all' ? allRows : allRows.filter((r) => r.c.firm === firmFilter)
 
   type SetGroup = { key: string; adset: string; items: { w: StoredWatch; c: Creative }[] }
 
@@ -160,24 +144,25 @@ export default function WatchListPage() {
      always done together, and doing them on two screens is how one of the
      two gets forgotten. The kill is what comes off today; the launch is what
      goes up in its place, with the convention bumped to the next version. */
-  /* KILL is the action, not a label. Marking the decision and then pressing
-     a second button to send it was the step that left creatives sitting here
-     already decided — so the button does the thing it says. WATCH stays a
-     toggle, because watching is a decision to wait. */
-  const killOne = (creativeId: string) => {
-    addToKill([creativeId])
-    toast('Sent to the kill list')
+  /* KILL marks the decision; it does not send.
+
+     The two steps are deliberate. Nothing on this list leaves it until
+     "Send to kill list" is pressed, so a mis-click costs one more click to
+     undo rather than putting an ad on the kill list that has to be fished
+     back out. The header button is the one action that writes.
+
+     There is no WATCH button any more: everything on this page is already
+     on the watch list, so the only decision left to make is whether it
+     comes off. */
+  const killOne = (w: StoredWatch) => {
+    setWatchDecision(w.id, w.decision === 'KILL' ? undefined : 'KILL')
   }
 
   /* The same three actions, applied to every ad in the set. A set is the
      unit the decision is made on, so doing it one creative at a time is
      only a way to leave half of it done. */
-  const killSet = (ids: string[], label: string) => {
-    const n = addToKill(ids)
-    toast(n ? `${label} — ${n} ad${n === 1 ? '' : 's'} sent to the kill list` : 'Already on the kill list')
-  }
-  const watchSet = (items: { w: StoredWatch }[], on: boolean) => {
-    for (const { w } of items) setWatchDecision(w.id, on ? 'WATCH' : undefined)
+  const killSet = (items: { w: StoredWatch }[], on: boolean) => {
+    for (const { w } of items) setWatchDecision(w.id, on ? 'KILL' : undefined)
   }
   const relaunchSet = (items: { w: StoredWatch; c: Creative }[], label: string) => {
     for (const { c } of items) {
@@ -196,30 +181,24 @@ export default function WatchListPage() {
     toast(`“${name}” killed and queued to relaunch today`)
   }
 
+  /* The same two icons as the ad-set row above, and as Creative Analysis.
+     The decision still reads at a glance: a cut marked WATCH shows a filled
+     eye, one marked KILL a filled skull. */
+  /* One button per cut: KILL, on or off. WATCH is gone — a cut is on the
+     watch list already, so marking it "watch" said nothing the page was not
+     saying by showing it. */
   const DecisionToggle = ({ w }: { w: StoredWatch }) => (
-    <div role="radiogroup" aria-label="Decision" className="flex overflow-hidden rounded-md border">
-      {(['WATCH', 'KILL'] as Decision[]).map((d) => (
-        <button
-          key={d}
-          type="button"
-          role="radio"
-          aria-checked={w.decision === d}
-          disabled={inKill.has(w.creativeId)}
-          onClick={() =>
-            d === 'KILL'
-              ? killOne(w.creativeId)
-              : setWatchDecision(w.id, w.decision === d ? undefined : d)
-          }
-          className={cn(
-            'flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50',
-            w.decision === d ? (d === 'KILL' ? 'bg-destructive text-white' : 'bg-primary text-primary-foreground') : 'bg-card hover:bg-muted',
-          )}
-        >
-          {d === 'KILL' ? <Skull className="size-3" aria-hidden /> : <Eye className="size-3" aria-hidden />}
-          {d}
-        </button>
-      ))}
-    </div>
+    <Button
+      size="icon-sm"
+      aria-pressed={w.decision === 'KILL'}
+      aria-label={w.decision === 'KILL' ? 'Clear the KILL decision on this cut' : 'Mark this cut KILL'}
+      title={w.decision === 'KILL' ? 'Marked KILL — click to clear' : 'KILL — mark it, then press Send to kill list'}
+      variant={w.decision === 'KILL' ? 'destructive' : 'ghost'}
+      disabled={inKill.has(w.creativeId)}
+      onClick={() => killOne(w)}
+    >
+      <Skull aria-hidden />
+    </Button>
   )
 
   return (
@@ -235,13 +214,17 @@ export default function WatchListPage() {
       />
       <div className="flex flex-col gap-4 p-6">
         <BoardStatus migration="supabase/migration_creative_board.sql" />
-        <DayNav date={date} onChange={setDate} label="Watch list day" />
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="min-w-0 flex-1"><DayNav date={date} onChange={setDate} label="Watch list day" /></div>
+          <FirmSelect value={firmFilter} onChange={setFirmFilter} firms={firmsPresent} />
+          <RangeSelect value={range} onChange={setRange} />
+        </div>
         <div className="flex flex-wrap gap-2 text-xs">
           <Pill tone="blue">NEW = Day 1–3, judged on launch-to-date</Pill>
           <Pill>ACTIVE = Day 4+, judged on 7d trend</Pill>
           <Pill tone="amber">T&amp;Y CPL $250–299 = review</Pill>
           <Pill tone="red">Red = 2+ days in a row</Pill>
-          {undecided > 0 && <Pill tone="amber">{undecided} still need a decision</Pill>}
+          {markedToKill > 0 && <Pill tone="red">{markedToKill} marked KILL — not sent yet</Pill>}
         </div>
 
         {live.length === 0 ? (
@@ -249,16 +232,25 @@ export default function WatchListPage() {
             {isToday ? 'Use Watch List Mode in Creative Analysis to add ad sets.' : 'Step back to another day, or return to today.'}
           </EmptyState>
         ) : (
-          <div className="grid gap-4 xl:grid-cols-[3fr_2fr]">
+          <div className="flex flex-col gap-4">
             <section className="overflow-hidden rounded-lg border bg-card">
               <div className="flex items-center justify-between border-b px-4 py-3">
                 <h2 className="font-semibold">
                   {isToday ? 'Today' : 'That day'} <span className="font-normal text-muted-foreground">· {formatDate(date)}</span>
                 </h2>
                 <span className="text-sm text-muted-foreground">
-                  {byFirm.reduce((n, [, sets]) => n + sets.length, 0)} ad sets · {today.length} ads
+                  {byFirm.reduce((n, [, sets]) => n + sets.length, 0)} ad sets · {rows.length} ads
                 </span>
               </div>
+
+              {/* The firm filter can empty a list that is not actually empty.
+                  Saying so beats a header claiming 0 ad sets over blank
+                  space. */}
+              {byFirm.length === 0 && (
+                <p className="p-6 text-center text-sm text-muted-foreground">
+                  Nothing on the watch list for {firmName(firmFilter)} on this day.
+                </p>
+              )}
               {byFirm.map(([firm, sets]) => (
                 <div key={firm}>
                   <div className="flex items-center justify-between border-b bg-muted/50 px-4 py-1.5 text-xs">
@@ -268,172 +260,207 @@ export default function WatchListPage() {
                     </span>
                   </div>
 
-                  {sets.map((g) => {
-                    const ids = g.items.map((r) => r.c.id)
-                    const head = g.items[0].c
-                    const set = adsetOf(head, adsetTotals)
-                    const setLife = sumTotals(g.items.map((r) => totalsFor(r.c, 'max')))
-                    const streak = Math.max(...g.items.map((r) => watchStreak(r.c.id, watch)))
-                    const suggestion = suggestDecision(head, streak, adsetTotals)
-                    const repeat = streak >= 2
-                    const decided = g.items.every((r) => r.w.decision === 'WATCH')
-                    const anyInKill = g.items.some((r) => inKill.has(r.c.id))
-                    const isOpen = open.has(g.key)
-                    const budget = g.items.reduce((n, r) => n + r.c.dailyBudget, 0)
+                  {/* The same columns Creative Analysis shows, in the same
+                      order. This list used to say all of it as a wrapping
+                      row of eight pills — T&Y spend, T&Y CPL, CPL week on
+                      week, Life CPA, budget — which put every figure in a
+                      different place on every row. Wide on purpose, and it
+                      scrolls inside its own box so the page never does. */}
+                  <div className="overflow-x-auto">
+                    {/* No min-width: the whole row has to be readable without scrolling
+                        sideways, so the table fits the page and the ad set name
+                        — the one thing that can be any length — truncates
+                        instead. */}
+                    <table className="w-full min-w-[1100px] text-sm">
+                      <MetricHead
+                        columns={columns}
+                        lead={
+                          <>
+                            <th scope="col" className="w-10 px-3 py-2.5" />
+                            <th scope="col" className="px-3 py-2.5 text-left font-medium">Ad set</th>
+                          </>
+                        }
+                      />
 
-                    return (
-                      <div key={g.key} className="border-b last:border-b-0">
-                        <div className={cn('flex flex-col gap-2 px-4 py-3 sm:flex-row sm:items-start', repeat && 'bg-destructive/5')}>
-                          <button
-                            type="button"
-                            onClick={() => toggleOpen(g.key)}
-                            aria-expanded={isOpen}
-                            aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${g.adset}`}
-                            className="mt-0.5 shrink-0 rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground"
-                          >
-                            {isOpen ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
-                          </button>
+                      {sets.map((g) => {
+                        const ids = g.items.map((r) => r.c.id)
+                        const head = g.items[0].c
+                        const streak = Math.max(...g.items.map((r) => watchStreak(r.c.id, watch)))
+                        const suggestion = suggestDecision(head, streak, adsetTotals)
+                        const repeat = streak >= 2
+                        const decided = g.items.every((r) => r.w.decision === 'KILL')
+                        const anyInKill = g.items.some((r) => inKill.has(r.c.id))
+                        const isOpen = open.has(g.key)
+                        const setAds = g.items.map((r) => r.c)
 
-                          <div className="flex min-w-0 flex-1 flex-col gap-1">
-                            <button
-                              type="button"
-                              onClick={() => toggleOpen(g.key)}
-                              className={cn('truncate text-left font-mono text-sm font-medium hover:underline', repeat && 'text-destructive')}
-                            >
-                              {g.adset}
-                            </button>
-                            <p className="text-xs text-muted-foreground">{g.items[0].w.reason}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {dupeTags.get(g.key) && <Pill tone="amber">{dupeTags.get(g.key)} with this name</Pill>}
-                              <Pill>{g.items.length} ad{g.items.length === 1 ? '' : 's'}</Pill>
-                              {streak >= 2 && <Pill tone="red">Day {streak} in a row</Pill>}
-                              {watchBand(head, adsetTotals) === 'review' && <Pill tone="amber">Review band</Pill>}
-                              {!isToday && g.items.every((r) => r.w.removed) && <Pill>Taken off the list</Pill>}
-                              {!isToday && g.items.some((r) => r.w.decision === 'KILL') && <Pill tone="red">Decided KILL</Pill>}
-                              {anyInKill && (
-                                <Pill tone="red">
-                                  <Skull className="size-3" aria-hidden /> on today’s kill list
-                                </Pill>
-                              )}
-                              {/* "T&Y" alone was the spend and "T&Y CPL" the
-                                  cost per lead, which only reads as two
-                                  different things once you already know. */}
-                              <Pill>T&amp;Y spend {usd(set.ty.spend, 0)}</Pill>
-                              <Pill>T&amp;Y CPL {usd(set.ty.cpl, 0)}</Pill>
-                              {/* Last week against this one. It carries the
-                                  7-day CPL that used to sit here on its own,
-                                  plus what it was the week before. */}
-                              <Pill>
-                                CPL <WeekOnWeek ads={g.items.map((r) => r.c)} />
-                              </Pill>
-                              {/* Cost per signed case, over the ad set's whole
-                                  run. Lifetime rather than the T&Y window
-                                  because cases sign days after the click, so
-                                  a two-day CPA is almost always "—" and says
-                                  nothing about whether the set pays. */}
-                              <Pill tone={setLife.cpa !== null && setLife.cpa <= GOOD_CPA ? 'green' : undefined}>
-                                Life CPA {usd(setLife.cpa, 0)}
-                              </Pill>
-                              <Pill>{usd(budget, 0)}/day</Pill>
-                            </div>
-                            <p className="text-xs">
-                              <span className="text-muted-foreground">Suggested: </span>
-                              <span className={cn('font-medium', suggestion.decision === 'KILL' ? 'text-destructive' : 'text-primary')}>
-                                {suggestion.decision}
-                              </span>
-                              <span className="text-muted-foreground"> — {suggestion.why}</span>
-                            </p>
-                          </div>
+                        return (
+                          <tbody key={g.key} className="border-t">
+                            <tr className={cn('bg-card hover:bg-muted/40', repeat && 'bg-destructive/5')}>
+                              <td className="px-3 py-2 align-top">
+                                <button
+                                  type="button"
+                                  onClick={() => toggleOpen(g.key)}
+                                  aria-expanded={isOpen}
+                                  aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${g.adset}`}
+                                  className="flex size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                                >
+                                  {isOpen ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
+                                </button>
+                              </td>
 
-                          {/* Acting on the set, which is the decision being made. A
-                              past day is a record and shows no controls — a row
-                              of dead buttons invites a click that writes today's
-                              kill against last week's list. */}
-                          {isToday && (
-                          <div className="flex shrink-0 items-center gap-1">
-                            <div role="group" aria-label="Decision" className="flex overflow-hidden rounded-md border">
-                              <button
-                                type="button"
-                                aria-pressed={decided}
-                                disabled={!isToday || anyInKill}
-                                onClick={() => watchSet(g.items, !decided)}
-                                className={cn(
-                                  'flex items-center gap-1 px-2.5 py-1 text-xs font-medium transition-colors disabled:opacity-50',
-                                  decided ? 'bg-primary text-primary-foreground' : 'bg-card hover:bg-muted',
-                                )}
-                              >
-                                <Eye className="size-3" aria-hidden /> WATCH
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!isToday || anyInKill}
-                                onClick={() => killSet(ids, g.adset)}
-                                className="flex items-center gap-1 bg-card px-2.5 py-1 text-xs font-medium transition-colors hover:bg-muted disabled:opacity-50"
-                              >
-                                <Skull className="size-3" aria-hidden /> KILL
-                              </button>
-                            </div>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={!isToday || anyInKill}
-                              onClick={() => relaunchSet(g.items, g.adset)}
-                              title="Kill this ad set and put fresh versions in today's launch queue"
-                            >
-                              <RefreshCw aria-hidden /> Relaunch
-                            </Button>
-                            <Button size="icon-sm" variant="ghost" aria-label={`Remove ${g.adset} from the watch list`} onClick={() => removeSet(g.items)}>
-                              <Trash2 aria-hidden />
-                            </Button>
-                          </div>
-                          )}
-                        </div>
-
-                        {isOpen && (
-                          <ul className="divide-y border-t bg-muted/20">
-                            {g.items.map(({ w, c }) => {
-                              const ty = totalsFor(c, 'ty')
-                              const life = totalsFor(c, 'max')
-                              return (
-                                <li key={w.id} className="flex flex-col gap-2 py-2.5 pl-12 pr-4 sm:flex-row sm:items-start">
-                                  <Thumb c={c} />
-                                  <div className="flex min-w-0 flex-1 flex-col gap-1">
-                                    <code className="truncate font-mono text-xs font-medium">{c.convention}</code>
-                                    <div className="flex flex-wrap gap-1">
-                                      <Pill tone={stageOf(c) === 'NEW' ? 'blue' : 'muted'}>{stageOf(c)}</Pill>
-                                      <Pill>T&amp;Y spend {usd(ty.spend, 0)}</Pill>
-                                      <Pill>T&amp;Y CPL {usd(ty.cpl, 0)}</Pill>
-                                      <Pill tone={life.cpa !== null && life.cpa <= GOOD_CPA ? 'green' : undefined}>
-                                        Life CPA {usd(life.cpa, 0)}
-                                      </Pill>
-                                      <Pill>Launched {formatDate(c.launchDate)}</Pill>
+                              <td className="max-w-[460px] px-3 py-2">
+                                {/* Laid out exactly like Creative Analysis: the
+                                    name in the body face on one line, then one
+                                    muted line of firm and tags. It used to run
+                                    to four lines — a monospaced name, a row of
+                                    pills, the reason, and the suggestion —
+                                    which made every row three times the height
+                                    of the same ad on the analysis page and
+                                    nothing lined up between them. The reason
+                                    and the suggestion are still here, as a tag
+                                    and its tooltip. */}
+                                <div className="flex items-center gap-2.5">
+                                  <Thumb c={head} />
+                                  <div className="flex min-w-0 flex-col gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => toggleOpen(g.key)}
+                                      className={cn('truncate text-left font-medium hover:text-primary', repeat && 'text-destructive')}
+                                    >
+                                      {g.adset}
+                                    </button>
+                                    {/* One line, always. With `flex-wrap` the
+                                        firm, the ad count and each tag took a
+                                        line of their own in a column this
+                                        width — a four-line cell and a 93px
+                                        row, three times the height of the same
+                                        ad on Creative Analysis. It truncates
+                                        now; the full name is on the row above
+                                        and the detail is on hover. */}
+                                    <div className="flex items-center gap-1 overflow-hidden whitespace-nowrap">
+                                      <span className="min-w-0 shrink truncate text-[11px] text-muted-foreground">
+                                        {firmName(firm)}
+                                      </span>
+                                      <span className="shrink-0">
+                                        <Pill>{g.items.length} ad{g.items.length === 1 ? '' : 's'}</Pill>
+                                      </span>
+                                      {/* Why it is on the list, and what the rules
+                                          say to do about it — one tag, the detail
+                                          on hover, instead of two full lines. */}
+                                      <span className="shrink-0" title={`Suggested ${suggestion.decision}${suggestion.why ? ` — ${suggestion.why}` : ''}${g.items[0].w.reason ? ` · on the list because: ${g.items[0].w.reason}` : ''}`}>
+                                        <Pill tone={suggestion.decision === 'KILL' ? 'red' : 'blue'}>
+                                          {suggestion.decision}?
+                                        </Pill>
+                                      </span>
+                                      <span className="shrink-0">{dupeTags.get(g.key) && <Pill tone="amber">{dupeTags.get(g.key)} with this name</Pill>}</span>
+                                      <span className="shrink-0">{streak >= 2 && <Pill tone="red">Day {streak} in a row</Pill>}</span>
+                                      <span className="shrink-0">{watchBand(head, adsetTotals) === 'review' && <Pill tone="amber">Review band</Pill>}</span>
+                                      {!isToday && g.items.every((r) => r.w.removed) && <Pill>Taken off the list</Pill>}
+                                      {!isToday && g.items.some((r) => r.w.decision === 'KILL') && <Pill tone="red">Decided KILL</Pill>}
+                                      {anyInKill && (
+                                        <Pill tone="red">
+                                          <Skull className="size-3" aria-hidden /> on today’s kill list
+                                        </Pill>
+                                      )}
                                     </div>
-                                    <TrendStrip c={c} />
                                   </div>
-                                  {/* One cut can still be pulled on its own —
-                                      a broken render, the wrong disclaimer —
-                                      without touching the rest of the set. */}
-                                  {isToday && (
-                                  <div className="flex shrink-0 items-center gap-1">
-                                    <DecisionToggle w={w} />
+                                </div>
+                              </td>
+
+                              <MetricCells columns={columns} t={totalsOf(setAds, range)} ads={setAds} />
+
+                              {/* Acting on the set, which is the decision being made.
+                                  A past day is a record and shows no controls — a row
+                                  of dead buttons invites a click that writes today's
+                                  kill against last week's list. */}
+                              <td className={cn('whitespace-nowrap px-3 py-2 align-top', stickyCell)}>
+                                {/* The same four icon buttons Creative Analysis
+                                    uses, in the same place. Labelled WATCH/KILL
+                                    buttons were twice the width and pushed the
+                                    last column under the pinned edge; the
+                                    decision still reads at a glance because a
+                                    set already marked WATCH shows its eye
+                                    filled in. */}
+                                {isToday && (
+                                  <div className="relative flex items-center justify-end gap-1">
+                                    <Button
+                                      size="icon-sm"
+                                      aria-pressed={decided}
+                                      variant={decided ? 'destructive' : 'ghost'}
+                                      disabled={!isToday || anyInKill}
+                                      onClick={() => killSet(g.items, !decided)}
+                                      aria-label={decided ? `Clear the KILL decision on ${g.adset}` : `Mark ${g.adset} KILL`}
+                                      title={decided ? 'Marked KILL — click to clear' : 'KILL — mark the set, then press Send to kill list'}
+                                    >
+                                      <Skull aria-hidden />
+                                    </Button>
                                     <Button
                                       size="icon-sm"
                                       variant="ghost"
-                                      aria-label={`Remove ${c.convention} from the watch list`}
-                                      onClick={() => removeWatch(w.id)}
+                                      disabled={!isToday || anyInKill}
+                                      onClick={() => relaunchSet(g.items, g.adset)}
+                                      aria-label={`Relaunch ${g.adset}`}
+                                      title="Relaunch — kill this ad set and put fresh versions in today's launch queue"
                                     >
+                                      <RefreshCw aria-hidden />
+                                    </Button>
+                                    <Button size="icon-sm" variant="ghost" aria-label={`Remove ${g.adset} from the watch list`} onClick={() => removeSet(g.items)}>
                                       <Trash2 aria-hidden />
                                     </Button>
                                   </div>
-                                  )}
-                                </li>
+                                )}
+                              </td>
+                            </tr>
+
+                            {isOpen && g.items.map(({ w, c }) => {
+                              return (
+                                <tr key={w.id} className="border-t border-dashed bg-muted/20 hover:bg-muted/40">
+                                  <td className="px-3 py-2" />
+                                  <td className="max-w-[460px] py-2 pl-8 pr-3">
+                                    <div className="flex items-start gap-2.5 border-l-2 border-border pl-3">
+                                      <Thumb c={c} />
+                                      <div className="flex min-w-0 flex-col gap-1">
+                                        <span className="truncate font-medium">{c.convention}</span>
+                                        <div className="flex items-center gap-1 overflow-hidden whitespace-nowrap">
+                                          <span className="min-w-0 shrink truncate text-[11px] text-muted-foreground">
+                                            {c.angle} · launched {formatDate(c.launchDate)}
+                                          </span>
+                                          <span className="shrink-0">
+                                            <Pill tone={stageOf(c) === 'NEW' ? 'blue' : 'muted'}>{stageOf(c)}</Pill>
+                                          </span>
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </td>
+
+                                  <MetricCells columns={columns} t={totalsFor(c, range)} ads={[c]} />
+
+                                  {/* One cut can still be pulled on its own — a broken
+                                      render, the wrong disclaimer — without touching
+                                      the rest of the set. */}
+                                  <td className={cn('whitespace-nowrap px-3 py-2 align-top', stickyTint)}>
+                                    {isToday && (
+                                      <div className="relative flex items-center justify-end gap-1">
+                                        <DecisionToggle w={w} />
+                                        <Button
+                                          size="icon-sm"
+                                          variant="ghost"
+                                          aria-label={`Remove ${c.convention} from the watch list`}
+                                          onClick={() => removeWatch(w.id)}
+                                        >
+                                          <Trash2 aria-hidden />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
                               )
                             })}
-                          </ul>
-                        )}
-                      </div>
-                    )
-                  })}
+                          </tbody>
+                        )
+                      })}
+                    </table>
+                  </div>
                 </div>
               ))}
             </section>

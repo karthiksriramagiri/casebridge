@@ -12,7 +12,7 @@ import { downloadCsv, PageHeader, Pill, StatCard } from '@/app/creative/_compone
 import { PriorityStars } from '@/app/creative/_components/admin/priority-stars'
 import { AssignmentDetailSheet } from '@/app/creative/_components/assignment-detail-sheet'
 import { TODAY, addDays } from '@/app/creative/_lib/data'
-import { adsetBudget, adsetIsOn, adsetKey, formatDate, sumTotals, totalsFor, usd, WINNER_ADSET_CPL } from '@/app/creative/_lib/metrics'
+import { adsetBudget, adsetKey, formatMix, isDelivering, formatDate, sumTotals, totalsFor, usd, WINNER_ADSET_CPL } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
@@ -63,6 +63,8 @@ type FirmBlockData = {
   /** Ad sets live right now: Meta's, plus the ones ticked up today that it
       has not reported yet. */
   liveSetCount: number
+  /** The IMG / BNR / V split of the firm's live ads. */
+  mix: { kind: string; count: number; pct: number }[]
   winners: number
 }
 
@@ -84,7 +86,7 @@ export default function ExecutePage() {
     return FIRM_KEYS.map((key) => {
       /* Only what is switched on counts as the current structure — a paused
          ad is not part of the account anyone is about to discuss. */
-      const live = creatives.filter((c) => mine(c.firm, key) && !killedIds.has(c.id) && adsetIsOn(c))
+      const live = creatives.filter((c) => mine(c.firm, key) && !killedIds.has(c.id) && isDelivering(c))
 
       /* Left in the order they arrived, done or not. Sorting the ticked
          ones to the bottom meant a row jumped away from the cursor the
@@ -106,7 +108,10 @@ export default function ExecutePage() {
          not move until the last cut goes. Building the groups from `live`
          alone dropped the killed cut out and took its ad set's budget with
          it — $400 became $200 on a kill that freed nothing. */
-      const switchedOn = creatives.filter((c) => mine(c.firm, key) && adsetIsOn(c))
+      /* Switched on at both levels — the ad's own switch and its ad set's.
+         An ad paused in Ads Manager is not part of the structure anyone is
+         about to discuss, and it holds no budget. */
+      const switchedOn = creatives.filter((c) => mine(c.firm, key) && isDelivering(c))
       const sets = new Map<string, Creative[]>()
       for (const c of switchedOn) {
         const k = adsetKey(c)
@@ -135,7 +140,7 @@ export default function ExecutePage() {
          ticked off does not shrink the set it came out of. */
       const allSets = new Map<string, Creative[]>()
       for (const c of creatives) {
-        if (!adsetIsOn(c)) continue
+        if (!isDelivering(c)) continue
         const k = adsetKey(c)
         allSets.set(k, [...(allSets.get(k) ?? []), c])
       }
@@ -268,6 +273,9 @@ export default function ExecutePage() {
            figure below, after it, part of the account. */
         budget: liveSets.reduce((t, g) => t + g.budget, 0) + launchedLive,
         liveSetCount: liveSets.length + launchedToday.filter((a) => !landsInRunningSet(a)).length,
+        /* Counted over the ads, not the ad sets — the question is what
+           share of the creative in market is each kind. */
+        mix: live.length ? formatMix(live) : [],
         /* A winner is an ad set under the ad-set CPL, same as Winner
            Analysis — one cheap cut inside an expensive set is not one. */
         winners: liveSets.filter((g) => g.cpl !== null && g.cpl < WINNER_ADSET_CPL).length,
@@ -523,9 +531,34 @@ function FirmOverview({
             label="Current structure"
             count={f.liveSets.length}
             right={
-              <span className="text-xs text-muted-foreground">
-                Budget <strong className="text-foreground">{usd(f.budget, 0)}</strong>/day
-                {f.winners > 0 && ` · ${f.winners} winner${f.winners === 1 ? '' : 's'}`}
+              <span className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                {/* What this firm is actually running, by kind. The counts
+                    are what the meeting argues about — "we are all banners
+                    again" — and nothing on the page answered it: Meta only
+                    reports Image or Video, which cannot tell a banner from
+                    a still. Read off the ad name's format segment instead. */}
+                {f.mix.length > 0 && (
+                  <span className="flex items-center gap-2">
+                    {/* The count first, the share after it. The percentage
+                        alone answers "are we all banners again" but not
+                        "how many do we need", and the second question is
+                        the one that turns into a brief. */}
+                    {f.mix.map((m) => (
+                      <span
+                        key={m.kind}
+                        title={`${m.count} of ${f.live.length} live ${f.live.length === 1 ? 'ad' : 'ads'}`}
+                        className={cn('tabular-nums', m.count === 0 && 'opacity-40')}
+                      >
+                        <strong className="text-foreground">{m.kind}</strong> {m.count}
+                        <span className="text-muted-foreground/70"> · {m.pct}%</span>
+                      </span>
+                    ))}
+                  </span>
+                )}
+                <span>
+                  Budget <strong className="text-foreground">{usd(f.budget, 0)}</strong>/day
+                  {f.winners > 0 && ` · ${f.winners} winner${f.winners === 1 ? '' : 's'}`}
+                </span>
               </span>
             }
           >

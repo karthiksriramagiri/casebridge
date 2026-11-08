@@ -1,9 +1,9 @@
 'use client'
 
-import { PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
+import { FirmSelect, PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
 import { adsetBudget, adsetKey, isDelivering, totalsFor, usd } from '@/app/creative/_lib/metrics'
-import { useMemo } from 'react'
-import { RELAUNCH_TYPE, type Assignment, type Creative } from '@/app/creative/_lib/types'
+import { useMemo, useState } from 'react'
+import { firmKey, RELAUNCH_TYPE, type Assignment, type Creative } from '@/app/creative/_lib/types'
 import { TODAY } from '@/app/creative/_lib/data'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName, firmOf } from '@/app/_metrics/firms'
@@ -11,10 +11,28 @@ import { FIRMS, firmName, firmOf } from '@/app/_metrics/firms'
 type Row = { id: string; name: string; firm: string; budget: number; spent: number; isNew: boolean }
 
 export default function BudgetPage() {
-  const { creatives, killedIds, launches, kill, assignments } = useStore()
+  const { creatives, killedIds, launches, kill, assignments: allAssignments } = useStore()
+
+  /* Narrow the whole page to one firm, the same control Creative Analysis
+     and the watch list have. Every figure follows it — the totals at the
+     top as well as the sections below, because a page showing one firm's
+     sections under four firms' totals is the worst of both. */
+  const [firmFilter, setFirmFilter] = useState('all')
+  /* Ads carry LHP / LHP_SP; assignments carry "LHP [SPANISH]". firmKey
+     normalises both, so one filter value matches either spelling. */
+  const wanted = firmKey(firmFilter)
+  const inFirm = (code: string | undefined | null) =>
+    firmFilter === 'all' || (wanted !== null && firmKey(code) === wanted)
+
+  /* Offered from what the account actually has, so the dropdown never lists
+     a firm that would empty the page. */
+  const firmsPresent = [...new Set(creatives.filter(isDelivering).map((c) => c.firm))]
+
+  const assignments = allAssignments.filter((a) => inFirm(a.firm))
 
   const rows: Row[] = [
     ...creatives
+      .filter((c) => inFirm(c.firm))
       /* Only what is actually delivering. A paused ad — or any ad under a
          paused ad set or campaign — spends nothing and holds no budget, so
          listing it overstated "Daily budget (live)" by the budget of every
@@ -37,7 +55,8 @@ export default function BudgetPage() {
       .map((l) => {
         const named = l.convention || l.name
         return { id: l.id, name: named, firm: firmOf(named), budget: l.dailyBudget, spent: 0, isNew: true }
-      }),
+      })
+      .filter((r) => inFirm(r.firm)),
   ]
 
   /* Counted once per ad set.
@@ -47,7 +66,7 @@ export default function BudgetPage() {
      $10,000 reported against a real $8,600. The rows still each show their
      ad set's figure, which is the right thing to see beside an ad; it is
      only the totals that must not add them together. */
-  const liveAds = creatives.filter((c) => !killedIds.has(c.id) && isDelivering(c))
+  const liveAds = creatives.filter((c) => inFirm(c.firm) && !killedIds.has(c.id) && isDelivering(c))
 
   /* The ad sets going off entirely today.
 
@@ -62,7 +81,7 @@ export default function BudgetPage() {
     const byKey = new Map<string, Creative[]>()
     for (const k of kill.filter((x) => x.status === 'pending')) {
       const c = creatives.find((x) => x.id === k.creativeId)
-      if (!c || !isDelivering(c)) continue
+      if (!c || !isDelivering(c) || !inFirm(c.firm)) continue
       byKey.set(adsetKey(c), [...(byKey.get(adsetKey(c)) ?? []), c])
     }
     const keys = new Set<string>()
@@ -156,6 +175,9 @@ export default function BudgetPage() {
         description="Active ad sets and ads only. Updates when a launch or kill is marked done — not when it’s just listed."
       />
       <div className="flex flex-col gap-4 p-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <FirmSelect value={firmFilter} onChange={setFirmFilter} firms={firmsPresent} />
+        </div>
         <section aria-label="Budget totals" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
           <StatCard label="Daily budget (live)" value={usd(totalBudget, 0)} /* Counted the way the money is, so the hint and the figure beside it
                cannot disagree — a name shared by two Meta ad sets is two. */

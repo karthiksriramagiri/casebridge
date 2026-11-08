@@ -65,6 +65,9 @@ export function sumDays(days: DayMetric[]): Totals {
   )
   return {
     ...t,
+    /* The caller overrides both of these when it knows the lifetime
+       figures; on a bare day-sum they are the same thing. */
+    lifeSpend: t.spend,
     cpl: t.leads ? t.spend / t.leads : null,
     cpa: t.acquisitions ? t.spend / t.acquisitions : null,
     ctr: t.impressions ? t.linkClicks / t.impressions : 0,
@@ -117,15 +120,42 @@ export function hasDeliveryIssue(c: Creative): boolean {
 }
 
 export function totalsFor(c: Creative, key: RangeKey) {
-  return sumDays(daysInRange(c, key))
+  const t = sumDays(daysInRange(c, key))
+  /* Signed and CPA are lifetime, whatever the range is.
+
+     A case signs days to weeks after the click that bought it, so scoping
+     it to the same window as the spend puts cause and effect in different
+     buckets: at range Today the column read 0 for an ad that has signed
+     sixteen cases, and CPA read "—" beside it. 93 of the 239 cases
+     attributed to the live ads were signed before the 30-day Meta window
+     even opens, so no range the page offers could show them.
+
+     Both halves of the ratio are lifetime, so CPA stays a true cost per
+     case; the columns that belong to a window — spend, leads, CPL, CTR,
+     hook rate, CPM, impressions — keep following the range. */
+  const life = sumDays(c.daily)
+  return {
+    ...t,
+    acquisitions: life.acquisitions,
+    lifeSpend: life.spend,
+    cpa: life.acquisitions ? life.spend / life.acquisitions : null,
+  }
 }
 
 /** The cases signed off this ad inside the range — dated by the stage change
  *  that signed them, so "today" means they reached Pending Send or
  *  Signed/Sent today, not that their lead came in today. */
-export function signedIn(c: Creative, key: RangeKey): SignedLead[] {
-  const { start, end } = rangeBounds(key)
-  return (c.signedLeads ?? []).filter((l) => l.date >= start && l.date <= end)
+/* Every case attributed to this ad, newest first.
+
+   Not range-filtered, so the list matches the Signed column beside it —
+   opening a count of 16 and being shown 3 people was the old behaviour,
+   and the three were simply the ones who happened to sign inside the
+   window. The `key` is kept so callers read the same as the other
+   gatherers. */
+export function signedIn(c: Creative, _key: RangeKey): SignedLead[] {
+  return [...(c.signedLeads ?? [])]
+    .filter((l) => !l.isReplacement)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
 }
 
 /** The leads that came in off this ad inside the range, newest first. */
@@ -135,17 +165,26 @@ export function leadsIn(c: Creative, key: RangeKey): SignedLead[] {
 }
 
 export function sumTotals(list: Totals[]): Totals {
-  return sumDays(
-    list.map((t) => ({
+  const t = sumDays(
+    list.map((x) => ({
       date: '',
-      spend: t.spend,
-      impressions: t.impressions,
-      hooks: t.hooks,
-      linkClicks: t.linkClicks,
-      leads: t.leads,
-      acquisitions: t.acquisitions,
+      spend: x.spend,
+      impressions: x.impressions,
+      hooks: x.hooks,
+      linkClicks: x.linkClicks,
+      leads: x.leads,
+      acquisitions: x.acquisitions,
     })),
   )
+  /* Lifetime spend has to be summed too, and CPA rebuilt from it. sumDays
+     only knows the range spend it was handed, so without this an ad set's
+     CPA came out as range spend over lifetime cases. */
+  const lifeSpend = list.reduce((a, x) => a + (x.lifeSpend ?? x.spend), 0)
+  return {
+    ...t,
+    lifeSpend,
+    cpa: t.acquisitions ? lifeSpend / t.acquisitions : null,
+  }
 }
 
 export const REVIEW_CPL = 300
@@ -482,6 +521,50 @@ export type CampaignType = (typeof CAMPAIGN_TYPES)[number]
    cuts number through one sequence rather than two that collide. */
 const SUFFIX: Record<string, string> = { IMG: 'IMG', BNR: 'BNR' }
 export const creativeSuffix = (format: string) => SUFFIX[format] ?? 'V'
+
+/* Which of the three kinds a live ad is: a banner, a static image, or a
+   video of some sort.
+
+   Meta only answers Image or Video, which cannot tell a banner from a
+   still — and those are two different jobs for two different people. The
+   ad name can: its fourth segment is the production format, the same
+   letters the naming convention is built from.
+
+     1106 | B00096_IMG4 | JM | IMG | RIP | Anxiety   →  IMG
+     1104 | B000124_BNR3 | JM | BNR | RIP | G9 | H15 →  BNR
+     0908 | B000108_V1 | LHP | HYB | RIP | C6 | D10  →  V   (HYB is a video)
+
+   Grouped by the suffix the convention already uses, so BR, HYB, AIUGC and
+   ANM all land in V — exactly the three buckets the launch sheet counts.
+   Falls back to the batch suffix, then to what Meta says, for a name that
+   does not follow the convention. */
+export function creativeKind(c: { name?: string; convention?: string; format?: string }): 'IMG' | 'BNR' | 'V' {
+  const name = c.convention || c.name || ''
+  const parts = name.split('|').map((x) => x.trim())
+  const seg = parts[3]
+  if (seg && SUFFIX[seg]) return SUFFIX[seg] as 'IMG' | 'BNR' | 'V'
+  const suffix = parts[1]?.match(/_(IMG|BNR|V)\d*$/i)?.[1]?.toUpperCase()
+  if (suffix === 'IMG' || suffix === 'BNR' || suffix === 'V') return suffix
+  return c.format === 'Image' ? 'IMG' : 'V'
+}
+
+/** The IMG / BNR / V mix of a set of ads, as whole percentages that sum to 100. */
+export function formatMix(ads: { name?: string; convention?: string; format?: string }[]) {
+  const n = ads.length
+  const count = { IMG: 0, BNR: 0, V: 0 }
+  for (const a of ads) count[creativeKind(a)]++
+  /* Largest-remainder, so three thirds read 34/33/33 rather than 33/33/33
+     and a mix that is all one kind reads 100 rather than 99. */
+  const exact = (['IMG', 'BNR', 'V'] as const).map((k) => ({ k, v: n ? (count[k] / n) * 100 : 0 }))
+  const out = exact.map((x) => ({ ...x, pct: Math.floor(x.v) }))
+  let left = 100 - out.reduce((t, x) => t + x.pct, 0)
+  for (const x of [...out].sort((a, b) => (b.v - b.pct) - (a.v - a.pct))) {
+    if (left <= 0) break
+    x.pct++
+    left--
+  }
+  return out.map((x) => ({ kind: x.k, count: count[x.k], pct: n ? x.pct : 0 }))
+}
 
 export type NameParts = {
   /** Firm code as it appears in the ad name — LHP | LHP_SP | JM | JM_SP. */

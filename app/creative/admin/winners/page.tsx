@@ -6,7 +6,7 @@ import { ChevronDown, ChevronRight, RotateCcw, Send } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { EmptyState, PageHeader, Pill, Thumb } from '@/app/creative/_components/admin/shared'
-import { adsetDupeTags, adsetKey, adsetTotalsFor, batchUsage, parseCreativeName, pct, totalsFor, usd, WINNER_ADSET_CPL, withAdsetDate, withCreativeDate, withCreativeSeq } from '@/app/creative/_lib/metrics'
+import { adsetDupeTags, adsetKey, adsetTotalsFor, batchUsage, isDelivering, parseCreativeName, pct, totalsFor, usd, WINNER_ADSET_CPL, withAdsetDate, withCreativeDate, withCreativeSeq } from '@/app/creative/_lib/metrics'
 import { useExpanded } from '@/app/creative/_lib/use-expanded'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
@@ -39,7 +39,12 @@ export default function WinnersPage() {
   const isAdmin = useRole() === 'admin'
   const { open, toggle } = useExpanded('cc:winners-open')
 
-  const live = useMemo(() => creatives.filter((c) => !killedIds.has(c.id)), [creatives, killedIds])
+  /* Running, and not already killed. A paused ad cannot be doubled down on
+     — there is nothing live to double. */
+  const live = useMemo(
+    () => creatives.filter((c) => !killedIds.has(c.id) && isDelivering(c)),
+    [creatives, killedIds],
+  )
   /* Two ad sets can share a name; tagged beside it rather than renamed. */
   const dupeTags = useMemo(() => adsetDupeTags(creatives), [creatives])
   const adsets = useMemo(() => adsetTotalsFor(live, 'max'), [live])

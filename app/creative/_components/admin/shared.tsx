@@ -5,6 +5,42 @@ import { RANGES } from '@/app/creative/_lib/metrics'
 import type { RangeKey } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
+import { FIRMS, firmName } from '@/app/_metrics/firms'
+
+/* The firm filter, one definition for every page that has one.
+
+   `firms` is the list actually present in the data rather than the full
+   roster, so a firm with nothing running today is not offered as a filter
+   that would empty the page. Ordered by the canonical FIRMS list, which
+   keeps a firm and its Spanish board next to each other. */
+export function FirmSelect({
+  value, onChange, firms,
+}: {
+  value: string
+  onChange: (v: string) => void
+  firms: readonly string[]
+}) {
+  const order = (code: string) => {
+    const i = FIRMS.findIndex((f) => f.code === code)
+    return i === -1 ? FIRMS.length : i
+  }
+  const sorted = [...new Set(firms)].sort((a, b) => order(a) - order(b) || a.localeCompare(b))
+  return (
+    <Select value={value} onValueChange={onChange}>
+      <SelectTrigger className="w-56 bg-card" aria-label="Firm">
+        <SelectValue>{(v: string) => (v === 'all' ? 'All firms' : firmName(v))}</SelectValue>
+      </SelectTrigger>
+      <SelectContent>
+        <SelectItem value="all">All firms</SelectItem>
+        {sorted.map((f) => (
+          <SelectItem key={f} value={f}>
+            {firmName(f)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  )
+}
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
   return (

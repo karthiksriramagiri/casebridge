@@ -91,7 +91,14 @@ export type Totals = {
   hooks: number
   linkClicks: number
   leads: number
+  /** Signed cases — lifetime, not range-scoped. See metrics.totalsFor. */
   acquisitions: number
+  /* Spend over the ad's whole life, carried alongside the range spend so
+     CPA stays lifetime ÷ lifetime even after rows are summed into an ad
+     set. Without it, summing a set recomputed CPA from the RANGE spend
+     and the lifetime case count — a $332 day over one case read as a
+     $332 CPA. */
+  lifeSpend: number
   cpl: number | null
   cpa: number | null
   ctr: number

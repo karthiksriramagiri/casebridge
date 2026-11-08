@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { TODAY, YESTERDAY, addDays, pacificDay } from './data'
-import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildConvention, creativeSuffix, killReason, watchReason, withAdsetDate, withCreativeDate, type AdsetTotals } from './metrics'
+import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildConvention, creativeSuffix, isDelivering, killReason, watchReason, withAdsetDate, withCreativeDate, type AdsetTotals } from './metrics'
 
 /** The row collections /api/creative/board writes. */
 type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
@@ -378,6 +378,20 @@ function shapeOutcomes(byAdId: Record<string, any>): Record<string, AdOutcome> {
   const out: Record<string, AdOutcome> = {}
   for (const [adId, rec] of Object.entries(byAdId)) {
     if (adId === '__unattributed__') continue
+    /* The sweep's own signed figure is deliberately NOT read.
+
+       It counts pipeline opportunities at Pending Send or Signed/Sent, one
+       per contact, over all time. /api/creative/center/signed counts
+       ghl_leads rows with no pipeline stage, one per CASE, over the loaded
+       window, excluding replacements. They are different questions and they
+       disagree on 42 of the 163 live ads — by up to five cases, in both
+       directions — because a driver and their passenger are one contact and
+       two cases, and because a case that signed four months ago is still an
+       opportunity but is outside the window.
+
+       Finance invoices the case count, so the case count is the one the
+       center reports. Taking "signed" from here as well would mean two
+       numbers for one question, and the page cannot say which is right. */
     /* One row per person, not per opportunity.
 
        A contact can hold an opportunity in more than one pipeline — the
@@ -772,7 +786,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /* The watch list is judged on the ad set, so its totals are built once here
      and handed to everything that reads a watch rule. Rebuilding it per row
      would re-sum an ad set's history for every ad inside it. */
-  const adsetTotals = useMemo(() => adsetIndex(creatives), [creatives])
+  /* Built from what is actually running. The watch bands and the KILL/WATCH
+     suggestions are read off these totals, and a cut paused days ago was
+     still pulling its old spend into them — a set could be judged on money
+     no longer being spent. */
+  const adsetTotals = useMemo(() => adsetIndex(creatives.filter(isDelivering)), [creatives])
 
   const killedIds = useMemo(() => new Set(kill.filter((k) => k.status === 'done').map((k) => k.creativeId)), [kill])
 

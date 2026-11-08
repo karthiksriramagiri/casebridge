@@ -8,7 +8,7 @@ import { Checkbox } from '@/app/creative/_ui/checkbox'
 import { Input } from '@/app/creative/_ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
 import { TODAY, YESTERDAY } from '@/app/creative/_lib/data'
-import { adsetIsOn, adsetDupeTags, adsetKey, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, signedIn, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
+import { adIsOn, adsetDupeTags, adsetKey, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, isDelivering, signedIn, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import { useDailyExclusions } from '@/app/creative/_lib/use-daily-exclusions'
 import type { Creative, RangeKey, SignedLead, Stage, Totals } from '@/app/creative/_lib/types'
@@ -29,6 +29,8 @@ type SortKey = 'spend' | 'leads' | 'cpl' | 'acquisitions' | 'cpa' | 'hookRate' |
 type Column = {
   key: SortKey | 'wow'
   label: string
+  /** Hover explanation for a column whose rule is not obvious. */
+  title?: string
   render: (t: Totals) => string
   /* A column whose value does not come from the visible range's totals. The
      week-on-week window is fixed — last 7 days against the 7 before — so it
@@ -41,8 +43,23 @@ const columnsFor = (hasOutcomes: boolean): Column[] => [
   { key: 'spend', label: 'Amount spent', render: (t) => usd(t.spend) },
   { key: 'leads', label: 'Leads', render: (t) => num(t.leads) },
   { key: 'cpl', label: 'Cost per lead', render: (t) => usd(t.cpl) },
-  { key: 'acquisitions', label: 'Signed', render: (t) => (hasOutcomes ? num(t.acquisitions) : '—') },
-  { key: 'cpa', label: 'CPA', render: (t) => (hasOutcomes ? usd(t.cpa) : '—') },
+  /* Lifetime, both of them, whatever the range is — see totalsFor. A case
+     signs days to weeks after the click that bought it, so scoping it to
+     the spend's window puts cause and effect in different buckets. The
+     label says so rather than leaving the reader to wonder why Signed does
+     not move with the range. */
+  {
+    key: 'acquisitions',
+    label: 'Signed (life)',
+    title: 'Signed cases attributed to this ad over its whole life — a case signs days after the click, so this ignores the range filter',
+    render: (t) => (hasOutcomes ? num(t.acquisitions) : '—'),
+  },
+  {
+    key: 'cpa',
+    label: 'CPA (life)',
+    title: 'Lifetime spend ÷ lifetime signed cases',
+    render: (t) => (hasOutcomes ? usd(t.cpa) : '—'),
+  },
   { key: 'hookRate', label: 'Hook rate', render: (t) => pct(t.hookRate) },
   { key: 'ctr', label: 'CTR (link)', render: (t) => pct(t.ctr) },
   { key: 'cpm', label: 'CPM', render: (t) => usd(t.cpm) },
@@ -228,9 +245,21 @@ export function AnalysisView() {
       /* Judged on the ad set the creative sits in, not the creative — one
          ad going quiet inside a converting ad set is not watch-worthy. */
       .filter((c) => !watchMode || isWatchCandidate(c, adsetTotals))
-      /* The one filter: an ad set that has been turned off takes its ads out
-         of the table. Nothing else is hidden — not by spend, not by range. */
-      .filter(adsetIsOn)
+      /* The one filter: switched off is out of the table, at either level —
+         the ad's own switch and its ad set's.
+
+         This used to read the ad set only, on the theory that a cut paused
+         inside a live ad set is still part of that ad set's work. In
+         practice it meant an ad switched off days ago sat in the table
+         among the running ones, counted in its ad set's "2 ads", and was
+         offered a watch and a kill it could not act on. The table is a list
+         of what is running; nothing else belongs in it.
+
+         The cost, accepted deliberately: an ad set's totals here now cover
+         only its live cuts, so they read lower than Ads Manager's ad-set
+         figure, which keeps counting what a paused cut spent. Nothing else
+         is hidden — not by spend, not by range. */
+      .filter(isDelivering)
       .map((c) => ({ c, t: totalsFor(c, range) }))
       .sort((a, b) => {
         const av = a.t[sort.key] ?? Number.POSITIVE_INFINITY
@@ -536,7 +565,7 @@ export function AnalysisView() {
                     Ad set
                   </th>
                   {COLUMNS.map((col) => (
-                    <th key={col.key} scope="col" className="px-3 py-2.5 text-right font-medium">
+                    <th key={col.key} scope="col" title={col.title} className="px-3 py-2.5 text-right font-medium">
                       {col.sortable === false ? (
                         <span title="Last 7 days vs the 7 before — fixed window, not the range above">{col.label}</span>
                       ) : (
@@ -630,6 +659,7 @@ export function AnalysisView() {
                                   <span className="shrink-0">
                                     <Pill>{g.ads.length === 1 ? '1 ad' : `${g.ads.length} ads`}</Pill>
                                   </span>
+
                                   <ListTags
                                     watchedToday={g.ads.filter((a) => todayWatch.has(a.c.id)).length}
                                     watchedYesterday={g.ads.filter((a) => yesterdayWatch.has(a.c.id)).length}
@@ -660,7 +690,7 @@ export function AnalysisView() {
                                 onOpen={(which) =>
                                   setPeople({
                                     title: g.adset,
-                                    subtitle: `${which === 'signed' ? 'Signed cases' : 'Leads'} · ${rangeLabel}`,
+                                    subtitle: which === 'signed' ? 'Signed cases · whole life' : `Leads · ${rangeLabel}`,
                                     note: which === 'leads' ? leadNote(gt.leads, gather(g.ads, range, 'leads').length) : undefined,
                                     list: gather(g.ads, range, which),
                                     total: g.ads.reduce(
@@ -721,12 +751,36 @@ export function AnalysisView() {
                                         {c.name}
                                       </button>
                                       <div className="flex flex-wrap items-center gap-1">
+                                        {/* Read off Meta, not assumed. This said
+                                            "Active" for every cut in the table,
+                                            including ones paused in Ads Manager —
+                                            the row claimed an ad was running when
+                                            it had been switched off days ago. An
+                                            ad can be paused on its own inside an
+                                            ad set that is still live, and the
+                                            table is filtered on the ad set. */}
                                         <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
-                                          <span className="size-1.5 rounded-full bg-success" aria-hidden /> Active · {c.angle}
+                                          <span
+                                            className={cn('size-1.5 rounded-full', adIsOn(c) ? 'bg-success' : 'bg-muted-foreground/50')}
+                                            aria-hidden
+                                          />
+                                          {adIsOn(c) ? 'Active' : 'Paused'} · {c.angle}
                                         </span>
-                                        <Pill tone={stageOf(c) === 'NEW' ? 'blue' : 'muted'}>
-                                          {stageOf(c)} · Day {daysLive(c)}
-                                        </Pill>
+                                        {/* NEW/ACTIVE here is the ad's AGE — Day
+                                            1–3 against Day 4+ — and it is how
+                                            the ad is judged while it runs. On a
+                                            paused cut it is both meaningless and
+                                            contradictory: the row would read
+                                            "Paused · ACTIVE · Day 29". The day
+                                            count stays, because how long it ran
+                                            is still worth knowing. */}
+                                        {adIsOn(c) ? (
+                                          <Pill tone={stageOf(c) === 'NEW' ? 'blue' : 'muted'}>
+                                            {stageOf(c)} · Day {daysLive(c)}
+                                          </Pill>
+                                        ) : (
+                                          <Pill>Day {daysLive(c)}</Pill>
+                                        )}
                                         <Pill>{c.format}</Pill>
                                         {hasDeliveryIssue(c) && (
                                           <span title="Meta reports a problem with this ad — it is switched on but may not be delivering.">
@@ -761,7 +815,7 @@ export function AnalysisView() {
                                       onOpen={(which) =>
                                         setPeople({
                                           title: c.name,
-                                          subtitle: `${which === 'signed' ? 'Signed cases' : 'Leads'} · ${rangeLabel}`,
+                                          subtitle: which === 'signed' ? 'Signed cases · whole life' : `Leads · ${rangeLabel}`,
                                           note: which === 'leads' ? leadNote(t.leads, leadsIn(c, range).length) : undefined,
                                           list: which === 'signed' ? signedIn(c, range) : leadsIn(c, range),
                                           total: (which === 'signed' ? c.signedLeads : c.leadPeople)?.length ?? 0,
