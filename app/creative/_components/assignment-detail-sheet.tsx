@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { RequestPicker } from './admin/request-picker'
 import {
-  Building2, CalendarDays, Clapperboard, Eye, FileText, Hash, Layers,
+  Boxes, Building2, CalendarDays, Clapperboard, Eye, FileText, FileType, Hash, Layers,
   Loader2, Maximize2, MessageSquare, Minimize2, Paperclip, ScrollText, Signal, Sparkles, Star, Type,
 } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
@@ -13,10 +13,12 @@ import { Pill } from '@/app/creative/_components/admin/shared'
 import { PriorityStars, PRIORITY_LABELS } from './admin/priority-stars'
 import { PropertyRow, Empty } from './admin/property-row'
 import { VersionStages } from './admin/version-stages'
+import { TODAY } from '@/app/creative/_lib/data'
+import { withAdsetDate, withCreativeDate } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import {
-  ASSIGNMENT_FIRMS, ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, ROLE_LABEL,
+  ASSIGNMENT_FIRMS, ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, RELAUNCH_TYPE, ROLE_LABEL,
   parseRequests,
   type AssignmentFirm, type AssignmentStatus, type AssignmentType, type CreativeFormat,
 } from '@/app/creative/_lib/types'
@@ -71,6 +73,15 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
   const set = (patch: Parameters<typeof updateAssignment>[1]) => updateAssignment(a.id, patch)
   const fmt = CREATIVE_FORMATS.find((f) => f.code === a.format)
   const src = getCreative(a.sourceCreativeId)
+  /* A relaunch keeps the ad set and the cut it already had, dated today —
+     the date segment says when something went live, and a relaunch is
+     going live now. Relaunches made before the names were stored carry
+     neither, so they are derived the same way here rather than reading
+     blank. */
+  const adsetName = a.adsetName?.trim()
+    || (a.type === RELAUNCH_TYPE && src ? withAdsetDate(src.adset, a.launchDate || TODAY) : undefined)
+  const creativeName = a.creativeName?.trim()
+    || (a.type === RELAUNCH_TYPE && src ? withCreativeDate(src.convention, a.launchDate || TODAY) : undefined)
 
   const visualOptions = Object.keys(hooks.visual).filter((c) => !fmt || c.startsWith(fmt.visual)).sort(byNumber)
   const verbalOptions = Object.keys(hooks.verbal).filter((c) => !fmt || c.startsWith(fmt.verbal)).sort(byNumber)
@@ -134,6 +145,27 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
                 onChange={(v) => set({ status: v as AssignmentStatus })}
                 render={(v) => <Pill tone="blue">{v}</Pill>}
               />
+            </PropertyRow>
+
+            {/* The two names this brief produces, directly under the status
+                because they are what anyone opening the card is checking.
+                Always shown, empty or not: a blank here means the naming
+                has not been worked out yet, which is the thing worth
+                seeing — hiding the rows made a brief with no names look
+                like a brief that did not need any.
+
+                A relaunch generates neither. It is one existing ad going
+                back up, so it keeps the ad set and the name it already had
+                — read off the source cut rather than left blank. */}
+            <PropertyRow icon={Boxes} label="Ad set name">
+              {adsetName
+                ? <code className="font-mono text-xs">{adsetName}</code>
+                : <Empty />}
+            </PropertyRow>
+            <PropertyRow icon={FileType} label="Creative name">
+              {creativeName
+                ? <code className="font-mono text-xs">{creativeName}</code>
+                : <Empty />}
             </PropertyRow>
 
             <PropertyRow icon={Star} label="Priority">
@@ -218,24 +250,6 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
                 <InlineText value={a.batch ?? ''} placeholder="Empty" onCommit={(v) => set({ batch: v || undefined })} />
               ) : a.batch ? <Pill>{a.batch}</Pill> : <Empty />}
             </PropertyRow>
-
-            {/* The two names this brief produces. Shown together because
-                they are only correct together: the ad set is the one the
-                cut runs in, and the creative is what it is filed as. */}
-            {(a.adsetName || a.creativeName) && (
-              <>
-                <PropertyRow icon={Hash} label="Ad set">
-                  {a.adsetName
-                    ? <code className="font-mono text-xs">{a.adsetName}</code>
-                    : <Empty />}
-                </PropertyRow>
-                <PropertyRow icon={Hash} label="Creative name">
-                  {a.creativeName
-                    ? <code className="font-mono text-xs">{a.creativeName}</code>
-                    : <Empty />}
-                </PropertyRow>
-              </>
-            )}
 
             <PropertyRow icon={Paperclip} label="Benchmark">
               <input

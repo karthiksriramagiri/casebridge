@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { toast } from 'sonner'
 import { TODAY, YESTERDAY, addDays, pacificDay } from './data'
-import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildConvention, creativeSuffix, killReason, watchReason, type AdsetTotals } from './metrics'
+import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildConvention, creativeSuffix, killReason, watchReason, withAdsetDate, withCreativeDate, type AdsetTotals } from './metrics'
 
 /** The row collections /api/creative/board writes. */
 type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
@@ -1402,8 +1402,21 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          translated to the spelling the board uses (LHP [SPANISH]) or the
          Spanish lists silently split in two. */
       const SPELLING: Record<string, AssignmentFirm> = { LHP: 'LHP', LHP_SP: 'LHP [SPANISH]', JM: 'JM', JM_SP: 'JM [SPANISH]' }
+
+      /* The names it goes back up under, dated today.
+
+         A relaunch reuses the ad set and the cut it already had — same
+         batch, same angles, same sequence — but it is going live today,
+         and the date segment of both names says when something launched.
+         Carrying the original's date forward filed a relaunch under the
+         day it first ran, so the account read as though nothing had gone
+         up. Same rule as a Double Down. A name that does not follow the
+         convention is left exactly as found rather than rebuilt. */
+      const adsetName = withAdsetDate(c.adset, TODAY)
+      const creativeName = withCreativeDate(c.convention || c.name, TODAY)
+
       addAssignment({
-        title: `Relaunch – ${c.convention || c.name}`,
+        title: `Relaunch – ${creativeName}`,
         /* Not creative work: nothing is made, the ad already exists. It is
            kept off the Creative Team board and goes straight to the launch
            queue. */
@@ -1413,14 +1426,16 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         firm: SPELLING[c.firm],
         status: 'Launching',
         launchDate: TODAY,
+        adsetName,
+        creativeName,
       })
       const row: LaunchTask = {
         id: uid('l'),
         sourceCreativeId: c.id,
-        name: `Relaunch – ${c.name}`,
+        name: `Relaunch – ${creativeName}`,
         angle: c.angle,
         campaign: c.campaign,
-        convention: bumpConvention(c.convention),
+        convention: creativeName,
         tags: { resize: false, disclaimer: null, asIs: true },
         date: TODAY,
         dailyBudget: c.dailyBudget,
