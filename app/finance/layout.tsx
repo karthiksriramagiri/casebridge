@@ -17,8 +17,10 @@ export default async function FinanceLayout({ children }: { children: React.Reac
 
   return (
     <div className="fin">
-      <FinanceNav base={base} />
-      <main className="fin-main">{children}</main>
+      <div className="fin-shell">
+        <FinanceNav base={base} />
+        <main className="fin-main">{children}</main>
+      </div>
     </div>
   )
 }

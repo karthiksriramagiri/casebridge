@@ -30,21 +30,47 @@
 .fin-num{font-variant-numeric:tabular-nums; font-feature-settings:"tnum"}
 
 /* shell */
-.fin-bar{
-  position:sticky; top:0; z-index:20; background:var(--bg);
-  border-bottom:1px solid var(--line); display:flex; align-items:center;
-  gap:28px; padding:0 28px; height:54px;
+/* Side navigation. The centre has outgrown a row of tabs — there are two
+   analysis surfaces and three places to manage things, and a top bar makes
+   those read as one undifferentiated list. */
+.fin-shell{display:flex; min-height:100vh}
+.fin-side{
+  position:sticky; top:0; align-self:flex-start; height:100vh; width:216px;
+  flex-shrink:0; border-right:1px solid var(--line); background:var(--card);
+  display:flex; flex-direction:column; overflow-y:auto;
 }
-.fin-brand{font-weight:600; letter-spacing:-.01em; font-size:14.5px; white-space:nowrap}
-.fin-tabs{display:flex; gap:2px; height:100%}
+.fin-side-h{display:flex; align-items:center; gap:10px; padding:16px 16px 14px; border-bottom:1px solid var(--line)}
+.fin-mark{
+  width:30px; height:30px; border-radius:7px; background:var(--accent); color:var(--bg);
+  display:grid; place-items:center; font-size:11px; font-weight:700; letter-spacing:.02em; flex-shrink:0;
+}
+.fin-brand{font-weight:600; letter-spacing:-.01em; font-size:13.5px; line-height:1.25}
+.fin-brand small{display:block; font-weight:400; font-size:11px; color:var(--ink-3)}
+.fin-nav{padding:12px 10px; display:flex; flex-direction:column; gap:14px; flex:1}
+.fin-nav-g{display:flex; flex-direction:column; gap:1px}
+.fin-nav-t{
+  font-size:10px; text-transform:uppercase; letter-spacing:.09em; font-weight:600;
+  color:var(--ink-3); padding:0 8px 5px;
+}
 .fin-tab{
-  display:inline-flex; align-items:center; padding:0 12px; height:100%;
-  font-size:13.5px; color:var(--ink-3); text-decoration:none;
-  border-bottom:2px solid transparent; white-space:nowrap;
+  display:flex; align-items:center; gap:9px; padding:7px 9px; border-radius:6px;
+  font-size:13.5px; color:var(--ink-2); text-decoration:none; white-space:nowrap;
 }
-.fin-tab:hover{color:var(--ink-2)}
-.fin-tab[aria-current="page"]{color:var(--ink); border-bottom-color:var(--accent); font-weight:500}
-.fin-main{max-width:1180px; margin:0 auto; padding:30px 28px 80px}
+.fin-tab:hover{background:var(--sunk); color:var(--ink)}
+.fin-tab[aria-current="page"]{background:var(--sunk); color:var(--ink); font-weight:500}
+.fin-tab svg{width:15px; height:15px; flex-shrink:0; opacity:.75}
+.fin-tab[aria-current="page"] svg{opacity:1}
+.fin-side-f{padding:12px 16px; border-top:1px solid var(--line); font-size:11px; color:var(--ink-3)}
+.fin-main{flex:1; min-width:0; max-width:1420px; padding:28px 32px 80px}
+
+@media (max-width:860px){
+  .fin-shell{flex-direction:column}
+  .fin-side{position:static; height:auto; width:100%; border-right:0; border-bottom:1px solid var(--line)}
+  .fin-nav{flex-direction:row; flex-wrap:wrap; gap:8px}
+  .fin-nav-g{flex-direction:row; flex-wrap:wrap}
+  .fin-nav-t{display:none}
+  .fin-side-f{display:none}
+}
 
 .fin-h1{font-size:21px; font-weight:600; letter-spacing:-.02em; margin:0}
 .fin-sub{color:var(--ink-3); font-size:13px; margin:3px 0 0}
@@ -116,8 +142,7 @@
   font-weight:600; margin:0 0 9px}
 
 @media (max-width:720px){
-  .fin-bar{gap:14px; padding:0 14px}
-  .fin-main{padding:22px 14px 60px}
+  .fin-main{padding:22px 16px 60px}
   .fin-row2,.fin-row3{grid-template-columns:1fr}
 }
 
@@ -220,7 +245,10 @@
 @media (max-width:940px){ .fin-split, .fin-split.even{grid-template-columns:1fr} }
 
 /* Trend: bars for spend, a line for profit, drawn as plain SVG. */
-.fin-chart{width:100%; height:230px; display:block}
+/* The chart keeps its proportions. Height comes from the aspect ratio,
+   not a fixed pixel value, so nothing is stretched to fill a box. */
+.fin-chart-wrap{padding:4px 2px 0}
+.fin-chart{width:100%; height:auto; display:block; aspect-ratio:900/300}
 .fin-chart text{font-size:9.5px; fill:var(--ink-3)}
 .fin-legend{display:flex; gap:14px; flex-wrap:wrap; padding:10px 16px 0; font-size:11.5px; color:var(--ink-3)}
 .fin-legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px}

@@ -1,172 +1,245 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { headers } from 'next/headers'
 import { siteRootForHost } from '@/app/_metrics/site-root'
 import { formatRange } from '@/lib/finance/reporting/dates'
-import { filtersToSearchParams, parseFilters } from '@/lib/finance/reporting/filters'
+import { parseFilters } from '@/lib/finance/reporting/filters'
 import { loadFinanceData } from '@/lib/finance/reporting/load'
+import { formatPct, formatUSD, formatUSDCompact, pctChange } from '@/lib/finance/reporting/money'
 import { buildReport } from '@/lib/finance/reporting/report'
-import { ExpenseForm } from './_components/expense-form'
-import { ReportFilters } from './_components/report-filters'
-import {
-  CostBreakdown, DataGaps, EarnoutCard, FirmTable, InvoiceTable, KpiCards,
-  OpexTable, PeriodStrip, TargetAttainment, TrendChart,
-} from './_components/report-ui'
 import { invoicePathSegment } from './_lib/invoice-routes'
 
-export const metadata: Metadata = {
-  title: 'Reporting Center · Financial Center',
-  description: 'Revenue, spend, operating expenses, profit and margin by law firm and invoice.',
-}
+export const metadata: Metadata = { title: 'Dashboard · Financial Center' }
 export const dynamic = 'force-dynamic'
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   The Reporting Center.
+   The dashboard.
 
-   One range, one comparison, one calculation layer. Every figure on this
-   page — the cards, the chart, both tables, the export — is read from the
-   same ledger, so none of them can disagree with another. That was the
-   failure of the dashboard this replaces: the company margin and the
-   per-firm margins were computed in different places from different costs.
+   One question: how is the company doing this month, and what needs
+   attention. It is deliberately not the Reporting Center — no range
+   picker, no grain, no comparison modes. Somebody opening this wants the
+   answer, not the controls to derive it; the Reporting Center is one click
+   away for everyone who wants to ask a different question.
 
-   The filters live in the query string, so a view can be sent to someone
-   and open the same way for them.
+   Everything here comes from the same ledger the Reporting Center reads,
+   so the two can never disagree.
    ═══════════════════════════════════════════════════════════════════════════ */
 
-export default async function ReportingCenter({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
-  const params = await searchParams
+const tone = (n: number | null) => (n === null ? '' : n > 0 ? 'pos' : n < 0 ? 'neg' : '')
+
+export default async function FinanceDashboard() {
   const store = await loadFinanceData()
-  /* `firm` may arrive as a slug — the rest of the Financial Center routes
-     that way — so it is resolved to an id before the filters are parsed. */
-  const asked = typeof params.firm === 'string' ? params.firm : null
-  const bySlug = asked ? store.firms.find((x) => x.slug === asked || x.id === asked) : null
-  const filters = parseFilters(
-    { ...params, firm: bySlug?.id ?? (asked ?? undefined) },
-    { dataStart: store.dataStart, asOf: store.dataAsOf },
-  )
-  const report = buildReport(store, filters)
-
-  /* On finance.case-bridge.com the /finance prefix is rewritten away. */
   const base = siteRootForHost((await headers()).get('host')) === '/finance' ? '' : '/finance'
-  const range = formatRange(report.meta.window.start, report.meta.window.end)
 
-  const scoped = (extra: Record<string, string>) => {
-    const sp = filtersToSearchParams(report.meta.filters, { omitScope: true })
-    for (const [k, v] of Object.entries(extra)) sp.set(k, v)
-    return `${base || '/finance'}?${sp.toString()}`
+  const mtd = buildReport(store, parseFilters({ range: 'mtd' }, { dataStart: store.dataStart, asOf: store.dataAsOf }))
+  const ytd = buildReport(store, parseFilters({ range: 'ytd' }, { dataStart: store.dataStart, asOf: store.dataAsOf }))
+
+  const m = mtd.current
+  const prev = mtd.comparison?.metrics ?? null
+
+  /* What is worth saying out loud. A dashboard that only shows figures
+     makes the reader find the problem; these are the three the figures
+     are usually hiding. */
+  const alerts: { tone: 'neg' | 'flag'; text: string }[] = []
+  const unbilled = ytd.firms.rows.filter((r) => r.metrics.revenue === 0 && r.metrics.totalSpend > 0)
+  if (unbilled.length > 0) {
+    alerts.push({
+      tone: 'neg',
+      text: `${unbilled.map((r) => r.name).join(', ')} ${unbilled.length === 1 ? 'has' : 'have'} ${formatUSD(
+        unbilled.reduce((a, r) => a + r.metrics.totalSpend, 0),
+      )} of cost this year against no invoiced revenue.`,
+    })
+  }
+  const unattributed = ytd.invoices.rows.find((r) => r.kind !== 'invoice')
+  if (unattributed && unattributed.metrics.totalSpend > 0) {
+    alerts.push({
+      tone: 'flag',
+      text: `${formatUSD(unattributed.metrics.totalSpend)} of spend this year falls outside every invoice period, so no invoice carries it.`,
+    })
+  }
+  if (store.gaps.opexTableMissing) {
+    alerts.push({ tone: 'flag', text: 'Operating expenses are not set up, so profit counts advertising and intake only.' })
   }
 
   return (
     <>
       <div className="fin-head">
         <div>
-          <h1 className="fin-h1">Reporting Center</h1>
+          <h1 className="fin-h1">Dashboard</h1>
           <p className="fin-sub">
-            {report.meta.scopeLabel} · {range}
-            {report.meta.window.partial && ' · period in progress'}
+            Month to date · {formatRange(mtd.meta.window.start, mtd.meta.window.end)}
           </p>
         </div>
-        <p className="fin-sub">
-          Figures through {report.meta.dataAsOf} · {report.meta.firms.length} law firms
-        </p>
+        <Link href={`${base}/reporting`} className="fin-btn">Open the Reporting Center →</Link>
       </div>
 
-      <ReportFilters report={report} basePath={base || '/finance'} />
+      <div className="fin-figs">
+        {[
+          { l: 'Revenue', v: m.revenue, p: prev?.revenue ?? null },
+          { l: 'Advertising', v: m.advertising, p: prev?.advertising ?? null, invert: true },
+          { l: 'Intake cost', v: m.intake, p: prev?.intake ?? null, invert: true },
+          { l: 'Operating expenses', v: m.opex, p: prev?.opex ?? null, invert: true },
+          { l: 'Profit', v: m.profit, p: prev?.profit ?? null, strong: true },
+        ].map((c) => {
+          const pct = c.p && c.p !== 0 ? pctChange(c.v, c.p) : null
+          const good = pct === null ? null : c.invert ? -pct : pct
+          return (
+            <div key={c.l} className="fin-fig">
+              <div className="fin-fig-l">{c.l}</div>
+              <div className={`fin-fig-v fin-num ${c.strong ? tone(c.v) : ''}`}>{formatUSD(c.v)}</div>
+              <span className={`fin-fig-s ${tone(good)}`}>
+                {pct === null ? 'no prior period' : `${formatPct(pct, { signed: true })} vs last month`}
+              </span>
+            </div>
+          )
+        })}
+        <div className="fin-fig">
+          <div className="fin-fig-l">Margin</div>
+          <div className={`fin-fig-v fin-num ${tone(m.margin)}`}>{formatPct(m.margin)}</div>
+          <span className="fin-fig-s">year to date {formatPct(ytd.current.margin)}</span>
+        </div>
+      </div>
 
-      <KpiCards report={report} />
-      <PeriodStrip report={report} />
+      {alerts.length > 0 && (
+        <div className="fin-sec" style={{ display: 'grid', gap: 8 }}>
+          {alerts.map((a) => (
+            <p key={a.text} className={a.tone === 'neg' ? 'fin-warn' : 'fin-warn'}
+               style={a.tone === 'neg' ? { borderColor: 'var(--neg)', color: 'var(--neg)' } : undefined}>
+              {a.text}
+            </p>
+          ))}
+        </div>
+      )}
 
-      <div className="fin-split">
+      <div className="fin-split even fin-sec">
         <section className="fin-card">
           <div className="fin-card-h">
-            <span className="fin-card-t">Revenue, spend and profit</span>
-            <span className="fin-card-n">{range} · by {report.meta.filters.granularity}</span>
+            <span className="fin-card-t">This month, by firm</span>
+            <Link className="fin-card-n" href={`${base}/reporting?range=mtd`}>full report →</Link>
           </div>
-          <TrendChart data={report.trend} />
+          <div className="fin-scroll">
+            <table className="fin-table">
+              <thead>
+                <tr>
+                  <th>Law firm</th>
+                  <th className="n">Revenue</th>
+                  <th className="n">Spend</th>
+                  <th className="n">Profit</th>
+                  <th className="n">Margin</th>
+                </tr>
+              </thead>
+              <tbody>
+                {mtd.firms.rows
+                  .filter((r) => r.metrics.revenue !== 0 || r.metrics.totalSpend !== 0)
+                  .map((r) => (
+                    <tr key={r.firmId ?? r.name}>
+                      <td>{r.name}</td>
+                      <td className="n fin-num">{formatUSD(r.metrics.revenue)}</td>
+                      <td className="n fin-num">{formatUSD(r.metrics.totalSpend)}</td>
+                      <td className={`n fin-num ${tone(r.metrics.profit)}`}>{formatUSD(r.metrics.profit)}</td>
+                      <td className={`n fin-num ${tone(r.metrics.margin)}`}>{formatPct(r.metrics.margin)}</td>
+                    </tr>
+                  ))}
+              </tbody>
+              <tfoot className="fin-tfoot">
+                <tr>
+                  <td>Total</td>
+                  <td className="n fin-num">{formatUSD(m.revenue)}</td>
+                  <td className="n fin-num">{formatUSD(m.totalSpend)}</td>
+                  <td className={`n fin-num ${tone(m.profit)}`}>{formatUSD(m.profit)}</td>
+                  <td className={`n fin-num ${tone(m.margin)}`}>{formatPct(m.margin)}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
         </section>
-        <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
-          <section className="fin-card">
-            <div className="fin-card-h">
-              <span className="fin-card-t">Where the money went</span>
-              <span className="fin-card-n">share of revenue</span>
+
+        <section className="fin-card">
+          <div className="fin-card-h">
+            <span className="fin-card-t">Open invoices</span>
+            <Link className="fin-card-n" href={`${base}/firms`}>all firms →</Link>
+          </div>
+          {mtd.invoices.rows.filter((r) => r.kind === 'invoice').length === 0 ? (
+            <p className="fin-empty">No invoice covers this month.</p>
+          ) : (
+            <div className="fin-scroll">
+              <table className="fin-table">
+                <thead>
+                  <tr>
+                    <th>Invoice</th>
+                    <th>Period</th>
+                    <th className="n">Invoiced</th>
+                    <th className="n">Received</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mtd.invoices.rows
+                    .filter((r) => r.kind === 'invoice')
+                    .map((r) => {
+                      const firm = mtd.meta.firms.find((f) => f.id === r.firmId)
+                      return (
+                        <tr key={r.invoiceId ?? r.number}>
+                          <td>
+                            {firm ? (
+                              <Link href={`${base}/firms/${firm.slug}/invoice/${invoicePathSegment(r.number)}`}>
+                                {r.number}
+                              </Link>
+                            ) : r.number}
+                            <div className="fin-fig-s">{r.firmName}</div>
+                          </td>
+                          <td className="fin-num">
+                            {r.periodStart && r.periodEnd ? formatRange(r.periodStart, r.periodEnd) : '—'}
+                          </td>
+                          <td className="n fin-num">{r.invoicedCents === null ? '—' : formatUSD(r.invoicedCents)}</td>
+                          <td className="n fin-num">
+                            {r.receivedCents === null
+                              ? <span className="fin-tag warn">unpaid</span>
+                              : formatUSD(r.receivedCents)}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                </tbody>
+              </table>
             </div>
-            <CostBreakdown metrics={report.current} />
-          </section>
-          <section className="fin-card">
-            <div className="fin-card-h">
-              <span className="fin-card-t">Target attainment</span>
-              <span className="fin-card-n">revenue vs plan</span>
-            </div>
-            <TargetAttainment report={report} />
-          </section>
-          {report.earnout && (
-            <section className="fin-card">
-              <div className="fin-card-h">
-                <span className="fin-card-t">Earn-out</span>
-                <span className="fin-card-n">contractual — not operating profit</span>
-              </div>
-              <EarnoutCard report={report} />
-            </section>
           )}
-        </div>
+        </section>
       </div>
 
-      {/* Full width: eight columns of figures do not fit two thirds of a
-          page, and a table of money that scrolls sideways is a table whose
-          last column nobody reads. */}
       <section className="fin-card fin-sec">
         <div className="fin-card-h">
-          <span className="fin-card-t">By law firm</span>
-          <span className="fin-card-n">
-            {report.firms.reconciled ? 'reconciles with the company total' : 'does not reconcile — check allocation'}
-          </span>
+          <span className="fin-card-t">Year to date</span>
+          <Link className="fin-card-n" href={`${base}/reporting?range=ytd&granularity=monthly`}>full report →</Link>
         </div>
-        <FirmTable report={report} hrefForFirm={(id) => scoped({ firm: id })} />
-      </section>
-
-      <section className="fin-card fin-sec">
-        <div className="fin-card-h">
-          <span className="fin-card-t">By invoice</span>
-          <span className="fin-card-n">
-            {report.invoices.reconciled ? 'reconciles with the company total' : 'does not reconcile — check allocation'}
-          </span>
-        </div>
-        <InvoiceTable
-          report={report}
-          hrefForInvoice={(id) => {
-            const inv = report.meta.invoiceOptions.find((i) => i.id === id)
-            const firm = report.meta.firms.find((x) => x.id === inv?.firmId)
-            return inv && firm
-              ? `${base}/firms/${firm.slug}/invoice/${invoicePathSegment(inv.number)}`
-              : scoped({ invoice: id })
-          }}
-        />
-      </section>
-
-      <section className="fin-card fin-sec">
-        <div className="fin-card-h">
-          <span className="fin-card-t">Operating expenses</span>
-          <span className="fin-card-n">recognised across the service period, not the payment date</span>
-        </div>
-        {/* The control sits in the body, not the header: opened, it is a
-            twelve-field form, and a header is not a place to put one. */}
-        {!report.meta.gaps.opexTableMissing && (
-          <div style={{ padding: '12px 16px 0' }}>
-            <ExpenseForm firms={report.meta.firms} defaultDate={report.meta.dataAsOf} />
+        <div className="fin-bars">
+          {[
+            { l: 'Revenue', v: ytd.current.revenue },
+            { l: 'Advertising', v: ytd.current.advertising },
+            { l: 'Intake cost', v: ytd.current.intake },
+            { l: 'Operating expenses', v: ytd.current.opex },
+          ].map((r) => {
+            const base2 = Math.max(ytd.current.revenue, ytd.current.totalSpend, 1)
+            return (
+              <div key={r.l} className="fin-bar-row">
+                <div className="fin-bar-top">
+                  <span>{r.l}</span>
+                  <span className="fin-num">{formatUSDCompact(r.v)}</span>
+                </div>
+                <div className="fin-bar-track">
+                  <div className={`fin-bar-fill ${r.l === 'Revenue' ? 'profit' : 'ad'}`}
+                       style={{ width: `${Math.min(100, (r.v / base2) * 100)}%` }} />
+                </div>
+              </div>
+            )
+          })}
+          <div className="fin-bar-top" style={{ borderTop: '1px solid var(--line)', paddingTop: 9 }}>
+            <span>Profit year to date</span>
+            <span className={`fin-num ${tone(ytd.current.profit)}`} style={{ fontWeight: 600 }}>
+              {formatUSD(ytd.current.profit)} <span className="fin-bar-sub">({formatPct(ytd.current.margin)})</span>
+            </span>
           </div>
-        )}
-        <OpexTable report={report} />
+        </div>
       </section>
-
-      <DataGaps report={report} />
-
-      <p className="fin-note fin-sec">
-        Calculation {report.meta.calcVersion} · data from {report.meta.dataStart} to {report.meta.dataAsOf} ·
-        generated {new Date(report.meta.generatedAt).toLocaleString('en-US')}
-      </p>
     </>
   )
 }

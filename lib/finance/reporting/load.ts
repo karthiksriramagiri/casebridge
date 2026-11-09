@@ -41,6 +41,15 @@ import {
 const MISSING = /does not exist|schema cache|relation .* does not exist/i
 const META = 'https://graph.facebook.com/v25.0'
 
+/* Nothing before this date counts.
+
+   The Meta accounts hold spend going back to the start of the year, from
+   campaigns run before the Financial Center billed against them. Counting
+   it put $1.2M of advertising against $350k of invoiced revenue and
+   handed five figures of cost to firms that have not been billed for a
+   day of it. The book starts where the invoicing starts. */
+export const COST_START = '2026-11-04'
+
 function db() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
@@ -97,13 +106,20 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   if (firmsRes.error) errors.push(`firms: ${firmsRes.error.message}`)
   if (invRes.error && !MISSING.test(invRes.error.message)) errors.push(`invoices: ${invRes.error.message}`)
 
-  const firms: Firm[] = (firmsRes.data ?? []).map((f: any) => ({
-    id: f.id,
-    name: f.name,
-    slug: f.slug,
-    archived: Boolean(f.archived),
-    adAccountId: (f.meta_account_id || '').trim() || null,
-  }))
+  /* Archived firms are left out. They are not billed, they have no live
+     invoice, and because several of them sit on an ad account shared with
+     a firm that is billed, leaving them in handed each of them an equal
+     slice of that account's spend on any day the live firm had no invoice
+     open — cost against a firm nobody is invoicing. */
+  const firms: Firm[] = (firmsRes.data ?? [])
+    .filter((f: any) => !f.archived)
+    .map((f: any) => ({
+      id: f.id,
+      name: f.name,
+      slug: f.slug,
+      archived: false,
+      adAccountId: (f.meta_account_id || '').trim() || null,
+    }))
   const firmIds = new Set(firms.map((f) => f.id))
 
   const invoices: Invoice[] = (invRes.data ?? [])
@@ -132,18 +148,11 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     ...opexRows.flatMap((r: any) => [String(r.service_start).slice(0, 10), String(r.service_end).slice(0, 10)]),
   ].filter(Boolean)
 
-  /* The window reaches back to the start of the year even when nothing has
-     been invoiced that far back.
-
-     Costs do not wait for an invoice. Advertising runs all year, and if the
-     ledger began at the first invoice then every dollar spent before it
-     simply vanished — Year to date and Last 90 days both collapsed to the
-     invoice's own four weeks, and the page looked broken when it was only
-     being literal. Spend outside an invoice period is still spend; it shows
-     in the unattributed row, which is the honest place for it. */
-  const yearStart: ISODate = `${today.slice(0, 4)}-01-01`
+  /* The ledger spans from the book's start date to today. */
   const earliest = allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)) : today
-  const dataStart: ISODate = earliest < yearStart ? earliest : yearStart
+  /* The later of the two: no earlier than the book begins, and no later
+     than the first thing in it. */
+  const dataStart: ISODate = earliest > COST_START ? COST_START : earliest
   const dataAsOf: ISODate = allDates.length ? [today, ...allDates].reduce((a, b) => (a > b ? a : b)) : today
 
   // ── Advertising ─────────────────────────────────────────────────────
@@ -155,7 +164,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   const dailyByAccount: Record<string, { date: ISODate; cents: Cents }[]> = {}
   await Promise.all(
     accountIds.map(async (id) => {
-      dailyByAccount[id] = await metaDaily(id, dataStart, dataAsOf)
+      dailyByAccount[id] = await metaDaily(id, dataStart > COST_START ? dataStart : COST_START, dataAsOf)
     }),
   )
 
@@ -166,6 +175,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     if (onAccount.length === 0) continue
     if (onAccount.length > 1) sharedAdAccounts++
     for (const { date, cents } of dailyByAccount[accountId] ?? []) {
+      if (date < COST_START) continue
       if (onAccount.length === 1) {
         adSpend.push({ date, firmId: onAccount[0].id, amountCents: cents })
         continue
@@ -216,6 +226,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   }
 
   for (const day of basePayByDay(timeRes.data ?? [], rateMap(ratesRes.data ?? []))) {
+    if (day.date < COST_START) continue
     const live = firms.filter((f) =>
       invoices.some((i) => i.firmId === f.id && i.periodStart <= day.date && i.periodEnd >= day.date),
     )
@@ -232,7 +243,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   }
 
   for (const row of commissionByCase(caseRows)) {
-    if (!row.firmId || !firmIds.has(row.firmId)) continue
+    if (!row.firmId || !firmIds.has(row.firmId) || row.date < COST_START) continue
     intakeAt(row.date, row.firmId).commissionCents += toCents(row.amount)
   }
 

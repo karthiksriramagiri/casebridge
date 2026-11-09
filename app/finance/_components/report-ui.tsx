@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { formatRange } from '@/lib/finance/reporting/dates'
 import { formatPct, formatUSD, formatUSDCompact, pctChange, type Cents } from '@/lib/finance/reporting/money'
 import type { Metrics, ReportData, TrendPoint } from '@/lib/finance/reporting/report-types'
-import { OPEX_CATEGORY_LABELS } from '@/lib/finance/reporting/types'
+import { OPEX_CATEGORY_LABELS, type OpexCategory } from '@/lib/finance/reporting/types'
 
 /* The report, as read. Server components throughout — nothing here needs
    state, and a page about money should render the same for everyone who
@@ -114,65 +114,84 @@ export function PeriodStrip({ report }: { report: ReportData }) {
   )
 }
 
-/** Revenue and spend as bars, profit as a line. Plain SVG — no chart library. */
+/* Revenue and spend as bars, profit as a line. Plain SVG, no chart library.
+
+   The viewBox is not stretched: `preserveAspectRatio="none"` made the
+   chart fill its box by distorting it, so the bars were different widths
+   at different window sizes and the profit line changed slope with the
+   browser. It keeps its aspect ratio now and the box is sized to match. */
 export function TrendChart({ data }: { data: TrendPoint[] }) {
   if (data.length === 0) return <p className="fin-empty">Nothing in this range.</p>
 
-  const W = 860
-  const H = 230
-  const PAD = { l: 52, r: 14, t: 12, b: 26 }
+  const W = 900
+  const H = 300
+  const PAD = { l: 62, r: 16, t: 14, b: 34 }
   const iw = W - PAD.l - PAD.r
   const ih = H - PAD.t - PAD.b
 
-  const top = Math.max(...data.map((d) => Math.max(d.revenue, d.totalSpend)), 1)
-  const lowProfit = Math.min(0, ...data.map((d) => d.profit))
-  const scale = (v: number) => PAD.t + ih - ((v - lowProfit) / (top - lowProfit || 1)) * ih
+  const hi = Math.max(...data.map((d) => Math.max(d.revenue, d.totalSpend, d.profit)), 1)
+  const lo = Math.min(0, ...data.map((d) => d.profit))
+  const y = (v: number) => PAD.t + ih - ((v - lo) / (hi - lo || 1)) * ih
   const band = iw / data.length
-  const bw = Math.max(2, Math.min(22, band * 0.34))
+  const bw = Math.max(1.5, Math.min(18, band * 0.32))
+  const zero = y(0)
 
   const line = data
-    .map((d, i) => `${i === 0 ? 'M' : 'L'}${(PAD.l + band * (i + 0.5)).toFixed(1)},${scale(d.profit).toFixed(1)}`)
+    .map((d, i) => `${i === 0 ? 'M' : 'L'}${(PAD.l + band * (i + 0.5)).toFixed(1)},${y(d.profit).toFixed(1)}`)
     .join(' ')
 
-  /* At most eight labels, whatever the granularity — a daily range over a
-     quarter has ninety points and every one of them labelled is a smear. */
-  const step = Math.max(1, Math.ceil(data.length / 8))
+  /* At most ten labels, whatever the grain — ninety daily points each
+     labelled is a smear, not an axis. */
+  const step = Math.max(1, Math.ceil(data.length / 10))
 
   return (
     <>
-      <svg className="fin-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img"
-           aria-label="Revenue, spend and profit over the selected range">
-        {[0, 0.25, 0.5, 0.75, 1].map((f) => {
-          const y = PAD.t + ih * f
-          const value = lowProfit + (top - lowProfit) * (1 - f)
-          return (
-            <g key={f}>
-              <line x1={PAD.l} x2={W - PAD.r} y1={y} y2={y} stroke="var(--line)" strokeWidth="1" />
-              <text x={PAD.l - 7} y={y + 3} textAnchor="end">{formatUSDCompact(value)}</text>
-            </g>
-          )
-        })}
-        {data.map((d, i) => {
-          const x = PAD.l + band * i
-          const zero = scale(0)
-          return (
-            <g key={d.key}>
-              <rect x={x + band / 2 - bw - 1} y={scale(d.revenue)} width={bw}
-                    height={Math.max(0, zero - scale(d.revenue))} fill="var(--pos)" opacity="0.55" rx="1.5" />
-              <rect x={x + band / 2 + 1} y={scale(d.totalSpend)} width={bw}
-                    height={Math.max(0, zero - scale(d.totalSpend))} fill="#5B7FB9" opacity="0.55" rx="1.5" />
-              {i % step === 0 && (
-                <text x={x + band / 2} y={H - 9} textAnchor="middle">{d.label}</text>
-              )}
-            </g>
-          )
-        })}
-        <line x1={PAD.l} x2={W - PAD.r} y1={scale(0)} y2={scale(0)} stroke="var(--line-2)" strokeWidth="1" />
-        <path d={line} fill="none" stroke="var(--ink)" strokeWidth="1.8" />
-      </svg>
+      <div className="fin-chart-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} className="fin-chart" role="img"
+             aria-label="Revenue, spend and profit over the selected range">
+          {[0, 0.25, 0.5, 0.75, 1].map((f) => {
+            const gy = PAD.t + ih * f
+            return (
+              <g key={f}>
+                <line x1={PAD.l} x2={W - PAD.r} y1={gy} y2={gy} stroke="var(--line)" strokeWidth="1" />
+                <text x={PAD.l - 8} y={gy + 3.5} textAnchor="end">
+                  {formatUSDCompact(lo + (hi - lo) * (1 - f))}
+                </text>
+              </g>
+            )
+          })}
+
+          {data.map((d, i) => {
+            const x = PAD.l + band * i + band / 2
+            return (
+              <g key={d.key}>
+                <rect x={x - bw - 1} y={y(d.revenue)} width={bw} height={Math.max(0.5, zero - y(d.revenue))}
+                      fill="var(--pos)" opacity="0.5" rx="1.5">
+                  <title>{`${d.label} · revenue ${formatUSD(d.revenue)}`}</title>
+                </rect>
+                <rect x={x + 1} y={y(d.totalSpend)} width={bw} height={Math.max(0.5, zero - y(d.totalSpend))}
+                      fill="#5B7FB9" opacity="0.5" rx="1.5">
+                  <title>{`${d.label} · spend ${formatUSD(d.totalSpend)}`}</title>
+                </rect>
+                {i % step === 0 && <text x={x} y={H - 11} textAnchor="middle">{d.label}</text>}
+              </g>
+            )
+          })}
+
+          {/* The zero line only shows when something sits below it. */}
+          {lo < 0 && <line x1={PAD.l} x2={W - PAD.r} y1={zero} y2={zero} stroke="var(--line-2)" strokeWidth="1" />}
+          <path d={line} fill="none" stroke="var(--ink)" strokeWidth="1.8" strokeLinejoin="round" />
+          {data.map((d, i) => (
+            <circle key={d.key} cx={PAD.l + band * (i + 0.5)} cy={y(d.profit)} r={data.length > 40 ? 0 : 2.2}
+                    fill="var(--card)" stroke="var(--ink)" strokeWidth="1.4">
+              <title>{`${d.label} · profit ${formatUSD(d.profit)}`}</title>
+            </circle>
+          ))}
+        </svg>
+      </div>
       <div className="fin-legend">
-        <span><i style={{ background: 'var(--pos)', opacity: 0.55 }} />Revenue</span>
-        <span><i style={{ background: '#5B7FB9', opacity: 0.55 }} />Total spend</span>
+        <span><i style={{ background: 'var(--pos)', opacity: 0.5 }} />Revenue</span>
+        <span><i style={{ background: '#5B7FB9', opacity: 0.5 }} />Total spend</span>
         <span><i style={{ background: 'var(--ink)' }} />Profit</span>
       </div>
     </>
@@ -263,8 +282,14 @@ function MetricCells({ m }: { m: Metrics }) {
 const HEAD = ['Revenue', 'Advertising', 'Intake', 'OpEx', 'Profit', 'Margin']
 
 export function FirmTable({ report, hrefForFirm }: { report: ReportData; hrefForFirm: (id: string) => string }) {
-  const { rows, total } = report.firms
-  if (rows.length === 0) return <p className="fin-empty">No firms in this range.</p>
+  const { total } = report.firms
+  /* Only firms with something in this range. A row of zeroes is not an
+     observation, and six of them pushed the two firms that are actually
+     trading off the bottom of the card. */
+  const rows = report.firms.rows.filter(
+    (r) => r.metrics.revenue !== 0 || r.metrics.totalSpend !== 0,
+  )
+  if (rows.length === 0) return <p className="fin-empty">No firm had revenue or cost in this range.</p>
   return (
     <div className="fin-scroll">
       <table className="fin-table">
@@ -445,6 +470,129 @@ export function EarnoutCard({ report }: { report: ReportData }) {
         </span>
         <span className="fin-num" style={{ fontWeight: 600 }}>{formatUSD(e.amount)}</span>
       </div>
+    </div>
+  )
+}
+
+/* ── Full period comparison ────────────────────────────────────────────
+   Every metric, not just revenue, for each of the five windows. The strip
+   above answers "is revenue up"; this answers "why". Each row compares
+   equal-length windows ending on the report's end date, which is what
+   makes a partial month comparable to the same partial month before it. */
+
+const CMP_ROWS: { key: keyof Metrics; label: string; lowerIsBetter?: boolean; strong?: boolean }[] = [
+  { key: 'revenue', label: 'Recognised revenue', strong: true },
+  { key: 'advertising', label: 'Advertising', lowerIsBetter: true },
+  { key: 'intake', label: 'Intake / worker cost', lowerIsBetter: true },
+  { key: 'opex', label: 'Operating expenses', lowerIsBetter: true },
+  { key: 'totalSpend', label: 'Total spend', lowerIsBetter: true, strong: true },
+  { key: 'profit', label: 'Operating profit', strong: true },
+  { key: 'margin', label: 'Operating margin', strong: true },
+]
+
+export function ComparisonTable({ report }: { report: ReportData }) {
+  return (
+    <div style={{ display: 'grid', gap: 18, padding: '14px 16px 16px' }}>
+      {report.periodComparisons.map((row) => (
+        <div key={row.key}>
+          <div className="fin-bar-top" style={{ marginBottom: 6 }}>
+            <span style={{ fontWeight: 600 }}>
+              {row.label}
+              <span className="fin-bar-sub">
+                {' '}· {row.current.label}{row.current.partial && ' (partial)'} vs {row.previous.label}
+              </span>
+            </span>
+            {!row.dataComplete && <span className="fin-pill flag">prior window predates the data</span>}
+          </div>
+          <div className="fin-scroll">
+            <table className="fin-table">
+              <thead>
+                <tr>
+                  <th>Metric</th>
+                  <th className="n">Current</th>
+                  <th className="n">Previous</th>
+                  <th className="n">Change</th>
+                  <th className="n">% / pp</th>
+                </tr>
+              </thead>
+              <tbody>
+                {CMP_ROWS.map((m) => {
+                  const cur = row.currentMetrics[m.key] as number | null
+                  const prev = row.previousMetrics[m.key] as number | null
+                  const isMargin = m.key === 'margin'
+                  if (cur === null && prev === null) return null
+                  const diff = (cur ?? 0) - (prev ?? 0)
+                  const pct = isMargin ? null : pctChange(cur ?? 0, prev ?? 0)
+                  const good = m.lowerIsBetter ? -diff : diff
+                  return (
+                    <tr key={m.key}>
+                      <td style={{ fontWeight: m.strong ? 600 : 400 }}>{m.label}</td>
+                      <td className="n fin-num">{isMargin ? formatPct(cur) : formatUSD(cur ?? 0)}</td>
+                      <td className="n fin-num">{isMargin ? formatPct(prev) : formatUSD(prev ?? 0)}</td>
+                      <td className={`n fin-num ${tone(good)}`}>
+                        {isMargin
+                          ? `${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(1)} pp`
+                          : formatUSD(diff, { signed: true })}
+                      </td>
+                      <td className={`n fin-num ${tone(m.lowerIsBetter && pct !== null ? -pct : pct)}`}>
+                        {isMargin ? '—' : prev === 0 ? '—' : formatPct(pct, { signed: true })}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+          <p className="fin-bar-sub" style={{ marginTop: 5 }}>{row.method}</p>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/* Operating expenses by category, as a share of the total recognised in
+   this range. Separate from the cost breakdown above, which answers where
+   the money went across all three cost kinds; this one is only the
+   overhead, which is the part anybody can actually act on this month. */
+export function OpexByCategory({ report }: { report: ReportData }) {
+  const by = report.opex.byCategory
+  if (!by) return <p className="fin-empty">Category breakdown is not available for a single invoice.</p>
+  const rows = (Object.entries(by) as [OpexCategory, number][])
+    .filter(([, v]) => v !== 0)
+    .sort((a, b) => b[1] - a[1])
+  if (rows.length === 0) return <p className="fin-empty">No operating expenses in this range.</p>
+
+  const total = rows.reduce((a, [, v]) => a + v, 0)
+  return (
+    <div className="fin-bars">
+      {rows.map(([cat, cents]) => (
+        <div key={cat} className="fin-bar-row">
+          <div className="fin-bar-top">
+            <span>{OPEX_CATEGORY_LABELS[cat]}</span>
+            <span className="fin-num">
+              {formatUSD(cents)}
+              <span className="fin-bar-sub"> · {formatPct((cents / total) * 100)}</span>
+            </span>
+          </div>
+          <div className="fin-bar-track">
+            <div className="fin-bar-fill opex" style={{ width: `${(cents / total) * 100}%` }} />
+          </div>
+        </div>
+      ))}
+      <div className="fin-bar-top" style={{ borderTop: '1px solid var(--line)', paddingTop: 9 }}>
+        <span>Allocated to firms</span>
+        <span className="fin-num">{formatUSD(report.opex.allocated)}</span>
+      </div>
+      <div className="fin-bar-top">
+        <span className="fin-bar-sub">Company-level (unallocated)</span>
+        <span className="fin-num fin-bar-sub">{formatUSD(report.opex.unallocated)}</span>
+      </div>
+      {report.opex.pctOfRevenue !== null && (
+        <p className="fin-bar-sub">
+          {formatPct(report.opex.pctOfRevenue)} of revenue
+          {report.opex.pctChange !== null && ` · ${formatPct(report.opex.pctChange, { signed: true })} vs the comparison period`}
+        </p>
+      )}
     </div>
   )
 }
