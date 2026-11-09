@@ -135,6 +135,8 @@ export interface ReportData {
       payRatesMissing: boolean
       sharedAdAccounts: number
       errors: string[]
+      accruedCommission: Cents
+      nextPayday: ISODate | null
     }
     filters: ReportFilters
     window: PeriodWindow

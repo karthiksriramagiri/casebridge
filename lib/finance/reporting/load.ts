@@ -1,6 +1,7 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { tokenForAccount } from '@/app/_metrics/ad-accounts'
+import { nextPaymentDate } from '@/lib/pay'
 import { basePayByDay, commissionByCase, rateMap, type CaseRow } from '@/lib/finance/worker-cost'
 import { addDays, toISO, type ISODate } from './dates'
 import { toCents, type Cents } from './money'
@@ -259,9 +260,32 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     })
   }
 
+  /* Commission counts on the day it is paid, not the day the case signed.
+
+     A case signed on the 9th is earned then but costs nothing until it
+     reaches a paycheck, and pay runs fortnightly — so dating it to the
+     signing put a cost in a week no money left the company. It is moved
+     to the pay date of the period the case falls in, which is the day the
+     company is actually out of pocket.
+
+     The consequence is deliberate: commission on this fortnight's cases
+     sits in the future until payday, so it is not in today's or this
+     week's intake. It appears in full on the pay date. */
+  let accruedCommission = 0
+  let nextPayday: ISODate | null = null
   for (const row of commissionByCase(caseRows)) {
     if (!row.firmId || !firmIds.has(row.firmId) || row.date < COST_START) continue
-    intakeAt(row.date, row.firmId).commissionCents += toCents(row.amount)
+    const paidOn = toISO(nextPaymentDate(new Date(`${row.date}T12:00:00Z`)))
+    const cents = toCents(row.amount)
+    if (paidOn > dataAsOf) {
+      /* Earned, not yet paid. It is deliberately not in any cost figure —
+         no money has left — but it is not nothing either, so it is
+         reported rather than dropped where nobody would see it again. */
+      accruedCommission += cents
+      if (!nextPayday || paidOn < nextPayday) nextPayday = paidOn
+      continue
+    }
+    intakeAt(paidOn, row.firmId).commissionCents += cents
   }
 
   // ── Case revenue ────────────────────────────────────────────────────
@@ -354,6 +378,6 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     earnout,
     dataStart,
     dataAsOf,
-    gaps: { opexTableMissing, payRatesMissing, sharedAdAccounts, errors },
+    gaps: { opexTableMissing, payRatesMissing, sharedAdAccounts, errors, accruedCommission, nextPayday },
   }
 }

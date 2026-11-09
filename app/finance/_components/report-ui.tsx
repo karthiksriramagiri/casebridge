@@ -84,8 +84,8 @@ export function KpiCards({ report }: { report: ReportData }) {
           </>
         ) : (
           <>
-            {' '}— each invoice spread evenly across its service period, counting only the days
-            inside this range.
+            {' '}— each invoice counted in full on the day it was raised, so revenue lands when
+            the billing happens rather than being spread across the days that follow.
             {' '}<span className="fin-basis-alt">
               Cases delivered over the same range: {formatUSD(other)} from{' '}
               {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'}.
@@ -470,6 +470,11 @@ export function OpexTable({ report }: { report: ReportData }) {
 export function DataGaps({ report }: { report: ReportData }) {
   const g = report.meta.gaps
   const notes: string[] = []
+  if (g.accruedCommission > 0) {
+    notes.push(
+      `${formatUSD(g.accruedCommission)} of commission has been earned on cases already signed but is not in intake cost yet — it reaches a paycheck${g.nextPayday ? ` on ${g.nextPayday}` : ' at the next pay run'}.`,
+    )
+  }
   if (g.payRatesMissing)
     notes.push('No pay rates are configured, so intake base pay is counted at the default rate only — commission is unaffected.')
   if (g.sharedAdAccounts > 0)

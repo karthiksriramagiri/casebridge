@@ -8,7 +8,6 @@ import { loadFinanceData } from '@/lib/finance/reporting/load'
 import { formatPct, formatUSD, formatUSDCompact, pctChange } from '@/lib/finance/reporting/money'
 import { buildReport } from '@/lib/finance/reporting/report'
 import { PaidToggle } from './_components/paid-toggle'
-import { RangeTabs } from './_components/range-tabs'
 import { invoicePathSegment } from './_lib/invoice-routes'
 
 export const metadata: Metadata = { title: 'Dashboard · Financial Center' }
@@ -29,23 +28,19 @@ export const dynamic = 'force-dynamic'
 
 const tone = (n: number | null) => (n === null ? '' : n > 0 ? 'pos' : n < 0 ? 'neg' : '')
 
-export default async function FinanceDashboard({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>
-}) {
-  const params = await searchParams
+export default async function FinanceDashboard() {
   const store = await loadFinanceData()
   const base = siteRootForHost((await headers()).get('host')) === '/finance' ? '' : '/finance'
   const bounds = { dataStart: store.dataStart, asOf: store.dataAsOf }
 
-  /* The chosen window, and the year beside it for context. Month to date
-     unless asked otherwise. */
-  const range = typeof params.range === 'string' ? params.range : 'mtd'
+  /* This month, and only this month. The dashboard answers how the month
+     is going; every other window is a question, and questions belong to
+     the Reporting Center. */
+  const range = 'mtd'
   /* Invoiced, always. The dashboard is the billing view — what the firms
      were charged for the window. Cases delivered is a different question
      and the Reporting Center is where it is asked. */
-  const mtd = buildReport(store, parseFilters({ ...params, range, basis: 'invoiced' }, bounds))
+  const mtd = buildReport(store, parseFilters({ range, basis: 'invoiced' }, bounds))
   const ytd = buildReport(store, parseFilters({ range: 'ytd', basis: 'invoiced' }, bounds))
 
   const m = mtd.current
@@ -72,6 +67,12 @@ export default async function FinanceDashboard({
       text: `${formatUSD(unattributed.metrics.totalSpend)} of spend this year falls outside every invoice period, so no invoice carries it.`,
     })
   }
+  if (store.gaps.accruedCommission > 0) {
+    alerts.push({
+      tone: 'flag',
+      text: `${formatUSD(store.gaps.accruedCommission)} of commission is earned but not yet paid, so it is not in intake cost${store.gaps.nextPayday ? ` until ${store.gaps.nextPayday}` : ' yet'}.`,
+    })
+  }
   if (store.gaps.opexTableMissing) {
     alerts.push({ tone: 'flag', text: 'Operating expenses are not set up, so profit counts advertising and intake only.' })
   }
@@ -86,14 +87,12 @@ export default async function FinanceDashboard({
         <Link href={`${base}/reporting`} className="fin-btn">Open the Reporting Center →</Link>
       </div>
 
-      <RangeTabs active={range} basePath={base || '/finance'} />
-
       {/* Which revenue this is. The Reporting Center can be switched to
           cases delivered; this page cannot, and saying so stops the two
           being read as the same number. */}
       <p className="fin-note" style={{ marginBottom: 8 }}>
-        Revenue is <strong>invoiced</strong> — each invoice recognised straight-line across its
-        service period, counting only the days inside this window.
+        Revenue is <strong>invoiced</strong> — each invoice counted in full on the day it was
+        raised. Nothing is recognised on the days that follow, because nothing was billed on them.
       </p>
 
       <div className="fin-figs">
