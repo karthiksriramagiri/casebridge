@@ -10,9 +10,10 @@ import { OPEX_CATEGORIES, type FinanceDataset, type Invoice, type OpexCategory, 
  * per-firm margins were computed in different places from different costs.
  *
  * Methodology (version below):
- * - Revenue: each invoice's invoiced amount is recognized straight-line per day
- *   across its service period. Prepaid cash is tracked separately and never
- *   treated as earned revenue on receipt.
+ * - Invoiced revenue: the whole invoice on the day it is raised. An invoice
+ *   is an event, not an accrual — nothing is billed on the days that follow.
+ * - Case revenue: cases signed that day, at the firm's case price. The two
+ *   bases are computed side by side and the report chooses between them.
  * - Advertising and intake/worker costs are recorded on the day incurred.
  * - OpEx: each non-void expense is first allocated to firms (direct / even /
  *   revenue-weighted / unallocated), then each share is spread evenly across
@@ -140,11 +141,30 @@ export function getLedger(store: FinanceDataset): Ledger {
     const periodDays = daysInclusive(inv.periodStart, inv.periodEnd)
     const daily = distributeEvenly(inv.invoicedCents, periodDays)
     const base = idx(inv.periodStart)
+
+    /* Invoiced revenue lands in full on the day the invoice is raised.
+
+       It used to be spread evenly across the service period, which meant
+       every day of an open invoice reported a slice of it — $612,500
+       across 27 days put $22,685 against a day on which nothing was
+       invoiced at all. An invoice is an event: it happens once, for its
+       whole value, on the day it is issued. Nothing is recognised on the
+       days that follow because nothing was billed on them.
+
+       The period still matters, but only for cost attribution below: an
+       invoice is open across its dates, and the costs of those days
+       belong to it. */
+    if (inRange(base) && firm[inv.firmId]) {
+      s.rev[base] += inv.invoicedCents
+      firm[inv.firmId].rev[base] += inv.invoicedCents
+    }
+
+    /* The weight each open day carries when costs are shared out. Even
+       across the period, because an invoice is no more open on one of its
+       days than another. */
     daily.forEach((cents, k) => {
       const i = base + k
       if (!inRange(i) || !firm[inv.firmId]) return
-      s.rev[i] += cents
-      firm[inv.firmId].rev[i] += cents
       activeByFirmDay[inv.firmId][i].push({ id: inv.id, daily: cents })
     })
   }

@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useTransition } from 'react'
-import { COMPARISON_LABELS, GRANULARITY_LABELS, PRESET_LABELS } from '@/lib/finance/reporting/filters'
+import { GRANULARITY_LABELS, PRESET_LABELS } from '@/lib/finance/reporting/filters'
 import type { ReportData } from '@/lib/finance/reporting/report-types'
 
 /* The range, the grain and the comparison — in the URL, so a view can be
@@ -76,14 +76,6 @@ export function ReportFilters({ report, basePath }: { report: ReportData; basePa
         </select>
       </label>
 
-      <label className="fin-field">
-        <span>Compare to</span>
-        <select className="fin-select" value={f.comparison} onChange={(e) => go({ compare: e.target.value })}>
-          {Object.entries(COMPARISON_LABELS).map(([k, label]) => (
-            <option key={k} value={k}>{label}</option>
-          ))}
-        </select>
-      </label>
 
       <label className="fin-field">
         <span>Law firm</span>
@@ -109,11 +101,6 @@ export function ReportFilters({ report, basePath }: { report: ReportData; basePa
         </select>
       </label>
 
-      <div className="grow">
-        <a className="fin-btn" href={`/api/finance/report?${params?.toString() ?? ''}`} target="_blank" rel="noreferrer">
-          Raw figures
-        </a>
-      </div>
     </div>
   )
 }

@@ -277,3 +277,32 @@
 .fin-pill.pos{color:var(--pos); border-color:var(--pos)}
 .fin-pill.neg{color:var(--neg); border-color:var(--neg)}
 .fin-pill.flag{color:var(--flag); border-color:var(--flag)}
+
+/* Period comparison — one summary line each, the table behind a click. */
+.fin-cmp{border-bottom:1px solid var(--line)}
+.fin-cmp:last-child{border-bottom:0}
+.fin-cmp-s{
+  display:flex; align-items:baseline; gap:12px; padding:11px 16px; cursor:pointer;
+  list-style:none; user-select:none;
+}
+.fin-cmp-s::-webkit-details-marker{display:none}
+.fin-cmp-s:hover{background:var(--sunk)}
+.fin-cmp-s::before{
+  content:''; width:0; height:0; flex-shrink:0; margin-right:2px;
+  border-left:4.5px solid var(--ink-3); border-top:3.5px solid transparent;
+  border-bottom:3.5px solid transparent; transition:transform .12s;
+}
+.fin-cmp[open] > .fin-cmp-s::before{transform:rotate(90deg)}
+.fin-cmp-k{font-weight:600; font-size:13px; min-width:38px}
+.fin-cmp-w{font-size:12px; color:var(--ink-3); flex:1; min-width:0}
+.fin-cmp-v{font-size:13.5px; font-weight:600; white-space:nowrap}
+.fin-cmp-d{font-weight:500; font-size:12px}
+
+/* The basis line. Set apart from the figures it explains, because it
+   changes what every one of them means. */
+.fin-basis{
+  font-size:12.5px; color:var(--ink-2); line-height:1.6;
+  border:1px solid var(--line); border-left:3px solid var(--ink-3);
+  border-radius:5px; background:var(--card); padding:9px 13px; margin-bottom:10px;
+}
+.fin-basis-alt{color:var(--ink-3)}

@@ -42,13 +42,15 @@ export default async function FinanceDashboard({
   /* The chosen window, and the year beside it for context. Month to date
      unless asked otherwise. */
   const range = typeof params.range === 'string' ? params.range : 'mtd'
-  const mtd = buildReport(store, parseFilters({ ...params, range }, bounds))
-  const ytd = buildReport(store, parseFilters({ range: 'ytd' }, bounds))
+  /* Invoiced, always. The dashboard is the billing view — what the firms
+     were charged for the window. Cases delivered is a different question
+     and the Reporting Center is where it is asked. */
+  const mtd = buildReport(store, parseFilters({ ...params, range, basis: 'invoiced' }, bounds))
+  const ytd = buildReport(store, parseFilters({ range: 'ytd', basis: 'invoiced' }, bounds))
 
   const m = mtd.current
   const prev = mtd.comparison?.metrics ?? null
   const win = mtd.meta.window
-  const perCase = m.cases > 0 ? Math.round(m.caseRevenue / m.cases) : null
 
   /* What is worth saying out loud. A dashboard that only shows figures
      makes the reader find the problem; these are the three the figures
@@ -86,13 +88,12 @@ export default async function FinanceDashboard({
 
       <RangeTabs active={range} basePath={base || '/finance'} />
 
-      {/* The derivation, in the figure's own terms — a number nobody can
-          reproduce is a number nobody can check. */}
+      {/* Which revenue this is. The Reporting Center can be switched to
+          cases delivered; this page cannot, and saying so stops the two
+          being read as the same number. */}
       <p className="fin-note" style={{ marginBottom: 8 }}>
-        Revenue is <strong>cases delivered</strong>:{' '}
-        {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'} signed in this window
-        {perCase !== null && <> at {formatUSD(perCase)} each</>} = <strong>{formatUSD(m.revenue)}</strong>.
-        {' '}Invoiced over the same window: {formatUSD(m.invoicedRevenue)}.
+        Revenue is <strong>invoiced</strong> — each invoice recognised straight-line across its
+        service period, counting only the days inside this window.
       </p>
 
       <div className="fin-figs">
@@ -144,7 +145,6 @@ export default async function FinanceDashboard({
               <thead>
                 <tr>
                   <th>Law firm</th>
-                  <th className="n">Cases</th>
                   <th className="n">Revenue</th>
                   <th className="n">Spend</th>
                   <th className="n">Profit</th>
@@ -157,7 +157,6 @@ export default async function FinanceDashboard({
                   .map((r) => (
                     <tr key={r.firmId ?? r.name}>
                       <td>{r.name}</td>
-                      <td className="n fin-num">{r.metrics.cases || '—'}</td>
                       <td className="n fin-num">{formatUSD(r.metrics.revenue)}</td>
                       <td className="n fin-num">{formatUSD(r.metrics.totalSpend)}</td>
                       <td className={`n fin-num ${tone(r.metrics.profit)}`}>{formatUSD(r.metrics.profit)}</td>
@@ -168,7 +167,6 @@ export default async function FinanceDashboard({
               <tfoot className="fin-tfoot">
                 <tr>
                   <td>Total</td>
-                  <td className="n fin-num">{m.cases || '—'}</td>
                   <td className="n fin-num">{formatUSD(m.revenue)}</td>
                   <td className="n fin-num">{formatUSD(m.totalSpend)}</td>
                   <td className={`n fin-num ${tone(m.profit)}`}>{formatUSD(m.profit)}</td>

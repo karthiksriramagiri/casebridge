@@ -70,21 +70,29 @@ export function KpiCards({ report }: { report: ReportData }) {
       {/* Where the number comes from, in the number's own terms. A reader
           who cannot reproduce a figure has no way to tell a real change
           from a bug in how it is counted. */}
-      <p className="fin-note" style={{ marginBottom: 8 }}>
-        Revenue is <strong>{onCases ? 'cases delivered' : 'invoiced'}</strong>
-        {onCases ? ' — ' : ' — each invoice recognised straight-line across its service period. '}
-        {onCases && (
+      <div className="fin-basis">
+        <strong>{onCases ? 'Cases delivered' : 'Invoiced'}</strong>
+        {onCases ? (
           <>
-            {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'} signed in this range,
-            each at its firm&rsquo;s case price
-            {perCase !== null && <> ({formatUSD(perCase)} average)</>}
-            {' = '}<strong>{formatUSD(m.revenue)}</strong>.{' '}
+            {' '}— a case counts on the day it was signed, valued at its firm&rsquo;s case price.
+            {' '}<span className="fin-num">
+              {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'}
+              {perCase !== null && <> × {formatUSD(perCase)}</>} = <strong>{formatUSD(m.revenue)}</strong>
+            </span>.
+            {' '}Profit takes off the advertising and intake cost of those same days.
+            {' '}<span className="fin-basis-alt">Invoiced over the same range: {formatUSD(other)}.</span>
+          </>
+        ) : (
+          <>
+            {' '}— each invoice spread evenly across its service period, counting only the days
+            inside this range.
+            {' '}<span className="fin-basis-alt">
+              Cases delivered over the same range: {formatUSD(other)} from{' '}
+              {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'}.
+            </span>
           </>
         )}
-        {onCases
-          ? `Invoiced over the same range: ${formatUSD(other)}.`
-          : `Cases delivered over the same range: ${formatUSD(other)} from ${m.cases.toLocaleString('en-US')} case${m.cases === 1 ? '' : 's'}.`}
-      </p>
+      </div>
 
       <div className="fin-figs">
         {cards.map((c) => (
@@ -531,60 +539,77 @@ const CMP_ROWS: { key: keyof Metrics; label: string; lowerIsBetter?: boolean; st
 
 export function ComparisonTable({ report }: { report: ReportData }) {
   return (
-    <div style={{ display: 'grid', gap: 18, padding: '14px 16px 16px' }}>
-      {report.periodComparisons.map((row) => (
-        <div key={row.key}>
-          <div className="fin-bar-top" style={{ marginBottom: 6 }}>
-            <span style={{ fontWeight: 600 }}>
-              {row.label}
-              <span className="fin-bar-sub">
-                {' '}· {row.current.label}{row.current.partial && ' (partial)'} vs {row.previous.label}
+    <div style={{ display: 'grid' }}>
+      {report.periodComparisons.map((row, i) => {
+        const pct = pctChange(row.currentMetrics.revenue, row.previousMetrics.revenue)
+        return (
+          /* Closed by default. Five tables of seven rows each is thirty-five
+             figures nobody asked for; the summary line carries the answer
+             and the table is there for whoever wants the working. The month
+             is open to start because it is the one most often wanted. */
+          <details key={row.key} open={row.key === 'mom'} className="fin-cmp">
+            <summary className="fin-cmp-s">
+              <span className="fin-cmp-k">{row.label}</span>
+              <span className="fin-cmp-w">
+                {row.current.label}{row.current.partial && ' (partial)'} vs {row.previous.label}
               </span>
-            </span>
-            {!row.dataComplete && <span className="fin-pill flag">prior window predates the data</span>}
-          </div>
-          <div className="fin-scroll">
-            <table className="fin-table">
-              <thead>
-                <tr>
-                  <th>Metric</th>
-                  <th className="n">Current</th>
-                  <th className="n">Previous</th>
-                  <th className="n">Change</th>
-                  <th className="n">% / pp</th>
-                </tr>
-              </thead>
-              <tbody>
-                {CMP_ROWS.map((m) => {
-                  const cur = row.currentMetrics[m.key] as number | null
-                  const prev = row.previousMetrics[m.key] as number | null
-                  const isMargin = m.key === 'margin'
-                  if (cur === null && prev === null) return null
-                  const diff = (cur ?? 0) - (prev ?? 0)
-                  const pct = isMargin ? null : pctChange(cur ?? 0, prev ?? 0)
-                  const good = m.lowerIsBetter ? -diff : diff
-                  return (
-                    <tr key={m.key}>
-                      <td style={{ fontWeight: m.strong ? 600 : 400 }}>{m.label}</td>
-                      <td className="n fin-num">{isMargin ? formatPct(cur) : formatUSD(cur ?? 0)}</td>
-                      <td className="n fin-num">{isMargin ? formatPct(prev) : formatUSD(prev ?? 0)}</td>
-                      <td className={`n fin-num ${tone(good)}`}>
-                        {isMargin
-                          ? `${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(1)} pp`
-                          : formatUSD(diff, { signed: true })}
-                      </td>
-                      <td className={`n fin-num ${tone(m.lowerIsBetter && pct !== null ? -pct : pct)}`}>
-                        {isMargin ? '—' : prev === 0 ? '—' : formatPct(pct, { signed: true })}
-                      </td>
+              <span className={`fin-cmp-v fin-num ${tone(pct)}`}>
+                {formatUSDCompact(row.currentMetrics.revenue)}
+                {pct !== null && <span className="fin-cmp-d"> {formatPct(pct, { signed: true })}</span>}
+                {pct === null && <span className="fin-cmp-d"> {row.dataComplete ? 'no prior revenue' : 'no prior data'}</span>}
+              </span>
+            </summary>
+
+            <div style={{ padding: '2px 16px 14px' }}>
+              {!row.dataComplete && (
+                <p className="fin-bar-sub" style={{ marginBottom: 6 }}>
+                  The prior window reaches back before the first data, so the change is overstated.
+                </p>
+              )}
+              <div className="fin-scroll">
+                <table className="fin-table">
+                  <thead>
+                    <tr>
+                      <th>Metric</th>
+                      <th className="n">Current</th>
+                      <th className="n">Previous</th>
+                      <th className="n">Change</th>
+                      <th className="n">% / pp</th>
                     </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-          <p className="fin-bar-sub" style={{ marginTop: 5 }}>{row.method}</p>
-        </div>
-      ))}
+                  </thead>
+                  <tbody>
+                    {CMP_ROWS.map((mm) => {
+                      const cur = row.currentMetrics[mm.key] as number | null
+                      const prev = row.previousMetrics[mm.key] as number | null
+                      const isMargin = mm.key === 'margin'
+                      if (cur === null && prev === null) return null
+                      const diff = (cur ?? 0) - (prev ?? 0)
+                      const p = isMargin ? null : pctChange(cur ?? 0, prev ?? 0)
+                      const good = mm.lowerIsBetter ? -diff : diff
+                      return (
+                        <tr key={mm.key}>
+                          <td style={{ fontWeight: mm.strong ? 600 : 400 }}>{mm.label}</td>
+                          <td className="n fin-num">{isMargin ? formatPct(cur) : formatUSD(cur ?? 0)}</td>
+                          <td className="n fin-num">{isMargin ? formatPct(prev) : formatUSD(prev ?? 0)}</td>
+                          <td className={`n fin-num ${tone(good)}`}>
+                            {isMargin
+                              ? `${diff >= 0 ? '+' : '−'}${Math.abs(diff).toFixed(1)} pp`
+                              : formatUSD(diff, { signed: true })}
+                          </td>
+                          <td className={`n fin-num ${tone(mm.lowerIsBetter && p !== null ? -p : p)}`}>
+                            {isMargin ? '—' : prev === 0 ? '—' : formatPct(p, { signed: true })}
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <p className="fin-bar-sub" style={{ marginTop: 5 }}>{row.method}</p>
+            </div>
+          </details>
+        )
+      })}
     </div>
   )
 }
