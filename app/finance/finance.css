@@ -183,3 +183,62 @@
 .fin-range{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
 .fin-range .fin-input{width:auto; min-width:150px}
 .fin-range-to{color:var(--ink-3); font-size:12.5px}
+
+/* ── Reporting Center ─────────────────────────────────────────────────────
+   The dashboard rebuilt around a single calculation layer: a range, a
+   comparison, and every figure on the page derived from the same ledger.
+   Everything below is layout only — the palette above is unchanged. */
+
+.fin-filters{
+  display:flex; flex-wrap:wrap; align-items:flex-end; gap:10px;
+  padding:13px 15px; border:1px solid var(--line); border-radius:6px;
+  background:var(--card); margin-bottom:18px;
+}
+.fin-filters .fin-field{min-width:150px}
+.fin-filters .grow{margin-left:auto}
+
+/* A figure with its comparison underneath. */
+.fin-kpi-d{font-size:11.5px; display:flex; align-items:center; gap:5px}
+.fin-kpi-d.pos{color:var(--pos)} .fin-kpi-d.neg{color:var(--neg)}
+.fin-kpi-d .muted{color:var(--ink-3)}
+
+/* The period strip: five equal-length comparisons in a row. */
+.fin-strip{
+  display:grid; grid-template-columns:repeat(auto-fit,minmax(176px,1fr));
+  border:1px solid var(--line); border-radius:6px; overflow:hidden;
+  background:var(--line); margin-top:10px;
+}
+.fin-strip-c{background:var(--card); padding:12px 15px; display:flex; flex-direction:column; gap:2px}
+.fin-strip-k{font-size:10.5px; text-transform:uppercase; letter-spacing:.07em;
+  color:var(--ink-3); font-weight:600}
+.fin-strip-v{font-size:16px; font-weight:600; letter-spacing:-.015em}
+.fin-strip-s{font-size:11px; color:var(--ink-3)}
+
+/* Two columns that stack. */
+.fin-split{display:grid; gap:14px; grid-template-columns:2fr 1fr; margin-top:14px}
+.fin-split.even{grid-template-columns:1fr 1fr}
+@media (max-width:940px){ .fin-split, .fin-split.even{grid-template-columns:1fr} }
+
+/* Trend: bars for spend, a line for profit, drawn as plain SVG. */
+.fin-chart{width:100%; height:230px; display:block}
+.fin-chart text{font-size:9.5px; fill:var(--ink-3)}
+.fin-legend{display:flex; gap:14px; flex-wrap:wrap; padding:10px 16px 0; font-size:11.5px; color:var(--ink-3)}
+.fin-legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px}
+
+/* A labelled proportion bar — the cost breakdown and target attainment. */
+.fin-bars{display:flex; flex-direction:column; gap:11px; padding:15px 16px}
+.fin-bar-row{display:grid; gap:4px}
+.fin-bar-top{display:flex; justify-content:space-between; gap:10px; font-size:12.5px}
+.fin-bar-track{height:7px; border-radius:4px; background:var(--sunk); overflow:hidden}
+.fin-bar-fill{height:100%; border-radius:4px; background:var(--ink-3)}
+.fin-bar-fill.ad{background:#5B7FB9} .fin-bar-fill.intake{background:#C08A4A}
+.fin-bar-fill.opex{background:#8A6FA8} .fin-bar-fill.profit{background:var(--pos)}
+.fin-bar-fill.over{background:var(--pos)} .fin-bar-fill.under{background:var(--flag)}
+.fin-bar-sub{font-size:11px; color:var(--ink-3)}
+
+.fin-pill{display:inline-flex; align-items:center; gap:4px; font-size:10.5px; font-weight:600;
+  padding:1px 7px; border-radius:999px; border:1px solid var(--line); background:var(--sunk);
+  color:var(--ink-3)}
+.fin-pill.pos{color:var(--pos); border-color:var(--pos)}
+.fin-pill.neg{color:var(--neg); border-color:var(--neg)}
+.fin-pill.flag{color:var(--flag); border-color:var(--flag)}

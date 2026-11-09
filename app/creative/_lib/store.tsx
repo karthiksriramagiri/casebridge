@@ -5,6 +5,11 @@ import { toast } from 'sonner'
 import { TODAY, YESTERDAY, addDays, pacificDay } from './data'
 import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildConvention, creativeSuffix, isDelivering, killReason, watchReason, withAdsetDate, withCreativeDate, type AdsetTotals } from './metrics'
 
+/* How often today's Meta figures are re-taken. Five minutes is well inside
+   the hour the numbers are useful for and well outside Meta's rate limit:
+   two accounts, four calls each, twelve times an hour. */
+const AUTO_REFRESH_MS = 5 * 60_000
+
 /** The row collections /api/creative/board writes. */
 type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
 import { api, fetchBoard, isPersisted } from './assignments-api'
@@ -519,6 +524,41 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       live = false
     }
   }, [day, dayTick])
+
+  /* Today's numbers, re-taken every five minutes.
+
+     The day lock freezes the figures the first time the centre is opened,
+     which is what a past day needs and what today does not: a meeting that
+     starts at nine should not still be reading the eight o'clock spend at
+     eleven. The Refresh button did this by hand; this does it on a timer.
+
+     Three conditions, all of them load-bearing:
+
+       today only   a past day is a record. The server refuses to re-take
+                    one anyway, but asking would be a wasted Meta call
+                    every five minutes for as long as the tab is open.
+       visible      a tab left open overnight stops asking. Meta's rate
+                    limit is shared with the rest of the account.
+       idle         `inFlight` is the optimistic-write counter. A refetch
+                    landing between a write and its save pulls the old row
+                    back and reads as the edit being rejected.
+
+     It also fires on focus, which is when someone has come back from Ads
+     Manager having changed something and wants to see it. */
+  useEffect(() => {
+    if (day !== TODAY) return
+    const tick = () => {
+      if (document.visibilityState !== 'visible') return
+      if (inFlight.current > 0) return
+      setDayTick((n) => n + 1)
+    }
+    const id = setInterval(tick, AUTO_REFRESH_MS)
+    window.addEventListener('focus', tick)
+    return () => {
+      clearInterval(id)
+      window.removeEventListener('focus', tick)
+    }
+  }, [day])
 
   /* Signed cases, from the Financial Center's source. One Supabase query, so
      Signed and CPA are filled in almost immediately — long before the

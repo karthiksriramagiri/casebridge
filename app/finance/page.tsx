@@ -1,281 +1,172 @@
-'use client'
-
-import { useEffect, useState } from 'react'
-import Link from 'next/link'
-import { usd, pct, num, tone, dayShort } from './_components/fmt'
-import { invoicePathSegment } from './_lib/invoice-routes'
+import type { Metadata } from 'next'
+import { headers } from 'next/headers'
+import { siteRootForHost } from '@/app/_metrics/site-root'
+import { formatRange } from '@/lib/finance/reporting/dates'
+import { filtersToSearchParams, parseFilters } from '@/lib/finance/reporting/filters'
+import { loadFinanceData } from '@/lib/finance/reporting/load'
+import { buildReport } from '@/lib/finance/reporting/report'
+import { ExpenseForm } from './_components/expense-form'
+import { ReportFilters } from './_components/report-filters'
 import {
-  RANGE_KEYS, RANGE_LABEL, rangeFor, rangeQuery, type Range, type RangeKey,
-} from './_lib/ranges'
+  CostBreakdown, DataGaps, EarnoutCard, FirmTable, InvoiceTable, KpiCards,
+  OpexTable, PeriodStrip, TargetAttainment, TrendChart,
+} from './_components/report-ui'
+import { invoicePathSegment } from './_lib/invoice-routes'
 
-/* The dashboard. Everything here comes from /api/finance/book, which is also
-   what the firms tab and every invoice page read — so the figures cannot
-   disagree with each other. */
-
-type Book = {
-  company: {
-    revenue: number; adSpend: number; workerCost: number; cost: number
-    profit: number; margin: number | null
-    invoiceCount: number; firmCount: number
-    workerCostTotal: number; unallocatedWorkerCost: number
-    basePay: number; commission: number
-    adSpendTotal: number; unallocatedAdSpend: number; sharedAdAccounts: number
-  }
-  firms: any[]
-  invoices: any[]
-  window: { start: string; end: string } | null
-  setup: { invoicesNeedRevenueColumn: boolean; teamDataAvailable: boolean; metaAccounts: number }
+export const metadata: Metadata = {
+  title: 'Reporting Center · Financial Center',
+  description: 'Revenue, spend, operating expenses, profit and margin by law firm and invoice.',
 }
+export const dynamic = 'force-dynamic'
 
-export default function Dashboard() {
-  const [book, setBook] = useState<Book | null>(null)
-  const [error, setError] = useState('')
-  const [loading, setLoading] = useState(true)
+/* ═══════════════════════════════════════════════════════════════════════════
+   The Reporting Center.
 
-  /* The window only shapes this page. Firms, invoices and rep pay keep their
-     whole history, so drilling into a firm never hides part of it. */
-  const [rangeKey, setRangeKey] = useState<RangeKey>('all')
-  const [custom, setCustom] = useState({ from: '', to: '' })
+   One range, one comparison, one calculation layer. Every figure on this
+   page — the cards, the chart, both tables, the export — is read from the
+   same ledger, so none of them can disagree with another. That was the
+   failure of the dashboard this replaces: the company margin and the
+   per-firm margins were computed in different places from different costs.
 
-  /* The window lives in the URL, so a reload keeps it and a link can point at
-     a particular stretch of the book. Written as a hash: it needs no round
-     trip and no Suspense boundary. */
-  useEffect(() => {
-    const read = () => {
-      const h = location.hash.slice(1)
-      if (!h) return
-      const [key, from, to] = h.split('|')
-      if ((RANGE_KEYS as readonly string[]).includes(key)) setRangeKey(key as RangeKey)
-      if (key === 'custom' && from && to) setCustom({ from, to })
-    }
-    read()
-    window.addEventListener('hashchange', read)
-    return () => window.removeEventListener('hashchange', read)
-  }, [])
+   The filters live in the query string, so a view can be sent to someone
+   and open the same way for them.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-  useEffect(() => {
-    const h = rangeKey === 'all'
-      ? ''
-      : rangeKey === 'custom'
-        ? (custom.from && custom.to ? `#custom|${custom.from}|${custom.to}` : '#custom')
-        : `#${rangeKey}`
-    history.replaceState(null, '', h || location.pathname)
-  }, [rangeKey, custom.from, custom.to])
-
-  const range: Range = rangeKey === 'custom'
-    ? (custom.from && custom.to ? { from: custom.from, to: custom.to } : null)
-    : rangeFor(rangeKey)
-
-  useEffect(() => {
-    setLoading(true)
-    fetch(`/api/finance/book${rangeQuery(range)}`).then(r => r.json()).then(d => {
-      if (d.error) setError(d.error); else { setError(''); setBook(d) }
-    }).catch(() => setError('Could not load the book.'))
-      .finally(() => setLoading(false))
-  }, [range?.from, range?.to])
-
-  const picker = (
-    <div className="fin-range">
-      <select className="fin-input" value={rangeKey}
-              onChange={e => setRangeKey(e.target.value as RangeKey)}>
-        {RANGE_KEYS.map(k => <option key={k} value={k}>{RANGE_LABEL[k]}</option>)}
-      </select>
-      {rangeKey === 'custom' && (
-        <>
-          <input className="fin-input" type="date" value={custom.from} aria-label="From"
-                 onChange={e => setCustom({ ...custom, from: e.target.value })} />
-          <span className="fin-range-to">to</span>
-          <input className="fin-input" type="date" value={custom.to} aria-label="To"
-                 onChange={e => setCustom({ ...custom, to: e.target.value })} />
-        </>
-      )}
-    </div>
+export default async function ReportingCenter({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
+  const store = await loadFinanceData()
+  /* `firm` may arrive as a slug — the rest of the Financial Center routes
+     that way — so it is resolved to an id before the filters are parsed. */
+  const asked = typeof params.firm === 'string' ? params.firm : null
+  const bySlug = asked ? store.firms.find((x) => x.slug === asked || x.id === asked) : null
+  const filters = parseFilters(
+    { ...params, firm: bySlug?.id ?? (asked ?? undefined) },
+    { dataStart: store.dataStart, asOf: store.dataAsOf },
   )
+  const report = buildReport(store, filters)
 
-  if (loading || error || !book) {
-    return (
-      <>
-        <div className="fin-head">
-          <div><h1 className="fin-h1">Dashboard</h1></div>
-          {picker}
-        </div>
-        {error ? <p className="fin-err">{error}</p> : <p className="fin-note">Loading…</p>}
-      </>
-    )
+  /* On finance.case-bridge.com the /finance prefix is rewritten away. */
+  const base = siteRootForHost((await headers()).get('host')) === '/finance' ? '' : '/finance'
+  const range = formatRange(report.meta.window.start, report.meta.window.end)
+
+  const scoped = (extra: Record<string, string>) => {
+    const sp = filtersToSearchParams(report.meta.filters, { omitScope: true })
+    for (const [k, v] of Object.entries(extra)) sp.set(k, v)
+    return `${base || '/finance'}?${sp.toString()}`
   }
-
-  const c = book.company
-  const needsSetup = book.setup.invoicesNeedRevenueColumn || !book.setup.teamDataAvailable
-  const recent = [...book.invoices].slice(0, 8)
-  const ranked = [...book.firms].filter(f => f.revenue > 0 || f.adSpend > 0)
-    .sort((a, b) => b.revenue - a.revenue)
 
   return (
     <>
       <div className="fin-head">
         <div>
-          <h1 className="fin-h1">Dashboard</h1>
+          <h1 className="fin-h1">Reporting Center</h1>
           <p className="fin-sub">
-            {num(c.invoiceCount)} invoice{c.invoiceCount === 1 ? '' : 's'} across {num(c.firmCount)} active firms
-            {book.window && <> · {dayShort(book.window.start)} – {dayShort(book.window.end)}</>}
+            {report.meta.scopeLabel} · {range}
+            {report.meta.window.partial && ' · period in progress'}
           </p>
         </div>
-        {picker}
+        <p className="fin-sub">
+          Figures through {report.meta.dataAsOf} · {report.meta.firms.length} law firms
+        </p>
       </div>
 
-      {book.window && c.invoiceCount > 0 && (
-        <p className="fin-note" style={{ margin: '-8px 0 16px' }}>
-          An invoice only partly inside this window counts the share of its revenue
-          that matches the share of its days, so revenue and costs are cut on the
-          same line.
-        </p>
-      )}
+      <ReportFilters report={report} basePath={base || '/finance'} />
 
-      {needsSetup && (
-        <div className="fin-warn" style={{ marginBottom: 18 }}>
-          {book.setup.invoicesNeedRevenueColumn && (
-            <>Invoices cannot hold revenue yet — run <code>supabase/migration_finance_rebuild.sql</code>. </>
-          )}
-          {!book.setup.teamDataAvailable && (
-            <>Team Center hours or cases could not be read, so worker cost is missing from the margin.</>
+      <KpiCards report={report} />
+      <PeriodStrip report={report} />
+
+      <div className="fin-split">
+        <section className="fin-card">
+          <div className="fin-card-h">
+            <span className="fin-card-t">Revenue, spend and profit</span>
+            <span className="fin-card-n">{range} · by {report.meta.filters.granularity}</span>
+          </div>
+          <TrendChart data={report.trend} />
+        </section>
+        <div style={{ display: 'grid', gap: 14, alignContent: 'start' }}>
+          <section className="fin-card">
+            <div className="fin-card-h">
+              <span className="fin-card-t">Where the money went</span>
+              <span className="fin-card-n">share of revenue</span>
+            </div>
+            <CostBreakdown metrics={report.current} />
+          </section>
+          <section className="fin-card">
+            <div className="fin-card-h">
+              <span className="fin-card-t">Target attainment</span>
+              <span className="fin-card-n">revenue vs plan</span>
+            </div>
+            <TargetAttainment report={report} />
+          </section>
+          {report.earnout && (
+            <section className="fin-card">
+              <div className="fin-card-h">
+                <span className="fin-card-t">Earn-out</span>
+                <span className="fin-card-n">contractual — not operating profit</span>
+              </div>
+              <EarnoutCard report={report} />
+            </section>
           )}
         </div>
-      )}
+      </div>
 
-      <div className="fin-figs">
-        <div className="fin-fig">
-          <span className="fin-fig-l">Revenue</span>
-          <span className="fin-fig-v fin-num">{usd(c.revenue)}</span>
-          <span className="fin-fig-s">
-            billed across {num(c.invoiceCount)} invoice{c.invoiceCount === 1 ? '' : 's'}
+      {/* Full width: eight columns of figures do not fit two thirds of a
+          page, and a table of money that scrolls sideways is a table whose
+          last column nobody reads. */}
+      <section className="fin-card fin-sec">
+        <div className="fin-card-h">
+          <span className="fin-card-t">By law firm</span>
+          <span className="fin-card-n">
+            {report.firms.reconciled ? 'reconciles with the company total' : 'does not reconcile — check allocation'}
           </span>
         </div>
-        <div className="fin-fig">
-          <span className="fin-fig-l">Advertising</span>
-          <span className="fin-fig-v fin-num">{usd(c.adSpend)}</span>
-          <span className="fin-fig-s">inside invoice periods</span>
-        </div>
-        <div className="fin-fig">
-          <span className="fin-fig-l">Worker cost</span>
-          <span className="fin-fig-v fin-num">{usd(c.workerCost)}</span>
-          <span className="fin-fig-s">
-            {usd(c.basePay)} hours · {usd(c.commission)} commission
+        <FirmTable report={report} hrefForFirm={(id) => scoped({ firm: id })} />
+      </section>
+
+      <section className="fin-card fin-sec">
+        <div className="fin-card-h">
+          <span className="fin-card-t">By invoice</span>
+          <span className="fin-card-n">
+            {report.invoices.reconciled ? 'reconciles with the company total' : 'does not reconcile — check allocation'}
           </span>
         </div>
-        <div className="fin-fig">
-          <span className="fin-fig-l">Profit</span>
-          <span className={`fin-fig-v fin-num ${tone(c.profit)}`}>{usd(c.profit)}</span>
-          <span className="fin-fig-s">revenue less both costs</span>
-        </div>
-        <div className="fin-fig">
-          <span className="fin-fig-l">Margin</span>
-          <span className={`fin-fig-v fin-num ${tone(c.margin)}`}>{pct(c.margin)}</span>
-          <span className="fin-fig-s">{c.margin == null ? 'no revenue booked' : 'of revenue'}</span>
-        </div>
-      </div>
-
-      <div className="fin-eq fin-num">
-        <b>{usd(c.revenue)}</b>
-        <span className="op">−</span><b>{usd(c.adSpend)}</b><span className="op">ads</span>
-        <span className="op">−</span><b>{usd(c.workerCost)}</b><span className="op">workers</span>
-        <span className="op">=</span>
-        <span className={`res ${tone(c.profit)}`}>{usd(c.profit)} · {pct(c.margin)}</span>
-      </div>
-
-      {/* What the margin deliberately leaves out, and what could not be placed. */}
-      {(c.unallocatedAdSpend > 0 || c.unallocatedWorkerCost > 0) && (
-        <p className="fin-note" style={{ marginTop: 10 }}>
-          {c.unallocatedAdSpend > 0 && (
-            <>{usd(c.unallocatedAdSpend)} of advertising fell on days no invoice covers
-              {c.unallocatedWorkerCost > 0 ? ', and ' : '. '}</>
-          )}
-          {c.unallocatedWorkerCost > 0 && (
-            <>{usd(c.unallocatedWorkerCost)} of rep pay fell on days no invoice covers. </>
-          )}
-          {c.unallocatedAdSpend > 0 && c.unallocatedWorkerCost > 0
-            ? 'Neither is in the figures above.'
-            : 'That is not in the figures above.'}
-          {c.sharedAdAccounts > 0 && ' One ad account bills more than one firm, so its spend is split by invoice day.'}
-        </p>
-      )}
-
-      <section className="fin-sec">
-        <h2 className="fin-sec-h">By firm</h2>
-        <div className="fin-card fin-scroll">
-          <table className="fin-table">
-            <thead><tr>
-              <th>Firm</th><th className="n">Invoices</th><th className="n">Revenue</th>
-              <th className="n">Advertising</th><th className="n">Workers</th>
-              <th className="n">Profit</th><th className="n">Margin</th>
-            </tr></thead>
-            <tbody>
-              {ranked.map(f => (
-                <tr key={f.id}>
-                  <td>
-                    <Link href={`/finance/firms/${f.slug}`}>{f.name}</Link>
-                    {f.archived && <span className="fin-tag" style={{ marginLeft: 6 }}>archived</span>}
-                  </td>
-                  <td className="n fin-num">{num(f.invoiceCount)}</td>
-                  <td className="n fin-num">{usd(f.revenue)}</td>
-                  <td className="n fin-num">{usd(f.adSpend)}</td>
-                  <td className="n fin-num">{usd(f.workerCost)}</td>
-                  <td className={`n fin-num ${tone(f.profit)}`}>{usd(f.profit)}</td>
-                  <td className={`n fin-num ${tone(f.margin)}`}>{pct(f.margin, 0)}</td>
-                </tr>
-              ))}
-              {ranked.length === 0 && (
-                <tr><td colSpan={7} className="fin-empty">
-                  {book.window
-                    ? 'No firm has revenue or spend inside this window.'
-                    : 'No firm has revenue or spend yet. Add an invoice to start.'}
-                </td></tr>
-              )}
-            </tbody>
-            {ranked.length > 0 && (
-              <tfoot className="fin-tfoot"><tr>
-                <td>All firms</td>
-                <td className="n fin-num">{num(c.invoiceCount)}</td>
-                <td className="n fin-num">{usd(c.revenue)}</td>
-                <td className="n fin-num">{usd(c.adSpend)}</td>
-                <td className="n fin-num">{usd(c.workerCost)}</td>
-                <td className={`n fin-num ${tone(c.profit)}`}>{usd(c.profit)}</td>
-                <td className={`n fin-num ${tone(c.margin)}`}>{pct(c.margin, 0)}</td>
-              </tr></tfoot>
-            )}
-          </table>
-        </div>
+        <InvoiceTable
+          report={report}
+          hrefForInvoice={(id) => {
+            const inv = report.meta.invoiceOptions.find((i) => i.id === id)
+            const firm = report.meta.firms.find((x) => x.id === inv?.firmId)
+            return inv && firm
+              ? `${base}/firms/${firm.slug}/invoice/${invoicePathSegment(inv.number)}`
+              : scoped({ invoice: id })
+          }}
+        />
       </section>
 
-      <section className="fin-sec">
-        <h2 className="fin-sec-h">Latest invoices</h2>
-        <div className="fin-card fin-scroll">
-          <table className="fin-table">
-            <thead><tr>
-              <th>Invoice</th><th>Firm</th><th>Period</th>
-              <th className="n">Revenue</th><th className="n">Advertising</th>
-              <th className="n">Workers</th><th className="n">Margin</th>
-            </tr></thead>
-            <tbody>
-              {recent.map(i => (
-                <tr key={i.id}>
-                  <td><Link href={`/finance/firms/${i.firmSlug}/invoice/${invoicePathSegment(i.code)}`}>{i.code}</Link></td>
-                  <td>{i.firmName}</td>
-                  <td className="fin-num">{dayShort(i.period.start)} – {dayShort(i.period.end)}</td>
-                  <td className="n fin-num">{usd(i.revenue)}</td>
-                  <td className="n fin-num">{usd(i.adSpend)}</td>
-                  <td className="n fin-num">{usd(i.workerCost)}</td>
-                  <td className={`n fin-num ${tone(i.margin)}`}>{pct(i.margin, 0)}</td>
-                </tr>
-              ))}
-              {recent.length === 0 && (
-                <tr><td colSpan={7} className="fin-empty">
-                  {book.window ? 'No invoices overlap this window.' : 'No invoices yet.'}
-                </td></tr>
-              )}
-            </tbody>
-          </table>
+      <section className="fin-card fin-sec">
+        <div className="fin-card-h">
+          <span className="fin-card-t">Operating expenses</span>
+          <span className="fin-card-n">recognised across the service period, not the payment date</span>
         </div>
+        {/* The control sits in the body, not the header: opened, it is a
+            twelve-field form, and a header is not a place to put one. */}
+        {!report.meta.gaps.opexTableMissing && (
+          <div style={{ padding: '12px 16px 0' }}>
+            <ExpenseForm firms={report.meta.firms} defaultDate={report.meta.dataAsOf} />
+          </div>
+        )}
+        <OpexTable report={report} />
       </section>
+
+      <DataGaps report={report} />
+
+      <p className="fin-note fin-sec">
+        Calculation {report.meta.calcVersion} · data from {report.meta.dataStart} to {report.meta.dataAsOf} ·
+        generated {new Date(report.meta.generatedAt).toLocaleString('en-US')}
+      </p>
     </>
   )
 }
