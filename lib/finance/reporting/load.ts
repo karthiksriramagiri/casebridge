@@ -151,10 +151,18 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   ].filter(Boolean)
 
   /* The ledger spans from the book's start date to today. */
+  /* The ledger spans the whole calendar year, not just the days with
+     something in them.
+
+     It used to begin at the first cost, which meant the filter clamped
+     every range to that date and the labels stopped being true: "Month to
+     date" on the 9th of November read Nov 4 – Nov 9, because the book
+     happened to start on the 4th. A month to date is the month to date.
+     Days before anything happened are simply zero, which is the honest
+     answer and the one the label already implies. */
   const earliest = allDates.length ? allDates.reduce((a, b) => (a < b ? a : b)) : today
-  /* The later of the two: no earlier than the book begins, and no later
-     than the first thing in it. */
-  const dataStart: ISODate = earliest > COST_START ? COST_START : earliest
+  const floor = earliest < COST_START ? earliest : COST_START
+  const dataStart: ISODate = `${floor.slice(0, 4)}-01-01`
   /* Today, never later.
 
      This took the furthest date anything reached, which on an invoice

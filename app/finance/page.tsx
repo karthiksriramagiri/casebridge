@@ -8,6 +8,7 @@ import { loadFinanceData } from '@/lib/finance/reporting/load'
 import { formatPct, formatUSD, formatUSDCompact, pctChange } from '@/lib/finance/reporting/money'
 import { buildReport } from '@/lib/finance/reporting/report'
 import { PaidToggle } from './_components/paid-toggle'
+import { RangeTabs } from './_components/range-tabs'
 import { invoicePathSegment } from './_lib/invoice-routes'
 
 export const metadata: Metadata = { title: 'Dashboard · Financial Center' }
@@ -28,15 +29,26 @@ export const dynamic = 'force-dynamic'
 
 const tone = (n: number | null) => (n === null ? '' : n > 0 ? 'pos' : n < 0 ? 'neg' : '')
 
-export default async function FinanceDashboard() {
+export default async function FinanceDashboard({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
+  const params = await searchParams
   const store = await loadFinanceData()
   const base = siteRootForHost((await headers()).get('host')) === '/finance' ? '' : '/finance'
+  const bounds = { dataStart: store.dataStart, asOf: store.dataAsOf }
 
-  const mtd = buildReport(store, parseFilters({ range: 'mtd' }, { dataStart: store.dataStart, asOf: store.dataAsOf }))
-  const ytd = buildReport(store, parseFilters({ range: 'ytd' }, { dataStart: store.dataStart, asOf: store.dataAsOf }))
+  /* The chosen window, and the year beside it for context. Month to date
+     unless asked otherwise. */
+  const range = typeof params.range === 'string' ? params.range : 'mtd'
+  const mtd = buildReport(store, parseFilters({ ...params, range }, bounds))
+  const ytd = buildReport(store, parseFilters({ range: 'ytd' }, bounds))
 
   const m = mtd.current
   const prev = mtd.comparison?.metrics ?? null
+  const win = mtd.meta.window
+  const perCase = m.cases > 0 ? Math.round(m.caseRevenue / m.cases) : null
 
   /* What is worth saying out loud. A dashboard that only shows figures
      makes the reader find the problem; these are the three the figures
@@ -67,12 +79,21 @@ export default async function FinanceDashboard() {
       <div className="fin-head">
         <div>
           <h1 className="fin-h1">Dashboard</h1>
-          <p className="fin-sub">
-            Month to date · {formatRange(mtd.meta.window.start, mtd.meta.window.end)}
-          </p>
+          <p className="fin-sub">{win.label}</p>
         </div>
         <Link href={`${base}/reporting`} className="fin-btn">Open the Reporting Center →</Link>
       </div>
+
+      <RangeTabs active={range} basePath={base || '/finance'} />
+
+      {/* The derivation, in the figure's own terms — a number nobody can
+          reproduce is a number nobody can check. */}
+      <p className="fin-note" style={{ marginBottom: 8 }}>
+        Revenue is <strong>cases delivered</strong>:{' '}
+        {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'} signed in this window
+        {perCase !== null && <> at {formatUSD(perCase)} each</>} = <strong>{formatUSD(m.revenue)}</strong>.
+        {' '}Invoiced over the same window: {formatUSD(m.invoicedRevenue)}.
+      </p>
 
       <div className="fin-figs">
         {[
@@ -115,14 +136,15 @@ export default async function FinanceDashboard() {
       <div className="fin-split even fin-sec">
         <section className="fin-card">
           <div className="fin-card-h">
-            <span className="fin-card-t">This month, by firm</span>
-            <Link className="fin-card-n" href={`${base}/reporting?range=mtd`}>full report →</Link>
+            <span className="fin-card-t">By firm · {win.label}</span>
+            <Link className="fin-card-n" href={`${base}/reporting?range=${range}`}>full report →</Link>
           </div>
           <div className="fin-scroll">
             <table className="fin-table">
               <thead>
                 <tr>
                   <th>Law firm</th>
+                  <th className="n">Cases</th>
                   <th className="n">Revenue</th>
                   <th className="n">Spend</th>
                   <th className="n">Profit</th>
@@ -135,6 +157,7 @@ export default async function FinanceDashboard() {
                   .map((r) => (
                     <tr key={r.firmId ?? r.name}>
                       <td>{r.name}</td>
+                      <td className="n fin-num">{r.metrics.cases || '—'}</td>
                       <td className="n fin-num">{formatUSD(r.metrics.revenue)}</td>
                       <td className="n fin-num">{formatUSD(r.metrics.totalSpend)}</td>
                       <td className={`n fin-num ${tone(r.metrics.profit)}`}>{formatUSD(r.metrics.profit)}</td>
@@ -145,6 +168,7 @@ export default async function FinanceDashboard() {
               <tfoot className="fin-tfoot">
                 <tr>
                   <td>Total</td>
+                  <td className="n fin-num">{m.cases || '—'}</td>
                   <td className="n fin-num">{formatUSD(m.revenue)}</td>
                   <td className="n fin-num">{formatUSD(m.totalSpend)}</td>
                   <td className={`n fin-num ${tone(m.profit)}`}>{formatUSD(m.profit)}</td>
@@ -161,7 +185,7 @@ export default async function FinanceDashboard() {
             <Link className="fin-card-n" href={`${base}/firms`}>all firms →</Link>
           </div>
           {mtd.invoices.rows.filter((r) => r.kind === 'invoice').length === 0 ? (
-            <p className="fin-empty">No invoice covers this month.</p>
+            <p className="fin-empty">No invoice covers this window.</p>
           ) : (
             <div className="fin-scroll">
               <table className="fin-table">

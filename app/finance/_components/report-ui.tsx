@@ -58,17 +58,32 @@ export function KpiCards({ report }: { report: ReportData }) {
   ]
   const onCases = report.meta.filters.basis === 'cases'
   const other = onCases ? m.invoicedRevenue : m.caseRevenue
+  /* The average only reads as a case price when every firm charges the
+     same; with a mix it is still the right divisor for the sum. */
+  const perCase = m.cases > 0 ? Math.round(m.caseRevenue / m.cases) : null
 
   return (
     <>
       {/* Which basis the figures are on, and what the other one says.
           Billing runs ahead of delivery, so the two rarely agree and the
           gap is worth reading rather than hiding. */}
+      {/* Where the number comes from, in the number's own terms. A reader
+          who cannot reproduce a figure has no way to tell a real change
+          from a bug in how it is counted. */}
       <p className="fin-note" style={{ marginBottom: 8 }}>
         Revenue is <strong>{onCases ? 'cases delivered' : 'invoiced'}</strong>
+        {onCases ? ' — ' : ' — each invoice recognised straight-line across its service period. '}
+        {onCases && (
+          <>
+            {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'} signed in this range,
+            each at its firm&rsquo;s case price
+            {perCase !== null && <> ({formatUSD(perCase)} average)</>}
+            {' = '}<strong>{formatUSD(m.revenue)}</strong>.{' '}
+          </>
+        )}
         {onCases
-          ? ` — ${m.cases.toLocaleString('en-US')} case${m.cases === 1 ? '' : 's'} signed in this range at each firm's case price. Invoiced over the same range: ${formatUSD(other)}.`
-          : ` — each invoice recognised straight-line across its service period. Cases delivered over the same range: ${formatUSD(other)} from ${m.cases.toLocaleString('en-US')} case${m.cases === 1 ? '' : 's'}.`}
+          ? `Invoiced over the same range: ${formatUSD(other)}.`
+          : `Cases delivered over the same range: ${formatUSD(other)} from ${m.cases.toLocaleString('en-US')} case${m.cases === 1 ? '' : 's'}.`}
       </p>
 
       <div className="fin-figs">
@@ -311,6 +326,7 @@ export function FirmTable({ report, hrefForFirm }: { report: ReportData; hrefFor
         <thead>
           <tr>
             <th>Law firm</th>
+            <th className="n">Cases</th>
             <th className="n">Invoices</th>
             {HEAD.map((h) => <th key={h} className="n">{h}</th>)}
             <th className="n">Rev. growth</th>
@@ -320,6 +336,7 @@ export function FirmTable({ report, hrefForFirm }: { report: ReportData; hrefFor
           {rows.map((r) => (
             <tr key={r.firmId ?? r.name}>
               <td>{r.firmId ? <Link href={hrefForFirm(r.firmId)}>{r.name}</Link> : r.name}</td>
+              <td className="n fin-num">{r.metrics.cases || '—'}</td>
               <td className="n fin-num">{r.invoiceCount}</td>
               <MetricCells m={r.metrics} />
               <td className={`n fin-num ${tone(r.revenueGrowth)}`}>{formatPct(r.revenueGrowth, { signed: true })}</td>
@@ -329,6 +346,7 @@ export function FirmTable({ report, hrefForFirm }: { report: ReportData; hrefFor
         <tfoot className="fin-tfoot">
           <tr>
             <td>Total</td>
+            <td className="n fin-num">{total.cases || '—'}</td>
             <td className="n fin-num">{rows.reduce((a, r) => a + r.invoiceCount, 0)}</td>
             <MetricCells m={total} />
             <td />
