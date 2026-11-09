@@ -12,7 +12,7 @@ import {
   startOfYear,
   type ISODate,
 } from './dates'
-import type { ComparisonMode, Granularity, RangePreset, ReportFilters } from './types'
+import type { ComparisonMode, Granularity, RangePreset, ReportFilters, RevenueBasis } from './types'
 
 export const PRESET_LABELS: Record<RangePreset, string> = {
   today: 'Today',
@@ -129,7 +129,13 @@ export function parseFilters(
   const g = first(params.granularity) as Granularity | undefined
   const c = first(params.compare) as ComparisonMode | undefined
 
+  const b = first(params.basis) as RevenueBasis | undefined
+
   return {
+    /* Delivered cases by default. Billing runs ahead of delivery, so the
+       invoice basis flatters a month the moment an invoice is raised; the
+       cases basis is what the company actually earned that day. */
+    basis: b === 'invoiced' || b === 'cases' ? b : 'cases',
     preset,
     start,
     end,
@@ -145,6 +151,7 @@ export function filtersToSearchParams(
   opts: { omitScope?: boolean } = {},
 ): URLSearchParams {
   const sp = new URLSearchParams()
+  if (f.basis) sp.set('basis', f.basis)
   if (f.preset) sp.set('range', f.preset)
   if (f.preset === 'custom') {
     if (f.start) sp.set('from', f.start)

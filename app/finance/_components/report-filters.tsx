@@ -33,6 +33,16 @@ export function ReportFilters({ report, basePath }: { report: ReportData; basePa
 
   return (
     <div className="fin-filters" aria-busy={pending}>
+      {/* Which revenue the whole report is built on. First, because it
+          changes the meaning of every figure below it. */}
+      <label className="fin-field">
+        <span>Revenue basis</span>
+        <select className="fin-select" value={f.basis} onChange={(e) => go({ basis: e.target.value })}>
+          <option value="cases">Cases delivered</option>
+          <option value="invoiced">Invoiced</option>
+        </select>
+      </label>
+
       <label className="fin-field">
         <span>Range</span>
         <select className="fin-select" value={f.preset} onChange={(e) => go({ range: e.target.value })}>

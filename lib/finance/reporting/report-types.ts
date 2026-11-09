@@ -3,7 +3,13 @@ import type { Cents } from './money'
 import type { EarnoutConfig, Firm, OpexCategory, OpexExpense, ReportFilters, RevenueTargets } from './types'
 
 export interface Metrics {
+  /** Whichever basis the report was built on. */
   revenue: Cents
+  /** Always both, so a card can show the one it is not built on. */
+  invoicedRevenue: Cents
+  caseRevenue: Cents
+  /** Cases delivered in the window. */
+  cases: number
   advertising: Cents
   intake: Cents
   opex: Cents

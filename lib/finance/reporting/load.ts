@@ -7,6 +7,7 @@ import { toCents, type Cents } from './money'
 import {
   OPEX_CATEGORIES,
   type AdSpendRecord,
+  type CaseRevenueRecord,
   type EarnoutConfig,
   type FinanceDataset,
   type Firm,
@@ -86,7 +87,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
 
   const [firmsRes, invRes, timeRes, ratesRes, caseRes, profileRes, opexRes, targetRes, earnRes] =
     await Promise.all([
-      supabase.from('firms').select('id, name, slug, archived, meta_account_id').order('name'),
+      supabase.from('firms').select('id, name, slug, archived, meta_account_id, case_value').order('name'),
       supabase
         .from('firm_invoices')
         .select('id, code, firm_id, period_start, period_end, revenue_amount, payment_received, case_count')
@@ -95,7 +96,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
       supabase.from('worker_pay_rates').select('profile_id, hourly_rate, effective_from').order('effective_from', { ascending: false }),
       supabase
         .from('ghl_leads')
-        .select('id, contact_name, firm_id, invoice_code, qualified_at, case_status, closer, closed_by_profile_id, is_ot_close')
+        .select('id, contact_name, firm_id, invoice_code, qualified_at, case_status, closer, closed_by_profile_id, is_ot_close, pipeline_stage')
         .not('qualified_at', 'is', null),
       supabase.from('profiles').select('id, name'),
       supabase.from('operating_expenses').select('*').order('expense_date', { ascending: false }),
@@ -119,6 +120,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
       slug: f.slug,
       archived: false,
       adAccountId: (f.meta_account_id || '').trim() || null,
+      caseValueCents: toCents(Number(f.case_value ?? 0) || 0),
     }))
   const firmIds = new Set(firms.map((f) => f.id))
 
@@ -153,7 +155,14 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   /* The later of the two: no earlier than the book begins, and no later
      than the first thing in it. */
   const dataStart: ISODate = earliest > COST_START ? COST_START : earliest
-  const dataAsOf: ISODate = allDates.length ? [today, ...allDates].reduce((a, b) => (a > b ? a : b)) : today
+  /* Today, never later.
+
+     This took the furthest date anything reached, which on an invoice
+     running to the end of the month meant the ledger ran to the end of the
+     month too: "Today" resolved to Nov 30, Week to date ended on Nov 30,
+     and the page recognised revenue for days that have not happened. A
+     report is written up to now. */
+  const dataAsOf: ISODate = today
 
   // ── Advertising ─────────────────────────────────────────────────────
   /* Per account, then shared out to the firms on it. Two firms can bill
@@ -247,6 +256,28 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     intakeAt(row.date, row.firmId).commissionCents += toCents(row.amount)
   }
 
+  // ── Case revenue ────────────────────────────────────────────────────
+  /* What was delivered, day by day: cases signed for a firm, valued at
+     that firm's case price. A signed case is a ghl_leads row with no
+     pipeline stage — the stage column tracks a lead's progress and is
+     cleared once the case signs, which is the same definition Finance
+     invoices against and the Creative Center counts. */
+  const caseByKey = new Map<string, CaseRevenueRecord>()
+  for (const r of caseRes.data ?? []) {
+    const firmId = r.firm_id as string | null
+    const day = String(r.qualified_at ?? '').slice(0, 10)
+    if (!firmId || !firmIds.has(firmId) || !day || day < COST_START) continue
+    /* A replacement is a case swapped for another, not a case delivered.
+       Counting it would bill the same delivery twice. */
+    if (String(r.case_status || '').toLowerCase() === 'replacement') continue
+    const value = firms.find((f) => f.id === firmId)?.caseValueCents ?? 0
+    const key = `${day}|${firmId}`
+    const row = caseByKey.get(key) ?? { date: day, firmId, cases: 0, amountCents: 0 }
+    row.cases += 1
+    row.amountCents += value
+    caseByKey.set(key, row)
+  }
+
   // ── Operating expenses ──────────────────────────────────────────────
   const expenses: OpexExpense[] = opexRows.map((r: any) => ({
     id: r.id,
@@ -309,6 +340,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     invoices,
     adSpend,
     intakeCosts: [...intakeByKey.values()],
+    caseRevenue: [...caseByKey.values()],
     expenses,
     targets,
     earnout,

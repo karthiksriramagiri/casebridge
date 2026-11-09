@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { PaidToggle } from './paid-toggle'
 import { formatRange } from '@/lib/finance/reporting/dates'
 import { formatPct, formatUSD, formatUSDCompact, pctChange, type Cents } from '@/lib/finance/reporting/money'
 import type { Metrics, ReportData, TrendPoint } from '@/lib/finance/reporting/report-types'
@@ -55,8 +56,21 @@ export function KpiCards({ report }: { report: ReportData }) {
       prev: prev?.profit ?? null,
     },
   ]
+  const onCases = report.meta.filters.basis === 'cases'
+  const other = onCases ? m.invoicedRevenue : m.caseRevenue
+
   return (
     <>
+      {/* Which basis the figures are on, and what the other one says.
+          Billing runs ahead of delivery, so the two rarely agree and the
+          gap is worth reading rather than hiding. */}
+      <p className="fin-note" style={{ marginBottom: 8 }}>
+        Revenue is <strong>{onCases ? 'cases delivered' : 'invoiced'}</strong>
+        {onCases
+          ? ` — ${m.cases.toLocaleString('en-US')} case${m.cases === 1 ? '' : 's'} signed in this range at each firm's case price. Invoiced over the same range: ${formatUSD(other)}.`
+          : ` — each invoice recognised straight-line across its service period. Cases delivered over the same range: ${formatUSD(other)} from ${m.cases.toLocaleString('en-US')} case${m.cases === 1 ? '' : 's'}.`}
+      </p>
+
       <div className="fin-figs">
         {cards.map((c) => (
           <div key={c.label} className="fin-fig">
@@ -80,6 +94,7 @@ export function KpiCards({ report }: { report: ReportData }) {
           is no question which number came from where. */}
       <div className="fin-eq fin-num">
         <b>{formatUSD(m.revenue)}</b>
+        <span className="op">{onCases ? 'delivered' : 'invoiced'}</span>
         <span className="op">−</span> {formatUSD(m.advertising)} ads
         <span className="op">−</span> {formatUSD(m.intake)} intake
         <span className="op">−</span> {formatUSD(m.opex)} opex
@@ -335,6 +350,7 @@ export function InvoiceTable({ report, hrefForInvoice }: { report: ReportData; h
             <th>Invoice</th>
             <th>Law firm</th>
             <th>Period</th>
+            <th className="n">Payment</th>
             {HEAD.map((h) => <th key={h} className="n">{h}</th>)}
           </tr>
         </thead>
@@ -349,13 +365,18 @@ export function InvoiceTable({ report, hrefForInvoice }: { report: ReportData; h
               <td className="fin-num">
                 {r.periodStart && r.periodEnd ? formatRange(r.periodStart, r.periodEnd) : '—'}
               </td>
+              <td className="n">
+                {r.invoiceId
+                  ? <PaidToggle id={r.invoiceId} paid={r.receivedCents !== null} amount={formatUSD(r.receivedCents ?? 0)} />
+                  : '—'}
+              </td>
               <MetricCells m={r.metrics} />
             </tr>
           ))}
         </tbody>
         <tfoot className="fin-tfoot">
           <tr>
-            <td colSpan={3}>Total</td>
+            <td colSpan={4}>Total</td>
             <MetricCells m={total} />
           </tr>
         </tfoot>

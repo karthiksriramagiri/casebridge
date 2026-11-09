@@ -7,6 +7,7 @@ import { parseFilters } from '@/lib/finance/reporting/filters'
 import { loadFinanceData } from '@/lib/finance/reporting/load'
 import { formatPct, formatUSD, formatUSDCompact, pctChange } from '@/lib/finance/reporting/money'
 import { buildReport } from '@/lib/finance/reporting/report'
+import { PaidToggle } from './_components/paid-toggle'
 import { invoicePathSegment } from './_lib/invoice-routes'
 
 export const metadata: Metadata = { title: 'Dashboard · Financial Center' }
@@ -191,10 +192,14 @@ export default async function FinanceDashboard() {
                             {r.periodStart && r.periodEnd ? formatRange(r.periodStart, r.periodEnd) : '—'}
                           </td>
                           <td className="n fin-num">{r.invoicedCents === null ? '—' : formatUSD(r.invoicedCents)}</td>
-                          <td className="n fin-num">
-                            {r.receivedCents === null
-                              ? <span className="fin-tag warn">unpaid</span>
-                              : formatUSD(r.receivedCents)}
+                          <td className="n">
+                            {r.invoiceId && (
+                              <PaidToggle
+                                id={r.invoiceId}
+                                paid={r.receivedCents !== null}
+                                amount={formatUSD(r.receivedCents ?? 0)}
+                              />
+                            )}
                           </td>
                         </tr>
                       )

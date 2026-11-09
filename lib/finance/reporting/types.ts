@@ -15,6 +15,8 @@ export interface Firm {
   archived: boolean
   /** The Meta ad account this firm bills against. Shared between firms. */
   adAccountId: string | null
+  /** What one signed case is worth to this firm, in cents. */
+  caseValueCents: Cents
 }
 
 export interface Invoice {
@@ -34,6 +36,20 @@ export interface Invoice {
 export interface AdSpendRecord {
   date: ISODate
   firmId: string
+  amountCents: Cents
+}
+
+/* Cases signed for one firm on one day, and what they are worth.
+
+   The second revenue basis. An invoice is what a firm was billed; a
+   signed case is what was actually delivered that day, valued at the
+   firm's agreed case price. The two answer different questions and the
+   report carries both rather than picking one — billing runs ahead of
+   delivery, and the gap between them is itself worth seeing. */
+export interface CaseRevenueRecord {
+  date: ISODate
+  firmId: string
+  cases: number
   amountCents: Cents
 }
 
@@ -140,7 +156,18 @@ export type RangePreset =
   | 'last_12m'
   | 'custom'
 
+/* Which revenue the report is built on.
+
+     invoiced  what the firms were billed, recognised straight-line across
+               each invoice's service period
+     cases     what was delivered — cases signed that day at the firm's
+               case price
+
+   Profit, margin and every comparison follow whichever is chosen. */
+export type RevenueBasis = 'invoiced' | 'cases'
+
 export interface ReportFilters {
+  basis: RevenueBasis
   preset: RangePreset
   start: ISODate
   end: ISODate
@@ -156,6 +183,7 @@ export interface FinanceDataset {
   invoices: Invoice[]
   adSpend: AdSpendRecord[]
   intakeCosts: IntakeCostRecord[]
+  caseRevenue: CaseRevenueRecord[]
   expenses: OpexExpense[]
   targets: TargetsConfig | null
   earnout: EarnoutConfig | null

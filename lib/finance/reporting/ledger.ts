@@ -27,7 +27,18 @@ export const CALC_VERSION = '2026.11-r1'
 
 export const UNALLOCATED = '__unallocated'
 
-type Series = { rev: Float64Array; ad: Float64Array; intake: Float64Array; opex: Float64Array }
+/* Two revenue lines, kept side by side rather than one replacing the
+   other: `rev` is what was invoiced, `caseRev` what was delivered. The
+   report chooses which drives profit; both are always computed, because
+   the gap between them is one of the things worth reading. */
+type Series = {
+  rev: Float64Array
+  caseRev: Float64Array
+  cases: Float64Array
+  ad: Float64Array
+  intake: Float64Array
+  opex: Float64Array
+}
 
 export interface ExpenseAllocation {
   firmKey: string
@@ -56,7 +67,14 @@ export interface Ledger {
 const cache = new WeakMap<FinanceDataset, Ledger>()
 
 function emptySeries(n: number): Series {
-  return { rev: new Float64Array(n), ad: new Float64Array(n), intake: new Float64Array(n), opex: new Float64Array(n) }
+  return {
+    rev: new Float64Array(n),
+    caseRev: new Float64Array(n),
+    cases: new Float64Array(n),
+    ad: new Float64Array(n),
+    intake: new Float64Array(n),
+    opex: new Float64Array(n),
+  }
 }
 
 function invoiceRevenueWeight(inv: Invoice, start: ISODate, end: ISODate) {
@@ -135,6 +153,16 @@ export function getLedger(store: FinanceDataset): Ledger {
     const i = idx(r.date)
     if (inRange(i) && firm[r.firmId]) firm[r.firmId].ad[i] += r.amountCents
   }
+  /* Delivered cases. Attributed to the firm's invoices open that day by
+     the same rule costs follow, so an invoice's case revenue and its
+     costs are drawn from the same days. */
+  for (const r of store.caseRevenue) {
+    const i = idx(r.date)
+    if (!inRange(i) || !firm[r.firmId]) continue
+    firm[r.firmId].caseRev[i] += r.amountCents
+    firm[r.firmId].cases[i] += r.cases
+  }
+
   for (const r of store.intakeCosts) {
     const i = idx(r.date)
     if (inRange(i) && firm[r.firmId]) firm[r.firmId].intake[i] += r.basePayCents + r.commissionCents
@@ -170,7 +198,7 @@ export function getLedger(store: FinanceDataset): Ledger {
     for (let i = 0; i < n; i++) {
       const active = activeByFirmDay[f.id][i]
       const weights = active.map((a) => a.daily)
-      for (const key of ['ad', 'intake', 'opex'] as const) {
+      for (const key of ['ad', 'intake', 'opex', 'caseRev', 'cases'] as const) {
         const amount = fs[key][i]
         if (amount === 0) continue
         const parts = active.length ? distributeCents(amount, weights) : null
@@ -189,6 +217,8 @@ export function getLedger(store: FinanceDataset): Ledger {
   for (const f of store.firms) {
     for (let i = 0; i < n; i++) {
       company.rev[i] += firm[f.id].rev[i]
+      company.caseRev[i] += firm[f.id].caseRev[i]
+      company.cases[i] += firm[f.id].cases[i]
       company.ad[i] += firm[f.id].ad[i]
       company.intake[i] += firm[f.id].intake[i]
       company.opex[i] += firm[f.id].opex[i]
@@ -221,18 +251,46 @@ export function sumArray(ledger: Ledger, arr: Float64Array | undefined, start: I
   return total
 }
 
-export function buildMetrics(revenue: Cents, advertising: Cents, intake: Cents, opex: Cents): Metrics {
+export function buildMetrics(
+  revenue: Cents,
+  advertising: Cents,
+  intake: Cents,
+  opex: Cents,
+  extra: { invoicedRevenue?: Cents; caseRevenue?: Cents; cases?: number } = {},
+): Metrics {
   const totalSpend = advertising + intake + opex
   const profit = revenue - totalSpend
-  return { revenue, advertising, intake, opex, totalSpend, profit, margin: marginPct(profit, revenue) }
+  return {
+    revenue,
+    advertising,
+    intake,
+    opex,
+    totalSpend,
+    profit,
+    margin: marginPct(profit, revenue),
+    /* Both lines travel with every metric, whichever one `revenue` was
+       built from, so a card can always show the other beside it. */
+    invoicedRevenue: extra.invoicedRevenue ?? revenue,
+    caseRevenue: extra.caseRevenue ?? 0,
+    cases: extra.cases ?? 0,
+  }
 }
 
-export function seriesMetrics(ledger: Ledger, s: Series, start: ISODate, end: ISODate): Metrics {
+export function seriesMetrics(
+  ledger: Ledger,
+  s: Series,
+  start: ISODate,
+  end: ISODate,
+  basis: 'invoiced' | 'cases' = 'invoiced',
+): Metrics {
+  const invoiced = sumArray(ledger, s.rev, start, end)
+  const delivered = sumArray(ledger, s.caseRev, start, end)
   return buildMetrics(
-    sumArray(ledger, s.rev, start, end),
+    basis === 'cases' ? delivered : invoiced,
     sumArray(ledger, s.ad, start, end),
     sumArray(ledger, s.intake, start, end),
     sumArray(ledger, s.opex, start, end),
+    { invoicedRevenue: invoiced, caseRevenue: delivered, cases: sumArray(ledger, s.cases, start, end) },
   )
 }
 
@@ -242,6 +300,11 @@ export function addMetrics(rows: Metrics[]): Metrics {
     rows.reduce((a, r) => a + r.advertising, 0),
     rows.reduce((a, r) => a + r.intake, 0),
     rows.reduce((a, r) => a + r.opex, 0),
+    {
+      invoicedRevenue: rows.reduce((a, r) => a + r.invoicedRevenue, 0),
+      caseRevenue: rows.reduce((a, r) => a + r.caseRevenue, 0),
+      cases: rows.reduce((a, r) => a + r.cases, 0),
+    },
   )
 }
 

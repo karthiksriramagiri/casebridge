@@ -13,19 +13,17 @@
   --pos:#1F6F43; --neg:#A52A1F; --flag:#9A6A10;
   --accent:#16161A;
 
-  background:var(--bg); color:var(--ink); min-height:100vh;
+  background:var(--bg); color:var(--ink); min-height:100vh; color-scheme:light;
   font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
   font-size:14px; line-height:1.55;
 }
-@media (prefers-color-scheme:dark){
-  .fin:not([data-theme="light"]){
-    --bg:#0E0E10; --card:#161619; --sunk:#131316;
-    --ink:#ECECEE; --ink-2:#A2A2AC; --ink-3:#6E6E78;
-    --line:#242428; --line-2:#32323A;
-    --pos:#4FB97C; --neg:#E0796B; --flag:#D4A24A;
-    --accent:#ECECEE;
-  }
-}
+/* Light, always.
+
+   The centre used to follow the operating system, which meant the same
+   figures were read off a white sheet by one person and a black one by
+   the next — and a statement of accounts that changes colour depending on
+   who opens it is harder to talk about, not easier. It is a document.
+   Documents are white. */
 .fin *{box-sizing:border-box}
 .fin-num{font-variant-numeric:tabular-nums; font-feature-settings:"tnum"}
 
@@ -126,6 +124,15 @@
 .fin-btn:disabled{opacity:.5; cursor:default}
 .fin-input, .fin-select{font:inherit; font-size:13px; padding:7px 10px; border-radius:5px;
   border:1px solid var(--line-2); background:var(--card); color:var(--ink); width:100%}
+/* One chevron, ours. The native control draws its own arrow in a different
+   place and weight in every browser, and next to five of them the row read
+   as five different controls. */
+.fin-select{
+  appearance:none; -webkit-appearance:none; padding-right:28px; cursor:pointer;
+  background-image:url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12' fill='none' stroke='%238A8A94' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 4.6L6 7.6l3-3'/%3E%3C/svg%3E");
+  background-repeat:no-repeat; background-position:right 9px center; background-size:12px;
+}
+.fin-select:hover{border-color:var(--ink-3)}
 .fin-input:focus, .fin-select:focus{outline:2px solid var(--ink-3); outline-offset:-1px}
 .fin-field{display:grid; gap:4px}
 .fin-field span{font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.06em; font-weight:500}
