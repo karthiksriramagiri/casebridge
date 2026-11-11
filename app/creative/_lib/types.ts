@@ -91,16 +91,24 @@ export type Totals = {
   hooks: number
   linkClicks: number
   leads: number
-  /** Signed cases — lifetime, not range-scoped. See metrics.totalsFor. */
+  /* Signed cases over the ad's whole life. Kept for the kill/watch rules,
+     which judge an ad on every case it has ever produced — NOT for display.
+     Everything on screen shows the range, like spend and leads beside it.
+     See metrics.totalsFor. */
   acquisitions: number
+  /** Signed cases inside the range, dated by the day they signed. On screen. */
+  rangeAcquisitions: number
   /* Spend over the ad's whole life, carried alongside the range spend so
-     CPA stays lifetime ÷ lifetime even after rows are summed into an ad
-     set. Without it, summing a set recomputed CPA from the RANGE spend
-     and the lifetime case count — a $332 day over one case read as a
-     $332 CPA. */
+     the lifetime CPA the rules read stays lifetime ÷ lifetime even after
+     rows are summed into an ad set. Without it, summing a set recomputed
+     CPA from the RANGE spend and the lifetime case count — a $332 day over
+     one case read as a $332 CPA. */
   lifeSpend: number
   cpl: number | null
+  /** Lifetime spend ÷ lifetime cases. For the rules, like `acquisitions`. */
   cpa: number | null
+  /** Range spend ÷ range cases. The one that is shown. */
+  rangeCpa: number | null
   ctr: number
   hookRate: number
   cpm: number
@@ -134,6 +142,13 @@ export type KillItem = {
   doneAt?: string
   /** Absent on rows written before fatigue was tracked; those read as kills. */
   kind?: KillKind
+  /* When the ad was taken off the Relaunch / Fatigue list.
+
+     Hidden, not deleted. The archive is built out of these rows, so removing
+     one used to mean deleting the kill — which tidied the page and took the
+     record with it: the ad vanished from the day it was killed on and out of
+     the killed history. This hides the archive row and leaves both intact. */
+  archiveHiddenAt?: string
 }
 
 export const ASSIGNMENT_STATUSES = [
@@ -176,6 +191,22 @@ export type AssignmentType = (typeof CREATIVE_TYPES)[number] | typeof RELAUNCH_T
 
 /** Cards the Creative Team board shows — everything somebody has to make. */
 export const isCreativeWork = (a: { type: AssignmentType }) => a.type !== RELAUNCH_TYPE
+
+/* Who a brief is for.
+
+   Faisal builds the cuts; Jason builds the images himself. An image double
+   down is therefore his own work, not a brief to send out — it was landing
+   on Faisal's board, where it sat as something he could not action.
+
+   Derived rather than stored: the rule is the brief's own type and format,
+   both of which are already on the card, so there is nothing to keep in
+   sync and nothing that can be assigned one way and saved the other. Every
+   other double down, and every other kind of brief, still goes to Faisal. */
+export const isImageDoubleDown = (a: { type: AssignmentType; format?: CreativeFormat }) =>
+  a.type === 'Double Down' && a.format === 'IMG'
+
+export const assigneeOf = (a: { type: AssignmentType; format?: CreativeFormat }): Role =>
+  isImageDoubleDown(a) ? 'admin' : 'creative'
 
 /* Production tasks — the hands-on work that turns an approved creative into
    something launchable. Formerly the K-Team board; the work is the same, it
@@ -375,6 +406,11 @@ export type Assignment = {
   offer?: string
   /** Campaign type — INV | VAR. */
   campaignType?: string
+  /* The Slack thread this brief's messages hang under, per channel —
+     { revise: '1794339000.123456' }. Written the first time the center
+     posts about the card and read by every message after it, so a brief is
+     one conversation in Slack rather than six loose messages. */
+  slackThreads?: Record<string, string>
   /* 1 to 5 stars, 5 being the most urgent. Cards sort on this first, so the
      top of every column is what matters most — the board stops being a
      queue in creation order and starts being a queue in importance order. */

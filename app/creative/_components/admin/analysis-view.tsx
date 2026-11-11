@@ -7,8 +7,8 @@ import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
 import { Input } from '@/app/creative/_ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
-import { TODAY, YESTERDAY } from '@/app/creative/_lib/data'
-import { adIsOn, adsetDupeTags, adsetKey, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, isDelivering, signedIn, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
+import { addDays } from '@/app/creative/_lib/data'
+import { adIsOn, adsetDupeTags, adsetKey, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, isDelivering, signedInRange, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import { useDailyExclusions } from '@/app/creative/_lib/use-daily-exclusions'
 import type { Creative, RangeKey, SignedLead, Stage, Totals } from '@/app/creative/_lib/types'
@@ -21,6 +21,12 @@ import { WeekOnWeek } from './week-on-week'
 import { BoardStatus } from './board-status'
 
 type SortKey = 'spend' | 'leads' | 'cpl' | 'acquisitions' | 'cpa' | 'hookRate' | 'ctr' | 'cpm' | 'impressions'
+
+/* Signed and CPA are shown for the range, so they sort by the range figure
+   too — sorting a column by a number it is not displaying puts the rows in
+   an order the screen cannot explain. */
+const sortField = (k: SortKey): keyof Totals =>
+  k === 'acquisitions' ? 'rangeAcquisitions' : k === 'cpa' ? 'rangeCpa' : k
 
 /* Signed cases and the CPA built on them come from ghl_leads, joined to the
    ad by the Meta ad id the case was attributed to. When that join has not
@@ -43,22 +49,19 @@ const columnsFor = (hasOutcomes: boolean): Column[] => [
   { key: 'spend', label: 'Amount spent', render: (t) => usd(t.spend) },
   { key: 'leads', label: 'Leads', render: (t) => num(t.leads) },
   { key: 'cpl', label: 'Cost per lead', render: (t) => usd(t.cpl) },
-  /* Lifetime, both of them, whatever the range is — see totalsFor. A case
-     signs days to weeks after the click that bought it, so scoping it to
-     the spend's window puts cause and effect in different buckets. The
-     label says so rather than leaving the reader to wonder why Signed does
-     not move with the range. */
+  /* Both follow the range, like every other column. Set the picker to
+     Maximum to read them over the ad's whole life. */
   {
     key: 'acquisitions',
-    label: 'Signed (life)',
-    title: 'Signed cases attributed to this ad over its whole life — a case signs days after the click, so this ignores the range filter',
-    render: (t) => (hasOutcomes ? num(t.acquisitions) : '—'),
+    label: 'Signed',
+    title: 'Cases signed off this ad inside the selected range — set the range to Maximum for its whole life',
+    render: (t) => (hasOutcomes ? num(t.rangeAcquisitions) : '—'),
   },
   {
     key: 'cpa',
-    label: 'CPA (life)',
-    title: 'Lifetime spend ÷ lifetime signed cases',
-    render: (t) => (hasOutcomes ? usd(t.cpa) : '—'),
+    label: 'CPA',
+    title: 'Spend ÷ signed cases, both inside the selected range',
+    render: (t) => (hasOutcomes ? usd(t.rangeCpa) : '—'),
   },
   { key: 'hookRate', label: 'Hook rate', render: (t) => pct(t.hookRate) },
   { key: 'ctr', label: 'CTR (link)', render: (t) => pct(t.ctr) },
@@ -135,7 +138,7 @@ function PeopleCell({
   onOpen: (which: 'signed' | 'leads') => void
 }) {
   const which = col.key === 'leads' ? 'leads' : col.key === 'acquisitions' ? 'signed' : null
-  const count = col.key === 'leads' ? t.leads : t.acquisitions
+  const count = col.key === 'leads' ? t.leads : t.rangeAcquisitions
   /* Signed needs the sweep to have landed; leads need the sweep too, since
      the names come from it even when the count is Meta's. */
   const openable = which !== null && hasOutcomes && count > 0
@@ -175,7 +178,7 @@ function leadNote(metaLeads: number, matched: number): string | undefined {
 
 /** Pulls the people out of one row, or out of a whole ad set. */
 function gather(ads: { c: any }[], range: RangeKey, which: 'signed' | 'leads'): SignedLead[] {
-  const pick = which === 'signed' ? signedIn : leadsIn
+  const pick = which === 'signed' ? signedInRange : leadsIn
   return ads
     .flatMap(({ c }) => pick(c, range))
     .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
@@ -188,7 +191,7 @@ function namesOf(signed: { name: string }[]): string | undefined {
 }
 
 export function AnalysisView() {
-  const { creatives, killedIds, watch, kill, addToWatch, addToKill, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals } = useStore()
+  const { creatives, killedIds, watch, kill, addToWatch, addToKill, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals, today } = useStore()
   const [range, setRange] = useState<RangeKey>('today')
   const [query, setQuery] = useState('')
   const [account, setAccount] = useState('all')
@@ -229,8 +232,13 @@ export function AnalysisView() {
   useEffect(() => {
     if (firm !== 'all' && !firms.includes(firm)) setFirm('all')
   }, [firms, firm])
-  const yesterdayWatch = useMemo(() => new Set(watch.filter((w) => w.date === YESTERDAY).map((w) => w.creativeId)), [watch])
-  const todayWatch = useMemo(() => new Set(watch.filter((w) => w.date === TODAY).map((w) => w.creativeId)), [watch])
+  /* Both off the live Pacific day, so the tags turn over at midnight with
+     everything else rather than when the tab was first opened. */
+  const yesterdayWatch = useMemo(() => {
+    const y = addDays(today, -1)
+    return new Set(watch.filter((w) => w.date === y).map((w) => w.creativeId))
+  }, [watch, today])
+  const todayWatch = useMemo(() => new Set(watch.filter((w) => w.date === today).map((w) => w.creativeId)), [watch, today])
   const pendingKill = useMemo(() => new Set(kill.filter((k) => k.status === 'pending').map((k) => k.creativeId)), [kill])
 
   const rows = useMemo(() => {
@@ -262,8 +270,9 @@ export function AnalysisView() {
       .filter(isDelivering)
       .map((c) => ({ c, t: totalsFor(c, range) }))
       .sort((a, b) => {
-        const av = a.t[sort.key] ?? Number.POSITIVE_INFINITY
-        const bv = b.t[sort.key] ?? Number.POSITIVE_INFINITY
+        const f = sortField(sort.key)
+        const av = a.t[f] ?? Number.POSITIVE_INFINITY
+        const bv = b.t[f] ?? Number.POSITIVE_INFINITY
         return (av - bv) * sort.dir
       })
   }, [creatives, killedIds, excluded, account, firm, stage, query, watchMode, range, sort, adsetTotals])
@@ -295,13 +304,14 @@ export function AnalysisView() {
       .map((g) => ({
         ...g,
         total: sumTotals(g.ads.map((a) => a.t)),
-        /* Everyone who signed off any ad in this set, so the count in the
-           Signed column can name them on hover. */
-        signed: g.ads.flatMap((a) => signedIn(a.c, range)),
+        /* Everyone who signed off any ad in this set inside the range, so
+           the names on hover match the count in the Signed column. */
+        signed: g.ads.flatMap((a) => signedInRange(a.c, range)),
       }))
       .sort((a, b) => {
-        const av = a.total[sort.key] ?? Number.POSITIVE_INFINITY
-        const bv = b.total[sort.key] ?? Number.POSITIVE_INFINITY
+        const f = sortField(sort.key)
+        const av = a.total[f] ?? Number.POSITIVE_INFINITY
+        const bv = b.total[f] ?? Number.POSITIVE_INFINITY
         return (av - bv) * sort.dir
       })
   }, [rows, sort, range])
@@ -416,12 +426,18 @@ export function AnalysisView() {
             }
           />
           <StatCard label="CPL" value={usd(total.cpl)} tone={total.cpl !== null && total.cpl < 120 ? 'good' : undefined} />
+          {/* Signed and CPA used to be lifetime while the spend and leads
+              beside them were the range — one row that read as today's
+              numbers but wasn't: 107 cases against a day's $7.5k of spend,
+              which nobody signed today. Both follow the range now, like
+              everything else in the row. Maximum is where the lifetime
+              figures live, and there they need no qualifier. */}
           <StatCard
             label="Signed"
-            value={hasOutcomes ? num(total.acquisitions) : '—'}
+            value={hasOutcomes ? num(total.rangeAcquisitions) : '—'}
             hint={hasOutcomes ? 'Cases signed off these ads' : 'From GHL'}
             onClick={
-              hasOutcomes && total.acquisitions > 0
+              hasOutcomes && total.rangeAcquisitions > 0
                 ? () =>
                     setPeople({
                       title: 'Everything in view',
@@ -433,7 +449,7 @@ export function AnalysisView() {
           />
           <StatCard
             label="CPA"
-            value={hasOutcomes ? usd(total.cpa) : '—'}
+            value={hasOutcomes ? usd(total.rangeCpa) : '—'}
             hint={hasOutcomes ? 'Spend ÷ signed cases' : 'From GHL'}
           />
         </section>
@@ -679,7 +695,7 @@ export function AnalysisView() {
                                 'whitespace-nowrap px-3 py-2 text-right tabular-nums',
                                 col.key === 'cpl' && gt.cpl !== null && gt.cpl < 120 && 'font-semibold text-success',
                                 col.key === 'cpl' && (gt.cpl === null ? gt.spend > 0 : gt.cpl > WATCH_CPL) && 'text-destructive',
-                                col.key === 'acquisitions' && gt.acquisitions > 0 && 'font-semibold text-success',
+                                col.key === 'acquisitions' && gt.rangeAcquisitions > 0 && 'font-semibold text-success',
                               )}
                             >
                               {col.fromAds ? col.fromAds(g.ads.map((a) => a.c)) : (
@@ -690,13 +706,9 @@ export function AnalysisView() {
                                 onOpen={(which) =>
                                   setPeople({
                                     title: g.adset,
-                                    subtitle: which === 'signed' ? 'Signed cases · whole life' : `Leads · ${rangeLabel}`,
+                                    subtitle: `${which === 'signed' ? 'Signed cases' : 'Leads'} · ${rangeLabel}`,
                                     note: which === 'leads' ? leadNote(gt.leads, gather(g.ads, range, 'leads').length) : undefined,
                                     list: gather(g.ads, range, which),
-                                    total: g.ads.reduce(
-                                      (n, a) => n + ((which === 'signed' ? a.c.signedLeads : a.c.leadPeople)?.length ?? 0),
-                                      0,
-                                    ),
                                   })
                                 }
                               />
@@ -799,12 +811,12 @@ export function AnalysisView() {
                                 {COLUMNS.map((col) => (
                                   <td
                                     key={col.key}
-                                    title={col.key === 'acquisitions' ? namesOf(signedIn(c, range)) : undefined}
+                                    title={col.key === 'acquisitions' ? namesOf(signedInRange(c, range)) : undefined}
                                     className={cn(
                                       'whitespace-nowrap px-3 py-2 text-right tabular-nums',
                                       col.key === 'cpl' && t.cpl !== null && t.cpl < 120 && 'font-semibold text-success',
                                       col.key === 'cpl' && (t.cpl === null ? t.spend > 0 : t.cpl > WATCH_CPL) && 'text-destructive',
-                                      col.key === 'acquisitions' && t.acquisitions > 0 && 'font-semibold text-success',
+                                      col.key === 'acquisitions' && t.rangeAcquisitions > 0 && 'font-semibold text-success',
                                     )}
                                   >
                                     {col.fromAds ? col.fromAds([c]) : (
@@ -815,10 +827,9 @@ export function AnalysisView() {
                                       onOpen={(which) =>
                                         setPeople({
                                           title: c.name,
-                                          subtitle: which === 'signed' ? 'Signed cases · whole life' : `Leads · ${rangeLabel}`,
+                                          subtitle: `${which === 'signed' ? 'Signed cases' : 'Leads'} · ${rangeLabel}`,
                                           note: which === 'leads' ? leadNote(t.leads, leadsIn(c, range).length) : undefined,
-                                          list: which === 'signed' ? signedIn(c, range) : leadsIn(c, range),
-                                          total: (which === 'signed' ? c.signedLeads : c.leadPeople)?.length ?? 0,
+                                          list: which === 'signed' ? signedInRange(c, range) : leadsIn(c, range),
                                         })
                                       }
                                     />

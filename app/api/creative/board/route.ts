@@ -54,6 +54,9 @@ const toKill = (r: Row) => ({
   status: (r.status as 'pending' | 'done') ?? 'pending',
   doneAt: r.done_at ? day(r.done_at as string) : undefined,
   kind: (r.kind as 'kill' | 'fatigue') ?? 'kill',
+  /* Set when someone takes the ad off the Relaunch / Fatigue list. The kill
+     is untouched — only the archive stops listing it. */
+  archiveHiddenAt: r.archive_hidden_at ? String(r.archive_hidden_at) : undefined,
 })
 
 const toExclusion = (r: Row) => ({
@@ -97,6 +100,7 @@ const WATCH_COLS: Record<string, string> = {
 const KILL_COLS: Record<string, string> = {
   creativeId: 'creative_id', addedAt: 'added_at', reason: 'reason',
   status: 'status', doneAt: 'done_at', kind: 'kind',
+  archiveHiddenAt: 'archive_hidden_at',
 }
 const LAUNCH_COLS: Record<string, string> = {
   assignmentId: 'assignment_id', sourceCreativeId: 'source_creative_id', name: 'name',

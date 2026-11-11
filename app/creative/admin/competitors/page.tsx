@@ -4,9 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, ChevronDown, ExternalLink, Loader2, Save, TriangleAlert } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
 import { Textarea } from '@/app/creative/_ui/textarea'
-import { PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
+import { matchesQuery, PageHeader, Pill, SearchBox, StatCard } from '@/app/creative/_components/admin/shared'
 import { DayNav } from '@/app/creative/_components/admin/day-nav'
-import { COMPETITORS, TODAY } from '@/app/creative/_lib/data'
+import { COMPETITORS } from '@/app/creative/_lib/data'
 import { formatDate, libraryUrl } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
@@ -81,6 +81,13 @@ export default function CompetitorsPage() {
   }, [notes])
 
   const writtenToday = COMPETITORS.filter((c) => (byCompetitor.get(c.name) ?? []).some((n) => n.date === date)).length
+
+  const [query, setQuery] = useState('')
+  const shown = useMemo(
+    () => COMPETITORS.filter((c) =>
+      matchesQuery(query, [c.name, c.url, ...(byCompetitor.get(c.name) ?? []).map((n) => n.body)])),
+    [query, byCompetitor],
+  )
   const lastSession = useMemo(() => {
     const earlier = notes.filter((n) => n.date < date).map((n) => n.date).sort()
     return earlier.length ? earlier[earlier.length - 1] : null
@@ -152,14 +159,33 @@ export default function CompetitorsPage() {
           <div className="h-80 animate-pulse rounded-lg border bg-card" />
         ) : (
           <>
-            <div className="flex items-baseline justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <h2 className="text-sm font-semibold">
                 Writing <span className="font-normal text-muted-foreground">{formatDate(date)}</span>
               </h2>
-              <span className="text-xs text-muted-foreground">{writtenToday} of {COMPETITORS.length} covered</span>
+              <div className="flex items-center gap-2">
+                {/* Searches the competitor and everything written about it,
+                    so "chiropractor" finds the pass that mentioned one as
+                    well as the firm by name. */}
+                <SearchBox
+                  value={query}
+                  onChange={setQuery}
+                  label="Search competitors"
+                  placeholder="Search competitor or note"
+                  className="max-w-[15rem]"
+                />
+                <span className="shrink-0 text-xs text-muted-foreground">
+                  {query.trim() ? `${shown.length} of ${COMPETITORS.length}` : `${writtenToday} of ${COMPETITORS.length} covered`}
+                </span>
+              </div>
             </div>
+            {shown.length === 0 && (
+              <p className="rounded-lg border border-dashed bg-card px-6 py-10 text-center text-sm text-muted-foreground">
+                No competitor matches “{query.trim()}”.
+              </p>
+            )}
             <ul className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {COMPETITORS.map((c) => {
+              {shown.map((c) => {
                 const all = byCompetitor.get(c.name) ?? []
                 return (
                   <CompetitorCard

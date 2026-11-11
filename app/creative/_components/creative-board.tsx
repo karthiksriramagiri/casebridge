@@ -5,11 +5,11 @@ import { ChevronDown, ChevronUp, MessageSquare, Paperclip, Pencil, Rocket, Trash
 import { PriorityStars } from './admin/priority-stars'
 import { Button } from '@/app/creative/_ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
-import { Pill } from '@/app/creative/_components/admin/shared'
+import { matchesQuery, Pill } from '@/app/creative/_components/admin/shared'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
-import { ASSIGNMENT_STATUSES, CREATIVE_EDITABLE_STATUSES, type Assignment, type AssignmentStatus , isCreativeWork } from '@/app/creative/_lib/types'
+import { ASSIGNMENT_STATUSES, CREATIVE_EDITABLE_STATUSES, assigneeOf, type Assignment, type AssignmentStatus, type Role, isCreativeWork } from '@/app/creative/_lib/types'
 
 const TYPE_TONE: Partial<Record<string, 'blue' | 'green' | 'amber' | 'muted' | 'red'>> = {
   'Double Down': 'green',
@@ -24,10 +24,20 @@ export function CreativeBoard({
   onOpen,
   onStatus,
   onLaunch,
+  assignee = 'creative',
+  query = '',
 }: {
   onOpen: (a: Assignment) => void
   onStatus: (a: Assignment, s: AssignmentStatus) => void
   onLaunch?: (a: Assignment) => void
+  /* Whose board this is. Faisal's by default — the briefs he has to build.
+     Jason's own column holds the one kind of brief he does himself, the
+     image double down, which used to sit on Faisal's board unactionable. */
+  assignee?: Role
+  /* Narrows the cards to the ones that match. A board is eight columns
+     wide and the card you want is rarely in the column you are looking at,
+     so finding one by eye means reading all of them. */
+  query?: string
 }) {
   const role = useRole()
   const isAdmin = role === 'admin'
@@ -36,7 +46,21 @@ export function CreativeBoard({
   /* Relaunches are not creative work — an ad that already exists going back
      up, with nothing for anyone to make. They live on the launch list and
      the ad meeting; this board is what Faisal has to build. */
-  const assignments = useMemo(() => allAssignments.filter(isCreativeWork), [allAssignments])
+  const assignments = useMemo(
+    () => allAssignments.filter(
+      (a) =>
+        isCreativeWork(a) &&
+        assigneeOf(a) === assignee &&
+        /* Everything printed on the card, plus the two names the brief
+           produces — the ad set and the creative name are what someone is
+           holding when they come looking for the card. */
+        matchesQuery(query, [
+          a.title, a.type, a.angle, a.firm, a.format, a.batch,
+          a.visualCode, a.verbalCode, a.status, a.creativeName, a.adsetName, a.notes,
+        ]),
+    ),
+    [allAssignments, assignee, query],
+  )
   const options = isAdmin ? [...ASSIGNMENT_STATUSES] : CREATIVE_EDITABLE_STATUSES
 
   return (

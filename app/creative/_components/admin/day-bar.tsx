@@ -2,7 +2,6 @@
 
 import { History, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
-import { TODAY } from '@/app/creative/_lib/data'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 
@@ -17,7 +16,7 @@ import { useStore } from '@/app/creative/_lib/store'
    carry the refresh button; on a past day it is a warning, because what is
    on screen is a record and nothing on it can be changed. */
 export function DayBar() {
-  const { day, setDay, dayLocked, dayMissing, lockAvailable, snapshot, loading, refreshDay } = useStore()
+  const { day, setDay, dayLocked, dayMissing, lockAvailable, snapshot, loading, refreshDay, today } = useStore()
 
   if (!dayLocked && lockAvailable && !snapshot) return null
 
@@ -44,7 +43,7 @@ export function DayBar() {
                 ? 'Locked — nothing here can be changed.'
                 : `Locked. These are the numbers as they stood at ${takenAt(snapshot.takenAt)} — nothing here can be changed.`}
         </span>
-        <Button variant="outline" size="sm" className="ml-auto" onClick={() => setDay(TODAY)}>
+        <Button variant="outline" size="sm" className="ml-auto" onClick={() => setDay(today)}>
           Back to today
         </Button>
       </div>

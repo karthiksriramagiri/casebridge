@@ -9,8 +9,8 @@ import {
 import { Input } from '@/app/creative/_ui/input'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
 import { Textarea } from '@/app/creative/_ui/textarea'
-import { TODAY } from '@/app/creative/_lib/data'
 import { useStore } from '@/app/creative/_lib/store'
+import { uploadFile } from '@/app/creative/_lib/uploads'
 import {
   ASSIGNMENT_FIRMS, CREATIVE_FORMATS, TASK_TYPES,
   type AssignmentFirm, type CreativeFormat, type KTaskType,
@@ -38,7 +38,7 @@ const NONE = '__none'
 const byNumber = (a: string, b: string) => (parseInt(a.slice(1), 10) || 0) - (parseInt(b.slice(1), 10) || 0)
 
 export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (o: boolean) => void }) {
-  const { addKTask } = useStore()
+  const { addKTask, today } = useStore()
   const [title, setTitle] = useState('')
   const [type, setType] = useState<KTaskType>(TASK_TYPES[0])
   const [firm, setFirm] = useState<AssignmentFirm>(ASSIGNMENT_FIRMS[0])
@@ -54,6 +54,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const [bench, setBench] = useState<{ url: string; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
@@ -84,17 +85,18 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   async function uploadBenchmark(file: File) {
     setUploading(true)
     setUploadError(null)
+    setProgress(0)
     try {
-      const body = new FormData()
-      body.append('file', file)
-      const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body })
-      const d = await res.json()
-      if (!res.ok) { setUploadError(d.error ?? 'Upload failed.'); return }
+      /* Straight to storage, so the size of the file is not our business —
+         see _lib/uploads. The fraction is shown because a 400MB benchmark
+         takes long enough that a silent button reads as a broken one. */
+      const d = await uploadFile(file, 'benchmark', setProgress)
       setBench({ url: d.url, name: d.name })
-    } catch {
-      setUploadError('Could not reach the server.')
+    } catch (e) {
+      setUploadError((e as Error).message)
     } finally {
       setUploading(false)
+      setProgress(null)
     }
   }
 
@@ -104,7 +106,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
     setBench(null); setUploadError(null)
   }
 
-  const datePrefix = `${TODAY.slice(5, 7)}${TODAY.slice(8, 10)}`
+  const datePrefix = `${today.slice(5, 7)}${today.slice(8, 10)}`
   const preview = [
     datePrefix,
     batch.trim() || '······',
@@ -232,7 +234,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
             <PriorityStars value={priority} onChange={setPriority} />
           </Field>
 
-          <Field label="Benchmark creative" hint="The reference to work from — an image or a video, up to 50MB.">
+          <Field label="Benchmark creative" hint="The reference to work from — an image or a video, any size.">
             <input
               ref={fileRef}
               type="file"
@@ -254,7 +256,9 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
               </div>
             ) : (
               <Button type="button" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
-                {uploading ? <><Loader2 className="animate-spin" aria-hidden /> Uploading…</> : <><Paperclip aria-hidden /> Upload benchmark</>}
+                {uploading
+                  ? <><Loader2 className="animate-spin" aria-hidden /> {progress === null ? 'Uploading…' : `Uploading ${Math.round(progress * 100)}%`}</>
+                  : <><Paperclip aria-hidden /> Upload benchmark</>}
               </Button>
             )}
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}

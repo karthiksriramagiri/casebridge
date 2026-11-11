@@ -65,11 +65,13 @@ export function sumDays(days: DayMetric[]): Totals {
   )
   return {
     ...t,
-    /* The caller overrides both of these when it knows the lifetime
-       figures; on a bare day-sum they are the same thing. */
+    /* The caller overrides these when it knows the lifetime figures; on a
+       bare day-sum the range and the lifetime are the same thing. */
     lifeSpend: t.spend,
+    rangeAcquisitions: t.acquisitions,
     cpl: t.leads ? t.spend / t.leads : null,
     cpa: t.acquisitions ? t.spend / t.acquisitions : null,
+    rangeCpa: t.acquisitions ? t.spend / t.acquisitions : null,
     ctr: t.impressions ? t.linkClicks / t.impressions : 0,
     hookRate: t.impressions ? t.hooks / t.impressions : 0,
     cpm: t.impressions ? (t.spend / t.impressions) * 1000 : 0,
@@ -121,24 +123,27 @@ export function hasDeliveryIssue(c: Creative): boolean {
 
 export function totalsFor(c: Creative, key: RangeKey) {
   const t = sumDays(daysInRange(c, key))
-  /* Signed and CPA are lifetime, whatever the range is.
+  /* Two pairs of figures, and which is which matters.
 
-     A case signs days to weeks after the click that bought it, so scoping
-     it to the same window as the spend puts cause and effect in different
-     buckets: at range Today the column read 0 for an ad that has signed
-     sixteen cases, and CPA read "—" beside it. 93 of the 239 cases
-     attributed to the live ads were signed before the 30-day Meta window
-     even opens, so no range the page offers could show them.
+     What is SHOWN follows the range, all of it — Signed and CPA included,
+     the same as spend, leads and CPL beside them. A number on this page
+     belongs to the window the picker is set to, with no exceptions to
+     remember. At Maximum the range is the ad's whole life, so that is
+     where the lifetime figures appear, under their own name.
 
-     Both halves of the ratio are lifetime, so CPA stays a true cost per
-     case; the columns that belong to a window — spend, leads, CPL, CTR,
-     hook rate, CPM, impressions — keep following the range. */
+     What the RULES read is lifetime: the kill and watch decisions judge an
+     ad on every case it has ever produced, because a case signs days to
+     weeks after the click that bought it and a day's spend over a day's
+     signings is two different cohorts divided by each other. Those live on
+     `acquisitions` / `cpa` / `lifeSpend` and never reach the screen. */
   const life = sumDays(c.daily)
   return {
     ...t,
     acquisitions: life.acquisitions,
+    rangeAcquisitions: t.acquisitions,
     lifeSpend: life.spend,
     cpa: life.acquisitions ? life.spend / life.acquisitions : null,
+    rangeCpa: t.acquisitions ? t.spend / t.acquisitions : null,
   }
 }
 
@@ -156,6 +161,13 @@ export function signedIn(c: Creative, _key: RangeKey): SignedLead[] {
   return [...(c.signedLeads ?? [])]
     .filter((l) => !l.isReplacement)
     .sort((a, b) => (a.date < b.date ? 1 : -1))
+}
+
+/** The same people, narrowed to the ones who signed inside the range — the
+ *  list behind the totals row's range-scoped Signed count. */
+export function signedInRange(c: Creative, key: RangeKey): SignedLead[] {
+  const { start, end } = rangeBounds(key)
+  return signedIn(c, key).filter((l) => l.date >= start && l.date <= end)
 }
 
 /** The leads that came in off this ad inside the range, newest first. */
@@ -180,10 +192,16 @@ export function sumTotals(list: Totals[]): Totals {
      only knows the range spend it was handed, so without this an ad set's
      CPA came out as range spend over lifetime cases. */
   const lifeSpend = list.reduce((a, x) => a + (x.lifeSpend ?? x.spend), 0)
+  /* sumDays only saw the lifetime count each row was handed, so the range
+     count has to be summed here or an ad set's Signed column comes back as
+     the lifetime one while its spend beside it is the range's. */
+  const rangeAcquisitions = list.reduce((a, x) => a + (x.rangeAcquisitions ?? 0), 0)
   return {
     ...t,
     lifeSpend,
+    rangeAcquisitions,
     cpa: t.acquisitions ? lifeSpend / t.acquisitions : null,
+    rangeCpa: rangeAcquisitions ? t.spend / rangeAcquisitions : null,
   }
 }
 

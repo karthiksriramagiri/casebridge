@@ -4,7 +4,7 @@ import { Eye, Skull } from 'lucide-react'
 import { toast } from 'sonner'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from '@/app/creative/_ui/sheet'
 import { Button } from '@/app/creative/_ui/button'
-import { daysInRange, formatDate, num, pct, signedIn, sumDays, usd, RANGES } from '@/app/creative/_lib/metrics'
+import { daysInRange, formatDate, num, pct, signedInRange, sumDays, usd, RANGES } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import type { RangeKey } from '@/app/creative/_lib/types'
 import { Pill, Thumb } from './shared'
@@ -22,7 +22,9 @@ export function CreativeDetail({
   const c = creativeId ? getCreative(creativeId) : undefined
   const days = c ? daysInRange(c, range).slice().reverse() : []
   const t = sumDays(days)
-  const signed = c ? signedIn(c, range) : []
+  /* The range, like the Signed tile above it — a lifetime roster under a
+     range-scoped count read as the count being wrong. */
+  const signed = c ? signedInRange(c, range) : []
 
   return (
     <Sheet open={!!c} onOpenChange={(o) => !o && onClose()}>
@@ -68,8 +70,8 @@ export function CreativeDetail({
                 ['Amount spent', usd(t.spend)],
                 ['Leads', num(t.leads)],
                 ['CPL', usd(t.cpl)],
-                ['Signed', num(t.acquisitions)],
-                ['CPA', usd(t.cpa)],
+                ['Signed', num(t.rangeAcquisitions)],
+                ['CPA', usd(t.rangeCpa)],
                 ['Hook rate', pct(t.hookRate)],
                 ['Link CTR', pct(t.ctr)],
                 ['CPM', usd(t.cpm)],

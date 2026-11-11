@@ -1,23 +1,23 @@
 'use client'
 
-import { FirmSelect, PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
+import { EmptyState, FirmSelect, matchesQuery, PageHeader, Pill, SearchBox, StatCard } from '@/app/creative/_components/admin/shared'
 import { adsetBudget, adsetKey, isDelivering, totalsFor, usd } from '@/app/creative/_lib/metrics'
 import { useMemo, useState } from 'react'
 import { firmKey, RELAUNCH_TYPE, type Assignment, type Creative } from '@/app/creative/_lib/types'
-import { TODAY } from '@/app/creative/_lib/data'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName, firmOf } from '@/app/_metrics/firms'
 
 type Row = { id: string; name: string; firm: string; budget: number; spent: number; isNew: boolean }
 
 export default function BudgetPage() {
-  const { creatives, killedIds, launches, kill, assignments: allAssignments } = useStore()
+  const { creatives, killedIds, launches, kill, assignments: allAssignments, today } = useStore()
 
   /* Narrow the whole page to one firm, the same control Creative Analysis
      and the watch list have. Every figure follows it — the totals at the
      top as well as the sections below, because a page showing one firm's
      sections under four firms' totals is the worst of both. */
   const [firmFilter, setFirmFilter] = useState('all')
+  const [query, setQuery] = useState('')
   /* Ads carry LHP / LHP_SP; assignments carry "LHP [SPANISH]". firmKey
      normalises both, so one filter value matches either spelling. */
   const wanted = firmKey(firmFilter)
@@ -140,7 +140,7 @@ export default function BudgetPage() {
       ?? 0
   }
   const todaysLaunches = assignments.filter((a) =>
-    a.launchDate === TODAY
+    a.launchDate === today
     && (a.status === 'Launching' || a.status === 'Ad Launched' || a.status === 'Winner Ad'))
   const launchedToday = todaysLaunches.filter((a) => a.status !== 'Launching')
   const newSetsLive = launchedToday.filter((a) => !landsInRunningSet(a)).length
@@ -160,7 +160,18 @@ export default function BudgetPage() {
      decided per firm, so the sections now answer the question actually being
      asked of this page. Ordered by the canonical FIRMS list so a firm and its
      Spanish board stay adjacent, with anything unattributed last. */
-  const firms = [...new Set(rows.map((r) => r.firm))].sort((a, b) => {
+  /* Searching the budget.
+
+     Filters the rows under each firm, and drops a firm whose rows all go.
+     The five cards keep the account's real figures — what is live, what is
+     coming off, where the day lands — because those are the account's, not
+     the search's. */
+  const shownRows = useMemo(
+    () => rows.filter((r) => matchesQuery(query, [r.name, r.firm, firmName(r.firm)])),
+    [rows, query],
+  )
+
+  const firms = [...new Set(shownRows.map((r) => r.firm))].sort((a, b) => {
     const rank = (code: string) => {
       const i = FIRMS.findIndex((f) => f.code === code)
       return i === -1 ? FIRMS.length : i
@@ -176,6 +187,12 @@ export default function BudgetPage() {
       />
       <div className="flex flex-col gap-4 p-6">
         <div className="flex flex-wrap items-center gap-2">
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            label="Search the budget tracker"
+            placeholder="Search ad name or firm"
+          />
           <FirmSelect value={firmFilter} onChange={setFirmFilter} firms={firmsPresent} />
         </div>
         <section aria-label="Budget totals" className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -195,8 +212,14 @@ export default function BudgetPage() {
           />
         </section>
 
+        {query.trim() && firms.length === 0 && (
+          <EmptyState title={`No ad matches “${query.trim()}”`}>
+            {rows.length} live {rows.length === 1 ? 'ad is' : 'ads are'} on the account — none of them by that name or firm.
+          </EmptyState>
+        )}
+
         {firms.map((firm) => {
-          const items = rows.filter((r) => r.firm === firm)
+          const items = shownRows.filter((r) => r.firm === firm)
           /* Same rule per firm: once per ad set, not once per cut. */
           const sum = adsetBudget(items.filter((r) => !r.isNew).map((r) => creatives.find((c) => c.id === r.id)!).filter(Boolean))
             + items.filter((r) => r.isNew).reduce((a, r) => a + r.budget, 0)

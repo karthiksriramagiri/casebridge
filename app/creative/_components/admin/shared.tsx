@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, type ReactNode } from 'react'
+import { Search, X } from 'lucide-react'
+import { Input } from '@/app/creative/_ui/input'
 import { RANGES } from '@/app/creative/_lib/metrics'
 import type { RangeKey } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
@@ -171,6 +173,67 @@ export function Thumb({
       className={cn(box, 'bg-muted object-cover')}
     />
   )
+}
+
+/* The search box, one definition for every list in the center.
+
+   Every page here is a list of ads, briefs or tasks, and on all of them the
+   same question gets asked: where is this one. Each page had to answer it
+   its own way or not at all, so the same search was a text box on one page,
+   a filter row on another, and scrolling on the rest.
+
+   What it searches is the page's business — it takes `onChange` and nothing
+   else — but it looks and reads the same everywhere, and it always filters
+   what is SHOWN rather than what is counted. The totals above a list are
+   the day's work; a search is someone looking for a row.
+
+   `matchesQuery` beside it is the matching rule, so "LHP" finds the same
+   rows on every page and nobody re-implements case folding. */
+export function SearchBox({
+  value, onChange, placeholder = 'Search', label, className,
+}: {
+  value: string
+  onChange: (v: string) => void
+  placeholder?: string
+  /** What is being searched, for screen readers — "Search the kill list". */
+  label: string
+  className?: string
+}) {
+  return (
+    <div className={cn('relative w-full max-w-xs', className)}>
+      <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+      <Input
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        aria-label={label}
+        className="pl-8"
+      />
+      {value && (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          aria-label="Clear search"
+          title="Clear search"
+          className="absolute right-1.5 top-1/2 flex size-6 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring"
+        >
+          <X className="size-3.5" aria-hidden />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/* Does this row match what was typed?
+
+   Fields are whatever the page thinks identifies a row — a name, a batch, a
+   firm, an id. Anything undefined is skipped rather than matched, so a row
+   missing a field is not found by searching for nothing. An empty query
+   matches everything, which is what makes the caller read as a plain filter. */
+export function matchesQuery(query: string, fields: (string | null | undefined)[]) {
+  const q = query.trim().toLowerCase()
+  if (!q) return true
+  return fields.some((f) => (f ?? '').toLowerCase().includes(q))
 }
 
 export function EmptyState({ title, children }: { title: string; children?: ReactNode }) {

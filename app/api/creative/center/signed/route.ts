@@ -101,10 +101,18 @@ export async function GET(req: NextRequest) {
     /* An unresolved merge field ("{{ ... }}") is a template that never filled,
        not an ad id. */
     const adId = String(r.ad_id ?? '')
-    if (adId && !adId.includes('{{')) (byAdId[adId] ??= []).push(row)
+    const hasId = !!adId && !adId.includes('{{')
+    if (hasId) (byAdId[adId] ??= []).push(row)
 
+    /* Only the cases with no id of their own. A case that carries both
+       used to be filed under each, and the center takes the id index when
+       it has one and the name index when it does not — so the same case
+       was counted twice the moment a second live ad carried the same name,
+       which happens every time a cut is re-uploaded. The ad id the case
+       was captured against is the authority; the name is the fallback for
+       cases GHL never recorded one for. */
     const adName = String(r.ad_name ?? '').trim()
-    if (adName && !adName.includes('{{')) (byAdName[adName] ??= []).push(row)
+    if (!hasId && adName && !adName.includes('{{')) (byAdName[adName] ??= []).push(row)
   }
 
   return NextResponse.json({

@@ -19,7 +19,6 @@ import {
   type LucideIcon,
 } from 'lucide-react'
 import { NotificationBell } from '@/app/creative/_components/notification-bell'
-import { TODAY } from '@/app/creative/_lib/data'
 import { useCenterHref, useRole, useRoleBase } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { isCreativeWork } from '@/app/creative/_lib/types'
@@ -85,10 +84,10 @@ export function WorkspaceSidebar() {
   const base = useRoleBase()
   const centerHref = useCenterHref()
   const pathname = usePathname()
-  const { watch, kill, assignments, ktasks } = useStore()
+  const { watch, kill, assignments, ktasks, today } = useStore()
 
   const counts: Record<string, number> = {
-    'watch-list': watch.filter((w) => w.date === TODAY).length,
+    'watch-list': watch.filter((w) => w.date === today).length,
     'kill-list': kill.filter((k) => k.status === 'pending').length,
     /* What is actually going out, not what is merely finished.
 

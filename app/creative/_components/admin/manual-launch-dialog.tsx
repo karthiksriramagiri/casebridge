@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import {
   batchUsage, buildAdsetName, buildCreativeName, CAMPAIGN_TYPES, CREATIVE_OFFERS, creativeSuffix, nextBatchNumber,
 } from '@/app/creative/_lib/metrics'
-import { TODAY } from '@/app/creative/_lib/data'
+import { uploadFile } from '@/app/creative/_lib/uploads'
 import { cn } from '@/lib/utils'
 import { useStore, type ManualLaunchInput } from '@/app/creative/_lib/store'
 import {
@@ -40,7 +40,7 @@ export function ManualLaunchDialog({
   onOpenChange: (o: boolean) => void
   onCreate: (input: ManualLaunchInput) => void
 }) {
-  const { creatives, assignments } = useStore()
+  const { creatives, assignments, today } = useStore()
 
   /* The named hooks, so the angle pickers read "A18 · SMS / Texting" rather
      than a bare code. Same source the assignment form uses. */
@@ -63,7 +63,7 @@ export function ManualLaunchDialog({
   const [state, setState] = useState<LaunchState>(LAUNCH_STATES[0])
   const [offer, setOffer] = useState<string>(CREATIVE_OFFERS[0])
   const [campaignType, setCampaignType] = useState<string>(CAMPAIGN_TYPES[0])
-  const [launchDate, setLaunchDate] = useState(TODAY)
+  const [launchDate, setLaunchDate] = useState(today)
   const [budget, setBudget] = useState('200')
   const [notes, setNotes] = useState('')
 
@@ -101,6 +101,7 @@ export function ManualLaunchDialog({
   const [file, setFile] = useState<{ url: string; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /* Every batch the account knows about, live or merely briefed. */
@@ -206,12 +207,15 @@ export function ManualLaunchDialog({
   }
 
   async function send(f: File): Promise<{ url: string; name: string } | null> {
-    const body = new FormData()
-    body.append('file', f)
-    const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body })
-    const d = await res.json()
-    if (!res.ok) { setUploadError(d.error ?? 'Upload failed.'); return null }
-    return { url: d.url, name: d.name }
+    try {
+      const d = await uploadFile(f, 'upload', setProgress)
+      return { url: d.url, name: d.name }
+    } catch (e) {
+      setUploadError((e as Error).message)
+      return null
+    } finally {
+      setProgress(null)
+    }
   }
 
   async function upload(f: File) {
@@ -465,7 +469,7 @@ export function ManualLaunchDialog({
             </Field>
           </div>
 
-          <Field label="Creative file" hint="The cut itself — an image or a video, up to 50MB.">
+          <Field label="Creative file" hint="The cut itself — an image or a video, any size.">
             <input
               ref={fileRef}
               type="file"
@@ -483,7 +487,9 @@ export function ManualLaunchDialog({
               </div>
             ) : (
               <Button type="button" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
-                {uploading ? <><Loader2 className="animate-spin" aria-hidden /> Uploading…</> : <><Paperclip aria-hidden /> Upload creative</>}
+                {uploading
+                  ? <><Loader2 className="animate-spin" aria-hidden /> {progress === null ? 'Uploading…' : `Uploading ${Math.round(progress * 100)}%`}</>
+                  : <><Paperclip aria-hidden /> Upload creative</>}
               </Button>
             )}
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}
@@ -656,7 +662,7 @@ export function ManualLaunchDialog({
                       </Field>
                     </div>
 
-                    <Field label="Creative file" hint="The cut itself — an image or a video, up to 50MB.">
+                    <Field label="Creative file" hint="The cut itself — an image or a video, any size.">
                       <input
                         ref={(el) => { extraFileRefs.current[i] = el }}
                         type="file"
@@ -680,7 +686,7 @@ export function ManualLaunchDialog({
                           onClick={() => extraFileRefs.current[i]?.click()}
                         >
                           {uploadingExtra === i
-                            ? <><Loader2 className="animate-spin" aria-hidden /> Uploading…</>
+                            ? <><Loader2 className="animate-spin" aria-hidden /> {progress === null ? 'Uploading…' : `Uploading ${Math.round(progress * 100)}%`}</>
                             : <><Paperclip aria-hidden /> Upload creative</>}
                         </Button>
                       )}

@@ -11,9 +11,9 @@ import { TaskBoard } from '@/app/creative/_components/task-board'
 import { LaunchDialog } from '@/app/creative/_components/admin/launch-dialog'
 import { NewAssignmentDialog } from '@/app/creative/_components/admin/new-assignment-dialog'
 import { NewTaskDialog } from '@/app/creative/_components/admin/new-task-dialog'
-import { PageHeader, StatCard } from '@/app/creative/_components/admin/shared'
+import { PageHeader, SearchBox, StatCard } from '@/app/creative/_components/admin/shared'
 import { useStore } from '@/app/creative/_lib/store'
-import { ASSIGNMENT_STATUSES, type Assignment, type AssignmentStatus , isCreativeWork } from '@/app/creative/_lib/types'
+import { ASSIGNMENT_STATUSES, assigneeOf, type Assignment, type AssignmentStatus, isCreativeWork } from '@/app/creative/_lib/types'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Assignments
@@ -41,7 +41,20 @@ export default function AssignmentsPage() {
   /* Relaunches are not creative work — an ad that already exists going back
      up — so they live on the launch list and the ad meeting, not here. */
   const assignments = useMemo(() => allAssignments.filter(isCreativeWork), [allAssignments])
+  /* Faisal's briefs and Jason's own, split by the same rule the boards use.
+     An image double down is Jason's to build — it is counted and shown on
+     his tab, not sent out on a board he does not own. */
+  const forFaisal = useMemo(() => assignments.filter((a) => assigneeOf(a) === 'creative'), [assignments])
+  const forJason = useMemo(() => assignments.filter((a) => assigneeOf(a) === 'admin'), [assignments])
   const [tab, setTab] = useState('creative')
+  /* One search per tab, kept apart.
+
+     The two tabs are two different piles of work — Faisal's briefs and
+     Jason's own queue — and carrying a query from one to the other means
+     landing on a tab that looks empty for a reason nothing on screen
+     explains. Each remembers what you were looking for. */
+  const [creativeQuery, setCreativeQuery] = useState('')
+  const [tasksQuery, setTasksQuery] = useState('')
   const [creating, setCreating] = useState(false)
   const [creatingTask, setCreatingTask] = useState(false)
   const [launching, setLaunching] = useState<Assignment | null>(null)
@@ -54,8 +67,11 @@ export default function AssignmentsPage() {
       waiting: assignments.filter((a) => WAITING_ON_JASON.includes(a.status)).length,
       launched: assignments.filter((a) => a.status === 'Ad Launched' || a.status === 'Winner Ad').length,
       tasks: ktasks.filter((t) => t.status !== 'Done').length,
+      /* Jason's own queue is both: the production tasks and the image
+         double downs he briefs himself. */
+      mine: ktasks.filter((t) => t.status !== 'Done').length + forJason.filter((a) => (LIVE_STATUSES as readonly string[]).includes(a.status)).length,
     }
-  }, [assignments, ktasks])
+  }, [assignments, ktasks, forJason])
 
   const changeStatus = (a: Assignment, status: AssignmentStatus) => {
     if (status === 'Launching') setLaunching(a)
@@ -117,25 +133,60 @@ export default function AssignmentsPage() {
             hint="feedback requested or ready to launch"
           />
           <StatCard label="Launched" value={String(stats.launched)} tone="good" hint="live or winning" />
-          <StatCard label="Jason’s tasks" value={String(stats.tasks)} hint="resize, disclaimer, naming" />
+          <StatCard label="Jason’s queue" value={String(stats.mine)} hint="his own images, resizes and edits" />
         </section>
 
         <Tabs value={tab} onValueChange={(v) => setTab(v as string)}>
           <TabsList>
-            <TabsTrigger value="creative">Creative Team ({assignments.length})</TabsTrigger>
-            <TabsTrigger value="tasks">Jason ({stats.tasks})</TabsTrigger>
+            <TabsTrigger value="creative">Creative Team ({forFaisal.length})</TabsTrigger>
+            <TabsTrigger value="tasks">Jason ({forJason.length + stats.tasks})</TabsTrigger>
           </TabsList>
 
-          <TabsContent value="creative" className="pt-4">
+          <TabsContent value="creative" className="flex flex-col gap-3 pt-4">
+            <SearchBox
+              value={creativeQuery}
+              onChange={setCreativeQuery}
+              label="Search the Creative Team board"
+              placeholder="Search title, type, firm, batch, hook"
+            />
             {boardLoading ? (
               <div className="h-72 animate-pulse rounded-lg border bg-card" />
             ) : (
-              <CreativeBoard onOpen={(a) => setOpenId(a.id)} onStatus={changeStatus} onLaunch={setLaunching} />
+              <CreativeBoard query={creativeQuery} onOpen={(a) => setOpenId(a.id)} onStatus={changeStatus} onLaunch={setLaunching} />
             )}
           </TabsContent>
 
-          <TabsContent value="tasks" className="pt-4">
-            {boardLoading ? <div className="h-72 animate-pulse rounded-lg border bg-card" /> : <TaskBoard />}
+          <TabsContent value="tasks" className="flex flex-col gap-6 pt-4">
+            <SearchBox
+              value={tasksQuery}
+              onChange={setTasksQuery}
+              label="Search Jason’s queue"
+              placeholder="Search title, type, firm, batch, hook"
+            />
+            {boardLoading ? (
+              <div className="h-72 animate-pulse rounded-lg border bg-card" />
+            ) : (
+              <>
+                {/* The briefs Jason builds himself — image double downs. The
+                    board is the same one Faisal's cards sit on, so a card
+                    moves through the same statuses and reaches the launch
+                    list the same way; only whose list it is differs. */}
+                {forJason.length > 0 && (
+                  <section className="flex flex-col gap-2">
+                    <h2 className="text-sm font-semibold">
+                      Jason’s briefs <span className="font-normal text-muted-foreground">· image double downs</span>
+                    </h2>
+                    <CreativeBoard assignee="admin" query={tasksQuery} onOpen={(a) => setOpenId(a.id)} onStatus={changeStatus} onLaunch={setLaunching} />
+                  </section>
+                )}
+                <section className="flex flex-col gap-2">
+                  <h2 className="text-sm font-semibold">
+                    Production tasks <span className="font-normal text-muted-foreground">· resize, text, translate</span>
+                  </h2>
+                  <TaskBoard query={tasksQuery} />
+                </section>
+              </>
+            )}
           </TabsContent>
         </Tabs>
       </div>

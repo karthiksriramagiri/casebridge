@@ -2,8 +2,9 @@
 
 import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
-import { TODAY, addDays } from '@/app/creative/_lib/data'
+import { addDays } from '@/app/creative/_lib/data'
 import { formatDate } from '@/app/creative/_lib/metrics'
+import { useStore } from '@/app/creative/_lib/store'
 
 /* Step back through the saved days.
 
@@ -20,6 +21,11 @@ export function DayNav({
   label: string
   right?: React.ReactNode
 }) {
+  /* The real Pacific day, re-read on a timer by the store. Using the module
+     constant meant a tab open past midnight still called yesterday today:
+     the date picker refused to step on to the new day, and "Back to today"
+     went back to the old one. */
+  const { today } = useStore()
   return (
     <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-card p-3">
       <CalendarDays className="size-4 shrink-0 text-muted-foreground" aria-hidden />
@@ -30,7 +36,7 @@ export function DayNav({
         type="date"
         value={date}
         aria-label={label}
-        max={TODAY}
+        max={today}
         onChange={(e) => e.target.value && onChange(e.target.value)}
         className="rounded-md border bg-background px-2.5 py-1.5 text-sm"
       />
@@ -38,15 +44,15 @@ export function DayNav({
         variant="outline"
         size="icon-sm"
         aria-label="Next day"
-        disabled={date >= TODAY}
+        disabled={date >= today}
         onClick={() => onChange(addDays(date, 1))}
       >
         <ChevronRight aria-hidden />
       </Button>
-      {date !== TODAY && (
+      {date !== today && (
         <>
           <span className="text-sm text-muted-foreground">Viewing {formatDate(date)}</span>
-          <Button variant="ghost" size="sm" onClick={() => onChange(TODAY)}>Back to today</Button>
+          <Button variant="ghost" size="sm" onClick={() => onChange(today)}>Back to today</Button>
         </>
       )}
       {right}

@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Textarea } from '@/app/creative/_ui/textarea'
 import { batchUsage, buildAdsetName, buildCreativeName, CAMPAIGN_TYPES, CREATIVE_OFFERS } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
-import { TODAY } from '@/app/creative/_lib/data'
+import { uploadFile } from '@/app/creative/_lib/uploads'
 import { PriorityStars } from './priority-stars'
 import { RequestPicker } from './request-picker'
 import {
@@ -82,6 +82,7 @@ export function NewAssignmentDialog({
   const [bench, setBench] = useState<{ url: string; name: string } | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadError, setUploadError] = useState<string | null>(null)
+  const [progress, setProgress] = useState<number | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /* Hook names come from the same place the angle reports read them, so a
@@ -127,17 +128,18 @@ export function NewAssignmentDialog({
   async function uploadBenchmark(file: File) {
     setUploading(true)
     setUploadError(null)
+    setProgress(0)
     try {
-      const body = new FormData()
-      body.append('file', file)
-      const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body })
-      const d = await res.json()
-      if (!res.ok) { setUploadError(d.error ?? 'Upload failed.'); return }
+      /* Straight to storage, so the size of the file is not our business —
+         see _lib/uploads. The fraction is shown because a 400MB benchmark
+         takes long enough that a silent button reads as a broken one. */
+      const d = await uploadFile(file, 'benchmark', setProgress)
       setBench({ url: d.url, name: d.name })
-    } catch {
-      setUploadError('Could not reach the server.')
+    } catch (e) {
+      setUploadError((e as Error).message)
     } finally {
       setUploading(false)
+      setProgress(null)
     }
   }
 
@@ -167,7 +169,7 @@ export function NewAssignmentDialog({
      is searched for this batch, and the new cut takes the next number after
      the highest. Typing it meant remembering what a batch was up to, and
      being wrong produced two different ads filed under one name. */
-  const { creatives, assignments } = useStore()
+  const { creatives, assignments, today } = useStore()
   const knownNames = useMemo(
     () => [
       ...creatives.map((c) => c.convention || c.name),
@@ -180,7 +182,7 @@ export function NewAssignmentDialog({
     [knownNames, batch, format, firmCode],
   )
 
-  const base = { firm: firmCode, format, offer, campaignType, date: TODAY, seq }
+  const base = { firm: firmCode, format, offer, campaignType, date: today, seq }
 
   /* Two readings of the same name. The preview fills the gaps with dots so a
      missing field is visible; what gets saved leaves them out, because a
@@ -386,7 +388,7 @@ export function NewAssignmentDialog({
             <PriorityStars value={priority} onChange={setPriority} />
           </Field>
 
-          <Field label="Benchmark creative" hint="The reference to build against — an image or a video, up to 50MB.">
+          <Field label="Benchmark creative" hint="The reference to build against — an image or a video, any size.">
             <input
               ref={fileRef}
               type="file"
@@ -410,7 +412,9 @@ export function NewAssignmentDialog({
               </div>
             ) : (
               <Button type="button" variant="outline" disabled={uploading} onClick={() => fileRef.current?.click()}>
-                {uploading ? <><Loader2 className="animate-spin" aria-hidden /> Uploading…</> : <><Paperclip aria-hidden /> Upload benchmark</>}
+                {uploading
+                  ? <><Loader2 className="animate-spin" aria-hidden /> {progress === null ? 'Uploading…' : `Uploading ${Math.round(progress * 100)}%`}</>
+                  : <><Paperclip aria-hidden /> Upload benchmark</>}
               </Button>
             )}
             {uploadError && <p className="text-xs text-destructive">{uploadError}</p>}

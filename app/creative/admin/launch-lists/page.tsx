@@ -3,24 +3,25 @@
 import { useMemo, useState } from 'react'
 import {
   CalendarDays, CheckCircle2, ChevronLeft, ChevronRight, Download, Paperclip,
-  Plus, Rocket, Search, TriangleAlert, Undo2,
+  History, Plus, Rocket, Send, TriangleAlert, Undo2,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import { AssignmentDetailSheet } from '@/app/creative/_components/assignment-detail-sheet'
 import { ManualLaunchDialog } from '@/app/creative/_components/admin/manual-launch-dialog'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
-import { Input } from '@/app/creative/_ui/input'
-import { downloadCsv, EmptyState, PageHeader, Pill, StatCard, Thumb } from '@/app/creative/_components/admin/shared'
+import { downloadCsv, EmptyState, PageHeader, Pill, SearchBox, StatCard, Thumb } from '@/app/creative/_components/admin/shared'
 import { PriorityStars } from '@/app/creative/_components/admin/priority-stars'
-import { TODAY, addDays } from '@/app/creative/_lib/data'
+import { addDays } from '@/app/creative/_lib/data'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
+import { HistoryDialog, type HistoryRow as LaunchHistoryRow } from '@/app/creative/_components/admin/history-dialog'
 import {
   ASSIGNMENT_FIRMS, firmLabel,
-  type Assignment, type AssignmentFirm,
+  type Assignment, type AssignmentFirm, type Creative,
 } from '@/app/creative/_lib/types'
+import { firmOf } from '@/app/_metrics/firms'
 import { cn } from '@/lib/utils'
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -52,11 +53,11 @@ const byPriority = (a: Assignment, b: Assignment) =>
   (b.priority ?? 3) - (a.priority ?? 3) || a.order - b.order
 
 export default function LaunchListsPage() {
-  const { assignments, updateAssignment, setLaunched, manualLaunch, boardLoading, boardError } = useStore()
+  const { assignments, updateAssignment, setLaunched, manualLaunch, boardLoading, boardError, launches, getCreative, creatives } = useStore()
   /* The day comes from the store, not from here. Every page in the center
      reads the same one, so the numbers and the boards can never disagree
      about what day it is. */
-  const { day: date, setDay: setDate } = useStore()
+  const { day: date, setDay: setDate, today } = useStore()
   const [query, setQuery] = useState('')
   const [picked, setPicked] = useState<Set<string>>(new Set())
   const [manualOpen, setManualOpen] = useState(false)
@@ -94,7 +95,7 @@ export default function LaunchListsPage() {
      rather than inside a day, because the day it was meant for is not the day
      anyone is looking at. */
   const overdue = useMemo(
-    () => assignments.filter((a) => a.status === 'Launching' && a.launchDate && a.launchDate < TODAY),
+    () => assignments.filter((a) => a.status === 'Launching' && a.launchDate && a.launchDate < today),
     [assignments],
   )
 
@@ -166,6 +167,147 @@ export default function LaunchListsPage() {
       return next
     })
 
+  /* Every launch ever made, with the day taken out — see HistoryDialog.
+
+     The launch board is the record rather than the assignment list: a
+     manual launch never had an assignment, and a relaunch is one ad going
+     up twice. Where the row carries a source ad we use it; otherwise the
+     name is matched against what is live, so a cut launched last week
+     still shows its numbers. */
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const byName = useMemo(() => {
+    const m = new Map<string, Creative>()
+    for (const c of creatives) {
+      m.set((c.convention || c.name).toLowerCase(), c)
+      m.set(c.name.toLowerCase(), c)
+    }
+    return m
+  }, [creatives])
+
+  const history = useMemo<LaunchHistoryRow[]>(() => {
+    const rows: LaunchHistoryRow[] = []
+    const seen = new Set<string>()
+
+    /* Both halves of the record, because neither is complete on its own.
+
+       A launch row is ticked off when the ad actually goes up, and that
+       tick is the truest signal there is — but it is a tick someone has to
+       remember, and a queue that never got ticked is not a queue that never
+       went live. The assignment board knows the other half: a brief moved
+       to Ad Launched is a cut that is running whatever the launch row says.
+
+       So: every launch row, saying plainly whether it was ticked or is
+       still queued, plus any brief marked launched that has no row here at
+       all. Tagged rather than merged, so the reader can tell what kind of
+       record they are looking at. */
+    for (const l of launches) {
+      if (l.status === 'cancelled') continue
+      const name = l.convention || l.name
+      const c = (l.sourceCreativeId ? getCreative(l.sourceCreativeId) : undefined) ?? byName.get(name.toLowerCase())
+      const kind = l.requestedBy === 'relaunch' ? 'Relaunch' : l.requestedBy === 'manual' ? 'Manual' : 'From brief'
+      seen.add(name.toLowerCase())
+      rows.push({
+        id: l.id,
+        name,
+        adset: c?.adset,
+        firm: c?.firm ?? firmOf(name),
+        date: l.doneAt ?? l.date,
+        c,
+        tag: l.status === 'done' ? kind : `Queued · ${kind}`,
+        tone: l.status === 'done'
+          ? (l.requestedBy === 'relaunch' ? 'amber' : l.requestedBy === 'manual' ? 'blue' : 'green')
+          : 'muted',
+      })
+    }
+
+    for (const a of assignments) {
+      if (a.status !== 'Ad Launched' && a.status !== 'Winner Ad') continue
+      const name = a.creativeName || a.title
+      if (seen.has(name.toLowerCase())) continue
+      const c = (a.sourceCreativeId ? getCreative(a.sourceCreativeId) : undefined) ?? byName.get(name.toLowerCase())
+      rows.push({
+        id: a.id,
+        name,
+        adset: a.adsetName ?? c?.adset,
+        firm: c?.firm ?? firmOf(name),
+        date: a.launchDate ?? a.createdAt,
+        c,
+        tag: a.status === 'Winner Ad' ? 'Winner' : 'From brief',
+        tone: a.status === 'Winner Ad' ? 'green' : 'green',
+      })
+    }
+
+    return rows
+  }, [launches, assignments, getCreative, byName])
+
+  /* The day's launch list in Slack, as one thread.
+
+     Same handover as the kill list and the same two halves: Jason says what
+     is going up, whoever is in Ads Manager puts it up and says so. The kill
+     list had the first half and no second; this page had neither. */
+  const [notifying, setNotifying] = useState<'ready' | 'done' | null>(null)
+
+  /* Same rule the Execute page and the Budget Tracker use, so the three
+     cannot disagree about what a launch costs. */
+  const launchCost = (a: Assignment) =>
+    launches.find((l) => l.assignmentId === a.id)?.dailyBudget
+    ?? (a.sourceCreativeId ? getCreative(a.sourceCreativeId)?.dailyBudget : undefined)
+    ?? 0
+
+  const tellSlack = async (phase: 'ready' | 'done') => {
+    setNotifying(phase)
+    const list = phase === 'ready' ? scheduled : launched
+    try {
+      const res = await fetch('/api/creative/lists/notify', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          board: 'launch',
+          phase,
+          day: date,
+          dateLabel: formatDate(date),
+          count: list.length,
+          /* What the day adds to the account, so the message carries the
+             same number the Budget Tracker will show tomorrow. A brief has
+             no budget of its own — it is on the launch row it raised, or
+             failing that on the ad it was doubled down from. */
+          budget: list.reduce((t, a) => t + launchCost(a), 0),
+          by: phase === 'ready' ? 'Jason' : 'The K-Team',
+          url: typeof window === 'undefined' ? '' : window.location.href,
+          groups: groupByFirm(list).map(([firm, items]) => ({
+            firm: firmLabel(firm as AssignmentFirm),
+            adsets: items.map((a) => ({
+              name: a.adsetName || a.title,
+              ads: [a.creativeName || a.title],
+            })),
+          })),
+        }),
+      })
+      const d = await res.json().catch(() => ({ sent: false, error: 'No answer from the server.' }))
+      if (!d.sent) {
+        toast.error('Slack was not notified', { description: d.error ?? 'The message was not accepted.' })
+        return
+      }
+      if (phase === 'ready') {
+        toast(`K-Team notified — ${scheduled.length} to launch`, {
+          description: d.threaded === false
+            ? 'Posted, but not as a thread — set SLACK_CREATIVE_OPS_CHANNEL and a bot token to thread the reply.'
+            : d.threadKept === false
+              ? 'Posted, but the thread could not be saved — run supabase/migration_creative_threads.sql so the reply can find it.'
+              : undefined,
+        })
+      } else {
+        toast('Jason notified — the launch list is done', {
+          description: d.repliedTo ? 'Posted as a reply under this morning’s list.' : undefined,
+        })
+      }
+    } catch (e) {
+      toast.error('Slack was not notified', { description: (e as Error).message })
+    } finally {
+      setNotifying(null)
+    }
+  }
+
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -173,8 +315,37 @@ export default function LaunchListsPage() {
         description="Everything finished and waiting, and what goes out on a given day."
         actions={
           <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setHistoryOpen(true)}>
+              <History aria-hidden /> Everything launched ({history.length})
+            </Button>
             <Button variant="outline" onClick={() => setManualOpen(true)}>
               <Plus aria-hidden /> Manual launch
+            </Button>
+            <Button
+              onClick={() => void tellSlack('ready')}
+              disabled={date !== today || scheduled.length === 0 || notifying !== null}
+              title={
+                date !== today ? 'Only today’s list can be sent'
+                  : scheduled.length === 0 ? 'Nothing is queued for today'
+                  : 'Post the list to the K-Team’s Slack channel'
+              }
+            >
+              <Send aria-hidden /> {notifying === 'ready' ? 'Sending…' : 'Launch list ready — notify K-Team'}
+            </Button>
+            {/* Not admin-only: whoever just put the ads up is the one who
+                knows they are up. */}
+            <Button
+              variant={launched.length > 0 && scheduled.length === 0 ? 'default' : 'outline'}
+              onClick={() => void tellSlack('done')}
+              disabled={date !== today || launched.length === 0 || notifying !== null}
+              title={
+                date !== today ? 'Only today’s list can be reported'
+                  : launched.length === 0 ? 'Nothing has gone out yet'
+                  : scheduled.length > 0 ? `${scheduled.length} still queued — this reports the ${launched.length} already live`
+                  : 'Tell Jason the list is live'
+              }
+            >
+              <CheckCircle2 aria-hidden /> {notifying === 'done' ? 'Sending…' : 'Launch list completed — notify Jason'}
             </Button>
             <Button
               variant="outline"
@@ -243,21 +414,18 @@ export default function LaunchListsPage() {
           <Button variant="outline" size="icon-sm" aria-label="Next day" onClick={() => setDate(addDays(date, 1))}>
             <ChevronRight aria-hidden />
           </Button>
-          {date !== TODAY && (
-            <Button variant="ghost" size="sm" onClick={() => setDate(TODAY)}>Today</Button>
+          {date !== today && (
+            <Button variant="ghost" size="sm" onClick={() => setDate(today)}>Today</Button>
           )}
           {datesWithWork.has(date) && <Pill tone="blue">has launches</Pill>}
 
-          <div className="relative ml-auto w-full max-w-xs">
-            <Search className="pointer-events-none absolute left-2.5 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search title, batch or angle"
-              aria-label="Search creatives"
-              className="pl-8"
-            />
-          </div>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            label="Search the launch lists"
+            placeholder="Search title, batch or angle"
+            className="ml-auto"
+          />
         </div>
 
         {boardLoading ? (
@@ -405,6 +573,16 @@ export default function LaunchListsPage() {
       </div>
 
       <AssignmentDetailSheet assignmentId={openId} onClose={() => setOpenId(null)} />
+
+      <HistoryDialog
+        open={historyOpen}
+        onOpenChange={setHistoryOpen}
+        title="Everything ever launched"
+        description="Every creative that has gone live through the center, newest first — from a brief, by hand, or as a relaunch."
+        dateLabel="Date launched"
+        rows={history}
+        csvName="launched-creatives.csv"
+      />
 
       {/* A launch that never had an assignment behind it — a straight
           relaunch, or something cut outside the board. */}

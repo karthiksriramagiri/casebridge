@@ -90,6 +90,9 @@ export async function GET() {
       order: r.sort_order ?? 0,
       createdAt: day(r.created_at),
       attachments: Array.isArray(r.attachments) ? r.attachments : [],
+      /* Where this brief's Slack conversation lives, per channel. Absent on
+         a database that has not had the column added yet. */
+      slackThreads: (r.slack_threads && typeof r.slack_threads === 'object') ? r.slack_threads : {},
       comments: threads.get(`assignment:${r.id}`) ?? [],
     })),
     tasks: (t.data ?? []).map((r) => ({
@@ -302,6 +305,7 @@ export async function PATCH(req: NextRequest) {
     set('script', body.script)
     set('launch_date', body.launchDate)
     set('attachments', body.attachments)
+    set('slack_threads', body.slackThreads)
     if (body.visualCode !== undefined) patch.visual_code = upperCode(body.visualCode)
     if (body.verbalCode !== undefined) patch.verbal_code = upperCode(body.verbalCode)
   }

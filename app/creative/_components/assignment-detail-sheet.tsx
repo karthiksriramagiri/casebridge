@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { toast } from 'sonner'
 import { RequestPicker } from './admin/request-picker'
 import {
   Boxes, Building2, CalendarDays, Clapperboard, Eye, FileText, FileType, Hash, Layers,
@@ -13,10 +14,10 @@ import { Pill } from '@/app/creative/_components/admin/shared'
 import { PriorityStars, PRIORITY_LABELS } from './admin/priority-stars'
 import { PropertyRow, Empty } from './admin/property-row'
 import { VersionStages } from './admin/version-stages'
-import { TODAY } from '@/app/creative/_lib/data'
 import { withAdsetDate, withCreativeDate } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
+import { BenchmarkField } from './admin/benchmark-field'
 import {
   ASSIGNMENT_FIRMS, ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, RELAUNCH_TYPE, ROLE_LABEL,
   parseRequests,
@@ -45,16 +46,14 @@ const byNumber = (a: string, b: string) => (parseInt(a.slice(1), 10) || 0) - (pa
 export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId: string | null; onClose: () => void }) {
   const role = useRole()
   const isAdmin = role === 'admin'
-  const { assignments, getCreative, addComment, addAttachments, updateAssignment } = useStore()
+  const { assignments, getCreative, addComment, addAttachments, updateAssignment, today } = useStore()
   const a = assignments.find((x) => x.id === assignmentId)
 
   const [hooks, setHooks] = useState<{ visual: Record<string, string>; verbal: Record<string, string> }>({ visual: {}, verbal: {} })
-  const [benchUploading, setBenchUploading] = useState(false)
   /* A brief with a script, several versions and their notes outgrows a side
      panel. Fullscreen is the same sheet at full width, so nothing has to be
      laid out twice — the property column just stops being the whole screen. */
   const [full, setFull] = useState(false)
-  const benchRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (!a) return
@@ -79,25 +78,12 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
      neither, so they are derived the same way here rather than reading
      blank. */
   const adsetName = a.adsetName?.trim()
-    || (a.type === RELAUNCH_TYPE && src ? withAdsetDate(src.adset, a.launchDate || TODAY) : undefined)
+    || (a.type === RELAUNCH_TYPE && src ? withAdsetDate(src.adset, a.launchDate || today) : undefined)
   const creativeName = a.creativeName?.trim()
-    || (a.type === RELAUNCH_TYPE && src ? withCreativeDate(src.convention, a.launchDate || TODAY) : undefined)
+    || (a.type === RELAUNCH_TYPE && src ? withCreativeDate(src.convention, a.launchDate || today) : undefined)
 
   const visualOptions = Object.keys(hooks.visual).filter((c) => !fmt || c.startsWith(fmt.visual)).sort(byNumber)
   const verbalOptions = Object.keys(hooks.verbal).filter((c) => !fmt || c.startsWith(fmt.verbal)).sort(byNumber)
-
-  async function uploadBenchmark(file: File) {
-    setBenchUploading(true)
-    try {
-      const body = new FormData()
-      body.append('file', file)
-      const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body })
-      const d = await res.json()
-      if (res.ok) set({ benchmarkUrl: d.url, benchmarkName: d.name })
-    } finally {
-      setBenchUploading(false)
-    }
-  }
 
   return (
     <Sheet open onOpenChange={(o) => !o && onClose()}>
@@ -252,34 +238,14 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
             </PropertyRow>
 
             <PropertyRow icon={Paperclip} label="Benchmark">
-              <input
-                ref={benchRef}
-                type="file"
-                accept="image/*,video/*"
-                className="sr-only"
-                onChange={(e) => {
-                  const f = e.target.files?.[0]
-                  if (f) uploadBenchmark(f)
-                  e.target.value = ''
-                }}
+              {/* Replaceable and removable after the brief is raised, and
+                  playable where it sits — see BenchmarkField. */}
+              <BenchmarkField
+                url={a.benchmarkUrl}
+                name={a.benchmarkName}
+                canEdit={isAdmin}
+                onChange={(next) => set({ benchmarkUrl: next.url, benchmarkName: next.name })}
               />
-              {a.benchmarkUrl ? (
-                <span className="flex items-center gap-2">
-                  <a href={a.benchmarkUrl} target="_blank" rel="noreferrer" className="inline-flex min-w-0 items-center gap-1.5 truncate hover:underline">
-                    <FileText className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-                    <span className="truncate">{a.benchmarkName ?? 'Benchmark'}</span>
-                  </a>
-                  {isAdmin && (
-                    <button type="button" onClick={() => benchRef.current?.click()} className="shrink-0 text-xs text-muted-foreground opacity-0 hover:underline group-hover:opacity-100">
-                      Replace
-                    </button>
-                  )}
-                </span>
-              ) : isAdmin ? (
-                <button type="button" onClick={() => benchRef.current?.click()} disabled={benchUploading} className="inline-flex items-center gap-1.5 text-sm text-muted-foreground/60 hover:text-foreground">
-                  {benchUploading ? <><Loader2 className="size-3.5 animate-spin" aria-hidden /> Uploading…</> : 'Empty'}
-                </button>
-              ) : <Empty />}
             </PropertyRow>
 
             <PropertyRow icon={CalendarDays} label="Request date">

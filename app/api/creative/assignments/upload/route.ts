@@ -2,65 +2,118 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 
 export const dynamic = 'force-dynamic'
-/* A benchmark is a reference ad — a short video or a still. Big enough to
-   need saying, small enough to go through a route rather than needing the
-   signed-upload dance the hour-long interview recordings use. */
 export const maxDuration = 60
 
-/* Two buckets: a benchmark is a reference someone else made, an upload is the
-   work itself. Keeping them apart means a cleanup of one cannot touch the
-   other, and the public URLs say which is which. */
+/* ═══════════════════════════════════════════════════════════════════════════
+   Where creative files and benchmarks go.
+
+   Supabase Storage, two ways in.
+
+     POST (JSON)        hands back a signed URL the browser PUTs the file
+                        straight to. The file never passes through here.
+     POST (multipart)   the old path, kept for anything still calling it.
+                        Small files only, by the platform's rules, not ours.
+
+   The signed URL is not an optimisation. A serverless function will not
+   accept a request body of any real size — the platform rejects it around
+   4.5MB, long before our own limit was ever reached — so routing a 300MB
+   video through here could never have worked, whatever number we wrote in
+   the code.
+
+   There is no size limit here, and the buckets carry none either. What
+   remains is the project's own storage ceiling, set in the Supabase
+   dashboard, which is the only place left that can refuse a large file.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
 const BUCKETS = { benchmark: 'creative-benchmarks', upload: 'creative-uploads' } as const
-const MAX_BYTES = 50 * 1024 * 1024
 
-const OK_TYPES = [
-  'image/png', 'image/jpeg', 'image/webp', 'image/gif',
-  'video/mp4', 'video/quicktime', 'video/webm',
-]
+const bucketFor = (v: unknown) => (String(v ?? 'benchmark') === 'upload' ? BUCKETS.upload : BUCKETS.benchmark)
 
-export async function POST(req: NextRequest) {
+function db() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-  if (!url || !key) return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 500 })
+  return url && key ? createClient(url, key) : null
+}
+
+/** Storage path: the day, a random id, and the original extension. Never the
+ *  original filename — two people uploading "ref.mp4" must not overwrite each
+ *  other, and the real name is kept on the row for display. */
+function pathFor(filename: string, folder: string) {
+  const ext = (filename.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')
+  return `${folder}/${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`
+}
+
+const kindOf = (type: string, name: string) => {
+  if (type.startsWith('video/')) return 'video'
+  if (type.startsWith('image/')) return 'image'
+  /* An empty content-type is common on a drag-and-drop from some file
+     managers, so the extension gets the last word rather than the file being
+     filed as "file" and losing its preview. */
+  const ext = (name.split('.').pop() || '').toLowerCase()
+  if (['mp4', 'mov', 'webm', 'm4v', 'avi', 'mkv'].includes(ext)) return 'video'
+  if (['png', 'jpg', 'jpeg', 'webp', 'gif', 'avif', 'heic'].includes(ext)) return 'image'
+  return 'file'
+}
+
+const missingBucket = (bucket: string, message: string) =>
+  NextResponse.json(
+    {
+      error: /bucket not found/i.test(message)
+        ? `The ${bucket} bucket does not exist yet — run supabase/migration_creative_assignments.sql.`
+        : message,
+    },
+    { status: /bucket not found/i.test(message) ? 503 : 500 },
+  )
+
+export async function POST(req: NextRequest) {
+  const contentType = req.headers.get('content-type') ?? ''
+
+  if (contentType.includes('application/json')) {
+    const body = await req.json().catch(() => ({}))
+
+    /* ── A signed upload URL; the browser does the upload ────────────── */
+    const supabase = db()
+    if (!supabase) return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 500 })
+
+    const bucket = bucketFor(body.bucket)
+    const name = String(body.filename ?? 'file').slice(-160)
+    const path = pathFor(name, '').replace(/^\//, '')
+
+    const { data, error } = await supabase.storage.from(bucket).createSignedUploadUrl(path)
+    if (error || !data) return missingBucket(bucket, error?.message ?? 'Could not start the upload.')
+
+    const { data: pub } = supabase.storage.from(bucket).getPublicUrl(path)
+    return NextResponse.json({
+      mode: 'signed',
+      backend: 'supabase',
+      bucket,
+      path,
+      signedUrl: data.signedUrl,
+      token: data.token,
+      url: pub.publicUrl,
+      name,
+      kind: kindOf(String(body.type ?? ''), name),
+    })
+  }
+
+  /* ── The original multipart path ───────────────────────────────────── */
+  const supabase = db()
+  if (!supabase) return NextResponse.json({ error: 'Supabase is not configured.' }, { status: 500 })
 
   const form = await req.formData().catch(() => null)
   const file = form?.get('file')
-  const bucket = String(form?.get('bucket') ?? 'benchmark') === 'upload' ? BUCKETS.upload : BUCKETS.benchmark
+  const bucket = bucketFor(form?.get('bucket'))
   if (!(file instanceof File)) return NextResponse.json({ error: 'No file was sent.' }, { status: 400 })
 
-  if (file.size > MAX_BYTES) {
-    return NextResponse.json({ error: `That file is ${(file.size / 1024 / 1024).toFixed(0)}MB — the limit is 50MB.` }, { status: 413 })
-  }
-  if (file.type && !OK_TYPES.includes(file.type)) {
-    return NextResponse.json({ error: 'Benchmarks have to be an image or a video.' }, { status: 415 })
-  }
-
-  /* Name it by time and a random suffix rather than by the original filename:
-     two people uploading "ref.mp4" must not overwrite each other, and the
-     original name is kept on the row for display. */
-  const ext = (file.name.split('.').pop() || 'bin').toLowerCase().replace(/[^a-z0-9]/g, '')
-  const path = `${new Date().toISOString().slice(0, 10)}/${crypto.randomUUID()}.${ext}`
-
-  const db = createClient(url, key)
-  const { error } = await db.storage
+  const path = pathFor(file.name, '').replace(/^\//, '')
+  const { error } = await supabase.storage
     .from(bucket)
     .upload(path, new Uint8Array(await file.arrayBuffer()), {
       contentType: file.type || 'application/octet-stream',
       upsert: false,
     })
+  if (error) return missingBucket(bucket, error.message)
 
-  if (error) {
-    const missing = /bucket not found/i.test(error.message)
-    return NextResponse.json(
-      {
-        error: missing
-          ? `The ${bucket} bucket does not exist yet — run supabase/migration_creative_assignments.sql.`
-          : error.message,
-      },
-      { status: missing ? 503 : 500 },
-    )
-  }
-
-  const { data } = db.storage.from(bucket).getPublicUrl(path)
-  return NextResponse.json({ url: data.publicUrl, name: file.name, kind: file.type.startsWith('video/') ? 'video' : 'image' })
+  const { data } = supabase.storage.from(bucket).getPublicUrl(path)
+  return NextResponse.json({ url: data.publicUrl, name: file.name, kind: kindOf(file.type, file.name) })
 }

@@ -13,9 +13,12 @@ const AUTO_REFRESH_MS = 5 * 60_000
 /** The row collections /api/creative/board writes. */
 type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
 import { api, fetchBoard, isPersisted } from './assignments-api'
+import { uploadFile } from './uploads'
 import { boardApi, fetchBoardState, type StoredExclusion, type StoredWatch } from './board-api'
 import {
   ROLE_LABEL,
+  assigneeOf,
+  isCreativeWork,
   type Assignment,
   type AssignmentStatus,
   type AssignmentFirm,
@@ -233,9 +236,18 @@ type Store = {
      have to agree on what day it is. Moving the day nav on the kill list
      moves Creative Analysis with it; otherwise you read one day's lists
      against another day's CPLs. */
-  /** Pacific day under view. `TODAY` unless someone has stepped back. */
+  /** Pacific day under view. `today` unless someone has stepped back. */
   day: string
   setDay: (day: string) => void
+  /* What day it actually is, right now, in Pacific.
+
+     Not the TODAY constant: that is fixed when the bundle first evaluates,
+     so a tab left open overnight keeps calling yesterday "today" — the kill
+     list goes on showing yesterday's completed kills, and a kill ticked off
+     after midnight is stamped with yesterday's date. This is re-read on a
+     timer, and the day under view follows it over the roll-over unless
+     someone has deliberately stepped back. */
+  today: string
   /** Viewing a day that is finished. Its numbers are a record: frozen, and
       nothing on it can be changed. */
   dayLocked: boolean
@@ -279,6 +291,10 @@ type Store = {
   /** Take an ad off as fatigued rather than killed — it worked, it wore out. */
   markFatigued: (id: string) => void
   removeKill: (id: string) => void
+  /* Take an ad off the Relaunch / Fatigue list. The kill row stays — it is
+     still what that day decided, and still in the killed history — the
+     archive just stops listing it. */
+  hideFromArchive: (creativeId: string) => Promise<boolean>
   addAssignment: (a: AddAssignmentInput) => void
   updateAssignment: (id: string, patch: Partial<Assignment>) => void
   setAssignmentStatus: (id: string, status: AssignmentStatus, by: Role) => void
@@ -303,6 +319,10 @@ type Store = {
     benchmarkName?: string
   }) => void
   setKTaskStatus: (id: string, status: KTaskStatus, by: Role) => void
+  /* Editing a task after it is raised — today only the benchmark, which is
+     the thing that actually changes: a better reference turns up, or the
+     wrong file went on in the first place. */
+  updateKTask: (id: string, patch: Partial<KTask>) => void
   moveKTask: (id: string, dir: -1 | 1) => void
   removeKTask: (id: string) => void
   pushToLaunch: (assignmentId: string, tags: LaunchTags, dailyBudget: number) => void
@@ -485,6 +505,31 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      /api/creative/center/creatives. This holds which day that is, and
      refetches when it changes. */
   const [day, setDay] = useState(TODAY)
+  /* The real Pacific day, re-read on a timer rather than at midnight exactly
+     — a sleeping laptop misses a scheduled wake-up and would hold the stale
+     day indefinitely. Every date this provider stamps on a row reads this,
+     never the module constant. */
+  const [today, setToday] = useState(TODAY)
+  useEffect(() => {
+    const t = setInterval(() => {
+      const now = pacificDay()
+      setToday((d) => (d === now ? d : now))
+    }, 60_000)
+    return () => clearInterval(t)
+  }, [])
+
+  /* Over the roll-over, a page that was showing today follows the date to
+     the new one and re-takes its numbers. A page someone has deliberately
+     stepped back to stays where it is — that is a record they are reading,
+     not a stale view. */
+  const lastToday = useRef(TODAY)
+  useEffect(() => {
+    if (lastToday.current === today) return
+    const was = lastToday.current
+    lastToday.current = today
+    setDay((d) => (d === was ? today : d))
+    setDayTick((n) => n + 1)
+  }, [today])
   const [snapshot, setSnapshot] = useState<{ takenAt: string; ads: number } | null>(null)
   const [dayMissing, setDayMissing] = useState(false)
   const [lockAvailable, setLockAvailable] = useState(true)
@@ -496,7 +541,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      says why, rather than looking broken by doing nothing. Assignments and
      tasks are not dated to the day under view and stay editable. */
   const lockedDay = useCallback(() => {
-    if (day >= TODAY) return false
+    if (day >= today) return false
     toast.error('That day is locked', {
       description: 'It is a record of what was decided. Go back to today to make changes.',
     })
@@ -546,7 +591,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      It also fires on focus, which is when someone has come back from Ads
      Manager having changed something and wants to see it. */
   useEffect(() => {
-    if (day !== TODAY) return
+    if (day !== today) return
     const tick = () => {
       if (document.visibilityState !== 'visible') return
       if (inFlight.current > 0) return
@@ -752,6 +797,48 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      object literal is not in scope from its siblings. `status` is a parameter
      now rather than always 'Assigned': a relaunch skips the brief, because
      the ad already exists and only needs putting back up. */
+  /* Every Slack message about a brief, threaded under the first one.
+
+     The route posts and hands back a `ts` when it has started a thread; that
+     timestamp is kept on the card so the next message is addressed to it.
+     Fire and forget in both directions — a Slack outage must never block the
+     thing that triggered the message — so the only thing awaited is the
+     answer that tells us where the thread is. */
+  const notifySlack = useCallback(
+    async (a: Assignment, payload: Record<string, unknown>) => {
+      try {
+        const res = await fetch('/api/creative/assignments/notify', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            ...payload,
+            title: a.title,
+            convention: [a.batch, a.firm, a.format, a.visualCode, a.verbalCode].filter(Boolean).join(' | '),
+            url: typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '',
+            /* Which thread to reply under, if this card already has one in
+               the channel the route is about to choose. The route knows the
+               channel; we send both and it picks. */
+            threadTs: a.slackThreads?.revise,
+            threadTsReview: a.slackThreads?.review,
+          }),
+        })
+        const d = await res.json().catch(() => ({}))
+        /* A brand new thread. Remembered on the card so everything after
+           this lands underneath it. */
+        if (d?.ts && d?.channelKey) {
+          const next = { ...(a.slackThreads ?? {}), [d.channelKey]: d.ts as string }
+          setAssignments((prev) => prev.map((x) => (x.id === a.id ? { ...x, slackThreads: next } : x)))
+          if (isPersisted(a.id)) persist(api.patchAssignment(a.id, { slackThreads: next }))
+        }
+      } catch {
+        /* Already reported by the route when it can; a thrown fetch here
+           means the browser could not reach us at all, and the board move
+           that triggered it has already happened. */
+      }
+    },
+    [persist],
+  )
+
   const addAssignment = useCallback(
     (a: AddAssignmentInput) => {
       /* A double down is always top priority.
@@ -761,14 +848,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          account the sooner that keeps happening. Set here rather than at
          each button, so a new way of raising one cannot forget it. */
       if (a.type === 'Double Down') a = { ...a, priority: 5 }
+
+      /* Whose desk this lands on. A relaunch is nothing anyone makes, and an
+         image double down is Jason's own build; neither is a job being
+         handed over, so neither rings Faisal's phone. */
+      const tellFaisal = isCreativeWork({ type: a.type }) && assigneeOf({ type: a.type, format: a.format }) === 'creative'
       const order = Math.max(-1, ...assignments.map((p) => p.order)) + 1
       const temp = uid('a')
       /* Shown immediately under a temporary id, then swapped for the real one
          the database hands back — so the card is on the board before the
          round-trip finishes, and still editable after it. */
-      setAssignments((prev) => [
-        ...prev,
-        {
+      const row: Assignment = {
           id: temp,
           title: a.title,
           type: a.type,
@@ -791,11 +881,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           status: a.status ?? 'Assigned',
           launchDate: a.launchDate,
           order,
-          createdAt: TODAY,
+          createdAt: today,
           comments: [],
           attachments: [],
-        },
-      ])
+      }
+      setAssignments((prev) => [...prev, row])
       persist(
         api
           .createAssignment({
@@ -816,11 +906,32 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                loud: a Double Down whose ad set name was quietly dropped
                looks finished and sends someone hunting in Ads Manager. */
             if (d?.dropped?.length) setBoardError(d.setup ?? `Saved without ${d.dropped.join(', ')}.`)
+
+            /* Slack goes out after the save, not before, because the reply
+               carries a thread timestamp that has to be written back onto
+               the card — and a card with a temporary id has nowhere to
+               write it to. */
+            if (tellFaisal) {
+              void notifySlack(
+                { ...row, id: d?.id ?? temp },
+                { kind: 'assigned', assignmentType: a.type, by: ROLE_LABEL.admin, notes: a.notes ?? '' },
+              )
+            }
           }),
       )
-      notify('creative', `New assignment: ${a.title}`, '/team/assignments')
+      /* Telling Faisal a job has landed.
+
+         Everything else on this board announces itself — a cut going back
+         for notes, a comment, a status move — and the one moment that
+         actually starts work did not. A brief was raised and sat on the
+         board until he happened to look.
+
+         Only the briefs that are his. A relaunch is nothing anyone makes,
+         and an image double down is Jason's own build; neither is a job
+         being handed over, so neither rings. */
+      if (tellFaisal) notify('creative', `Task assigned: ${a.title}`, '/team/assignments')
     },
-    [assignments, persist, notify],
+    [assignments, persist, notify, notifySlack],
   )
 
   /* The watch list is judged on the ad set, so its totals are built once here
@@ -850,10 +961,17 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     [kill],
   )
 
+  /* Ads somebody has taken off the archive list. The kill behind them is
+     untouched; this is the page forgetting, not the record changing. */
+  const hiddenFromArchive = useMemo(
+    () => new Set(kill.filter((k) => k.archiveHiddenAt).map((k) => k.creativeId)),
+    [kill],
+  )
+
   const archived = useMemo(
     () =>
       creatives
-        .filter((c) => killedIds.has(c.id) || fatiguedIds.has(c.id))
+        .filter((c) => (killedIds.has(c.id) || fatiguedIds.has(c.id)) && !hiddenFromArchive.has(c.id))
         .map((c) => ({
           ...c,
           archived: (() => {
@@ -861,7 +979,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             return {
               /* The day it was pulled, or — while that is still pending —
                  the day it landed on the kill list. */
-              killDate: k?.doneAt ?? k?.addedAt ?? TODAY,
+              killDate: k?.doneAt ?? k?.addedAt ?? today,
               /* The archive used to call everything fatigue, which made the
                  one distinction worth keeping invisible. */
               reason: (k?.kind === 'fatigue' ? 'Fatigue' : 'Relaunch') as 'Fatigue' | 'Relaunch',
@@ -869,7 +987,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
             }
           })(),
         })),
-    [creatives, kill, killedIds, fatiguedIds],
+    [creatives, kill, killedIds, fatiguedIds, hiddenFromArchive],
   )
 
   /* Angles come off real ad names via parseAdName, so the list is whatever is
@@ -897,10 +1015,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          more, so they must not block an add. Without this, every creative
          taken off the list before this change stayed un-addable forever. */
       const existing = new Set(
-        watchRows.filter((w) => w.date === TODAY && !w.removed).map((w) => w.creativeId),
+        watchRows.filter((w) => w.date === today && !w.removed).map((w) => w.creativeId),
       )
       const fresh = ids.filter((id) => !existing.has(id))
-      const rows = seedWatchDay(fresh, TODAY)
+      const rows = seedWatchDay(fresh, today)
       setWatch((prev) => [...prev, ...rows])
       for (const w of rows) {
         createOn('watch', setWatch, w, {
@@ -920,7 +1038,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const fresh = ids.filter((id) => !existing.has(id))
       if (!fresh.length) return 0
       const onWatchToday = new Set(
-        watchRows.filter((w) => w.date === TODAY && !w.removed).map((w) => w.creativeId),
+        watchRows.filter((w) => w.date === today && !w.removed).map((w) => w.creativeId),
       )
 
       /* Already on today's watch list: the row stands, its decision becomes
@@ -932,13 +1050,13 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          as still awaiting a call and the list never shrinks as the meeting
          works through it. The row stays in the table with its KILL decision,
          which is the record of where the kill came from. */
-      const marked = watchRows.filter((w) => w.date === TODAY && fresh.includes(w.creativeId))
-      const added: StoredWatch[] = seedWatchDay(fresh.filter((id) => !onWatchToday.has(id)), TODAY)
+      const marked = watchRows.filter((w) => w.date === today && fresh.includes(w.creativeId))
+      const added: StoredWatch[] = seedWatchDay(fresh.filter((id) => !onWatchToday.has(id)), today)
         .map((w) => ({ ...w, decision: 'KILL' as const, removed: true }))
 
       setWatch((prev) => [
         ...prev.map((w) =>
-          w.date === TODAY && fresh.includes(w.creativeId)
+          w.date === today && fresh.includes(w.creativeId)
             ? { ...w, decision: 'KILL' as const, removed: true }
             : w,
         ),
@@ -953,7 +1071,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       const killRows: KillItem[] = fresh.map((id) => {
         const c = findCreative(id)
-        return { id: uid('k'), creativeId: id, addedAt: TODAY, reason: c ? killReason(c) : '', status: 'pending' as const }
+        return { id: uid('k'), creativeId: id, addedAt: today, reason: c ? killReason(c) : '', status: 'pending' as const }
       })
       setKill((prev) => [...prev, ...killRows])
       for (const k of killRows) {
@@ -1003,7 +1121,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           format: next.format ?? '',
           offer: next.offer ?? '',
           campaignType: next.campaignType ?? '',
-          date: next.createdAt || TODAY,
+          date: next.createdAt || today,
           batch: next.batch ?? '',
           visualCode: next.visualCode,
           verbalCode: next.verbalCode,
@@ -1046,40 +1164,35 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       if (!a || a.status === status) return
       updateAssignment(id, { status })
 
-      /* The two transitions that hand work over. Everything else on the board
-         can be found by looking; these two are the moments where someone is
-         waiting. Fired and forgotten — a Slack outage must never block the
-         status change that triggered it. */
+      /* Every move, inside the brief's own thread.
+
+         It used to be the two handoffs only — Feedback Request and Feedback
+         Done — because each one was a standalone message in a channel and
+         announcing the rest would have been noise. A thread changes that
+         calculation: replies sit under the card they belong to, and the
+         thread becomes the card's history, which is worth having whole. The
+         two handoffs still read as handoffs; everything else is a line
+         saying what moved.
+
+         Fired and forgotten — a Slack outage must never block the status
+         change that triggered it. */
       const handoff =
         status === 'Feedback Request' ? 'review' :
-        status === 'Feedback Done'    ? 'revise' : null
+        status === 'Feedback Done'    ? 'revise' : 'status'
 
-      if (handoff) {
-        fetch('/api/creative/assignments/notify', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            kind: handoff,
-            title: a.title,
-            by: ROLE_LABEL[by],
-            convention: [a.batch, a.firm, a.format, a.visualCode, a.verbalCode].filter(Boolean).join(' | '),
-            files: a.attachments.length,
-            url: typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '',
-          }),
-        }).catch(() => {})
-      }
+      void notifySlack(a, { kind: handoff, by: ROLE_LABEL[by], status, files: a.attachments.length })
 
       if (by === 'creative') notify('admin', `Faisal moved “${a.title}” to ${status}`, '/admin/assignments')
       else notify('creative', `${ROLE_LABEL[by]} moved “${a.title}” to ${status}`, '/team/assignments')
     },
-    [assignments, updateAssignment, notify],
+    [assignments, updateAssignment, notify, notifySlack],
   )
 
   const nextConvention = (opts: { angle: string; type: string; sourceCreativeId?: string; isNewTestBatch: boolean }) => {
     if (opts.isNewTestBatch) return ''
     const src = findCreative(opts.sourceCreativeId)
     if (src) return bumpConvention(src.convention)
-    return buildConvention({ angle: opts.angle, type: opts.type, date: TODAY, seq: launches.filter((l) => l.date === TODAY).length + 1 })
+    return buildConvention({ angle: opts.angle, type: opts.type, date: today, seq: launches.filter((l) => l.date === today).length + 1 })
   }
 
   const value: Store = {
@@ -1091,11 +1204,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     hasOutcomes,
     day,
     setDay,
+    today,
     /* A finished day is a record. Nothing on it can be changed — not the
        kill list, not a launch tick — or the record stops being one. A
        forward date is not a record: Launch Lists queues tomorrow's ads on
        it, so it stays open. */
-    dayLocked: day < TODAY,
+    dayLocked: day < today,
     dayMissing,
     lockAvailable,
     snapshot,
@@ -1157,13 +1271,42 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     markKillDone: (id, done, by) => {
       if (lockedDay()) return
       const k = kill.find((x) => x.id === id)
-      setKill((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
-      patchOn('kill', id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
+      setKill((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? today : undefined } : x)))
+      patchOn('kill', id, { status: done ? 'done' : 'pending', doneAt: done ? today : null })
     },
     removeKill: (id) => {
       if (lockedDay()) return
       setKill((prev) => prev.filter((k) => k.id !== id))
       removeOn('kill', id)
+    },
+    /* Not day-locked, unlike the rest of the kill board: the archive is not
+       a dated record of a day's decisions, it is a standing list, and
+       tidying it has nothing to do with which day the nav is parked on.
+
+       The write is awaited rather than fired and forgotten, which is the
+       opposite of every other board action here. The reason is that this
+       one has a visible outcome: the row leaves the list. If the write
+       fails the next poll puts it straight back, and a row that reappears
+       four hundred milliseconds after a toast said it was removed reads as
+       the page being broken. So a failure says what failed. */
+    hideFromArchive: async (creativeId) => {
+      const at = new Date().toISOString()
+      const rows = kill.filter((k) => k.creativeId === creativeId && !k.archiveHiddenAt)
+      if (rows.length === 0) return false
+      setKill((prev) => prev.map((k) => (k.creativeId === creativeId ? { ...k, archiveHiddenAt: at } : k)))
+      try {
+        await Promise.all(rows.filter((k) => isPersisted(k.id)).map((k) => boardApi.patch('kill', k.id, { archiveHiddenAt: at })))
+      } catch (e) {
+        setKill((prev) => prev.map((k) => (k.creativeId === creativeId ? { ...k, archiveHiddenAt: undefined } : k)))
+        const missing = /archive_hidden_at/.test((e as Error).message)
+        toast.error(missing ? 'That needs one more migration' : 'It did not save', {
+          description: missing
+            ? 'Run supabase/migration_creative_board_3.sql in the Supabase SQL editor — it adds the column this uses.'
+            : (e as Error).message,
+        })
+        return false
+      }
+      return true
     },
     addAssignment,
     updateAssignment,
@@ -1215,20 +1358,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          board open. Routed by author in the notify route — a note goes to
          whoever did not write it. Fired and forgotten: a Slack outage must
          never cost someone their comment. */
-      fetch('/api/creative/assignments/notify', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          kind: 'comment',
-          author: by,
-          by: ROLE_LABEL[by],
-          title: a.title,
-          text,
-          stage,
-          convention: [a.batch, a.firm, a.format, a.visualCode, a.verbalCode].filter(Boolean).join(' | '),
-          url: typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '',
-        }),
-      }).catch(() => {})
+      void notifySlack(a, { kind: 'comment', author: by, by: ROLE_LABEL[by], text, stage })
 
       if (by === 'creative') notify('admin', `Faisal commented on “${a.title}”`, '/admin/assignments')
       else notify('creative', `Jason commented on “${a.title}”`, '/team/assignments')
@@ -1256,14 +1386,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       persist(
         Promise.all(
+          /* Straight from the browser to storage, at whatever size the file
+             is — a cut is routinely bigger than a serverless request body
+             will ever be. See _lib/uploads. */
           files.map(async (file, i) => {
-            const form = new FormData()
-            form.append('file', file)
-            form.append('bucket', 'upload')
-            const res = await fetch('/api/creative/assignments/upload', { method: 'POST', body: form })
-            const d = await res.json()
-            if (!res.ok) throw new Error(d.error ?? 'Upload failed.')
-            return { temp: pending[i], url: d.url as string }
+            const d = await uploadFile(file, 'upload')
+            return { temp: pending[i], url: d.url }
           }),
         ).then((done) => {
           /* Built before the state is set, not inside the updater: a state
@@ -1307,7 +1435,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           disclaimer: t.disclaimer,
           status: 'To Do',
           order,
-          createdAt: TODAY,
+          createdAt: today,
           comments: [],
           firm: t.firm,
           format: t.format,
@@ -1337,8 +1465,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       )
     },
     setKTaskStatus: (id, status) => {
-      setKTasks((prev) => prev.map((x) => (x.id === id ? { ...x, status, doneAt: status === 'Done' ? TODAY : undefined } : x)))
+      setKTasks((prev) => prev.map((x) => (x.id === id ? { ...x, status, doneAt: status === 'Done' ? today : undefined } : x)))
       if (isPersisted(id)) persist(api.patchTask(id, { status }))
+    },
+    updateKTask: (id, patch) => {
+      setKTasks((prev) => prev.map((x) => (x.id === id ? { ...x, ...patch } : x)))
+      /* `undefined` means "not changing this field" over the wire, so a
+         cleared benchmark has to be sent as null or the row keeps the old
+         file and the UI and the database disagree on the next poll. */
+      if (isPersisted(id)) {
+        persist(api.patchTask(id, Object.fromEntries(
+          Object.entries(patch).map(([k, v]) => [k, v === undefined ? null : v]),
+        ) as Record<string, unknown>))
+      }
     },
     moveKTask: (id, dir) =>
       setKTasks((prev) => {
@@ -1368,7 +1507,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         campaign: findCreative(a.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
         convention: nextConvention({ angle: a.angle, type: a.type, sourceCreativeId: a.sourceCreativeId, isNewTestBatch }),
         tags,
-        date: TODAY,
+        date: today,
         dailyBudget,
         status: 'pending',
         isNewTestBatch,
@@ -1405,7 +1544,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         adsetName: input.adsetName,
         creativeName: input.creativeName,
         status: 'Launching',
-        launchDate: input.launchDate ?? TODAY,
+        launchDate: input.launchDate ?? today,
         notes: [
           input.adsetName && `Ad set: ${input.adsetName}`,
           input.size && `Size: ${input.size}`,
@@ -1424,7 +1563,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         campaign: input.adsetName ?? findCreative(input.sourceCreativeId)?.campaign ?? DEFAULT_CAMPAIGN,
         convention: input.creativeName ?? nextConvention({ angle: input.angle, type: 'New Concept', sourceCreativeId: input.sourceCreativeId, isNewTestBatch: input.isNewTestBatch }),
         tags: input.tags,
-        date: input.launchDate ?? TODAY,
+        date: input.launchDate ?? today,
         dailyBudget: input.dailyBudget,
         status: 'pending',
         isNewTestBatch: input.isNewTestBatch,
@@ -1470,8 +1609,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          day it first ran, so the account read as though nothing had gone
          up. Same rule as a Double Down. A name that does not follow the
          convention is left exactly as found rather than rebuilt. */
-      const adsetName = withAdsetDate(c.adset, TODAY)
-      const creativeName = withCreativeDate(c.convention || c.name, TODAY)
+      const adsetName = withAdsetDate(c.adset, today)
+      const creativeName = withCreativeDate(c.convention || c.name, today)
 
       addAssignment({
         title: `Relaunch – ${creativeName}`,
@@ -1483,7 +1622,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         sourceCreativeId: c.id,
         firm: SPELLING[c.firm],
         status: 'Launching',
-        launchDate: TODAY,
+        launchDate: today,
         adsetName,
         creativeName,
       })
@@ -1495,7 +1634,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         campaign: c.campaign,
         convention: creativeName,
         tags: { resize: false, disclaimer: null, asIs: true },
-        date: TODAY,
+        date: today,
         dailyBudget: c.dailyBudget,
         status: 'pending',
         isNewTestBatch: false,
@@ -1516,8 +1655,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     markLaunchDone: (id, done, by) => {
       if (lockedDay()) return
       const l = launches.find((x) => x.id === id)
-      setLaunches((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x)))
-      patchOn('launches', id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
+      setLaunches((prev) => prev.map((x) => (x.id === id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? today : undefined } : x)))
+      patchOn('launches', id, { status: done ? 'done' : 'pending', doneAt: done ? today : null })
       if (l?.assignmentId) updateAssignment(l.assignmentId, { status: done ? 'Ad Launched' : 'Launching' })
       /* The only notification worth keeping here: Faisal cannot see the
          launch list, so this is how the maker learns their ad went live.
@@ -1537,9 +1676,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       const row = launches.find((l) => l.assignmentId === assignmentId)
       if (!row) return
       setLaunches((prev) => prev.map((x) => (
-        x.id === row.id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? TODAY : undefined } : x
+        x.id === row.id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? today : undefined } : x
       )))
-      patchOn('launches', row.id, { status: done ? 'done' : 'pending', doneAt: done ? TODAY : null })
+      patchOn('launches', row.id, { status: done ? 'done' : 'pending', doneAt: done ? today : null })
       if (done) notify('creative', `Your ad “${row.name}” is live`, '/team/assignments')
     },
     cancelLaunch: (id) => {
@@ -1570,9 +1709,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     },
     restoreExclusions: () => {
       const day = pacificDay()
-      const today = exclusions.filter((x) => x.day === day)
+      const mine = exclusions.filter((x) => x.day === day)
       setExclusions((prev) => prev.filter((x) => x.day !== day))
-      for (const x of today) removeOn('exclusions', x.id)
+      for (const x of mine) removeOn('exclusions', x.id)
     },
   }
 

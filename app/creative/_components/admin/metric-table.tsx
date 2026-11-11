@@ -45,21 +45,17 @@ export const metricColumns = (hasOutcomes: boolean): MetricColumn[] => {
     { key: 'spend', label: 'Amount spent', render: (t) => usd(t.spend) },
     { key: 'leads', label: 'Leads', render: (t) => num(t.leads) },
     { key: 'cpl', label: 'Cost per lead', render: (t) => usd(t.cpl) },
-    /* Signed and CPA are read over the ad's whole life, not the selected
-       range, and they say so.
+    /* Signed and CPA follow the range, like every column beside them.
 
-       A case signs days to weeks after the click that produced it, so a
-       range of Today or T&Y puts the spend in one window and the signing
-       in another: the column read 0 for ads that have signed sixteen
-       cases, and CPA read "—" beside a healthy ad. Of the 239 signed cases
-       attributed to the live ads, 93 were signed before the 30-day Meta
-       window even opens — invisible to any range the page offers.
-
-       Lifetime on both halves keeps the ratio honest: the spend that
-       bought those cases is the same spend. The other columns stay on the
-       range, which is what they are for. */
-    { key: 'acquisitions', label: 'Signed (life)', title: 'Signed cases attributed to this ad over its whole life — a case signs days after the click, so this ignores the range filter', render: (t) => (hasOutcomes ? num(t.acquisitions) : '—') },
-    { key: 'cpa', label: 'CPA (life)', title: 'Lifetime spend ÷ lifetime signed cases', render: (t) => (hasOutcomes ? usd(t.cpa) : '—') },
+       They were lifetime for a while, labelled "(life)", because a case
+       signs days to weeks after the click that produced it and a short
+       range splits cause from effect. But a lifetime figure sitting in a
+       row of range figures gets read as the range's — 107 cases against a
+       day's spend — and no label fixed that. Maximum is where the whole
+       life is read now. The kill and watch rules still judge an ad on its
+       lifetime record; that lives in `acquisitions` / `cpa`, off screen. */
+    { key: 'acquisitions', label: 'Signed', title: 'Cases signed off this ad inside the selected range — set the range to Maximum for its whole life', render: (t) => (hasOutcomes ? num(t.rangeAcquisitions) : '—') },
+    { key: 'cpa', label: 'CPA', title: 'Spend ÷ signed cases, both inside the selected range', render: (t) => (hasOutcomes ? usd(t.rangeCpa) : '—') },
     { key: 'hookRate', label: 'Hook rate', render: (t) => pct(t.hookRate) },
     { key: 'ctr', label: 'CTR (link)', render: (t) => pct(t.ctr) },
     { key: 'cpm', label: 'CPM', render: (t) => usd(t.cpm) },
@@ -147,7 +143,7 @@ export function MetricCells({
                three. */
             !muted && col.key === 'cpl' && t.cpl !== null && t.cpl < WINNER_CPL && 'font-semibold text-success',
             !muted && col.key === 'cpl' && (t.cpl === null ? t.spend > 0 : t.cpl > WATCH_CPL) && 'text-destructive',
-            !muted && col.key === 'acquisitions' && t.acquisitions > 0 && 'font-semibold text-success',
+            !muted && col.key === 'acquisitions' && t.rangeAcquisitions > 0 && 'font-semibold text-success',
           )}
         >
           {col.fromAds ? col.fromAds(ads) : col.render(t)}

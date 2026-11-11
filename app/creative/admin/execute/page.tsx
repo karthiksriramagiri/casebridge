@@ -8,10 +8,10 @@ import {
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
-import { downloadCsv, PageHeader, Pill, StatCard } from '@/app/creative/_components/admin/shared'
+import { downloadCsv, EmptyState, matchesQuery, PageHeader, Pill, SearchBox, StatCard } from '@/app/creative/_components/admin/shared'
 import { PriorityStars } from '@/app/creative/_components/admin/priority-stars'
 import { AssignmentDetailSheet } from '@/app/creative/_components/assignment-detail-sheet'
-import { TODAY, addDays } from '@/app/creative/_lib/data'
+import { addDays } from '@/app/creative/_lib/data'
 import { adsetBudget, adsetKey, formatMix, isDelivering, formatDate, sumTotals, totalsFor, usd, WINNER_ADSET_CPL } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
@@ -77,8 +77,9 @@ export default function ExecutePage() {
   /* The day comes from the store, not from here. Every page in the center
      reads the same one, so the numbers and the boards can never disagree
      about what day it is. */
-  const { day: date, setDay: setDate } = useStore()
+  const { day: date, setDay: setDate, today } = useStore()
   const [openId, setOpenId] = useState<string | null>(null)
+  const [query, setQuery] = useState('')
 
   const firms = useMemo<FirmBlockData[]>(() => {
     const mine = (code: string | undefined, key: FirmKey) => firmKey(code) === key
@@ -93,8 +94,16 @@ export default function ExecutePage() {
          moment it was checked, and the next tick landed on whatever slid
          up into its place. A struck-through row is marked clearly enough
          without being moved. */
+      /* Scoped to the day being read, in both directions.
+
+         `status === 'pending'` on its own put every open kill on every
+         day's meeting: a kill decided this morning appeared in the TO KILL
+         block of a meeting held two days ago, which is a record of a
+         decision nobody had made yet. A day holds the kills decided on it
+         — plus, on today, the ones ticked off today, so the meeting can
+         see its own work and undo a mistake. */
       const toKill = kill
-        .filter((k) => k.status === 'pending' || k.doneAt === date)
+        .filter((k) => k.addedAt === date || k.doneAt === date)
         .flatMap((k) => { const c = getCreative(k.creativeId); return c && mine(c.firm, key) ? [{ k, c }] : [] })
 
       /* The account is built out of ad sets, so the meeting counts ad sets.
@@ -299,6 +308,35 @@ export default function ExecutePage() {
     { kill: 0, watch: 0, live: 0, launching: 0, budget: 0, killBudget: 0, launchBudget: 0 },
   )
 
+  /* Searching the meeting.
+
+     Four lists per firm — to kill, to watch, the current structure, and
+     what is going up — and the question in the room is usually about one
+     ad set across all of them. Each list is narrowed by the same query and
+     a firm whose lists all come back empty drops out, so what is left on
+     screen is every mention of the thing you searched for.
+
+     The totals above are untouched: they are the day's meeting, not the
+     search's. */
+  const shownFirms = useMemo(() => {
+    const q = query.trim()
+    if (!q) return firms
+    const ad = (c: Creative) => [c.convention, c.name, c.adId, c.adset, c.angle, c.accountLabel]
+    const set = (g: { adset: string; ads?: Creative[]; items?: { c: Creative }[] }) =>
+      [g.adset, ...(g.ads ?? []).flatMap(ad), ...(g.items ?? []).flatMap((r) => ad(r.c))]
+    const out = firms.map((f) => ({
+      ...f,
+      killSets: f.killSets.filter((g) => matchesQuery(q, set(g))),
+      watchSets: f.watchSets.filter((g) => matchesQuery(q, set(g))),
+      liveSets: f.liveSets.filter((g) => matchesQuery(q, set(g))),
+      launching: f.launching.filter((a) => matchesQuery(q, [a.title, a.batch, a.format, a.visualCode, a.verbalCode, a.angle, a.adsetName, a.creativeName])),
+      watchToday: f.watchToday.filter((r) => matchesQuery(q, ad(r.c))),
+      watchYesterday: f.watchYesterday.filter((r) => matchesQuery(q, ad(r.c))),
+      toKill: f.toKill.filter((r) => matchesQuery(q, ad(r.c))),
+    }))
+    return out.filter((f) => f.killSets.length || f.watchSets.length || f.liveSets.length || f.launching.length)
+  }, [firms, query])
+
   return (
     <div className="flex flex-col">
       <PageHeader
@@ -358,13 +396,24 @@ export default function ExecutePage() {
           <Button variant="outline" size="icon-sm" aria-label="Next day" onClick={() => setDate(addDays(date, 1))}>
             <ChevronRight aria-hidden />
           </Button>
-          {date !== TODAY && <Button variant="ghost" size="sm" onClick={() => setDate(TODAY)}>Today</Button>}
+          {date !== today && <Button variant="ghost" size="sm" onClick={() => setDate(today)}>Today</Button>}
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            label="Search the meeting"
+            placeholder="Search ad set, creative, brief"
+            className="ml-auto max-w-[18rem]"
+          />
         </div>
 
         {boardLoading ? (
           <div className="h-96 animate-pulse rounded-lg border bg-card" />
+        ) : shownFirms.length === 0 ? (
+          <EmptyState title={`Nothing in the meeting matches “${query.trim()}”`}>
+            The day holds {total.kill} to kill, {total.watch} to watch and {total.live} live ad sets — none of them by that name, ad set or angle.
+          </EmptyState>
         ) : (
-          firms.map((f) => (
+          shownFirms.map((f) => (
             <FirmOverview
               key={f.key}
               f={f}

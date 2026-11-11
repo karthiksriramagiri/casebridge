@@ -1,19 +1,29 @@
 'use client'
 
+import { useMemo } from 'react'
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 import { PriorityStars } from '@/app/creative/_components/admin/priority-stars'
 import { Button } from '@/app/creative/_ui/button'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
-import { Pill } from '@/app/creative/_components/admin/shared'
+import { matchesQuery, Pill } from '@/app/creative/_components/admin/shared'
+import { BenchmarkField } from '@/app/creative/_components/admin/benchmark-field'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { KTEAM_STATUSES, type KTaskStatus } from '@/app/creative/_lib/types'
 
-export function TaskBoard() {
+export function TaskBoard({ query = '' }: { query?: string }) {
   const role = useRole()
   const isAdmin = role === 'admin'
-  const { ktasks, getCreative, setKTaskStatus, moveKTask, removeKTask } = useStore()
+  const { ktasks: allTasks, getCreative, setKTaskStatus, moveKTask, removeKTask, updateKTask } = useStore()
+  /* Same rule as the brief board beside it, over what a task card shows. */
+  const ktasks = useMemo(
+    () => allTasks.filter((t) => matchesQuery(query, [
+      t.title, t.type, t.firm, t.format, t.batch, t.visualCode, t.verbalCode,
+      t.status, t.disclaimer, t.notes, getCreative(t.sourceCreativeId)?.convention,
+    ])),
+    [allTasks, query, getCreative],
+  )
 
   return (
     <div className="grid gap-3 md:grid-cols-3">
@@ -53,6 +63,16 @@ export function TaskBoard() {
                     </div>
                     {src && <code className="truncate font-mono text-[11px] text-muted-foreground">{src.convention}</code>}
                     {t.notes && <p className="text-xs text-muted-foreground">{t.notes}</p>}
+                    {/* The reference, editable on the card itself. A task is
+                        worked from its benchmark, and the right one often
+                        turns up after the task was raised. */}
+                    <BenchmarkField
+                      url={t.benchmarkUrl}
+                      name={t.benchmarkName}
+                      canEdit={isAdmin}
+                      compact
+                      onChange={(next) => updateKTask(t.id, { benchmarkUrl: next.url, benchmarkName: next.name })}
+                    />
                     <div className="flex items-center gap-1.5">
                       <Select value={t.status} onValueChange={(v) => setKTaskStatus(t.id, v as KTaskStatus, role)}>
                         <SelectTrigger size="sm" className="flex-1" aria-label="Status">

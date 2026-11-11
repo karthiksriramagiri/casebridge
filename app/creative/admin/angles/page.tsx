@@ -1,8 +1,8 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { ArrowLeft, ArrowRight, Plus, RefreshCw, TriangleAlert } from 'lucide-react'
-import { PageHeader, Pill, StatCard, EmptyState } from '@/app/creative/_components/admin/shared'
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Plus, RefreshCw, TriangleAlert } from 'lucide-react'
+import { matchesQuery, PageHeader, Pill, SearchBox, StatCard, EmptyState } from '@/app/creative/_components/admin/shared'
 import { PeopleDialog } from '@/app/creative/_components/admin/people-dialog'
 import { Button } from '@/app/creative/_ui/button'
 import { num, pct, usd } from '@/app/creative/_lib/metrics'
@@ -11,7 +11,7 @@ import { cn } from '@/lib/utils'
 import {
   ANGLE_FAMILIES, DATE_PRESETS, STAGES,
   CPL_GOOD, CPL_WARN, CPQ_GOOD, CPQ_WARN,
-  type AngleFamily, type AngleStat, type AnglesData, type PipelineLead,
+  type AngleFamily, type AngleStat, type AnglesData, type ComboStat, type PipelineLead,
 } from './_config'
 import { NewHookDialog } from './_new-hook-dialog'
 
@@ -33,6 +33,44 @@ const toneCpl = (v: number | null) =>
   v == null ? '' : v <= CPL_GOOD ? 'text-success' : v <= CPL_WARN ? 'text-warning-foreground' : 'text-destructive'
 const toneCpq = (v: number | null) =>
   v == null ? '' : v <= CPQ_GOOD ? 'text-success' : v <= CPQ_WARN ? 'text-warning-foreground' : 'text-destructive'
+
+/* Hook codes are a letter and a number — A1, A2, A10, B13 — and sorting them
+   as text puts A10 between A1 and A2. Split and compare the number as a
+   number, which is the order the codes are read and written in. */
+function compareCodes(a: string, b: string) {
+  const parse = (code: string) => {
+    const m = /^([A-Za-z]*)(\d*)/.exec(code.trim())
+    return { letters: (m?.[1] ?? '').toUpperCase(), n: m?.[2] ? parseInt(m[2], 10) : Number.POSITIVE_INFINITY }
+  }
+  const x = parse(a), y = parse(b)
+  return x.letters.localeCompare(y.letters) || x.n - y.n || a.localeCompare(b)
+}
+
+/* What each sortable column sorts on. CPQ and CPL are derived rather than
+   read off the row, so the ranking cannot disagree with the figure printed
+   beside it. A row with nothing signed has no cost per case: it sorts below
+   every row that has one, in either direction, rather than riding the top of
+   an ascending sort on a null. */
+type SortKey = 'code' | 'name' | 'spend' | 'leads' | 'cpl' | 'signed' | 'cpq' | 'conv' | 'ads'
+
+const SORT_LABEL: Record<SortKey, string> = {
+  code: 'hook code', name: 'hook', spend: 'spend', leads: 'leads', cpl: 'cost per lead',
+  signed: 'signed cases', cpq: 'cost per qualified case', conv: 'conversion rate', ads: 'ads',
+}
+
+const sortValue = (r: AngleStat, key: SortKey): number | string | null => {
+  switch (key) {
+    case 'code': return r.code
+    case 'name': return r.name
+    case 'spend': return r.spend
+    case 'leads': return r.leads
+    case 'cpl': return r.leads > 0 ? r.spend / r.leads : null
+    case 'signed': return r.signedCases
+    case 'cpq': return r.signedCases > 0 ? r.spend / r.signedCases : null
+    case 'conv': return r.leads > 0 ? r.signedCases / r.leads : null
+    case 'ads': return r.adCount
+  }
+}
 
 /** The pipeline's shape for a person, in the shape the names dialog wants. */
 function asPeople(leads: PipelineLead[], stage: string): SignedLead[] {
@@ -270,16 +308,51 @@ function FamilyDetail({
   const cpq = signed > 0 ? spend / signed : null
 
   const rows = tab === 'visual' ? visual : tab === 'verbal' ? verbal : combos
+
+  /* Cost per qualified case is still the question this page was built to
+     answer, so it is still what the table opens on. It is no longer the only
+     order available: the codes themselves are a sequence people work through
+     — A1, A2, A3 — and reading them in that order is how you check whether a
+     hook has been tried at all, which no ranking by cost can show. */
+  /* Searching the hooks. A family runs to fifty-odd of them across the
+     three tabs, and they are referred to both ways — by code ("where is
+     A13") and by what the hook actually is ("the airbag one"). */
+  const [query, setQuery] = useState('')
+  const [sort, setSort] = useState<{ key: SortKey; dir: 1 | -1 }>({ key: 'cpq', dir: 1 })
+  const sortBy = (key: SortKey) =>
+    setSort((s) =>
+      s.key === key
+        ? { key, dir: s.dir === 1 ? -1 : 1 }
+        /* Codes and names read forwards; every measure opens on its best
+           end — most spend, most signed, cheapest cost. */
+        : { key, dir: key === 'code' || key === 'name' ? 1 : key === 'cpl' || key === 'cpq' ? 1 : -1 },
+    )
+
+  const found = useMemo(
+    () => rows.filter((r) => matchesQuery(query, [
+      r.code, r.name,
+      ...('visualCode' in r ? [(r as ComboStat).visualCode, (r as ComboStat).verbalCode] : []),
+    ])),
+    [rows, query],
+  )
+
   const ranked = useMemo(
-    () => [...rows].sort((a, b) => {
-      /* Ranked by cost per qualified case, and a hook that has not signed
-         anything sorts below every hook that has rather than above them all
-         on a null. */
-      const av = a.signedCases > 0 ? a.spend / a.signedCases : Number.POSITIVE_INFINITY
-      const bv = b.signedCases > 0 ? b.spend / b.signedCases : Number.POSITIVE_INFINITY
-      return av - bv || b.spend - a.spend
+    () => [...found].sort((a, b) => {
+      const av = sortValue(a, sort.key)
+      const bv = sortValue(b, sort.key)
+      if (sort.key === 'code') return compareCodes(a.code, b.code) * sort.dir
+      if (typeof av === 'string' || typeof bv === 'string') {
+        return String(av ?? '').localeCompare(String(bv ?? '')) * sort.dir
+      }
+      /* A null is "this row cannot answer that question" — no cost per case,
+         no conversion rate — and it belongs at the bottom whichever way the
+         column is pointing, not at whichever end a null happens to sort to. */
+      if (av === null && bv === null) return b.spend - a.spend
+      if (av === null) return 1
+      if (bv === null) return -1
+      return (av - bv) * sort.dir || b.spend - a.spend
     }),
-    [rows],
+    [found, sort],
   )
 
   const tabs = [
@@ -324,9 +397,22 @@ function FamilyDetail({
             </button>
           ))}
         </div>
+        <div className="flex flex-wrap items-center gap-2">
+        <SearchBox
+          value={query}
+          onChange={setQuery}
+          label="Search hooks"
+          placeholder="Search hook or code"
+          className="max-w-[15rem]"
+        />
         <span className="text-xs text-muted-foreground">
-          Ranked by cost per qualified case · click a stage count to see the leads
+          {query.trim()
+            ? `${found.length} of ${rows.length} hooks · ${SORT_LABEL[sort.key]}, ${sort.dir === 1 ? 'low to high' : 'high to low'}`
+            : sort.key === 'cpq' && sort.dir === 1
+            ? 'Ranked by cost per qualified case · click a column to re-sort'
+            : `Sorted by ${SORT_LABEL[sort.key]}, ${sort.dir === 1 ? 'low to high' : 'high to low'} · click a stage count to see the leads`}
         </span>
+        </div>
       </div>
 
       <div className="overflow-x-auto rounded-lg border bg-card">
@@ -334,22 +420,30 @@ function FamilyDetail({
           <thead className="bg-muted/60 text-xs text-muted-foreground">
             <tr>
               <th scope="col" className="px-3 py-2.5 text-left font-medium">#</th>
-              <th scope="col" className="px-3 py-2.5 text-left font-medium">Code</th>
-              <th scope="col" className="px-3 py-2.5 text-left font-medium">Hook</th>
-              {['Spend', 'Leads', 'CPL', 'Signed', 'CPQ', 'Conv'].map((h) => (
-                <th key={h} scope="col" className="px-3 py-2.5 text-right font-medium">{h}</th>
+              <SortHead col="code" sort={sort} onSort={sortBy} align="left" title="Order the hooks by their code — A1, A2, A3">Code</SortHead>
+              <SortHead col="name" sort={sort} onSort={sortBy} align="left">Hook</SortHead>
+              {([
+                ['spend', 'Spend'], ['leads', 'Leads'], ['cpl', 'CPL'],
+                ['signed', 'Signed'], ['cpq', 'CPQ'], ['conv', 'Conv'],
+              ] as [SortKey, string][]).map(([key, label]) => (
+                <SortHead key={key} col={key} sort={sort} onSort={sortBy}>{label}</SortHead>
               ))}
+              {/* The stage columns are not sortable: they are a snapshot of
+                  where people are sitting right now, not a measure of the
+                  hook, and ranking on one would read as though it were. */}
               {STAGES.map((s) => (
                 <th key={s.key} scope="col" className="px-3 py-2.5 text-right font-medium" title={s.label}>{s.short}</th>
               ))}
-              <th scope="col" className="px-3 py-2.5 text-right font-medium">Ads</th>
+              <SortHead col="ads" sort={sort} onSort={sortBy}>Ads</SortHead>
             </tr>
           </thead>
           <tbody>
             {ranked.length === 0 ? (
               <tr>
                 <td colSpan={14} className="px-3 py-10 text-center text-muted-foreground">
-                  No hooks recorded for this family in this period.
+                  {query.trim()
+                    ? `No hook in this family matches “${query.trim()}”.`
+                    : 'No hooks recorded for this family in this period.'}
                 </td>
               </tr>
             ) : ranked.map((r, i) => {
@@ -427,6 +521,43 @@ function FamilyDetail({
 }
 
 /* ── Small pieces ────────────────────────────────────────────────────────── */
+
+/* A column header that sorts. The arrow is on the active column only — a
+   row of arrows reads as decoration and says nothing about which one the
+   table is actually ordered by. */
+function SortHead({
+  col, sort, onSort, align = 'right', title, children,
+}: {
+  col: SortKey
+  sort: { key: SortKey; dir: 1 | -1 }
+  onSort: (k: SortKey) => void
+  align?: 'left' | 'right'
+  title?: string
+  children: React.ReactNode
+}) {
+  const active = sort.key === col
+  return (
+    <th
+      scope="col"
+      aria-sort={active ? (sort.dir === 1 ? 'ascending' : 'descending') : 'none'}
+      className={cn('px-3 py-2.5 font-medium', align === 'left' ? 'text-left' : 'text-right')}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(col)}
+        title={title ?? `Sort by ${String(children)}`}
+        className={cn(
+          'inline-flex items-center gap-1 rounded hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring',
+          align === 'right' && 'flex-row-reverse',
+          active && 'text-foreground',
+        )}
+      >
+        {children}
+        {active && (sort.dir === 1 ? <ArrowUp className="size-3" aria-hidden /> : <ArrowDown className="size-3" aria-hidden />)}
+      </button>
+    </th>
+  )
+}
 
 function Fig({ label, value, tone }: { label: string; value: string; tone?: string }) {
   return (

@@ -4,8 +4,8 @@ import { useMemo, useState } from 'react'
 import { ChevronDown, ChevronRight, RefreshCw, Skull, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
-import { EmptyState, FirmSelect, PageHeader, Pill, RangeSelect, Thumb } from '@/app/creative/_components/admin/shared'
-import { TODAY, addDays } from '@/app/creative/_lib/data'
+import { EmptyState, FirmSelect, matchesQuery, PageHeader, Pill, RangeSelect, SearchBox, Thumb } from '@/app/creative/_components/admin/shared'
+import { addDays } from '@/app/creative/_lib/data'
 import {
   formatDate,
   isDelivering,
@@ -44,6 +44,7 @@ export default function WatchListPage() {
      The list is already grouped by firm; this is for the days when only
      one of them is the job. */
   const [firmFilter, setFirmFilter] = useState('all')
+  const [query, setQuery] = useState('')
   /* Two ad sets can share a name. Tagged beside the name rather than run
      into it — the name is copied into Ads Manager and must stay exact. */
   const dupeTags = useMemo(() => adsetDupeTags(creatives), [creatives])
@@ -59,13 +60,13 @@ export default function WatchListPage() {
   /* The day comes from the store, not from here. Every page in the center
      reads the same one, so the numbers and the boards can never disagree
      about what day it is. */
-  const { day: date, setDay: setDate } = useStore()
+  const { day: date, setDay: setDate, today: realToday } = useStore()
   const prevDay = addDays(date, -1)
 
   /* Kills are filtered out of today's working list — a decided ad is not
      still awaiting a decision. On a past day they stay, because the record
      of what was on that list is the point of looking. */
-  const isToday = date === TODAY
+  const isToday = date === realToday
   /* And anything switched off in Ads Manager, whether or not it went
      through the kill list. A paused ad is not awaiting a decision — the
      decision has been made somewhere else. */
@@ -109,7 +110,11 @@ export default function WatchListPage() {
   /* Offered from the day's own rows, so the dropdown never lists a firm
      that would empty the page. */
   const firmsPresent = [...new Set(allRows.map((r) => r.c.firm))]
-  const rows = firmFilter === 'all' ? allRows : allRows.filter((r) => r.c.firm === firmFilter)
+  const byFirmFilter = firmFilter === 'all' ? allRows : allRows.filter((r) => r.c.firm === firmFilter)
+  /* The search sits after the firm filter rather than beside it: the two
+     narrow the same list, and a row has to pass both. */
+  const rows = byFirmFilter.filter((r) =>
+    matchesQuery(query, [r.c.convention, r.c.name, r.c.adId, r.c.adset, r.c.angle, firmName(r.c.firm), r.c.accountLabel, r.w.reason]))
 
   type SetGroup = { key: string; adset: string; items: { w: StoredWatch; c: Creative }[] }
 
@@ -216,6 +221,13 @@ export default function WatchListPage() {
         <BoardStatus migration="supabase/migration_creative_board.sql" />
         <div className="flex flex-wrap items-center gap-2">
           <div className="min-w-0 flex-1"><DayNav date={date} onChange={setDate} label="Watch list day" /></div>
+          <SearchBox
+            value={query}
+            onChange={setQuery}
+            label="Search the watch list"
+            placeholder="Search name, ad set, firm, ad ID"
+            className="max-w-[16rem]"
+          />
           <FirmSelect value={firmFilter} onChange={setFirmFilter} firms={firmsPresent} />
           <RangeSelect value={range} onChange={setRange} />
         </div>
@@ -248,7 +260,9 @@ export default function WatchListPage() {
                   space. */}
               {byFirm.length === 0 && (
                 <p className="p-6 text-center text-sm text-muted-foreground">
-                  Nothing on the watch list for {firmName(firmFilter)} on this day.
+                  {query.trim()
+                    ? `Nothing on this day matches “${query.trim()}”${firmFilter === 'all' ? '' : ` in ${firmName(firmFilter)}`}.`
+                    : `Nothing on the watch list for ${firmName(firmFilter)} on this day.`}
                 </p>
               )}
               {byFirm.map(([firm, sets]) => (
