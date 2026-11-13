@@ -18,9 +18,14 @@ const db = () =>
 const oneOf = <T extends readonly string[]>(list: T, v: unknown, fallback: T[number]): T[number] =>
   (list as readonly string[]).includes(String(v)) ? (v as T[number]) : fallback
 
+/* Who is making the change.
+
+   The session carries `user` — it has no `email` or `name`, which is what
+   this read for, so every row in the audit log said "unknown" and the one
+   question the log exists to answer went unanswered. */
 async function who() {
   const s = await getSession().catch(() => null)
-  return (s as any)?.email || (s as any)?.name || 'unknown'
+  return s?.user || s?.role || 'unknown'
 }
 
 /** The shape the table stores, from whatever the form sent. */
