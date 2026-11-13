@@ -1,10 +1,13 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { headers } from 'next/headers'
 import { siteRootForHost } from '@/app/_metrics/site-root'
 import { formatRange } from '@/lib/finance/reporting/dates'
 import { filtersToSearchParams, parseFilters } from '@/lib/finance/reporting/filters'
 import { loadFinanceData } from '@/lib/finance/reporting/load'
 import { buildReport } from '@/lib/finance/reporting/report'
+import { formatUSD } from '@/lib/finance/reporting/money'
+import { SANGUINE_PER_CASE } from '@/lib/finance/sanguine'
 import { ExpenseForm } from '../_components/expense-form'
 import { ReportFilters } from '../_components/report-filters'
 import {
@@ -47,7 +50,10 @@ export default async function ReportingCenterPage({
     { ...params, firm: bySlug?.id ?? (asked ?? undefined) },
     { dataStart: store.dataStart, asOf: store.dataAsOf },
   )
-  const report = buildReport(store, filters)
+  /* With overhead and the Sanguine royalty in the costs. This is the view
+     of what the company actually keeps; the Operation Center reads the
+     same book without them, which is how the earn-out is measured. */
+  const report = buildReport(store, filters, { sanguine: true })
 
   /* On finance.case-bridge.com the /finance prefix is rewritten away. */
   const base = siteRootForHost((await headers()).get('host')) === '/finance' ? '' : '/finance'
@@ -70,12 +76,20 @@ export default async function ReportingCenterPage({
             {report.meta.window.partial && ' · period in progress'}
           </p>
         </div>
-        <p className="fin-sub">
-          Figures through {report.meta.dataAsOf} · {report.meta.firms.length} law firms
-        </p>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <p className="fin-sub">Figures through {report.meta.dataAsOf}</p>
+          <Link href={`${base}/operation`} className="fin-btn">Operation Center →</Link>
+        </div>
       </div>
 
       <ReportFilters report={report} basePath={here} />
+
+      <p className="fin-note" style={{ marginBottom: 10 }}>
+        Profit here is revenue less <strong>advertising, intake, operating expenses and the Sanguine royalty</strong>
+        {' '}({formatUSD(SANGUINE_PER_CASE)} a delivered case) — everything the company pays to earn it. The{' '}
+        <Link href={`${base}/operation`}>Operation Center</Link> reads the same book without overhead or the
+        royalty, which is how the earn-out is measured (APA §2.9), so its margin is the higher of the two.
+      </p>
 
       <KpiCards report={report} />
       <PeriodStrip report={report} />

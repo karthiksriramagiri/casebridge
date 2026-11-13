@@ -1,5 +1,6 @@
 import { dayDiff, daysInclusive, maxDate, minDate, type ISODate } from './dates'
 import { distributeCents, distributeEvenly, marginPct, type Cents } from './money'
+import { sanguineFor } from '@/lib/finance/sanguine'
 import type { Metrics } from './report-types'
 import { OPEX_CATEGORIES, type FinanceDataset, type Invoice, type OpexCategory, type OpexExpense } from './types'
 
@@ -276,15 +277,22 @@ export function buildMetrics(
   advertising: Cents,
   intake: Cents,
   opex: Cents,
-  extra: { invoicedRevenue?: Cents; caseRevenue?: Cents; cases?: number } = {},
+  extra: { invoicedRevenue?: Cents; caseRevenue?: Cents; cases?: number; sanguine?: Cents } = {},
 ): Metrics {
-  const totalSpend = advertising + intake + opex
+  /* The royalty is a cost like any other once it is here. Whether it is
+     here at all is the caller's decision — see lib/finance/sanguine.ts —
+     and because it travels inside the spend rather than beside it, every
+     total, growth figure and reconciliation downstream stays consistent
+     without knowing the flag exists. */
+  const sanguine = extra.sanguine ?? 0
+  const totalSpend = advertising + intake + opex + sanguine
   const profit = revenue - totalSpend
   return {
     revenue,
     advertising,
     intake,
     opex,
+    sanguine,
     totalSpend,
     profit,
     margin: marginPct(profit, revenue),
@@ -302,15 +310,22 @@ export function seriesMetrics(
   start: ISODate,
   end: ISODate,
   basis: 'invoiced' | 'cases' = 'invoiced',
+  withSanguine = false,
 ): Metrics {
   const invoiced = sumArray(ledger, s.rev, start, end)
   const delivered = sumArray(ledger, s.caseRev, start, end)
+  const cases = sumArray(ledger, s.cases, start, end)
   return buildMetrics(
     basis === 'cases' ? delivered : invoiced,
     sumArray(ledger, s.ad, start, end),
     sumArray(ledger, s.intake, start, end),
     sumArray(ledger, s.opex, start, end),
-    { invoicedRevenue: invoiced, caseRevenue: delivered, cases: sumArray(ledger, s.cases, start, end) },
+    {
+      invoicedRevenue: invoiced,
+      caseRevenue: delivered,
+      cases,
+      sanguine: withSanguine ? sanguineFor(cases) : 0,
+    },
   )
 }
 
@@ -324,12 +339,16 @@ export function addMetrics(rows: Metrics[]): Metrics {
       invoicedRevenue: rows.reduce((a, r) => a + r.invoicedRevenue, 0),
       caseRevenue: rows.reduce((a, r) => a + r.caseRevenue, 0),
       cases: rows.reduce((a, r) => a + r.cases, 0),
+      /* Summed from the rows rather than recomputed from their cases, so
+         a total can never include the royalty when its parts did not. */
+      sanguine: rows.reduce((a, r) => a + r.sanguine, 0),
     },
   )
 }
 
 export function sameMetrics(a: Metrics, b: Metrics) {
-  return a.revenue === b.revenue && a.advertising === b.advertising && a.intake === b.intake && a.opex === b.opex
+  return a.revenue === b.revenue && a.advertising === b.advertising
+    && a.intake === b.intake && a.opex === b.opex && a.sanguine === b.sanguine
 }
 
 export function recognizedForAllocation(alloc: ExpenseAllocation, ledger: Ledger, start: ISODate, end: ISODate): Cents {

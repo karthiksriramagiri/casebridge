@@ -63,15 +63,21 @@ function seriesFor(ledger: Ledger, scope: Scope) {
   return ledger.invoice[scope.invoiceId]
 }
 
+/* How a window is to be read: which revenue line, and whether the Sanguine
+   royalty is one of its costs. The two travel together because every
+   helper below already threads the basis, so nothing can be given one and
+   forgotten the other. */
+type Reading = { basis: 'invoiced' | 'cases'; sanguine: boolean }
+
 function metricsFor(
   ledger: Ledger,
   scope: Scope,
   start: ISODate,
   end: ISODate,
-  basis: 'invoiced' | 'cases' = 'invoiced',
+  r: Reading = { basis: 'invoiced', sanguine: false },
 ): Metrics {
   if (start > end) return buildMetrics(0, 0, 0, 0)
-  return seriesMetrics(ledger, seriesFor(ledger, scope), start, end, basis)
+  return seriesMetrics(ledger, seriesFor(ledger, scope), start, end, r.basis, r.sanguine)
 }
 
 function equivalentElapsed(unitStart: ISODate, end: ISODate, prevUnitStart: ISODate, prevUnitEnd: ISODate) {
@@ -131,7 +137,7 @@ function resolveComparison(f: ReportFilters): { start: ISODate; end: ISODate; la
   }
 }
 
-function periodComparisons(ledger: Ledger, scope: Scope, anchor: ISODate, dataStart: ISODate, basis: 'invoiced' | 'cases'): PeriodComparisonRow[] {
+function periodComparisons(ledger: Ledger, scope: Scope, anchor: ISODate, dataStart: ISODate, reading: Reading): PeriodComparisonRow[] {
   const rows: Omit<PeriodComparisonRow, 'currentMetrics' | 'previousMetrics' | 'dataComplete'>[] = []
 
   const prevDay = addDays(anchor, -1)
@@ -188,8 +194,8 @@ function periodComparisons(ledger: Ledger, scope: Scope, anchor: ISODate, dataSt
   return rows.map((r) => ({
     ...r,
     dataComplete: r.previous.start >= dataStart,
-    currentMetrics: metricsFor(ledger, scope, r.current.start, r.current.end, basis),
-    previousMetrics: metricsFor(ledger, scope, maxDate(r.previous.start, dataStart), r.previous.end, basis),
+    currentMetrics: metricsFor(ledger, scope, r.current.start, r.current.end, reading),
+    previousMetrics: metricsFor(ledger, scope, maxDate(r.previous.start, dataStart), r.previous.end, reading),
   }))
 }
 
@@ -225,7 +231,7 @@ function bucketLabel(start: ISODate, end: ISODate, g: ReportFilters['granularity
   }
 }
 
-function buildTrend(ledger: Ledger, scope: Scope, f: ReportFilters, basis: 'invoiced' | 'cases'): TrendPoint[] {
+function buildTrend(ledger: Ledger, scope: Scope, f: ReportFilters, reading: Reading): TrendPoint[] {
   const points: TrendPoint[] = []
   let cursor = f.start
   let guard = 0
@@ -239,7 +245,7 @@ function buildTrend(ledger: Ledger, scope: Scope, f: ReportFilters, basis: 'invo
       start: s,
       end: e,
       partial: s !== unit.start || e !== unit.end,
-      ...metricsFor(ledger, scope, s, e, basis),
+      ...metricsFor(ledger, scope, s, e, reading),
     })
     cursor = addDays(unit.end, 1)
   }
@@ -259,7 +265,7 @@ function proratedMonthlyTarget(monthly: Cents, start: ISODate, end: ISODate): Ce
   return Math.round(total)
 }
 
-function buildTargets(store: FinanceDataset, ledger: Ledger, scope: Scope, anchor: ISODate, basis: 'invoiced' | 'cases'): TargetProgress[] | null {
+function buildTargets(store: FinanceDataset, ledger: Ledger, scope: Scope, anchor: ISODate, reading: Reading): TargetProgress[] | null {
   if (scope.kind === 'invoice') return null
   if (!store.targets) return null
   const monthlyFirm = scope.kind === 'firm' ? store.targets.firmMonthly[scope.firmId] ?? 0 : null
@@ -273,7 +279,7 @@ function buildTargets(store: FinanceDataset, ledger: Ledger, scope: Scope, ancho
   ]
   return periods.map((p) => {
     const target = monthlyFirm === null ? p.configured : proratedMonthlyTarget(monthlyFirm, p.start, p.end)
-    const actual = metricsFor(ledger, scope, p.start, anchor, basis).revenue
+    const actual = metricsFor(ledger, scope, p.start, anchor, reading).revenue
     const elapsedDays = daysInclusive(p.start, anchor)
     const totalDays = daysInclusive(p.start, p.end)
     const expectedToDate = Math.round((target * elapsedDays) / totalDays)
@@ -322,7 +328,15 @@ function opexByCategoryFor(ledger: Ledger, scope: Scope, start: ISODate, end: IS
    Pure: hand it the same dataset twice and it returns the same numbers.
    The loader does the I/O, this does the arithmetic, and keeping those
    apart is what makes the figures testable at all. */
-export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData {
+export function buildReport(
+  store: FinanceDataset,
+  f: ReportFilters,
+  /* Whether the Sanguine royalty is one of this report's costs. Off by
+     default, because the earn-out and every figure read against it are
+     computed without it (APA §2.9); the Reporting Center turns it on
+     because the operating view is what the company actually keeps. */
+  { sanguine: withSanguine = false }: { sanguine?: boolean } = {},
+): ReportData {
   const ledger = getLedger(store)
   const firmsById = Object.fromEntries(store.firms.map((x) => [x.id, x]))
   const invoicesById = Object.fromEntries(store.invoices.map((x) => [x.id, x]))
@@ -338,7 +352,8 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
 
   const window = makeWindow(f.start, f.end, daysInclusive(f.start, f.end))
   const basis = f.basis
-  const current = metricsFor(ledger, scope, f.start, f.end, basis)
+  const reading: Reading = { basis, sanguine: withSanguine }
+  const current = metricsFor(ledger, scope, f.start, f.end, reading)
 
   const cmp = resolveComparison(f)
   const comparison: ComparisonInfo | null = cmp
@@ -347,7 +362,7 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
         method: cmp.method,
         window: makeWindow(cmp.start, cmp.end, daysInclusive(cmp.start, cmp.end)),
         dataComplete: cmp.start >= store.dataStart,
-        metrics: metricsFor(ledger, scope, maxDate(cmp.start, store.dataStart), cmp.end, basis),
+        metrics: metricsFor(ledger, scope, maxDate(cmp.start, store.dataStart), cmp.end, reading),
       }
     : null
 
@@ -359,11 +374,11 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
 
   // Firms
   const comparisonMetrics = (s: Scope) =>
-    comparison && comparison.dataComplete ? metricsFor(ledger, s, comparison.window.start, comparison.window.end, basis) : null
+    comparison && comparison.dataComplete ? metricsFor(ledger, s, comparison.window.start, comparison.window.end, reading) : null
   const visibleFirms = scope.kind === 'company' ? store.firms : store.firms.filter((x) => x.id === firmId)
   const firmRows: FirmRow[] = visibleFirms.map((firm) => {
     const s: Scope = { kind: 'firm', firmId: firm.id }
-    const m = metricsFor(ledger, s, f.start, f.end, basis)
+    const m = metricsFor(ledger, s, f.start, f.end, reading)
     const prev = comparisonMetrics(s)
     const monthly = store.targets?.firmMonthly[firm.id] ?? 0
     const target = monthly ? proratedMonthlyTarget(monthly, f.start, f.end) : null
@@ -393,7 +408,7 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
       targetAttainment: null,
     })
   }
-  const firmTotal = scope.kind === 'invoice' ? metricsFor(ledger, { kind: 'firm', firmId: firmId! }, f.start, f.end, basis) : current
+  const firmTotal = scope.kind === 'invoice' ? metricsFor(ledger, { kind: 'firm', firmId: firmId! }, f.start, f.end, reading) : current
 
   // Invoices
   const visibleInvoices = store.invoices
@@ -409,12 +424,16 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
     periodEnd: inv.periodEnd,
     invoicedCents: inv.invoicedCents,
     receivedCents: inv.receivedCents,
-    metrics: metricsFor(ledger, { kind: 'invoice', invoiceId: inv.id, firmId: inv.firmId }, f.start, f.end, basis),
+    metrics: metricsFor(ledger, { kind: 'invoice', invoiceId: inv.id, firmId: inv.firmId }, f.start, f.end, reading),
     kind: 'invoice',
   }))
   if (scope.kind !== 'invoice') {
     const firmIds = scope.kind === 'firm' ? [scope.firmId] : store.firms.map((x) => x.id)
-    const ua = firmIds.map((id) => seriesMetrics(ledger, ledger.unattributed[id], f.start, f.end))
+    /* The same reading as everything else. A case signed on a day no
+       invoice was open lands here, and its royalty has to land with it or
+       the invoice table stops summing to the company total. */
+    const ua = firmIds.map((id) =>
+      seriesMetrics(ledger, ledger.unattributed[id], f.start, f.end, reading.basis, reading.sanguine))
     const unattributed = addMetrics(ua)
     if (unattributed.totalSpend !== 0) {
       invoiceRows.push({
@@ -529,7 +548,7 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
     cpa: (() => {
       const from = maxDate(COST_START, store.dataStart)
       if (from > f.end) return null
-      const span = metricsFor(ledger, scope, from, f.end, basis)
+      const span = metricsFor(ledger, scope, from, f.end, reading)
       return {
         since: from,
         end: f.end,
@@ -546,8 +565,8 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
       attainment: rangeTarget ? (current.revenue / rangeTarget) * 100 : null,
       previousAttainment: prevRangeTarget && comparison?.dataComplete ? (comparison.metrics.revenue / prevRangeTarget) * 100 : null,
     },
-    periodComparisons: periodComparisons(ledger, scope, f.end, store.dataStart, basis),
-    trend: buildTrend(ledger, scope, f, basis),
+    periodComparisons: periodComparisons(ledger, scope, f.end, store.dataStart, reading),
+    trend: buildTrend(ledger, scope, f, reading),
     breakdown: {
       advertising: current.advertising,
       intake: current.intake,
@@ -557,7 +576,7 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
       unallocatedOpex: scope.kind === 'company' ? unallocatedInRange : 0,
     },
     targets: (() => {
-      const items = buildTargets(store, ledger, scope, f.end, basis)
+      const items = buildTargets(store, ledger, scope, f.end, reading)
       if (!items || !store.targets) return null
       return { items, configured: store.targets.company, firmMonthly: store.targets.firmMonthly }
     })(),

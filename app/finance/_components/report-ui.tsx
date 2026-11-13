@@ -4,6 +4,7 @@ import { formatDay, formatRange } from '@/lib/finance/reporting/dates'
 import { formatPct, formatUSD, formatUSDCompact, pctChange, type Cents } from '@/lib/finance/reporting/money'
 import type { Metrics, ReportData, TrendPoint } from '@/lib/finance/reporting/report-types'
 import { OPEX_CATEGORY_LABELS, type OpexCategory } from '@/lib/finance/reporting/types'
+import { SANGUINE_PER_CASE } from '@/lib/finance/sanguine'
 
 /* The report, as read. Server components throughout — nothing here needs
    state, and a page about money should render the same for everyone who
@@ -89,6 +90,31 @@ export function KpiCards({ report }: { report: ReportData }) {
       prev: prev?.intake ?? null,
       invert: true,
     },
+    /* Overhead and the royalty appear only when the report was built with
+       them. Both have always been inside profit when present; showing
+       them is what lets a reader get from revenue to profit without
+       finding a gap they cannot name. A zero card for a cost the company
+       does not carry is noise, so neither renders at zero. */
+    ...(m.opex > 0
+      ? [{
+          label: 'Operating expenses',
+          value: formatUSD(m.opex),
+          suffix: shareOfRevenue(m.opex),
+          cur: m.opex,
+          prev: prev?.opex ?? null,
+          invert: true,
+        }]
+      : []),
+    ...(m.sanguine > 0
+      ? [{
+          label: 'Sanguine',
+          value: formatUSD(m.sanguine),
+          suffix: `${m.cases.toLocaleString('en-US')} × ${formatUSD(SANGUINE_PER_CASE)}`,
+          cur: m.sanguine,
+          prev: prev?.sanguine ?? null,
+          invert: true,
+        }]
+      : []),
     {
       label: 'Profit',
       value: formatUSD(m.profit),
@@ -262,6 +288,8 @@ export function CostBreakdown({ metrics }: { metrics: Metrics }) {
   const rows = [
     { label: 'Advertising', cents: metrics.advertising, cls: 'ad' },
     { label: 'Intake cost', cents: metrics.intake, cls: 'intake' },
+    ...(metrics.opex > 0 ? [{ label: 'Operating expenses', cents: metrics.opex, cls: 'opex' }] : []),
+    ...(metrics.sanguine > 0 ? [{ label: 'Sanguine royalty', cents: metrics.sanguine, cls: 'sanguine' }] : []),
     { label: 'Profit', cents: Math.max(0, metrics.profit), cls: 'profit' },
   ]
   return (
@@ -554,10 +582,19 @@ export function EarnoutCard({ report }: { report: ReportData }) {
    equal-length windows ending on the report's end date, which is what
    makes a partial month comparable to the same partial month before it. */
 
-const CMP_ROWS: { key: keyof Metrics; label: string; lowerIsBetter?: boolean; strong?: boolean }[] = [
+const CMP_ROWS: {
+  key: keyof Metrics
+  label: string
+  lowerIsBetter?: boolean
+  strong?: boolean
+  /** A cost the report may not carry at all — hidden rather than shown as $0. */
+  optional?: boolean
+}[] = [
   { key: 'revenue', label: 'Recognised revenue', strong: true },
   { key: 'advertising', label: 'Advertising', lowerIsBetter: true },
   { key: 'intake', label: 'Intake / worker cost', lowerIsBetter: true },
+  { key: 'opex', label: 'Operating expenses', lowerIsBetter: true, optional: true },
+  { key: 'sanguine', label: 'Sanguine royalty', lowerIsBetter: true, optional: true },
   { key: 'totalSpend', label: 'Total spend', lowerIsBetter: true, strong: true },
   { key: 'profit', label: 'Operating profit', strong: true },
   { key: 'margin', label: 'Operating margin', strong: true },
@@ -609,6 +646,9 @@ export function ComparisonTable({ report }: { report: ReportData }) {
                       const prev = row.previousMetrics[mm.key] as number | null
                       const isMargin = mm.key === 'margin'
                       if (cur === null && prev === null) return null
+                      /* Nothing in either window and nothing to say — a
+                         row of two zeroes is not an observation. */
+                      if (mm.optional && !cur && !prev) return null
                       const diff = (cur ?? 0) - (prev ?? 0)
                       const p = isMargin ? null : pctChange(cur ?? 0, prev ?? 0)
                       const good = mm.lowerIsBetter ? -diff : diff

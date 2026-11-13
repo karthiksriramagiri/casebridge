@@ -13,6 +13,10 @@ export interface Metrics {
   advertising: Cents
   intake: Cents
   opex: Cents
+  /* The Sanguine referral royalty — $250 a case. Zero unless the report
+     was built to include it: the earn-out explicitly does not (§2.9), and
+     the Operation Center reads the book without it. */
+  sanguine: Cents
   totalSpend: Cents
   profit: Cents
   margin: number | null

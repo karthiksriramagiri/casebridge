@@ -75,19 +75,23 @@
 .fin-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap}
 
 /* figures */
-.fin-figs{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr));
+.fin-figs{display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr));
   border:1px solid var(--line); border-radius:6px; overflow:hidden; background:var(--line)}
 .fin-fig{background:var(--card); padding:15px 17px; display:flex; flex-direction:column; gap:3px;
   border-right:1px solid var(--line)}
 .fin-fig:last-child{border-right:0}
 .fin-fig-l{font-size:11px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.07em; font-weight:500}
-.fin-fig-v{font-size:21px; font-weight:600; letter-spacing:-.02em}
+/* The figure and whatever qualifies it. A flex row that wraps, because
+   seven cards across a laptop leaves each one narrow enough that a
+   suffix sharing the line would be clipped rather than shortened. */
+.fin-fig-v{font-size:21px; font-weight:600; letter-spacing:-.02em;
+  display:flex; align-items:baseline; flex-wrap:wrap; column-gap:7px; row-gap:1px}
 .fin-fig-v.pos{color:var(--pos)} .fin-fig-v.neg{color:var(--neg)}
 .fin-fig-s{font-size:11.5px; color:var(--ink-3)}
 /* What the figure is in its other unit — a count, a share of revenue.
    Beside the number and quieter than it, because it qualifies the figure
    rather than competing with it. */
-.fin-fig-x{font-size:12.5px; font-weight:500; color:var(--ink-3); margin-left:7px; white-space:nowrap}
+.fin-fig-x{font-size:12.5px; font-weight:500; color:var(--ink-3); white-space:nowrap}
 
 /* A figure that can be opened. The underline is the only thing that says
    so — a figure with a button beside it reads as a control, and this is
@@ -293,6 +297,7 @@
 .fin-bar-fill{height:100%; border-radius:4px; background:var(--ink-3)}
 .fin-bar-fill.ad{background:#5B7FB9} .fin-bar-fill.intake{background:#C08A4A}
 .fin-bar-fill.opex{background:#8A6FA8} .fin-bar-fill.profit{background:var(--pos)}
+.fin-bar-fill.sanguine{background:#B06A80}
 .fin-bar-fill.over{background:var(--pos)} .fin-bar-fill.under{background:var(--flag)}
 .fin-bar-sub{font-size:11px; color:var(--ink-3)}
 
