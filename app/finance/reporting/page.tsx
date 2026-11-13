@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import { headers } from 'next/headers'
 import { siteRootForHost } from '@/app/_metrics/site-root'
 import { formatRange } from '@/lib/finance/reporting/dates'
@@ -14,7 +13,6 @@ import {
   ComparisonTable, CostBreakdown, DataGaps, EarnoutCard, FirmTable, InvoiceTable,
   KpiCards, OpexByCategory, OpexTable, PeriodStrip, TargetAttainment, TrendChart,
 } from '../_components/report-ui'
-import { invoicePathSegment } from '../_lib/invoice-routes'
 
 export const metadata: Metadata = {
   title: 'Reporting Center · Financial Center',
@@ -76,19 +74,16 @@ export default async function ReportingCenterPage({
             {report.meta.window.partial && ' · period in progress'}
           </p>
         </div>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <p className="fin-sub">Figures through {report.meta.dataAsOf}</p>
-          <Link href={`${base}/operation`} className="fin-btn">Operation Center →</Link>
-        </div>
+        <p className="fin-sub">
+          Figures through {report.meta.dataAsOf} · {report.meta.firms.length} law firms
+        </p>
       </div>
 
       <ReportFilters report={report} basePath={here} />
 
       <p className="fin-note" style={{ marginBottom: 10 }}>
         Profit here is revenue less <strong>advertising, intake, operating expenses and the Sanguine royalty</strong>
-        {' '}({formatUSD(SANGUINE_PER_CASE)} a delivered case) — everything the company pays to earn it. The{' '}
-        <Link href={`${base}/operation`}>Operation Center</Link> reads the same book without overhead or the
-        royalty, which is how the earn-out is measured (APA §2.9), so its margin is the higher of the two.
+        {' '}({formatUSD(SANGUINE_PER_CASE)} a delivered case) — everything the company pays to earn it.
       </p>
 
       <KpiCards report={report} />
@@ -157,16 +152,10 @@ export default async function ReportingCenterPage({
             {report.invoices.reconciled ? 'reconciles with the company total' : 'does not reconcile — check allocation'}
           </span>
         </div>
-        <InvoiceTable
-          report={report}
-          hrefForInvoice={(id) => {
-            const inv = report.meta.invoiceOptions.find((i) => i.id === id)
-            const firm = report.meta.firms.find((x) => x.id === inv?.firmId)
-            return inv && firm
-              ? `${base}/firms/${firm.slug}/invoice/${invoicePathSegment(inv.number)}`
-              : scoped({ invoice: id })
-          }}
-        />
+        {/* An invoice filters the report rather than opening its page in
+            Firms. This view is a destination: every link in it stays
+            inside it, the way the firm links already did. */}
+        <InvoiceTable report={report} hrefForInvoice={(id) => scoped({ invoice: id })} />
       </section>
 
       <section className="fin-card fin-sec">
