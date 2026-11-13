@@ -24,9 +24,19 @@ export default function LoginPage() {
     const data = await res.json()
 
     if (data.success) {
+      /* Back to whatever asked for the sign-in, when something did. Read
+         off the live URL rather than through useSearchParams, which would
+         need this page wrapped in a Suspense boundary to keep rendering
+         statically.
+
+         Only a path on this site: a `next` that names a host is an open
+         redirect, and "//evil.com" is a path to the browser but a host to
+         anyone reading it quickly. */
+      const asked = new URLSearchParams(window.location.search).get('next')
+      const safe = asked && asked.startsWith('/') && !asked.startsWith('//') ? asked : null
       // The landing page belongs to the role, not to this form — a restricted
       // account sent to /creative lands on a lock screen.
-      router.push(data.home || '/creative')
+      router.push(safe || data.home || '/creative')
     } else {
       setError('Invalid username or password')
       setLoading(false)

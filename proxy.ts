@@ -20,10 +20,30 @@ import { readSessionCookie } from '@/lib/session'
    /teams/admin/team-metrics on the existing teams host, so that reps and the
    people managing them stay one product.                                     */
 
+/* ── Standalone addresses on the apex ────────────────────────────────────────
+   One page of a center, given an address of its own.
+
+   The Reporting Center is read by people with no reason to see the rest of
+   the Financial Center, and /finance/reporting is a URL that announces three
+   levels of structure they do not care about. case-bridge.com/reporting is
+   the same page, reached directly.
+
+   `adminOnly` is enforced below rather than left to the role allow-list. The
+   list already keeps every non-admin role out of /finance today, but "today"
+   is the problem: a role added later with finance access would silently
+   inherit this page too, and this one was asked for as admin-only.          */
+const APEX_ALIASES: Record<string, { to: string; adminOnly: boolean }> = {
+  '/reporting': { to: '/finance/reporting', adminOnly: true },
+}
+
 export async function proxy(request: NextRequest) {
   const rawPath = request.nextUrl.pathname
   const host = request.headers.get('host')
   const siteRoot = siteRootForHost(host)
+  /* Only on the apex. Each center's own host already serves its pages at
+     the short path, so an alias there would be a second name for a URL
+     that exists. */
+  const alias = siteRoot ? undefined : APEX_ALIASES[rawPath]
 
   /* A link that still carries the prefix — an old bookmark, or a deep link
      written as /finance/firms/x — works on the center's own host, but would
@@ -40,13 +60,15 @@ export async function proxy(request: NextRequest) {
      Returning the rewrite here instead would hand out both centers
      unauthenticated. /login has to keep resolving on each host so the
      redirect target exists. */
-  const rewritten = Boolean(
+  const rewritten = Boolean(alias) || Boolean(
     siteRoot
     && !(usesSharedLogin(siteRoot) && rawPath === '/login')
     && !rawPath.startsWith('/api/')
     && !rawPath.startsWith(siteRoot)
   )
-  const effectivePath = rewritten ? siteRoot + (rawPath === '/' ? '' : rawPath) : rawPath
+  const effectivePath = alias
+    ? alias.to
+    : rewritten ? siteRoot + (rawPath === '/' ? '' : rawPath) : rawPath
 
   /* The candidate application is the one public corner of /venu: the whole
      point is that someone with the link can make a temporary account before
@@ -78,7 +100,11 @@ export async function proxy(request: NextRequest) {
   const needsSupabaseAuth =
     effectivePath.startsWith('/teams') ||
     (effectivePath.startsWith('/venu') && !isVenuApply) ||
-    effectivePath.startsWith('/dialer')
+    effectivePath.startsWith('/dialer') ||
+    /* The MIA board is worked by reps on their Team Center account, so it
+       reads a Supabase user like /teams does rather than the centers'
+       cookie. */
+    effectivePath.startsWith('/mia')
 
   if (!needsSupabaseAuth) {
     /* The Creative Center's front door is its own sign-in — one login per
@@ -89,7 +115,14 @@ export async function proxy(request: NextRequest) {
     if (!isCreativeDoor
       && (effectivePath.startsWith('/creative') || effectivePath.startsWith('/finance') || effectivePath.startsWith('/metrics'))) {
       const raw = request.cookies.get('casebridge_session')?.value
-      if (!raw) return NextResponse.redirect(new URL('/login', request.url))
+      if (!raw) {
+        /* Carry where they were going. A standalone address is made to be
+           sent to someone, and landing them on the role's home page after
+           sign-in loses the page they were sent. */
+        const to = new URL('/login', request.url)
+        to.searchParams.set('next', rawPath + request.nextUrl.search)
+        return NextResponse.redirect(to)
+      }
 
       /* Not every signed-in person sees every center. The restricted creative
          account is held to its own pages here, before any of them render, so
@@ -98,6 +131,12 @@ export async function proxy(request: NextRequest) {
          they tried stays in the bar and the back button still works. */
       const session = await readSessionCookie(raw)
       if (session && !canOpen(session.role, effectivePath)) {
+        return NextResponse.rewrite(new URL('/no-access', request.url))
+      }
+      /* An admin-only address. A cookie predating roles is treated as
+         admin, the same way canOpen treats it, so one rule governs who an
+         unlabelled session is rather than two that can disagree. */
+      if (alias?.adminOnly && (session?.role ?? 'admin') !== 'admin') {
         return NextResponse.rewrite(new URL('/no-access', request.url))
       }
     }
@@ -180,6 +219,18 @@ export async function proxy(request: NextRequest) {
       supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
       return res
     }
+  }
+
+  /* The MIA board — same account as Team Center, no second sign-in.
+
+     Any signed-in rep may open it: moving a card is the job, and the route
+     behind it is what stops a rep adding or deleting one. Sending them to
+     the Team Center login with `next` set means they land back here rather
+     than on a dashboard they did not ask for. */
+  if (pathname.startsWith('/mia') && !user) {
+    const res = NextResponse.redirect(new URL(`/teams/login?next=${encodeURIComponent(pathname)}`, request.url))
+    supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
+    return res
   }
 
   // Protect /venu — same credentials as Teams, but its own sign-in page
