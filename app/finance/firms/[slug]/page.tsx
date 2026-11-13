@@ -4,6 +4,8 @@ import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usd, pct, num, tone, dayShort } from '@/app/finance/_components/fmt'
 import { invoicePathSegment } from '@/app/finance/_lib/invoice-routes'
+import { CaseActions } from '@/app/finance/_components/case-actions'
+import { financeDay } from '@/lib/finance/clock'
 
 /* One firm: its all-time figures, then its billing periods. Each invoice
    opens onto its own P&L. */
@@ -17,6 +19,7 @@ export default function FirmPage({ params }: { params: Promise<{ slug: string }>
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
   const [f, setF] = useState({ code: '', revenue: '', periodStart: '', periodEnd: '', caseCount: '', title: '' })
+  const [pcs, setPcs] = useState<any[]>([])
 
   const load = useCallback(async () => {
     const d = await fetch('/api/finance/book').then(r => r.json()).catch(() => ({ error: 'Could not load.' }))
@@ -26,6 +29,36 @@ export default function FirmPage({ params }: { params: Promise<{ slug: string }>
   useEffect(() => { load() }, [load])
 
   const firm = useMemo(() => (book?.firms ?? []).find((x: any) => x.slug === slug), [book, slug])
+
+  /* This firm's signed cases.
+
+     The case list lives here rather than on the report: the report is read
+     to find out how the month went, and this is read to fix what one case
+     says — which firm took it, and whether it was swapped. Both questions
+     are about a firm, so both are answered on the firm's own page. */
+  const loadCases = useCallback(async (firmId: string) => {
+    const d = await fetch(`/api/finance/pcs?firm=${firmId}&limit=2000`)
+      .then(r => r.json()).catch(() => null)
+    setPcs(d?.pcs ?? [])
+  }, [])
+  useEffect(() => { if (firm?.id) loadCases(firm.id) }, [firm?.id, loadCases])
+
+  /* Everywhere a case can be sent. Every firm and every invoice, not just
+     this firm's — routing a case is how a case that came in under the
+     wrong firm gets to the right one. */
+  const routeFirms = useMemo(
+    () => (book?.firms ?? []).map((x: any) => ({ id: x.id, name: x.name })),
+    [book])
+  const routeInvoices = useMemo(
+    () => (book?.invoices ?? []).map((i: any) => ({
+      code: i.code,
+      firmId: i.firmId,
+      label: `${i.code} · ${dayShort(i.period.start)} – ${dayShort(i.period.end)}`,
+    })),
+    [book])
+
+  const delivered = pcs.filter(p => !p.isReplacement)
+  const replacements = pcs.length - delivered.length
   const invoices = useMemo(
     () => (book?.invoices ?? []).filter((i: any) => i.firmSlug === slug)
       .sort((a: any, b: any) => b.period.start.localeCompare(a.period.start)),
@@ -194,6 +227,71 @@ export default function FirmPage({ params }: { params: Promise<{ slug: string }>
             ))}
           </div>
         )}
+      </section>
+
+      {/* Signed cases. Every one this firm has, newest first — the list the
+          invoice figures are made of, and the only place a case can be put
+          back or sent to the firm that actually took it. */}
+      <section className="fin-sec">
+        <h2 className="fin-sec-h">Signed cases</h2>
+        <div className="fin-card">
+          <div className="fin-card-h">
+            <span className="fin-card-t">
+              {num(delivered.length)} case{delivered.length === 1 ? '' : 's'} delivered
+            </span>
+            <span className="fin-card-n">
+              {replacements > 0
+                ? `${num(replacements)} replacement${replacements === 1 ? '' : 's'}, which count for nothing`
+                : 'no replacements'}
+            </span>
+          </div>
+          {pcs.length === 0 ? (
+            <p className="fin-empty">No case has signed for this firm.</p>
+          ) : (
+            <div className="fin-scroll">
+              <table className="fin-table">
+                <thead><tr>
+                  <th>Signed</th><th>Case</th><th>Closed by</th><th>Invoice</th>
+                  <th className="n">Change</th>
+                </tr></thead>
+                <tbody>
+                  {pcs.slice(0, 500).map((p: any) => (
+                    <tr key={p.id}>
+                      {/* The Pacific day it signed — the day the book
+                          tracks it to, not the UTC day it was written. */}
+                      <td className="fin-num">{dayShort(financeDay(p.signedAt))}</td>
+                      <td>
+                        {p.name}
+                        {p.isReplacement && <span className="fin-tag warn" style={{ marginLeft: 6 }}>replacement</span>}
+                      </td>
+                      <td>{p.closer ?? '—'}</td>
+                      <td>{p.invoiceCode ?? '—'}</td>
+                      <td className="n">
+                        <CaseActions
+                          id={p.id}
+                          name={p.name}
+                          firmId={p.firmId}
+                          invoiceCode={p.invoiceCode}
+                          isReplacement={p.isReplacement}
+                          firms={routeFirms}
+                          invoices={routeInvoices}
+                          /* Both the list and the figures above it move
+                             when a case changes, so both are reloaded. */
+                          onChanged={() => { load(); if (firm?.id) loadCases(firm.id) }}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+          {pcs.length > 500 && (
+            <p className="fin-note" style={{ padding: '0 16px 12px' }}>
+              Showing the 500 most recent of {num(pcs.length)}.
+            </p>
+          )}
+        </div>
       </section>
     </>
   )

@@ -26,6 +26,17 @@ const GROUPS: { title: string; items: { sub: string; label: string; icon: React.
         ),
       },
       {
+        sub: '/performance',
+        label: 'Performance',
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+            <path d="M8 1.9a6.1 6.1 0 106.1 6.1" strokeLinecap="round" />
+            <path d="M8 8l3.6-3.1" strokeLinecap="round" />
+            <path d="M11.2 1.9l2.9 1.2-1.2 2.9" strokeLinejoin="round" />
+          </svg>
+        ),
+      },
+      {
         sub: '/reporting',
         label: 'Reporting Center',
         icon: (

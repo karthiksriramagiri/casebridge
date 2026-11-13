@@ -24,10 +24,16 @@
 
 import {
   billableHoursForDay, splitOvertimeHours, grossPay,
-  tierCommission, COMMISSION_OT_CLOSE,
+  tierCommission, COMMISSION_OT_CLOSE, STANDARD_HOURLY,
 } from '@/lib/pay'
+import { financeDay, financeToday } from '@/lib/finance/clock'
 
-export const DEFAULT_HOURLY_RATE = 5
+/* The rate a rep is paid when the Team Center holds no rate of their own.
+
+   Not a number invented here: it is the rate the Team Center pays and the
+   rate a rep sees on their own pay page, imported so the two cannot
+   drift. A rep with a rate set in the Team Center is paid that instead. */
+export const DEFAULT_HOURLY_RATE = STANDARD_HOURLY
 
 /** A full shift. Also what a forgotten clock-out is counted as. */
 export const REGULAR_SHIFT_HOURS = 9
@@ -44,6 +50,12 @@ export type TimeEntry = {
   date: string                    // YYYY-MM-DD
   clock_in: string
   clock_out: string | null
+}
+
+/** A rate carried on the rep's own Team Center profile. */
+export type ProfileRate = {
+  id: string
+  hourly_rate: number | null
 }
 
 export type PayRate = {
@@ -76,12 +88,29 @@ export type CommissionRow = {
   otClose: boolean
 }
 
-/** Most recent rate per rep. Rows must arrive newest effective_from first. */
-export function rateMap(rates: PayRate[]): Record<string, number> {
+/* What each rep is paid an hour, as the Team Center holds it.
+
+   Two places there carry a rate, and both are read: `worker_pay_rates`,
+   which the timeclock admin writes and which keeps a history through
+   `effective_from`, and the rate on the rep's own Team Center profile,
+   which the Reps page sets. The dated table wins where it has a row —
+   it is the more specific record and the only one that can say "from
+   this date" — and the profile answers for everyone else.
+
+   A rep in neither is on the standard rate, which is what the Team Center
+   pays them. That is an answer, not a gap: the old build reported "no pay
+   rates are configured" and left the reader thinking the intake figures
+   were a guess, when they were the same $5 an hour the reps are paid. */
+export function rateMap(rates: PayRate[], profiles: ProfileRate[] = []): Record<string, number> {
   const out: Record<string, number> = {}
   for (const r of rates) {
-    if (r.profile_id && !(r.profile_id in out)) {
-      out[r.profile_id] = Number(r.hourly_rate ?? DEFAULT_HOURLY_RATE) || DEFAULT_HOURLY_RATE
+    if (r.profile_id && !(r.profile_id in out) && r.hourly_rate != null) {
+      out[r.profile_id] = Number(r.hourly_rate) || DEFAULT_HOURLY_RATE
+    }
+  }
+  for (const p of profiles) {
+    if (p.id && !(p.id in out) && p.hourly_rate != null) {
+      out[p.id] = Number(p.hourly_rate) || DEFAULT_HOURLY_RATE
     }
   }
   return out
@@ -107,7 +136,10 @@ export function rateMap(rates: PayRate[]): Record<string, number> {
    working — and so is any ordinary long day, so real overtime survives. */
 export function normaliseSessions(
   entries: TimeEntry[],
-  today = new Date().toISOString().slice(0, 10),
+  /* Pacific. In UTC the day turns over at four in the afternoon here, so
+     every shift still being worked in the evening read as a clock-out that
+     never happened and was cut back to nine hours. */
+  today = financeToday(),
 ): { entries: TimeEntry[]; leftOpen: number; closedLate: number } {
   let leftOpen = 0
   let closedLate = 0
@@ -188,7 +220,12 @@ export function commissionByCase(cases: CaseRow[]): CommissionRow[] {
 
   for (const c of eligible) {
     const closer = (c.closer || '').trim()
-    const date = String(c.signedAt).slice(0, 10)
+    /* The Pacific day it signed — the same day the case itself is tracked
+       to, so commission can never land on a different day from the case
+       that earned it. The sort above still uses the full timestamp, so the
+       order the tiers are counted in is the order the cases closed. */
+    const date = financeDay(c.signedAt)
+    if (!date) continue
     const dedupe = `${closer.toLowerCase()}|${(c.contactName || '').toLowerCase()}|${date}`
     if (seen.has(dedupe)) continue
     seen.add(dedupe)

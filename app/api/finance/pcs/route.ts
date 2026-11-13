@@ -58,29 +58,110 @@ export async function GET(req: NextRequest) {
   })
 }
 
-/* Marking a close as overtime.
+/* Changing a case.
 
-   An OT close is paid a flat $50 in place of the tier rate, so this is a
-   change to what the case costs: the book re-reads is_ot_close and the
-   invoice's worker cost moves with it. One field, one row — the rest of the
-   case record is not writable from here. */
+   Three things can be changed from the Financial Center, and nothing else
+   on the case record is writable from here:
+
+     otClose      an overtime close is paid a flat $50 in place of the tier
+                  rate, so this changes what the case costs.
+     replacement  a case swapped for another. It delivers nothing, so the
+                  book stops counting its revenue — the case itself stays,
+                  tagged, because a swap is a fact about the case and not a
+                  reason to lose it.
+     firm/invoice routing a case to the firm that actually took it. This
+                  moves its revenue, its commission and its ad cost
+                  together, because every one of them is read off the same
+                  firm_id.
+
+   Each field is optional and only the ones sent are written, so the
+   overtime toggle that has always posted `{ id, otClose }` still means
+   exactly what it meant. */
 export async function PATCH(req: NextRequest) {
   const body = await req.json().catch(() => null)
   const id = body?.id
-  const otClose = body?.otClose
+  if (!id) return NextResponse.json({ error: 'Send the id of a case.' }, { status: 400 })
 
-  if (!id || typeof otClose !== 'boolean') {
-    return NextResponse.json({ error: 'Send an id and otClose true or false.' }, { status: 400 })
+  const patch: Record<string, unknown> = {}
+
+  if (body.otClose !== undefined) {
+    if (typeof body.otClose !== 'boolean') {
+      return NextResponse.json({ error: 'otClose must be true or false.' }, { status: 400 })
+    }
+    patch.is_ot_close = body.otClose
+  }
+
+  /* Put back as a signed case, because that is the only other state a
+     case has here — the column holds e_signed or replacement and nothing
+     else, so there is no earlier value to restore. */
+  if (body.replacement !== undefined) {
+    if (typeof body.replacement !== 'boolean') {
+      return NextResponse.json({ error: 'replacement must be true or false.' }, { status: 400 })
+    }
+    patch.case_status = body.replacement ? 'replacement' : 'e_signed'
+  }
+
+  /* Routing. The firm has to exist, and an invoice has to belong to the
+     firm the case is being routed to — a case sitting on another firm's
+     invoice is a figure that can never reconcile, and it is far easier to
+     refuse it here than to find it later. */
+  const routingFirm = body.firmId !== undefined
+  const routingInvoice = body.invoiceCode !== undefined
+  if (routingFirm || routingInvoice) {
+    const { data: current, error: readErr } = await supabase
+      .from('ghl_leads')
+      .select('id, firm_id, invoice_code')
+      .eq('id', id)
+      .maybeSingle()
+    if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 })
+    if (!current) return NextResponse.json({ error: 'No case with that id.' }, { status: 404 })
+
+    const firmId = routingFirm ? (body.firmId || null) : current.firm_id
+    const invoiceCode = routingInvoice
+      ? (String(body.invoiceCode ?? '').trim() || null)
+      : current.invoice_code
+
+    if (firmId) {
+      const { data: firm } = await supabase.from('firms').select('id').eq('id', firmId).maybeSingle()
+      if (!firm) return NextResponse.json({ error: 'No such law firm.' }, { status: 400 })
+    }
+    if (invoiceCode) {
+      const { data: inv } = await supabase
+        .from('firm_invoices')
+        .select('code, firm_id')
+        .eq('code', invoiceCode)
+        .maybeSingle()
+      if (!inv) return NextResponse.json({ error: `No invoice ${invoiceCode}.` }, { status: 400 })
+      if (firmId && inv.firm_id !== firmId) {
+        return NextResponse.json(
+          { error: `${invoiceCode} belongs to another law firm. Pick an invoice of the firm the case is going to.` },
+          { status: 400 },
+        )
+      }
+    }
+
+    if (routingFirm) patch.firm_id = firmId
+    if (routingInvoice) patch.invoice_code = invoiceCode
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return NextResponse.json({ error: 'Nothing to change.' }, { status: 400 })
   }
 
   const { data, error } = await supabase.from('ghl_leads')
-    .update({ is_ot_close: otClose })
+    .update(patch)
     .eq('id', id)
-    .select('id, is_ot_close')
+    .select('id, is_ot_close, case_status, firm_id, invoice_code')
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'No case with that id.' }, { status: 404 })
 
-  return NextResponse.json({ id: data.id, otClose: data.is_ot_close === true })
+  return NextResponse.json({
+    id: data.id,
+    otClose: data.is_ot_close === true,
+    replacement: String(data.case_status || '').toLowerCase() === 'replacement',
+    firmId: data.firm_id,
+    invoiceCode: data.invoice_code,
+  })
 }

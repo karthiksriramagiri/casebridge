@@ -1,9 +1,11 @@
 'use client'
 
-import { use, useEffect, useMemo, useState } from 'react'
+import { use, useCallback, useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usd, pct, num, tone, day, dayShort } from '@/app/finance/_components/fmt'
 import { segmentMatchesCode } from '@/app/finance/_lib/invoice-routes'
+import { financeDay } from '@/lib/finance/clock'
+import { CaseActions } from '@/app/finance/_components/case-actions'
 
 /* One invoice, with its own P&L and its own case list.
 
@@ -70,19 +72,44 @@ export default function InvoicePage({ params }: { params: Promise<{ slug: string
       i.firmSlug === slug && segmentMatchesCode(code, i.code)),
     [book, slug, code])
 
-  useEffect(() => {
+  const loadCases = useCallback(async () => {
     if (!invoice) return
-    fetch(`/api/finance/pcs?firm=${invoice.firmId}&limit=2000`)
-      .then(r => r.json())
-      .then(d => setPcs((d.pcs ?? []).filter((p: any) =>
-        // Cases this invoice covers: either stamped with its code, or signed
-        // inside its period when nothing stamped them.
-        p.invoiceCode === invoice.code ||
-        (!p.invoiceCode && p.signedAt &&
-          String(p.signedAt).slice(0, 10) >= invoice.period.start &&
-          String(p.signedAt).slice(0, 10) <= invoice.period.end)))
-      ).catch(() => {})
+    const d = await fetch(`/api/finance/pcs?firm=${invoice.firmId}&limit=2000`)
+      .then(r => r.json()).catch(() => null)
+    setPcs((d?.pcs ?? []).filter((p: any) =>
+      // Cases this invoice covers: either stamped with its code, or signed
+      // inside its period when nothing stamped them.
+      p.invoiceCode === invoice.code ||
+      (!p.invoiceCode && p.signedAt &&
+        // The Pacific day it signed, the same day the report tracks it to.
+        financeDay(p.signedAt) >= invoice.period.start &&
+        financeDay(p.signedAt) <= invoice.period.end)))
   }, [invoice])
+  useEffect(() => { loadCases() }, [loadCases])
+
+  /* Everywhere a case can be sent. Every firm and every invoice, because a
+     case routed off this invoice is usually one that belongs to another
+     firm entirely — which is the whole reason to move it. */
+  const routeFirms = useMemo(
+    () => (book?.firms ?? []).map((x: any) => ({ id: x.id, name: x.name })),
+    [book])
+  const routeInvoices = useMemo(
+    () => (book?.invoices ?? []).map((i: any) => ({
+      code: i.code,
+      firmId: i.firmId,
+      label: `${i.code} · ${dayShort(i.period.start)} – ${dayShort(i.period.end)}`,
+    })),
+    [book])
+
+  /* A case that changes changes the invoice it sits on: a replacement stops
+     delivering, a routed case leaves this invoice entirely. Both lists are
+     read again rather than patched in place, because which cases this
+     invoice covers is the server's answer, not one the browser can guess. */
+  const caseChanged = useCallback(async () => {
+    const fresh = await fetch('/api/finance/book').then(r => r.json()).catch(() => null)
+    if (fresh && !fresh.error) setBook(fresh)
+    await loadCases()
+  }, [loadCases])
 
   async function save() {
     if (!invoice) return
@@ -284,6 +311,7 @@ export default function InvoicePage({ params }: { params: Promise<{ slug: string
               <thead><tr>
                 <th>Name</th><th>Signed</th><th>Closed by</th><th>Creative</th>
                 <th className="n">Overtime close</th>
+                <th className="n">Change</th>
               </tr></thead>
               <tbody>
                 {pcs.slice(0, 500).map(p => (
@@ -292,7 +320,9 @@ export default function InvoicePage({ params }: { params: Promise<{ slug: string
                       {p.name}
                       {p.isReplacement && <span className="fin-tag warn" style={{ marginLeft: 6 }}>replacement</span>}
                     </td>
-                    <td className="fin-num">{dayShort(p.signedAt)}</td>
+                    {/* The Pacific day it signed — the day the book counts
+                        it on, which is not the UTC day it was written. */}
+                    <td className="fin-num">{dayShort(financeDay(p.signedAt))}</td>
                     <td>{p.closer ?? '—'}</td>
                     <td className="fin-note" style={{ maxWidth: 260, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                       {p.adName ?? '—'}
@@ -310,10 +340,22 @@ export default function InvoicePage({ params }: { params: Promise<{ slug: string
                         {savingOt === p.id ? '…' : p.otClose ? 'OT close' : 'Mark OT'}
                       </button>
                     </td>
+                    <td className="n">
+                      <CaseActions
+                        id={p.id}
+                        name={p.name}
+                        firmId={p.firmId}
+                        invoiceCode={p.invoiceCode}
+                        isReplacement={p.isReplacement}
+                        firms={routeFirms}
+                        invoices={routeInvoices}
+                        onChanged={caseChanged}
+                      />
+                    </td>
                   </tr>
                 ))}
                 {pcs.length === 0 && (
-                  <tr><td colSpan={5} className="fin-empty">
+                  <tr><td colSpan={6} className="fin-empty">
                     No cases stamped with {invoice.code}, and none signed inside its period.
                   </td></tr>
                 )}

@@ -48,6 +48,7 @@ import type {
   TrendPoint,
 } from './report-types'
 import { OPEX_CATEGORIES, OPEX_CATEGORY_LABELS, type FinanceDataset, type OpexCategory, type ReportFilters } from './types'
+import { COST_START } from './load'
 
 type Scope = { kind: 'company' } | { kind: 'firm'; firmId: string } | { kind: 'invoice'; invoiceId: string; firmId: string }
 
@@ -512,6 +513,34 @@ export function buildReport(store: FinanceDataset, f: ReportFilters): ReportData
     },
     current,
     comparison,
+    /* Cost per acquisition, anchored at the day cost tracking began.
+
+       It is not scoped to the selected range, and that is the point. Ad
+       spend and the case it bought are weeks apart — a case signed today
+       was paid for by spend that started before it — so a day's ads over a
+       day's cases is two unrelated numbers divided by each other. Over the
+       whole period since costs were first recorded, both halves describe
+       the same run of work and the ratio means something.
+
+       It starts at COST_START because that is the first day advertising
+       exists in this report at all. Reaching back further would divide a
+       partial spend figure by a complete case count and read far too
+       cheap. */
+    cpa: (() => {
+      const from = maxDate(COST_START, store.dataStart)
+      if (from > f.end) return null
+      const span = metricsFor(ledger, scope, from, f.end, basis)
+      return {
+        since: from,
+        end: f.end,
+        advertising: span.advertising,
+        cases: span.cases,
+        /* Advertising only. Intake is a cost of running the desk, not of
+           buying the case, and folding it in would answer a different
+           question than the one "CPA" asks. */
+        cpa: span.cases > 0 ? Math.round(span.advertising / span.cases) : null,
+      }
+    })(),
     targetAttainment: {
       target: rangeTarget,
       attainment: rangeTarget ? (current.revenue / rangeTarget) * 100 : null,

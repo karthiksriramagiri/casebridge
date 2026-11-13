@@ -84,6 +84,19 @@
 .fin-fig-v{font-size:21px; font-weight:600; letter-spacing:-.02em}
 .fin-fig-v.pos{color:var(--pos)} .fin-fig-v.neg{color:var(--neg)}
 .fin-fig-s{font-size:11.5px; color:var(--ink-3)}
+/* What the figure is in its other unit — a count, a share of revenue.
+   Beside the number and quieter than it, because it qualifies the figure
+   rather than competing with it. */
+.fin-fig-x{font-size:12.5px; font-weight:500; color:var(--ink-3); margin-left:7px; white-space:nowrap}
+
+/* A figure that can be opened. The underline is the only thing that says
+   so — a figure with a button beside it reads as a control, and this is
+   still a number. */
+.fin-drill{color:inherit; text-decoration:none; border-bottom:1px solid var(--line-2);
+  display:inline-flex; align-items:baseline; gap:4px}
+.fin-drill:hover{border-bottom-color:var(--ink)}
+.fin-drill-i{font-size:.72em; color:var(--ink-3)}
+.fin-drill:hover .fin-drill-i{color:var(--ink)}
 
 /* the equation */
 .fin-eq{display:flex; align-items:center; gap:10px; flex-wrap:wrap;
@@ -210,6 +223,18 @@
 .fin-ot.on{color:var(--flag); border-color:var(--flag); font-weight:500}
 .fin-ot:disabled{opacity:.5; cursor:default}
 .fin-ot:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.fin-ot-go{color:var(--ink); border-color:var(--ink); font-weight:500}
+
+/* What can be done to one row. The controls sit quiet until they are
+   wanted — a table of money with a column of loud buttons down it reads as
+   a form, and this is a list of what happened. The routing selects open
+   underneath rather than in a layer, because the table scrolls sideways
+   inside its own box and anything floating above it gets clipped. */
+.fin-rowacts{display:flex; flex-direction:column; gap:6px; align-items:flex-end}
+.fin-rowacts-b{display:flex; gap:6px; justify-content:flex-end}
+.fin-rowacts-f{display:flex; gap:6px; align-items:center; flex-wrap:wrap; justify-content:flex-end}
+.fin-select-xs{font-size:12px; padding:3px 24px 3px 8px; width:auto; min-width:118px;
+  background-position:right 7px center}
 
 /* the dashboard's window */
 .fin-range{display:flex; align-items:center; gap:8px; flex-wrap:wrap}
@@ -298,11 +323,3 @@
 .fin-cmp-v{font-size:13.5px; font-weight:600; white-space:nowrap}
 .fin-cmp-d{font-weight:500; font-size:12px}
 
-/* The basis line. Set apart from the figures it explains, because it
-   changes what every one of them means. */
-.fin-basis{
-  font-size:12.5px; color:var(--ink-2); line-height:1.6;
-  border:1px solid var(--line); border-left:3px solid var(--ink-3);
-  border-radius:5px; background:var(--card); padding:9px 13px; margin-bottom:10px;
-}
-.fin-basis-alt{color:var(--ink-3)}

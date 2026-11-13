@@ -1,10 +1,12 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { tokenForAccount } from '@/app/_metrics/ad-accounts'
-import { nextPaymentDate } from '@/lib/pay'
+import { nextPaymentDate, STANDARD_HOURLY } from '@/lib/pay'
+import { campaignCodesFor, codeInCampaign } from '@/lib/finance/campaigns'
+import { financeDay, financeToday } from '@/lib/finance/clock'
 import { basePayByDay, commissionByCase, rateMap, type CaseRow } from '@/lib/finance/worker-cost'
 import { addDays, toISO, type ISODate } from './dates'
-import { toCents, type Cents } from './money'
+import { distributeCents, distributeEvenly, toCents, type Cents } from './money'
 import {
   OPEX_CATEGORIES,
   type AdSpendRecord,
@@ -56,24 +58,35 @@ function db() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
 }
 
-/** Meta's daily account spend. One call per account over the whole span. */
+/* Meta's daily spend, one row per campaign per day.
+
+   Read per campaign rather than per account because a firm is named by its
+   campaign, not by the account the campaign happens to sit in — Larry H.
+   Parker's LHP and LHP_SP both run inside the account that once carried
+   four other firms. The two levels sum to the same money (checked against
+   Meta: the campaign rows for an account total its account row to the
+   cent), so nothing is gained or lost by reading the finer one. */
+type SpendRow = { date: ISODate; cents: Cents; campaign: string }
+
 async function metaDaily(accountId: string, since: ISODate, until: ISODate) {
   const token = tokenForAccount(accountId)
-  if (!token) return [] as { date: ISODate; cents: Cents }[]
+  if (!token) return [] as SpendRow[]
   const url = new URL(`${META}/${accountId}/insights`)
   url.searchParams.set('access_token', token)
-  url.searchParams.set('fields', 'spend')
-  url.searchParams.set('level', 'account')
+  url.searchParams.set('fields', 'campaign_name,spend')
+  url.searchParams.set('level', 'campaign')
   url.searchParams.set('time_increment', '1')
   url.searchParams.set('time_range', JSON.stringify({ since, until }))
   url.searchParams.set('limit', '500')
 
-  const out: { date: ISODate; cents: Cents }[] = []
+  const out: SpendRow[] = []
   let next: string | null = url.toString()
   for (let page = 0; next && page < 12; page++) {
     const res: any = await fetch(next, { cache: 'no-store' }).then((r) => r.json()).catch(() => null)
     if (!res || res.error) break
-    for (const r of res.data ?? []) out.push({ date: r.date_start, cents: toCents(Number(r.spend) || 0) })
+    for (const r of res.data ?? []) {
+      out.push({ date: r.date_start, cents: toCents(Number(r.spend) || 0), campaign: r.campaign_name ?? '' })
+    }
     next = res.paging?.next ?? null
   }
   return out
@@ -99,7 +112,9 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
         .from('ghl_leads')
         .select('id, contact_name, firm_id, invoice_code, qualified_at, case_status, closer, closed_by_profile_id, is_ot_close, pipeline_stage')
         .not('qualified_at', 'is', null),
-      supabase.from('profiles').select('id, name'),
+      /* The Team Center's own rate for each rep, alongside the name. The
+         Reps page writes it, and it is what the rep is paid. */
+      supabase.from('profiles').select('id, name, hourly_rate'),
       supabase.from('operating_expenses').select('*').order('expense_date', { ascending: false }),
       supabase.from('reporting_targets').select('*').eq('id', 1).maybeSingle(),
       supabase.from('earnout_config').select('*').eq('id', 1).maybeSingle(),
@@ -141,7 +156,9 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   /* The window the ledger covers. Wide enough to hold every invoice and
      every expense, because an expense can be recognised over a period no
      invoice touches and still belong in the company's costs. */
-  const today = toISO(new Date())
+  /* Pacific, not UTC — the server's clock is not the company's. See
+     lib/finance/clock.ts. */
+  const today = financeToday()
   const opexRows = opexRes.error ? [] : (opexRes.data ?? [])
   const opexTableMissing = Boolean(opexRes.error && MISSING.test(opexRes.error.message))
   if (opexRes.error && !opexTableMissing) errors.push(`operating expenses: ${opexRes.error.message}`)
@@ -174,12 +191,19 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   const dataAsOf: ISODate = today
 
   // ── Advertising ─────────────────────────────────────────────────────
-  /* Per account, then shared out to the firms on it. Two firms can bill
-     against one account and nothing inside the account separates them, so
-     the split is by each firm's recognised revenue that day — the same
-     weight the expense allocator uses, for the same reason. */
+  /* Read per campaign, charged to the firm whose code the campaign carries.
+
+     Larry H. Parker runs LHP and LHP_SP; both are its campaigns and both
+     are its cost. Reading the account total instead gave the same answer
+     only because every other firm on that account is archived — which is
+     not something a reader of the report could check, and not something
+     that stays true the next time a campaign is started in there.
+
+     A campaign matching no firm's code falls back to the old rule, split
+     across the firms live on the account by invoiced revenue. It is also
+     counted, because spend that names no firm is a thing to fix. */
   const accountIds = [...new Set(firms.map((f) => f.adAccountId).filter(Boolean) as string[])]
-  const dailyByAccount: Record<string, { date: ISODate; cents: Cents }[]> = {}
+  const dailyByAccount: Record<string, SpendRow[]> = {}
   await Promise.all(
     accountIds.map(async (id) => {
       dailyByAccount[id] = await metaDaily(id, dataStart > COST_START ? dataStart : COST_START, dataAsOf)
@@ -188,12 +212,22 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
 
   const adSpend: AdSpendRecord[] = []
   let sharedAdAccounts = 0
+  let unmatchedAdSpend = 0
   for (const accountId of accountIds) {
     const onAccount = firms.filter((f) => f.adAccountId === accountId)
     if (onAccount.length === 0) continue
     if (onAccount.length > 1) sharedAdAccounts++
-    for (const { date, cents } of dailyByAccount[accountId] ?? []) {
+    for (const { date, cents, campaign } of dailyByAccount[accountId] ?? []) {
       if (date < COST_START) continue
+      /* The campaign says whose it is. Checked across every firm, not only
+         the ones on this account, so a campaign started in the wrong
+         account still reaches the firm that pays for it. */
+      const named = firms.find((f) => codeInCampaign(campaign, campaignCodesFor(f.slug)))
+      if (named) {
+        adSpend.push({ date, firmId: named.id, amountCents: cents })
+        continue
+      }
+      unmatchedAdSpend += cents
       if (onAccount.length === 1) {
         adSpend.push({ date, firmId: onAccount[0].id, amountCents: cents })
         continue
@@ -219,7 +253,15 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
      spread across the firms with a live invoice that day, the same way the
      old book did it, so the two never disagree. Commission already belongs
      to one firm's case and goes straight there. */
-  const payRatesMissing = Boolean(ratesRes.error) || (ratesRes.data ?? []).length === 0
+  /* Rates as the Team Center holds them: the dated table first, each rep's
+     profile second, the standard rate for anyone in neither. */
+  const profileRates = (profileRes.data ?? []).map((p: any) => ({ id: p.id, hourly_rate: p.hourly_rate ?? null }))
+  const rates = rateMap(ratesRes.data ?? [], profileRates)
+  /* Only a gap when the table could not be read at all. An empty table is
+     not a missing rate — it means nobody is on an override, and everyone
+     is on the rate the Team Center pays. */
+  const payRatesMissing = Boolean(ratesRes.error) && !MISSING.test(ratesRes.error?.message ?? '')
+  const repsOnStandardRate = profileRates.filter((p) => !(p.id in rates)).length
   if (timeRes.error) errors.push(`time entries: ${timeRes.error.message}`)
   if (caseRes.error) errors.push(`signed cases: ${caseRes.error.message}`)
 
@@ -243,49 +285,36 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     return row
   }
 
-  for (const day of basePayByDay(timeRes.data ?? [], rateMap(ratesRes.data ?? []))) {
-    if (day.date < COST_START) continue
-    const live = firms.filter((f) =>
-      invoices.some((i) => i.firmId === f.id && i.periodStart <= day.date && i.periodEnd >= day.date),
-    )
-    if (live.length === 0) continue
-    const cents = toCents(day.spend)
-    live.forEach((f, k) => {
-      /* Largest remainder by hand: the last firm takes what rounding left
-         behind, so a day's pay is never a cent short of what was paid. */
-      const share = k === live.length - 1
-        ? cents - Math.floor(cents / live.length) * (live.length - 1)
-        : Math.floor(cents / live.length)
-      intakeAt(day.date, f.id).basePayCents += share
-    })
-  }
+  /* Commission counts on the day the case signed, not the day it is paid.
 
-  /* Commission counts on the day it is paid, not the day the case signed.
+     It used to move to the pay date, on the reasoning that a cost is not a
+     cost until the money leaves. That is true of a bank balance and wrong
+     for this report: the fortnight that produced the cases showed only the
+     hourly pay against them, so a good week looked cheap and the pay date
+     took a spike that belonged to the two weeks before it. Cost per case
+     was unreadable — the cases were in one column and half of what they
+     cost in another.
 
-     A case signed on the 9th is earned then but costs nothing until it
-     reaches a paycheck, and pay runs fortnightly — so dating it to the
-     signing put a cost in a week no money left the company. It is moved
-     to the pay date of the period the case falls in, which is the day the
-     company is actually out of pocket.
+     So commission is recognised when it is earned, which is when the case
+     signs. A case signed today puts its commission in today's intake even
+     though payday is a week away. The figure runs ahead of the bank rather
+     than behind it, which is the safer direction to be wrong in: it
+     overstates cost slightly and never understates it.
 
-     The consequence is deliberate: commission on this fortnight's cases
-     sits in the future until payday, so it is not in today's or this
-     week's intake. It appears in full on the pay date. */
+     `accruedCommission` still reports what has been earned and not yet
+     paid, because that gap is worth seeing on its own — it is just no
+     longer the difference between appearing in the report and not. */
   let accruedCommission = 0
   let nextPayday: ISODate | null = null
   for (const row of commissionByCase(caseRows)) {
     if (!row.firmId || !firmIds.has(row.firmId) || row.date < COST_START) continue
-    const paidOn = toISO(nextPaymentDate(new Date(`${row.date}T12:00:00Z`)))
     const cents = toCents(row.amount)
+    const paidOn = toISO(nextPaymentDate(new Date(`${row.date}T12:00:00Z`)))
     if (paidOn > dataAsOf) {
-      /* Earned, not yet paid. It is deliberately not in any cost figure —
-         no money has left — but it is not nothing either, so it is
-         reported rather than dropped where nobody would see it again. */
       accruedCommission += cents
       if (!nextPayday || paidOn < nextPayday) nextPayday = paidOn
-      continue
     }
-    intakeAt(paidOn, row.firmId).commissionCents += cents
+    intakeAt(row.date, row.firmId).commissionCents += cents
   }
 
   // ── Case revenue ────────────────────────────────────────────────────
@@ -297,7 +326,10 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   const caseByKey = new Map<string, CaseRevenueRecord>()
   for (const r of caseRes.data ?? []) {
     const firmId = r.firm_id as string | null
-    const day = String(r.qualified_at ?? '').slice(0, 10)
+    /* The Pacific day it signed. `qualified_at` is a UTC instant, and
+       slicing its first ten characters tracked every case signed after
+       four in the afternoon here to tomorrow. */
+    const day = financeDay(r.qualified_at)
     if (!firmId || !firmIds.has(firmId) || !day || day < COST_START) continue
     /* A replacement is a case swapped for another, not a case delivered.
        Counting it would bill the same delivery twice. */
@@ -308,6 +340,38 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     row.cases += 1
     row.amountCents += value
     caseByKey.set(key, row)
+  }
+
+  /* Base pay, split across the firms the desk actually worked for.
+
+     It was an even split between every firm with a live invoice, which is
+     what the old book did when one firm was the only one being billed.
+     With two firms live and very different volumes that charges the
+     quieter firm half a day's desk for a third of the day's work, and its
+     margin carries a cost nobody worked for.
+
+     The day's signed cases are the record of where the hours went, so they
+     are the weight: a day of 9 cases for one firm and 3 for another splits
+     the pay three to one. Commission needs no such rule — it is earned on
+     one case for one firm and goes straight there.
+
+     A day with cases for nobody falls back to an even split: the reps were
+     still on the clock and nothing else says who for. Running after the
+     case map is built is what lets this read the day's cases at all. */
+  for (const day of basePayByDay(timeRes.data ?? [], rates)) {
+    if (day.date < COST_START) continue
+    const live = firms.filter((f) =>
+      invoices.some((i) => i.firmId === f.id && i.periodStart <= day.date && i.periodEnd >= day.date),
+    )
+    if (live.length === 0) continue
+    const cents = toCents(day.spend)
+    const weights = live.map((f) => caseByKey.get(`${day.date}|${f.id}`)?.cases ?? 0)
+    /* Largest remainder, so a day's pay is never a cent short of what was
+       paid — and an even split when the day produced no case at all. */
+    const parts = distributeCents(cents, weights) ?? distributeEvenly(cents, live.length)
+    live.forEach((f, k) => {
+      intakeAt(day.date, f.id).basePayCents += parts[k]
+    })
   }
 
   // ── Operating expenses ──────────────────────────────────────────────
@@ -378,6 +442,17 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     earnout,
     dataStart,
     dataAsOf,
-    gaps: { opexTableMissing, payRatesMissing, sharedAdAccounts, errors, accruedCommission, nextPayday },
+    gaps: {
+      opexTableMissing,
+      payRatesMissing,
+      standardHourly: STANDARD_HOURLY,
+      ratedReps: Object.keys(rates).length,
+      repsOnStandardRate,
+      sharedAdAccounts,
+      unmatchedAdSpend,
+      errors,
+      accruedCommission,
+      nextPayday,
+    },
   }
 }

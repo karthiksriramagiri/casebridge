@@ -196,9 +196,19 @@ export interface FinanceDataset {
     opexTableMissing: boolean
     /** No pay rates configured, so base pay cannot be computed. */
     payRatesMissing: boolean
+    /* What the Team Center pays an hour when a rep has no rate of their
+       own, and how many reps are on each. Not a gap — the figures below
+       are built on these, and saying so is what makes them checkable. */
+    standardHourly: number
+    ratedReps: number
+    repsOnStandardRate: number
     /** Ad accounts billed by more than one firm; their spend is split by
         invoice day because nothing in the account separates the firms. */
     sharedAdAccounts: number
+    /* Spend on a campaign whose name carries no firm's code. It is still
+       charged — to the account's firms, the old way — but nothing in the
+       campaign said whose it was, so it is reported. */
+    unmatchedAdSpend: Cents
     /** Meta or Supabase calls that failed outright. */
     errors: string[]
     /* Commission earned on cases already signed whose pay date has not

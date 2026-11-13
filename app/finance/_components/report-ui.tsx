@@ -1,6 +1,6 @@
 import Link from 'next/link'
 import { PaidToggle } from './paid-toggle'
-import { formatRange } from '@/lib/finance/reporting/dates'
+import { formatDay, formatRange } from '@/lib/finance/reporting/dates'
 import { formatPct, formatUSD, formatUSDCompact, pctChange, type Cents } from '@/lib/finance/reporting/money'
 import type { Metrics, ReportData, TrendPoint } from '@/lib/finance/reporting/report-types'
 import { OPEX_CATEGORY_LABELS, type OpexCategory } from '@/lib/finance/reporting/types'
@@ -40,14 +40,55 @@ function Delta({
   )
 }
 
+const caseCount = (n: number) => `${n.toLocaleString('en-US')} case${n === 1 ? '' : 's'}`
+
 export function KpiCards({ report }: { report: ReportData }) {
   const prev = report.comparison?.metrics ?? null
   const m = report.current
-  const cards: { label: string; value: string; cls?: string; prev: Cents | null; cur: Cents; invert?: boolean }[] = [
-    { label: 'Revenue', value: formatUSD(m.revenue), cur: m.revenue, prev: prev?.revenue ?? null },
-    { label: 'Advertising', value: formatUSD(m.advertising), cur: m.advertising, prev: prev?.advertising ?? null, invert: true },
-    { label: 'Intake cost', value: formatUSD(m.intake), cur: m.intake, prev: prev?.intake ?? null, invert: true },
-    { label: 'Operating expenses', value: formatUSD(m.opex), cur: m.opex, prev: prev?.opex ?? null, invert: true },
+  const onCases = report.meta.filters.basis === 'cases'
+  /* What a cost is as a share of the revenue it was spent to earn. Beside
+     the figure rather than under it: a cost is read against revenue every
+     time, and making the reader do that division themselves is how two
+     people end up with two different ideas of whether $90k of ads was a
+     lot. Null revenue has no share — a percentage of nothing is not 0%. */
+  const shareOfRevenue = (cents: Cents) =>
+    m.revenue > 0 ? formatPct((cents / m.revenue) * 100) : undefined
+  const cards: {
+    label: string
+    value: string
+    /** The figure's own unit of meaning, set beside it: a count, a share. */
+    suffix?: string
+    cls?: string
+    prev: Cents | null
+    cur: Cents
+    invert?: boolean
+  }[] = [
+    {
+      label: 'Revenue',
+      value: formatUSD(m.revenue),
+      /* The count, on the basis that is made of counts. On the invoiced
+         basis the cases are still delivered but they are not what this
+         figure is — pairing them would read as $612,500 from 70 cases. */
+      suffix: onCases ? caseCount(m.cases) : undefined,
+      cur: m.revenue,
+      prev: prev?.revenue ?? null,
+    },
+    {
+      label: 'Advertising',
+      value: formatUSD(m.advertising),
+      suffix: shareOfRevenue(m.advertising),
+      cur: m.advertising,
+      prev: prev?.advertising ?? null,
+      invert: true,
+    },
+    {
+      label: 'Intake cost',
+      value: formatUSD(m.intake),
+      suffix: shareOfRevenue(m.intake),
+      cur: m.intake,
+      prev: prev?.intake ?? null,
+      invert: true,
+    },
     {
       label: 'Profit',
       value: formatUSD(m.profit),
@@ -56,49 +97,22 @@ export function KpiCards({ report }: { report: ReportData }) {
       prev: prev?.profit ?? null,
     },
   ]
-  const onCases = report.meta.filters.basis === 'cases'
-  const other = onCases ? m.invoicedRevenue : m.caseRevenue
-  /* The average only reads as a case price when every firm charges the
-     same; with a mix it is still the right divisor for the sum. */
-  const perCase = m.cases > 0 ? Math.round(m.caseRevenue / m.cases) : null
+  /* Cost per acquisition sits apart from the cards above because it is not
+     scoped to the range they are: ad spend and the case it buys are weeks
+     apart, so a day's ads over a day's cases is two unrelated numbers
+     divided by each other. It runs from the day cost tracking began. */
+  const cpa = report.cpa
 
   return (
     <>
-      {/* Which basis the figures are on, and what the other one says.
-          Billing runs ahead of delivery, so the two rarely agree and the
-          gap is worth reading rather than hiding. */}
-      {/* Where the number comes from, in the number's own terms. A reader
-          who cannot reproduce a figure has no way to tell a real change
-          from a bug in how it is counted. */}
-      <div className="fin-basis">
-        <strong>{onCases ? 'Cases delivered' : 'Invoiced'}</strong>
-        {onCases ? (
-          <>
-            {' '}— a case counts on the day it was signed, valued at its firm&rsquo;s case price.
-            {' '}<span className="fin-num">
-              {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'}
-              {perCase !== null && <> × {formatUSD(perCase)}</>} = <strong>{formatUSD(m.revenue)}</strong>
-            </span>.
-            {' '}Profit takes off the advertising and intake cost of those same days.
-            {' '}<span className="fin-basis-alt">Invoiced over the same range: {formatUSD(other)}.</span>
-          </>
-        ) : (
-          <>
-            {' '}— each invoice counted in full on the day it was raised, so revenue lands when
-            the billing happens rather than being spread across the days that follow.
-            {' '}<span className="fin-basis-alt">
-              Cases delivered over the same range: {formatUSD(other)} from{' '}
-              {m.cases.toLocaleString('en-US')} case{m.cases === 1 ? '' : 's'}.
-            </span>
-          </>
-        )}
-      </div>
-
       <div className="fin-figs">
         {cards.map((c) => (
           <div key={c.label} className="fin-fig">
             <div className="fin-fig-l">{c.label}</div>
-            <div className={`fin-fig-v fin-num ${c.cls ?? ''}`}>{c.value}</div>
+            <div className={`fin-fig-v fin-num ${c.cls ?? ''}`}>
+              {c.value}
+              {c.suffix && <span className="fin-fig-x">{c.suffix}</span>}
+            </div>
             <Delta current={c.cur} previous={c.prev} invert={c.invert} complete={report.comparison?.dataComplete !== false} />
           </div>
         ))}
@@ -111,19 +125,25 @@ export function KpiCards({ report }: { report: ReportData }) {
               : 'no comparison'}
           </span>
         </div>
-      </div>
 
-      {/* The arithmetic, spelled out. Every figure above is in it, so there
-          is no question which number came from where. */}
-      <div className="fin-eq fin-num">
-        <b>{formatUSD(m.revenue)}</b>
-        <span className="op">{onCases ? 'delivered' : 'invoiced'}</span>
-        <span className="op">−</span> {formatUSD(m.advertising)} ads
-        <span className="op">−</span> {formatUSD(m.intake)} intake
-        <span className="op">−</span> {formatUSD(m.opex)} opex
-        <span className="res">
-          = {formatUSD(m.profit)} <span className="op">({formatPct(m.margin)})</span>
-        </span>
+        {/* CPA. Advertising over cases and nothing else — what it cost to
+            buy a case, not what the case cost to run, which is a different
+            question the intake and profit figures already answer.
+
+            Its window is the one thing on this row that is not the report's:
+            ad spend and the case it buys are weeks apart, so a day's ads
+            over a day's cases is two unrelated numbers divided by each
+            other. It runs from the day cost tracking began, and the line
+            underneath says so. */}
+        {cpa && cpa.cases > 0 && (
+          <div className="fin-fig">
+            <div className="fin-fig-l">CPA</div>
+            <div className="fin-fig-v fin-num">{cpa.cpa === null ? '—' : formatUSD(cpa.cpa)}</div>
+            <span className="fin-fig-s">
+              ads ÷ {cpa.cases} case{cpa.cases === 1 ? '' : 's'} since {formatDay(cpa.since, false)}
+            </span>
+          </div>
+        )}
       </div>
     </>
   )
@@ -242,7 +262,6 @@ export function CostBreakdown({ metrics }: { metrics: Metrics }) {
   const rows = [
     { label: 'Advertising', cents: metrics.advertising, cls: 'ad' },
     { label: 'Intake cost', cents: metrics.intake, cls: 'intake' },
-    { label: 'Operating expenses', cents: metrics.opex, cls: 'opex' },
     { label: 'Profit', cents: Math.max(0, metrics.profit), cls: 'profit' },
   ]
   return (
@@ -310,14 +329,13 @@ function MetricCells({ m }: { m: Metrics }) {
       <td className="n fin-num">{formatUSD(m.revenue)}</td>
       <td className="n fin-num">{formatUSD(m.advertising)}</td>
       <td className="n fin-num">{formatUSD(m.intake)}</td>
-      <td className="n fin-num">{formatUSD(m.opex)}</td>
       <td className={`n fin-num ${tone(m.profit)}`}>{formatUSD(m.profit)}</td>
       <td className={`n fin-num ${tone(m.margin)}`}>{formatPct(m.margin)}</td>
     </>
   )
 }
 
-const HEAD = ['Revenue', 'Advertising', 'Intake', 'OpEx', 'Profit', 'Margin']
+const HEAD = ['Revenue', 'Advertising', 'Intake', 'Profit', 'Margin']
 
 export function FirmTable({ report, hrefForFirm }: { report: ReportData; hrefForFirm: (id: string) => string }) {
   const { total } = report.firms
@@ -476,7 +494,11 @@ export function DataGaps({ report }: { report: ReportData }) {
     )
   }
   if (g.payRatesMissing)
-    notes.push('No pay rates are configured, so intake base pay is counted at the default rate only — commission is unaffected.')
+    notes.push('The Team Center pay-rate table could not be read, so base pay falls back to the standard rate for everyone — commission is unaffected.')
+  if (g.unmatchedAdSpend > 0)
+    notes.push(
+      `${formatUSD(g.unmatchedAdSpend)} of advertising ran on campaigns whose names carry no firm's code, so nothing in the campaign said whose it was. It is charged to the firms live on its ad account instead — name the campaign after the firm, or add its code in lib/finance/campaigns.ts, and it will go straight there.`,
+    )
   if (g.sharedAdAccounts > 0)
     notes.push(
       `${g.sharedAdAccounts} ad account${g.sharedAdAccounts === 1 ? ' is' : 's are'} billed by more than one firm. That spend is split between them by invoiced revenue, because nothing inside the account separates the firms.`,
@@ -536,7 +558,6 @@ const CMP_ROWS: { key: keyof Metrics; label: string; lowerIsBetter?: boolean; st
   { key: 'revenue', label: 'Recognised revenue', strong: true },
   { key: 'advertising', label: 'Advertising', lowerIsBetter: true },
   { key: 'intake', label: 'Intake / worker cost', lowerIsBetter: true },
-  { key: 'opex', label: 'Operating expenses', lowerIsBetter: true },
   { key: 'totalSpend', label: 'Total spend', lowerIsBetter: true, strong: true },
   { key: 'profit', label: 'Operating profit', strong: true },
   { key: 'margin', label: 'Operating margin', strong: true },

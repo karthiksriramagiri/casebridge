@@ -3,11 +3,13 @@ import Link from 'next/link'
 import { headers } from 'next/headers'
 import { siteRootForHost } from '@/app/_metrics/site-root'
 import { formatRange } from '@/lib/finance/reporting/dates'
-import { parseFilters } from '@/lib/finance/reporting/filters'
+import { DASH_RANGES, parseFilters } from '@/lib/finance/reporting/filters'
 import { loadFinanceData } from '@/lib/finance/reporting/load'
 import { formatPct, formatUSD, formatUSDCompact, pctChange } from '@/lib/finance/reporting/money'
 import { buildReport } from '@/lib/finance/reporting/report'
 import { PaidToggle } from './_components/paid-toggle'
+import { DashRange } from './_components/dash-range'
+import type { RangePreset } from '@/lib/finance/reporting/types'
 import { invoicePathSegment } from './_lib/invoice-routes'
 
 export const metadata: Metadata = { title: 'Dashboard · Financial Center' }
@@ -16,11 +18,14 @@ export const dynamic = 'force-dynamic'
 /* ═══════════════════════════════════════════════════════════════════════════
    The dashboard.
 
-   One question: how is the company doing this month, and what needs
-   attention. It is deliberately not the Reporting Center — no range
-   picker, no grain, no comparison modes. Somebody opening this wants the
-   answer, not the controls to derive it; the Reporting Center is one click
-   away for everyone who wants to ask a different question.
+   One question: how is the company doing, and what needs attention.
+
+   It carries a window picker and nothing else. It is still not the
+   Reporting Center — no grain, no comparison modes, no basis switch — but
+   "how is the company doing" is always asked about a stretch of time, and
+   pinning that to the current month meant the one question the page exists
+   to answer could only be asked one way. The Reporting Center is a click
+   away for everything else.
 
    Everything here comes from the same ledger the Reporting Center reads,
    so the two can never disagree.
@@ -28,24 +33,40 @@ export const dynamic = 'force-dynamic'
 
 const tone = (n: number | null) => (n === null ? '' : n > 0 ? 'pos' : n < 0 ? 'neg' : '')
 
-export default async function FinanceDashboard() {
+export default async function FinanceDashboard(
+  { searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> },
+) {
   const store = await loadFinanceData()
   const base = siteRootForHost((await headers()).get('host')) === '/finance' ? '' : '/finance'
   const bounds = { dataStart: store.dataStart, asOf: store.dataAsOf }
 
-  /* This month, and only this month. The dashboard answers how the month
-     is going; every other window is a question, and questions belong to
-     the Reporting Center. */
-  const range = 'mtd'
+  /* The window being read, from the URL so it survives a refresh and can be
+     linked to. Month to date unless asked otherwise, and anything we do not
+     offer falls back to it rather than erroring. */
+  const sp = await searchParams
+  const asked = Array.isArray(sp.range) ? sp.range[0] : sp.range
+  const range: RangePreset = DASH_RANGES.includes(asked as RangePreset) ? (asked as RangePreset) : 'mtd'
+  /* `from` and `to` ride along so a custom window resolves — the parser
+     only reads them when the preset is custom, and clamps both to the data
+     it actually has. */
+  const fromTo = {
+    from: Array.isArray(sp.from) ? sp.from[0] : sp.from,
+    to: Array.isArray(sp.to) ? sp.to[0] : sp.to,
+  }
   /* Invoiced, always. The dashboard is the billing view — what the firms
      were charged for the window. Cases delivered is a different question
      and the Reporting Center is where it is asked. */
-  const mtd = buildReport(store, parseFilters({ range, basis: 'invoiced' }, bounds))
+  const mtd = buildReport(store, parseFilters({ range, basis: 'invoiced', ...fromTo }, bounds))
   const ytd = buildReport(store, parseFilters({ range: 'ytd', basis: 'invoiced' }, bounds))
 
   const m = mtd.current
   const prev = mtd.comparison?.metrics ?? null
   const win = mtd.meta.window
+
+  const rangeQ = `range=${range}${range === 'custom' ? `&from=${win.start}&to=${win.end}` : ''}`
+  /* The count here is a figure; the cases behind it are read on the firm
+     they belong to, which is where they can also be changed. */
+  const casesHref = `${base}/firms`
 
   /* What is worth saying out loud. A dashboard that only shows figures
      makes the reader find the problem; these are the three the figures
@@ -67,15 +88,10 @@ export default async function FinanceDashboard() {
       text: `${formatUSD(unattributed.metrics.totalSpend)} of spend this year falls outside every invoice period, so no invoice carries it.`,
     })
   }
-  if (store.gaps.accruedCommission > 0) {
-    alerts.push({
-      tone: 'flag',
-      text: `${formatUSD(store.gaps.accruedCommission)} of commission is earned but not yet paid, so it is not in intake cost${store.gaps.nextPayday ? ` until ${store.gaps.nextPayday}` : ' yet'}.`,
-    })
-  }
-  if (store.gaps.opexTableMissing) {
-    alerts.push({ tone: 'flag', text: 'Operating expenses are not set up, so profit counts advertising and intake only.' })
-  }
+  /* No commission banner. Intake cost is base pay to date plus the
+     commission earned in the window, whenever payday happens to fall —
+     which is the whole answer, so a note qualifying it only invited the
+     reader to adjust a figure that needs no adjusting. */
 
   return (
     <>
@@ -87,28 +103,50 @@ export default async function FinanceDashboard() {
         <Link href={`${base}/reporting`} className="fin-btn">Open the Reporting Center →</Link>
       </div>
 
+      <DashRange
+        preset={range}
+        start={win.start}
+        end={win.end}
+        basePath={`${base}/`}
+      />
+
       {/* Which revenue this is. The Reporting Center can be switched to
           cases delivered; this page cannot, and saying so stops the two
           being read as the same number. */}
       <p className="fin-note" style={{ marginBottom: 8 }}>
         Revenue is <strong>invoiced</strong> — each invoice counted in full on the day it was
         raised. Nothing is recognised on the days that follow, because nothing was billed on them.
+        {' '}Cases signed counts what was delivered over the same window, which the Reporting
+        Center can value as revenue on its own basis.
       </p>
 
       <div className="fin-figs">
         {[
           { l: 'Revenue', v: m.revenue, p: prev?.revenue ?? null },
+          /* Cases signed. Not a dollar figure, and that is why it is here:
+             the revenue above is what the firms were billed, and this is
+             what was actually delivered to earn it. The two move apart in
+             any month where the billing and the signing fall on different
+             sides of a date, and seeing only the money hides that. */
+          { l: 'Cases signed', v: m.cases, p: prev?.cases ?? null, count: true, href: casesHref },
           { l: 'Advertising', v: m.advertising, p: prev?.advertising ?? null, invert: true },
           { l: 'Intake cost', v: m.intake, p: prev?.intake ?? null, invert: true },
-          { l: 'Operating expenses', v: m.opex, p: prev?.opex ?? null, invert: true },
           { l: 'Profit', v: m.profit, p: prev?.profit ?? null, strong: true },
         ].map((c) => {
           const pct = c.p && c.p !== 0 ? pctChange(c.v, c.p) : null
           const good = pct === null ? null : c.invert ? -pct : pct
+          const shown = c.count ? c.v.toLocaleString('en-US') : formatUSD(c.v)
           return (
             <div key={c.l} className="fin-fig">
               <div className="fin-fig-l">{c.l}</div>
-              <div className={`fin-fig-v fin-num ${c.strong ? tone(c.v) : ''}`}>{formatUSD(c.v)}</div>
+              <div className={`fin-fig-v fin-num ${c.strong ? tone(c.v) : ''}`}>
+                {c.href ? (
+                  <Link href={c.href} className="fin-drill" title="The cases themselves are listed on each firm">
+                    {shown}
+                    <span className="fin-drill-i" aria-hidden>›</span>
+                  </Link>
+                ) : shown}
+              </div>
               <span className={`fin-fig-s ${tone(good)}`}>
                 {pct === null ? 'no prior period' : `${formatPct(pct, { signed: true })} vs last month`}
               </span>
@@ -137,7 +175,7 @@ export default async function FinanceDashboard() {
         <section className="fin-card">
           <div className="fin-card-h">
             <span className="fin-card-t">By firm · {win.label}</span>
-            <Link className="fin-card-n" href={`${base}/reporting?range=${range}`}>full report →</Link>
+            <Link className="fin-card-n" href={`${base}/reporting?${rangeQ}`}>full report →</Link>
           </div>
           <div className="fin-scroll">
             <table className="fin-table">
@@ -242,7 +280,6 @@ export default async function FinanceDashboard() {
             { l: 'Revenue', v: ytd.current.revenue },
             { l: 'Advertising', v: ytd.current.advertising },
             { l: 'Intake cost', v: ytd.current.intake },
-            { l: 'Operating expenses', v: ytd.current.opex },
           ].map((r) => {
             const base2 = Math.max(ytd.current.revenue, ytd.current.totalSpend, 1)
             return (

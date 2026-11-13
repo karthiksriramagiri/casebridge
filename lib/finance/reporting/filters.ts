@@ -30,6 +30,18 @@ export const PRESET_LABELS: Record<RangePreset, string> = {
   custom: 'Custom range',
 }
 
+/* The windows the dashboard offers. A subset of the full list: Today and
+   Yesterday are meaningless on a page whose revenue is invoiced, because
+   invoices are raised once a month and almost every single day would read
+   as a company that earned nothing.
+
+   Lives here rather than beside the picker because the page needs it too,
+   and a 'use client' module cannot hand a plain array to a server
+   component — Next turns its exports into client references. */
+export const DASH_RANGES: RangePreset[] = [
+  'wtd', 'mtd', 'last_month', 'qtd', 'ytd', 'last_30', 'last_90', 'last_12m', 'custom',
+]
+
 export const GRANULARITY_LABELS: Record<Granularity, string> = {
   daily: 'Daily',
   weekly: 'Weekly',

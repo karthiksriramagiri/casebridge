@@ -40,7 +40,7 @@ export async function GET(req: NextRequest) {
     supabase.from('worker_pay_rates').select('profile_id, hourly_rate, effective_from')
       .order('effective_from', { ascending: false }),
     caseQ,
-    supabase.from('profiles').select('id, name, role, hide_from_hr'),
+    supabase.from('profiles').select('id, name, role, hide_from_hr, hourly_rate'),
   ])
 
   if (timeRes.error) return NextResponse.json({ error: timeRes.error.message }, { status: 500 })
@@ -48,7 +48,12 @@ export async function GET(req: NextRequest) {
   const profiles = profileRes.data ?? []
   const nameById = new Map(profiles.map((p: any) => [p.id, p.name]))
   const hidden = new Set(profiles.filter((p: any) => p.hide_from_hr).map((p: any) => p.id))
-  const rates = rateMap(ratesRes.data ?? [])
+  /* Both of the Team Center's rate sources, the same way the Reporting
+     Center reads them, so the two cannot disagree about what an hour cost. */
+  const rates = rateMap(
+    ratesRes.data ?? [],
+    (profileRes.data ?? []).map((p: any) => ({ id: p.id, hourly_rate: p.hourly_rate ?? null })),
+  )
 
   // ── Hours and base pay, per rep ──────────────────────────────────────────
   type Row = {

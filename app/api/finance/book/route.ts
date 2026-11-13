@@ -6,6 +6,7 @@ import {
   clipPeriod, prorateRevenue, clipDaily,
   type InvoiceInput, type Period,
 } from '@/lib/finance/margin'
+import { financeToday } from '@/lib/finance/clock'
 import {
   basePayByDay, commissionByCase, rateMap,
   type CaseRow,
@@ -101,7 +102,7 @@ export async function GET(req: NextRequest) {
     supabase.from('ghl_leads')
       .select('id, contact_name, firm_id, invoice_code, qualified_at, case_status, closer, closed_by_profile_id, is_ot_close')
       .not('qualified_at', 'is', null),
-    supabase.from('profiles').select('id, name'),
+    supabase.from('profiles').select('id, name, hourly_rate'),
   ])
   const teamDataAvailable = !timeRes.error && !caseRes.error
 
@@ -167,7 +168,7 @@ export async function GET(req: NextRequest) {
   const spanStart = invoices.reduce((m, i) => (i.period.start < m ? i.period.start : m),
     invoices[0]?.period.start ?? '2026-01-01')
   const spanEnd = invoices.reduce((m, i) => (i.period.end > m ? i.period.end : m),
-    invoices[0]?.period.end ?? new Date().toISOString().slice(0, 10))
+    invoices[0]?.period.end ?? financeToday())
 
   const accountIds = [...new Set(firms.map(f => (f.meta_account_id || '').trim()).filter(Boolean))]
   const dailyByAccount: Record<string, { date: string; spend: number }[]> = {}
@@ -183,7 +184,12 @@ export async function GET(req: NextRequest) {
   /* Base pay is company-wide — a rep works every firm in one shift — so each
      day of it is divided between all the invoices open that day. Commission
      already belongs to one firm's case, so it is placed directly. */
-  const rates = rateMap(ratesRes.data ?? [])
+  /* Both of the Team Center's rate sources, the same way the Reporting
+     Center reads them, so the two cannot disagree about what an hour cost. */
+  const rates = rateMap(
+    ratesRes.data ?? [],
+    (profileRes.data ?? []).map((p: any) => ({ id: p.id, hourly_rate: p.hourly_rate ?? null })),
+  )
   const basePayDaily = clipDaily(basePayByDay(timeRes.data ?? [], rates), window)
   const baseAlloc = allocateDailyCost(basePayDaily, invoices)
 

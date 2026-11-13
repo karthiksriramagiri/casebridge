@@ -18,6 +18,21 @@ export interface Metrics {
   margin: number | null
 }
 
+/* Cost per acquisition since cost tracking began — see buildReport. Null
+   when the report ends before that date. */
+export interface CpaSummary {
+  since: ISODate
+  end: ISODate
+  advertising: Cents
+  cases: number
+  /** Advertising ÷ cases. Null when no case has signed in the span.
+
+      Advertising only. Intake is the cost of running the desk, not of
+      buying the case, and folding it in answers a different question than
+      the one CPA asks. */
+  cpa: Cents | null
+}
+
 export interface PeriodWindow {
   start: ISODate
   end: ISODate
@@ -133,7 +148,14 @@ export interface ReportData {
     gaps: {
       opexTableMissing: boolean
       payRatesMissing: boolean
+      /* What the Team Center pays an hour when a rep has no rate of their
+         own, and how many reps are on each. Not a gap — the figures below
+         are built on these, and saying so is what makes them checkable. */
+      standardHourly: number
+      ratedReps: number
+      repsOnStandardRate: number
       sharedAdAccounts: number
+      unmatchedAdSpend: Cents
       errors: string[]
       accruedCommission: Cents
       nextPayday: ISODate | null
@@ -147,6 +169,8 @@ export interface ReportData {
   }
   current: Metrics
   comparison: ComparisonInfo | null
+  /** Cost per acquisition since cost tracking began. Not range-scoped. */
+  cpa: CpaSummary | null
   targetAttainment: {
     target: Cents | null
     attainment: number | null

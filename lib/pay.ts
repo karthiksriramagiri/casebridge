@@ -4,6 +4,14 @@
 // Pay period:  bi-weekly (every 14 days), anchored to Fri Jul 17, 2026
 // Commission:  $25 per signed case, $0 per replacement case (as of Jun 13, 2026)
 
+/* What a rep is paid for an hour of the shift.
+
+   The Team Center pays this and the rep's own pay page shows it, so the
+   Financial Center reads it from here rather than keeping a second copy
+   that can drift from what people are actually paid. A rep with a rate of
+   their own in the Team Center overrides it; everyone else is on this. */
+export const STANDARD_HOURLY = 5
+
 export const OVERTIME_HOURLY = 6
 
 // Legacy rates: cases signed on or before Jun 12, 2026
@@ -152,7 +160,11 @@ export function shiftStartHourEST(shift: string | null | undefined): number {
     case 'morning_afternoon': return 10  // 7 AM PST = 10 AM EST
     case 'afternoon':
     case 'afternoon_evening': return 15  // 12 PM PST = 3 PM EST
+    case 'early_evening':     return 17  // 2 PM PST = 5 PM EST
     case 'evening':           return 18  // 3 PM PST = 6 PM EST
+    /* Overnight had no case here, so the one rep on it was measured against
+       the 2 PM fallback and read as nine hours late every night. */
+    case 'overnight':         return 0   // 9 PM PST = midnight EST
     default:                  return 14  // fallback: 2 PM EST
   }
 }
