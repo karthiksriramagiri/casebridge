@@ -5,12 +5,12 @@ import { AlertTriangle, BatteryLow, CheckCircle2, ChevronRight, History, Send, S
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
-import { EmptyState, PageHeader, Pill, SearchBox, StatCard, Thumb } from '@/app/creative/_components/admin/shared'
+import { EmptyState, PageHeader, Pill, RangeSelect, SearchBox, StatCard, Thumb } from '@/app/creative/_components/admin/shared'
 import { adsetBudget, adsetKey, formatDate, isDelivering, totalsFor, usd } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
-import type { Creative, KillItem } from '@/app/creative/_lib/types'
+import type { Creative, KillItem, RangeKey } from '@/app/creative/_lib/types'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { HistoryDialog, type HistoryRow } from '@/app/creative/_components/admin/history-dialog'
 import { MetricCells, MetricHead, metricColumns, stickyCell, stickyTint, totalsOf, type MetricColumn } from '@/app/creative/_components/admin/metric-table'
@@ -107,6 +107,23 @@ export default function KillListPage() {
      page lie about the day's work. */
   const [query, setQuery] = useState('')
   const q = query.trim().toLowerCase()
+
+  /* Which window the numbers describe.
+
+     Lifetime was the only option, which is the right basis for the kill
+     decision itself — an ad is judged on its whole run — and the wrong one
+     for checking it. "Is this still bad?" is a question about the last
+     three days, and a lifetime CPL built over six weeks cannot answer it:
+     an ad that turned around last week still reads expensive.
+
+     So it stays on Maximum by default, because that is what a kill list is
+     read against, and narrows on demand. Every column follows it, Signed
+     and CPA included — the same rule Creative Analysis works to, so the
+     two pages cannot show different numbers for the same ad and range. On
+     a short window Signed will often read 0: a case signs days to weeks
+     after the click, which is worth remembering before concluding an ad
+     has stopped producing. */
+  const [range, setRange] = useState<RangeKey>('max')
   const matches = useCallback(
     ({ k, c }: Row) =>
       !q ||
@@ -319,7 +336,7 @@ export default function KillListPage() {
           </div>
         </div>
       </td>
-      <MetricCells columns={columns} t={totalsFor(c, 'max')} ads={[c]} />
+      <MetricCells columns={columns} t={totalsFor(c, range)} ads={[c]} />
       <td className={cn('whitespace-nowrap px-3 py-2', stickyTint)}>
         <div className="relative flex items-center justify-end gap-1">
           {/* Same action in Ads Manager, different meaning here: a
@@ -419,6 +436,7 @@ export default function KillListPage() {
             label="Search the kill list"
             placeholder="Search name, ad set, firm, ad ID"
           />
+          <RangeSelect value={range} onChange={setRange} />
         </div>
         <section aria-label="Kill totals" className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <StatCard
@@ -472,6 +490,7 @@ export default function KillListPage() {
                     g={g}
                     siblings={adsetAds.get(g.key) ?? []}
                     columns={columns}
+                    range={range}
                     renderRow={pendingRow}
                   />
                 ))}
@@ -502,6 +521,7 @@ export default function KillListPage() {
                     g={g}
                     siblings={adsetAds.get(g.key) ?? []}
                     columns={columns}
+                    range={range}
                     defaultOpen={false}
                     renderRow={pendingRow}
                   />
@@ -528,6 +548,7 @@ export default function KillListPage() {
                     g={g}
                     siblings={adsetAds.get(g.key) ?? []}
                     columns={columns}
+                    range={range}
                     muted
                     defaultOpen={false}
                     renderRow={({ k, c }) => (
@@ -544,7 +565,7 @@ export default function KillListPage() {
                             </div>
                           </div>
                         </td>
-                        <MetricCells columns={columns} t={totalsFor(c, 'max')} ads={[c]} muted />
+                        <MetricCells columns={columns} t={totalsFor(c, range)} ads={[c]} muted />
                         <td className={cn('px-3 py-2', stickyTint)}>
                           <div className="relative flex justify-end">
                             {isToday && (
@@ -651,7 +672,7 @@ function FirmBlock({
    ad set running — obvious when you are looking at Ads Manager, easy to
    forget from a list that only shows what you picked. */
 function AdsetGroup({
-  g, siblings, columns, renderRow, muted, defaultOpen = true,
+  g, siblings, columns, renderRow, muted, defaultOpen = true, range = 'max',
 }: {
   g: { key: string; adset: string; items: Row[]; freed?: number }
   /** Every ad still delivering in this ad set, killed or not. */
@@ -661,6 +682,8 @@ function AdsetGroup({
   muted?: boolean
   /** Open on the pending list, shut on the killed one. See FirmBlock. */
   defaultOpen?: boolean
+  /** The window the figures describe. Lifetime unless someone narrows it. */
+  range?: RangeKey
 }) {
   const [open, setOpen] = useState(defaultOpen)
   const killing = g.items.length
@@ -729,7 +752,7 @@ function AdsetGroup({
             </div>
           </div>
         </td>
-        <MetricCells columns={columns} t={totalsOf(setAds)} ads={setAds} muted={muted} />
+        <MetricCells columns={columns} t={totalsOf(setAds, range)} ads={setAds} muted={muted} />
         <td className={cn('px-3 py-2', stickyCell)} />
       </tr>
 
@@ -753,7 +776,7 @@ function AdsetGroup({
               </div>
             </div>
           </td>
-          <MetricCells columns={columns} t={totalsFor(c, 'max')} ads={[c]} muted />
+          <MetricCells columns={columns} t={totalsFor(c, range)} ads={[c]} muted />
           <td className={cn('px-3 py-2', stickyTint)} />
         </tr>
       ))}

@@ -1,4 +1,5 @@
 import type { Creative } from './types'
+import { creativeDay } from '@/lib/creative-day'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Constants the center needs that do not come from Meta.
@@ -25,29 +26,27 @@ import type { Creative } from './types'
 
    Pacific, not Eastern. The rest of CaseBridge runs on an Eastern day — the
    dialer, the shift reports, the pay periods — but the Creative Center's day
-   turns at midnight PST, which is when the ad meeting's lists roll and when
-   Watch List Mode's dismissals clear. Holding the lists on Eastern and the
-   dismissals on Pacific meant that for three hours every night the watch list
-   had already moved to tomorrow while the day's dismissals were still on
-   yesterday. One zone for the whole center.
+   is its own, which is when the ad meeting's lists roll and when Watch List
+   Mode's dismissals clear. Holding the lists on Eastern and the dismissals on
+   Pacific meant that for three hours every night the watch list had already
+   moved to tomorrow while the day's dismissals were still on yesterday. One
+   zone for the whole center.
 
    Worth knowing when reading these numbers: Meta reports its daily rows in
    each ad account's own timezone, which this does not control. The closer the
    accounts are set to Pacific, the more exactly a "today" here lines up with
    a "today" in Ads Manager. */
-export const TODAY = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
 
-/* The same day as TODAY, recomputed on demand.
+/* The rollover itself lives in lib/creative-day, so the routes can read the
+   same rule without importing a client module. Re-exported here because
+   every page in the center already imports its dates from this file. */
+export { DAY_ROLLOVER_HOUR, creativeDay as pacificDay } from '@/lib/creative-day'
 
-   TODAY is a module constant, fixed at the moment the bundle first evaluates;
-   a tab left open overnight would keep writing into yesterday. Anything that
-   has to notice the roll-over calls this instead.
-
-   Lives here rather than beside the hook that reads it so the store can use
-   it too without the two importing each other. */
-export function pacificDay(now = new Date()): string {
-  return now.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
-}
+/* TODAY is a module constant, fixed at the moment the bundle first
+   evaluates; a tab left open overnight would keep writing into yesterday.
+   Anything that has to notice the roll-over calls `pacificDay()` instead —
+   the store re-reads it on a timer and every page follows that. */
+export const TODAY = creativeDay()
 
 export function addDays(iso: string, delta: number) {
   const d = new Date(`${iso}T00:00:00Z`)

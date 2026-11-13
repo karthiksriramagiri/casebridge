@@ -3,6 +3,7 @@ import { createClient } from '@supabase/supabase-js'
 import { adAccounts, type AdAccount } from '@/app/_metrics/ad-accounts'
 import { parseAdName } from '@/app/_metrics/ad-meta'
 import { firmOf } from '@/app/_metrics/firms'
+import { creativeDay } from '@/lib/creative-day'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Live creatives for the Creative Center.
@@ -43,11 +44,13 @@ const actionVal = (arr: any[] = [], type: string) =>
 const leadsOf = (actions: any[] = []) =>
   actionVal(actions, 'lead') || actionVal(actions, 'offsite_conversion.fb_pixel_lead')
 
-/* UTC, matching TODAY in _lib/data.ts. The two have to agree on what day it
-   is or the client filters a window whose edges it disagrees with — "Today"
-   would read empty on the very rows this just fetched. */
+/* The center's own day, not UTC. The window this builds has to be measured
+   in the same days the client filters it by, or the edges disagree: from late
+   afternoon Pacific until the 2am roll-over UTC is already on tomorrow's
+   date, so a UTC-dated window is shifted a day forward and the oldest day on
+   a 30-day view comes back with nothing in it. See lib/creative-day. */
 function isoDay(d: Date) {
-  return d.toISOString().slice(0, 10)
+  return creativeDay(d)
 }
 
 async function metaGet(url: string) {
@@ -265,10 +268,9 @@ async function fetchLive(days: number) {
 
 const SNAPSHOT_TABLE = 'creative_day_snapshot'
 
-/** The Pacific day, which is the day the whole center works to. */
-function pacificDay(d = new Date()) {
-  return d.toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
-}
+/** The day the whole center works to — Pacific, rolling over at 2am. One
+    definition, shared with the client; see lib/creative-day. */
+const pacificDay = creativeDay
 
 function db() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
