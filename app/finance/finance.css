@@ -60,6 +60,9 @@
 .fin-tab[aria-current="page"] svg{opacity:1}
 .fin-side-f{padding:12px 16px; border-top:1px solid var(--line); font-size:11px; color:var(--ink-3)}
 .fin-main{flex:1; min-width:0; max-width:1420px; padding:28px 32px 80px}
+/* With no sidebar — the Reporting Center — the report is the whole page,
+   so it centres instead of hugging the left edge of a wide window. */
+.fin-main:only-child{margin-inline:auto}
 
 @media (max-width:860px){
   .fin-shell{flex-direction:column}

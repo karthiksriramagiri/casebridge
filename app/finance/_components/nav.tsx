@@ -101,20 +101,17 @@ export function FinanceNav({ base, asOf }: { base: string; asOf?: string }) {
   const pathname = usePathname() || ''
   const href = (sub: string) => (base + sub) || '/'
 
-  /* The Reporting Center is a destination, not a doorway.
+  /* The Reporting Center has no navigation at all.
 
      It has an address of its own at /reporting and is the one page here
-     meant to be handed to someone, so it offers nothing else: no
-     dashboard, no rep pay, no route into the rest of the Financial
-     Center. Every other page keeps the full navigation.
+     meant to be handed to someone. A sidebar offering a single tab to
+     the page you are already on is furniture, so there is none: the
+     report fills the window and the shell centres it.
 
      Matched on the path's tail because the same page answers at
      /reporting on the apex, /finance/reporting beside it, and /reporting
      again on the finance host. */
-  const reportingOnly = pathname === '/reporting' || pathname.endsWith('/reporting')
-  const groups = reportingOnly
-    ? [{ title: '', items: GROUPS.flatMap((g) => g.items).filter((t) => t.sub === '/reporting') }]
-    : GROUPS
+  if (pathname === '/reporting' || pathname.endsWith('/reporting')) return null
 
   return (
     <aside className="fin-side">
@@ -127,9 +124,9 @@ export function FinanceNav({ base, asOf }: { base: string; asOf?: string }) {
       </div>
 
       <nav className="fin-nav">
-        {groups.map((g) => (
+        {GROUPS.map((g) => (
           <div key={g.title} className="fin-nav-g">
-            {g.title && <p className="fin-nav-t">{g.title}</p>}
+            <p className="fin-nav-t">{g.title}</p>
             {g.items.map((t) => {
               const target = href(t.sub)
               /* The dashboard sits at the root, so "starts with" would mark
