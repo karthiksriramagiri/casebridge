@@ -5,6 +5,10 @@ import { useCall } from '../../_context/call'
 import { useAuth } from '../../_context/auth'
 import { useInboundRingtone } from '../../_lib/ringtone'
 import { createClient } from '../../_lib/supabase'
+import { Phone, X } from 'lucide-react'
+import {
+  Card, CardHeader, EmptyState, PageBody, PageHeader, Pill, Table, TableWrap, Td, Th,
+} from '../../_components/ui/shell'
 import type { Lead } from '../../_types'
 
 interface InboundCall {
@@ -35,19 +39,15 @@ function elapsed(created: string): string {
   return `${Math.floor(secs / 60)}m ${secs % 60}s`
 }
 
+/* What happened to the call, in the palette's own tones. Rejected was the
+   one borrowed colour on this page — orange, from nowhere — and is amber
+   now like every other "needs a look" state in the product. */
+const STATUS_TONE: Record<string, 'green' | 'blue' | 'red' | 'amber' | 'muted'> = {
+  ringing: 'green', answered: 'blue', missed: 'red', rejected: 'amber', completed: 'muted',
+}
+
 function StatusBadge({ status }: { status: string }) {
-  const styles: Record<string, string> = {
-    ringing:   'bg-success/15 text-success',
-    answered:  'bg-accent text-primary',
-    missed:    'bg-destructive/10 text-destructive',
-    rejected:  'bg-orange-100 text-orange-600',
-    completed: 'bg-muted text-muted-foreground',
-  }
-  return (
-    <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${styles[status] ?? styles.completed}`}>
-      {status}
-    </span>
-  )
+  return <Pill tone={STATUS_TONE[status] ?? 'muted'}>{status}</Pill>
 }
 
 // ── Live elapsed timer for ringing calls ──
@@ -159,153 +159,138 @@ export default function InboundCallsPage() {
   }
 
   return (
-    <div className="flex h-full flex-col overflow-auto bg-muted">
-      {/* Header */}
-      <div className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-lg font-bold text-foreground">Inbound Calls</h1>
-            <p className="text-xs text-muted-foreground">
-              {loading ? 'Loading…' : `${ringing.length} ringing · ${history.length} today`}
-            </p>
-          </div>
-          {ringing.length > 0 && (
-            <div className="flex items-center gap-2 rounded-lg bg-success/15 px-3 py-2">
-              <span className="relative flex h-3 w-3">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-                <span className="relative inline-flex h-3 w-3 rounded-full bg-success" />
-              </span>
-              <span className="text-xs font-semibold text-success">
-                {ringing.length} incoming
-              </span>
-            </div>
-          )}
-        </div>
-      </div>
+    <>
+      <PageHeader
+        title="Inbound Calls"
+        description={loading ? 'Loading…' : `${ringing.length} ringing · ${history.length} today`}
+        actions={
+          ringing.length > 0 ? (
+            <Pill tone="green">
+              <span className="dl-live-dot size-1.5 rounded-full bg-success" aria-hidden />
+              {ringing.length} incoming
+            </Pill>
+          ) : (
+            <Pill tone={deviceReady ? 'muted' : 'amber'}>
+              {deviceReady ? 'Device ready' : 'Device not registered'}
+            </Pill>
+          )
+        }
+      />
 
-      <div className="flex-1 overflow-auto p-6 space-y-6">
-        {/* Ringing calls — hero cards */}
+      <PageBody>
+        {/* Ringing now — the only thing on this page that is urgent, so it
+            is the only thing above the fold and the only thing that moves. */}
         {ringing.length > 0 && (
-          <div>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-              Ringing Now ({ringing.length})
+          <section>
+            <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Ringing now ({ringing.length})
             </p>
-            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {ringing.map(call => (
-                <div key={call.id} className="rounded-xl border-2 border-success/40 bg-card p-5 shadow-lg">
-                  <div className="flex items-start justify-between">
-                    <div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="relative flex h-3 w-3">
-                          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
-                          <span className="relative inline-flex h-3 w-3 rounded-full bg-success" />
-                        </span>
-                        <span className="text-xs font-bold uppercase text-success">Incoming</span>
-                      </div>
-                      <p className="text-lg font-bold text-foreground">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {ringing.map((call) => (
+                <Card key={call.id} className="border-success/50">
+                  <div className="flex items-start justify-between gap-3 p-4">
+                    <div className="min-w-0">
+                      <Pill tone="green">
+                        <span className="dl-live-dot size-1.5 rounded-full bg-success" aria-hidden />
+                        Incoming
+                      </Pill>
+                      <p className="mt-2 truncate text-lg font-semibold">
                         {call.contact_name || call.caller_phone}
                       </p>
-                      <p className="text-sm font-mono text-muted-foreground">{call.caller_phone}</p>
-                      {call.firm && (
-                        <p className="mt-1 text-xs text-muted-foreground">{FIRM_LABEL[call.firm] ?? call.firm}</p>
-                      )}
-                      {call.dialed_number && (
-                        <p className="mt-1 text-xs text-muted-foreground">Calling: <span className="font-mono">{call.dialed_number}</span></p>
-                      )}
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Ringing for <LiveTimer created={call.created_at} />
-                      </p>
+                      <p className="font-mono text-sm text-muted-foreground">{call.caller_phone}</p>
+                      <dl className="mt-1.5 space-y-0.5 text-xs text-muted-foreground">
+                        {call.firm && <div>{FIRM_LABEL[call.firm] ?? call.firm}</div>}
+                        {call.dialed_number && (
+                          <div>Dialled <span className="font-mono">{call.dialed_number}</span></div>
+                        )}
+                        <div>Ringing for <LiveTimer created={call.created_at} /></div>
+                      </dl>
                     </div>
-                    <div className="flex flex-col gap-2">
+
+                    {/* Answer is the large one. A missed call costs a case;
+                        a rejected one costs a second of someone's time. */}
+                    <div className="flex shrink-0 flex-col items-center gap-2">
                       <button
+                        type="button"
+                        aria-label={`Answer ${call.contact_name || call.caller_phone}`}
                         disabled={callState !== 'idle' || !deviceReady || answering === call.call_sid}
                         onClick={() => handleAnswer(call)}
-                        className="rounded-full bg-success p-4 text-white shadow-lg transition-all hover:bg-success hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                        className="flex size-12 items-center justify-center rounded-full bg-success text-white shadow-sm transition-transform hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
                       >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-6 w-6">
-                          <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                        </svg>
+                        <Phone className="size-5" aria-hidden />
                       </button>
                       <button
+                        type="button"
+                        aria-label={`Reject ${call.contact_name || call.caller_phone}`}
                         disabled={rejecting === call.call_sid}
                         onClick={() => handleReject(call)}
-                        className="rounded-full bg-destructive p-3 text-white shadow-lg transition-all hover:bg-destructive hover:scale-110 disabled:opacity-40 disabled:hover:scale-100"
+                        className="flex size-9 items-center justify-center rounded-full bg-destructive text-destructive-foreground transition-transform hover:scale-105 disabled:opacity-40 disabled:hover:scale-100"
                       >
-                        <svg viewBox="0 0 20 20" fill="currentColor" className="h-5 w-5">
-                          <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
+                        <X className="size-4" aria-hidden />
                       </button>
                     </div>
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
-          </div>
+          </section>
         )}
 
-        {/* No ringing */}
         {ringing.length === 0 && !loading && (
-          <div className="rounded-xl border border-dashed border-input bg-card px-6 py-10 text-center">
-            <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <svg viewBox="0 0 20 20" fill="currentColor" className="h-6 w-6 text-muted-foreground">
-                <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-              </svg>
-            </div>
-            <p className="text-sm text-muted-foreground">No incoming calls right now.</p>
-            <p className="mt-1 text-xs text-muted-foreground">Calls will appear here in real-time when someone dials in.</p>
-          </div>
+          <EmptyState title="Nothing ringing">
+            Incoming calls appear here the moment someone dials in.
+          </EmptyState>
         )}
 
-        {/* Today's history */}
-        {history.length > 0 && (
-          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-            <div className="border-b border-border px-5 py-3">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Today's Inbound History</p>
-            </div>
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-border">
-                  {['Time', 'Caller', 'Phone', 'Firm', 'Status', 'Answered By', 'Wait Time'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {history.map(call => {
-                  const waitSecs = call.answered_at
-                    ? Math.floor((new Date(call.answered_at).getTime() - new Date(call.created_at).getTime()) / 1000)
-                    : call.ended_at
-                      ? Math.floor((new Date(call.ended_at).getTime() - new Date(call.created_at).getTime()) / 1000)
-                      : null
-
-                  return (
-                    <tr key={call.id} className="border-b border-border hover:bg-muted/50/50">
-                      <td className="px-4 py-3 text-muted-foreground tabular-nums">{fmtTime(call.created_at)}</td>
-                      <td className="px-4 py-3 font-medium text-foreground max-w-[160px] truncate">
-                        {call.contact_name || call.caller_phone}
-                      </td>
-                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">{call.caller_phone}</td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {call.firm ? (FIRM_LABEL[call.firm] ?? call.firm) : '—'}
-                      </td>
-                      <td className="px-4 py-3"><StatusBadge status={call.status} /></td>
-                      <td className="px-4 py-3 text-muted-foreground">
-                        {call.answered_by
-                          ? <span className="capitalize">{call.answered_by}</span>
-                          : <span className="text-muted-foreground">—</span>
-                        }
-                      </td>
-                      <td className="px-4 py-3 tabular-nums text-muted-foreground">
-                        {waitSecs !== null ? `${waitSecs}s` : '—'}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
-    </div>
+        <Card>
+          <CardHeader
+            title="Today's inbound"
+            note={history.length > 0 ? `${history.length} call${history.length === 1 ? '' : 's'}` : undefined}
+          />
+          {history.length === 0 ? (
+            <p className="px-4 py-10 text-center text-sm text-muted-foreground">No inbound calls today.</p>
+          ) : (
+            <TableWrap>
+              <Table>
+                <thead>
+                  <tr>
+                    <Th>Time</Th><Th>Caller</Th><Th>Phone</Th><Th>Firm</Th>
+                    <Th>Status</Th><Th>Answered by</Th><Th align="right">Waited</Th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {history.map((call) => {
+                    /* How long the caller held: to the answer if someone
+                       picked up, to the end if nobody did. */
+                    const waited = call.answered_at
+                      ? Math.floor((new Date(call.answered_at).getTime() - new Date(call.created_at).getTime()) / 1000)
+                      : call.ended_at
+                        ? Math.floor((new Date(call.ended_at).getTime() - new Date(call.created_at).getTime()) / 1000)
+                        : null
+                    return (
+                      <tr key={call.id} className="hover:bg-muted/40">
+                        <Td className="tabular-nums text-muted-foreground">{fmtTime(call.created_at)}</Td>
+                        <Td className="max-w-[180px] truncate font-medium">
+                          {call.contact_name || call.caller_phone}
+                        </Td>
+                        <Td className="font-mono text-xs text-muted-foreground">{call.caller_phone}</Td>
+                        <Td className="text-muted-foreground">
+                          {call.firm ? (FIRM_LABEL[call.firm] ?? call.firm) : '—'}
+                        </Td>
+                        <Td><StatusBadge status={call.status} /></Td>
+                        <Td className="capitalize text-muted-foreground">{call.answered_by || '—'}</Td>
+                        <Td align="right" className="text-muted-foreground">
+                          {waited !== null ? `${waited}s` : '—'}
+                        </Td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </Table>
+            </TableWrap>
+          )}
+        </Card>
+      </PageBody>
+    </>
   )
 }
