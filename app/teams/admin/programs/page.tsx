@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import ProgramsClient from './ProgramsClient'
 import Link from 'next/link'
+import { PageBody, PageHeader } from '@/app/teams/_components/shared'
 
 export default async function ProgramsPage({
   searchParams,
@@ -47,19 +48,16 @@ export default async function ProgramsPage({
   }))
 
   return (
-    <div>
-      <div className="mb-6 flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Programs</h1>
-          <p className="text-sm text-gray-500 mt-1">Organize modules into structured training programs.</p>
-        </div>
-
-        {/* Team toggle */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
+    <>
+      <PageHeader
+        title="Programs"
+        description="Organize modules into structured training programs."
+        actions={
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
           <Link
             href="/teams/admin/programs?team=intake"
             className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-              team === 'intake' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              team === 'intake' ? 'bg-card text-primary' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             Intake
@@ -67,15 +65,17 @@ export default async function ProgramsPage({
           <Link
             href="/teams/admin/programs?team=creative"
             className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-              team === 'creative' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+              team === 'creative' ? 'bg-card text-team-creative' : 'text-muted-foreground hover:text-foreground'
             }`}
           >
             Creative
           </Link>
         </div>
-      </div>
-
+        }
+      />
+      <PageBody>
       <ProgramsClient programs={enrichedPrograms} allModules={allModules ?? []} defaultTeamType={team} />
-    </div>
+      </PageBody>
+    </>
   )
 }

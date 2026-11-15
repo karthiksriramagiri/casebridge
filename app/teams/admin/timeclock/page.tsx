@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { format, parseISO, differenceInMinutes } from 'date-fns'
+import { PageBody, PageHeader } from '@/app/teams/_components/shared'
 
 interface TimeEntry {
   id: string
@@ -105,52 +106,52 @@ export default function TimeclockPage() {
   const totalHours = workers.reduce((s, w) => s + calcHours(w.entries, now), 0)
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Timeclock</h1>
-          <p className="text-sm text-gray-500 mt-1">Daily clock-in · clock-out for all workers</p>
-        </div>
-        <div className="flex items-center gap-3">
+    <>
+      <PageHeader
+        title="Timeclock"
+        description="Daily clock-in · clock-out for all workers"
+        actions={
+          <>
           <input
             type="date"
             value={date}
             onChange={e => setDate(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
           <button
             onClick={() => setDate(new Date().toISOString().slice(0, 10))}
-            className="text-sm text-blue-600 hover:text-blue-800 font-medium"
+            className="text-sm text-primary hover:text-primary font-medium"
           >
             Today
           </button>
-        </div>
-      </div>
+          </>
+        }
+      />
+      <PageBody>
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Workers</p>
-          <p className="text-2xl font-bold text-gray-900">{workers.length}</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Workers</p>
+          <p className="text-2xl font-bold text-foreground">{workers.length}</p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Clocked In</p>
-          <p className="text-2xl font-bold text-green-600">
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Clocked In</p>
+          <p className="text-2xl font-bold text-success">
             {workers.filter(w => w.entries.some(e => !e.clock_out)).length}
           </p>
         </div>
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4">
-          <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Total Hours Today</p>
-          <p className="text-2xl font-bold text-gray-900">{totalHours.toFixed(1)}h</p>
+        <div className="bg-card rounded-xl border border-border p-4">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Total Hours Today</p>
+          <p className="text-2xl font-bold text-foreground">{totalHours.toFixed(1)}h</p>
         </div>
       </div>
 
       {loading ? (
-        <div className="text-center py-12 text-gray-400">Loading…</div>
+        <div className="text-center py-12 text-muted-foreground">Loading…</div>
       ) : workers.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-12 text-center">
-          <p className="text-gray-500">No workers found. Add reps in the Reps tab first.</p>
+        <div className="bg-card rounded-xl border border-border px-6 py-12 text-center">
+          <p className="text-muted-foreground">No workers found. Add reps in the Reps tab first.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -162,30 +163,30 @@ export default function TimeclockPage() {
             const isActingOut = actionLoading === worker.profileId + ':out'
 
             return (
-              <div key={worker.profileId} className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4">
+              <div key={worker.profileId} className="bg-card rounded-xl border border-border px-5 py-4">
                 {/* Worker row */}
                 <div className="flex items-center justify-between gap-4">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-3 flex-wrap">
                       {/* Status dot */}
-                      <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${openEntry ? 'bg-green-500' : 'bg-gray-300'}`} />
-                      <span className="font-bold text-gray-900">{worker.name}</span>
+                      <span className={`inline-block w-2.5 h-2.5 rounded-full flex-shrink-0 ${openEntry ? 'bg-success' : 'bg-border'}`} />
+                      <span className="font-bold text-foreground">{worker.name}</span>
                       {openEntry && (
-                        <span className="text-xs bg-green-50 text-green-700 border border-green-200 rounded-full px-2 py-0.5 font-medium">
+                        <span className="text-xs bg-success/10 text-success border border-success/30 rounded-full px-2 py-0.5 font-medium">
                           Clocked in {fmtTime(openEntry.clock_in)}
                         </span>
                       )}
                     </div>
-                    <div className="flex items-center gap-4 mt-1.5 text-sm text-gray-500 flex-wrap">
+                    <div className="flex items-center gap-4 mt-1.5 text-sm text-muted-foreground flex-wrap">
                       <span>{hoursToday > 0 ? `${hoursToday.toFixed(2)}h today` : 'No time logged'}</span>
                       <button
                         onClick={() => { setEditRate({ profileId: worker.profileId, name: worker.name, current: worker.hourlyRate }); setEditRateVal(String(worker.hourlyRate)) }}
-                        className="text-blue-500 hover:text-blue-700 text-xs font-medium"
+                        className="text-primary hover:text-primary text-xs font-medium"
                       >
                         ${worker.hourlyRate.toFixed(2)}/hr
                       </button>
                       {earnedToday > 0 && (
-                        <span className="text-gray-400">${earnedToday.toFixed(2)} earned today</span>
+                        <span className="text-muted-foreground">${earnedToday.toFixed(2)} earned today</span>
                       )}
                     </div>
                   </div>
@@ -195,7 +196,7 @@ export default function TimeclockPage() {
                       <button
                         onClick={() => clockOut(openEntry.id, worker.profileId)}
                         disabled={isActingOut}
-                        className="text-sm bg-red-50 border border-red-200 text-red-600 hover:bg-red-100 font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        className="text-sm bg-destructive/10 border border-destructive/30 text-destructive hover:bg-destructive/15 font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                       >
                         {isActingOut ? '…' : 'Clock Out'}
                       </button>
@@ -203,7 +204,7 @@ export default function TimeclockPage() {
                       <button
                         onClick={() => clockIn(worker.profileId)}
                         disabled={isActingIn}
-                        className="text-sm bg-green-50 border border-green-200 text-green-700 hover:bg-green-100 font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
+                        className="text-sm bg-success/10 border border-success/30 text-success hover:bg-success/10 font-semibold px-4 py-2 rounded-lg transition-colors disabled:opacity-50"
                       >
                         {isActingIn ? '…' : 'Clock In'}
                       </button>
@@ -221,16 +222,16 @@ export default function TimeclockPage() {
                       const isDel = actionLoading === entry.id + ':del'
 
                       return (
-                        <div key={entry.id} className="flex items-center gap-3 text-xs text-gray-500">
+                        <div key={entry.id} className="flex items-center gap-3 text-xs text-muted-foreground">
                           <span className="font-mono">{fmtTime(entry.clock_in)}</span>
-                          <span className="text-gray-300">→</span>
-                          <span className="font-mono">{entry.clock_out ? fmtTime(entry.clock_out) : <span className="text-green-600 font-semibold">now</span>}</span>
-                          <span className="bg-gray-100 text-gray-600 rounded px-1.5 py-0.5 font-medium">{hrs}h</span>
-                          {entry.note && <span className="text-gray-400 italic">{entry.note}</span>}
+                          <span className="text-muted-foreground/50">→</span>
+                          <span className="font-mono">{entry.clock_out ? fmtTime(entry.clock_out) : <span className="text-success font-semibold">now</span>}</span>
+                          <span className="bg-muted text-muted-foreground rounded px-1.5 py-0.5 font-medium">{hrs}h</span>
+                          {entry.note && <span className="text-muted-foreground italic">{entry.note}</span>}
                           <button
                             onClick={() => deleteEntry(entry.id, worker.profileId)}
                             disabled={isDel}
-                            className="text-red-400 hover:text-red-600 ml-auto transition-colors disabled:opacity-40"
+                            className="text-destructive/70 hover:text-destructive ml-auto transition-colors disabled:opacity-40"
                             title="Delete entry"
                           >
                             ×
@@ -249,33 +250,33 @@ export default function TimeclockPage() {
       {/* Edit Hourly Rate Modal */}
       {editRate && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-xs p-5">
-            <h2 className="text-base font-semibold text-gray-900 mb-1">Hourly Rate</h2>
-            <p className="text-sm text-gray-500 mb-4">{editRate.name}</p>
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-xs p-5">
+            <h2 className="text-base font-semibold text-foreground mb-1">Hourly Rate</h2>
+            <p className="text-sm text-muted-foreground mb-4">{editRate.name}</p>
             <div className="relative mb-4">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">$</span>
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
               <input
                 type="number"
                 step="0.50"
                 min="0"
                 value={editRateVal}
                 onChange={e => setEditRateVal(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-border rounded-lg pl-7 pr-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 autoFocus
               />
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 text-xs">/hr</span>
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-xs">/hr</span>
             </div>
             <div className="flex gap-2">
               <button
                 onClick={saveRate}
                 disabled={rateSaving}
-                className="flex-1 bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white text-sm font-semibold rounded-lg py-2.5 transition-colors"
+                className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-semibold rounded-lg py-2.5 transition-colors"
               >
                 {rateSaving ? 'Saving…' : 'Save'}
               </button>
               <button
                 onClick={() => setEditRate(null)}
-                className="flex-1 border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                className="flex-1 border border-border hover:bg-muted/50 text-foreground/90 text-sm font-medium rounded-lg py-2.5 transition-colors"
               >
                 Cancel
               </button>
@@ -283,6 +284,7 @@ export default function TimeclockPage() {
           </div>
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }
