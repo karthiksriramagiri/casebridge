@@ -45,8 +45,25 @@ export async function GET(req: NextRequest) {
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const { data: me } = await admin.from('profiles').select('role').eq('id', user.id).maybeSingle()
-  if (me?.role !== 'admin') return NextResponse.json({ error: 'Admins only' }, { status: 403 })
+  const { data: me } = await admin
+    .from('profiles')
+    .select('role, name')
+    .eq('id', user.id)
+    .maybeSingle()
+
+  /* Admins see the floor; a rep sees their own column of it.
+
+     Same endpoint rather than two, because the moment there are two the
+     rep's figure and the admin's figure can disagree — and the one thing
+     a commission page must never do is tell a rep a different number from
+     the one their manager is looking at. The scoping happens after the
+     tiers are worked out, so a rep's own rows carry the tier they were
+     actually earned at. */
+  const isAdmin = me?.role === 'admin'
+  const mine = String(me?.name ?? '').trim().toLowerCase()
+  if (!isAdmin && !mine) {
+    return NextResponse.json({ error: 'No profile name to match closes against.' }, { status: 403 })
+  }
 
   /* The month being read, as YYYY-MM. Absent, the current Pacific month —
      the same clock the rest of the book keeps, so a case signed at nine in
@@ -103,11 +120,13 @@ export async function GET(req: NextRequest) {
      ones rather than a calendar of empty pages. */
   const months = [...new Set(allRows
     .filter((r) => r.signedAt)
+    .filter((r) => isAdmin || String(r.closer ?? '').trim().toLowerCase() === mine)
     .map((r) => financeDay(r.signedAt).slice(0, 7))
     .filter(Boolean))].sort().reverse()
 
   const rows = allRows
     .filter((r) => r.signedAt && financeDay(r.signedAt).slice(0, 7) === month)
+    .filter((r) => isAdmin || String(r.closer ?? '').trim().toLowerCase() === mine)
     .map((r) => {
       const comm = commissionById.get(r.id)
       const isReplacement = String(r.caseStatus || '').toLowerCase() === 'replacement'
@@ -158,6 +177,8 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json({
+    scope: isAdmin ? 'all' : 'mine',
+    viewer: me?.name ?? null,
     month,
     months,
     rows,
