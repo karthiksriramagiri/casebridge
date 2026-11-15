@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import TeamsShell from '../dashboard/TeamsShell'
+import TimeclockWidget from '../dashboard/TimeclockWidget'
 import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 interface LeaderboardEntry { name: string; count: number; rank: number; isMe: boolean; userId: string }
@@ -49,7 +50,7 @@ function LeaderboardCard({
               <div className="flex items-center gap-2.5">
                 <RankBadge rank={e.rank} />
                 <span className={`text-sm font-medium ${e.isMe ? 'text-primary font-semibold' : 'text-foreground'}`}>
-                  {e.name}{e.isMe && <span className="text-xs text-primary-foreground/70 ml-1">(you)</span>}
+                  {e.name}{e.isMe && <span className="ml-1 text-xs text-accent-foreground/70">(you)</span>}
                 </span>
               </div>
               <span className={`text-sm font-bold ${e.rank === 1 ? 'text-warning' : 'text-muted-foreground'}`}>
@@ -65,7 +66,7 @@ function LeaderboardCard({
 
 export default function HomePage() {
   const router = useRouter()
-  const [profile, setProfile] = useState<{ name: string; timeclock_enabled: boolean; team_type: string } | null>(null)
+  const [profile, setProfile] = useState<{ id: string; name: string; timeclock_enabled: boolean; team_type: string } | null>(null)
   const [data, setData] = useState<HomeData | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -85,7 +86,7 @@ export default function HomePage() {
       if (prof.role === 'admin') { router.push('/teams/admin'); return }
       if (prof.team_type === 'creative') { router.push('/teams/dashboard'); return }
 
-      setProfile({ name: prof.name, timeclock_enabled: !!prof.timeclock_enabled, team_type: prof.team_type ?? 'intake' })
+      setProfile({ id: user.id, name: prof.name, timeclock_enabled: !!prof.timeclock_enabled, team_type: prof.team_type ?? 'intake' })
 
       const res = await fetch('/api/teams/home')
       if (res.ok) setData(await res.json())
@@ -119,6 +120,10 @@ export default function HomePage() {
       />
       <PageBody>
 
+        {/* Clock in first. It is the first thing a rep does and it lived
+            two pages away, on Pay and on Timeclock. */}
+        {profile.timeclock_enabled && <TimeclockWidget profileId={profile.id} />}
+
         {/* ── Stat grid ── */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
 
@@ -137,11 +142,16 @@ export default function HomePage() {
             <p className="text-2xl font-bold text-foreground mt-1">{d?.allTimeCloses ?? 0}</p>
           </div>
 
-          {/* Next paycheck */}
-          <div className="bg-primary rounded-xl border border-transparent px-4 py-4">
-            <p className="text-xs text-primary-foreground/75 font-medium">Next Paycheck</p>
-            <p className="text-2xl font-bold text-primary-foreground mt-1">{d ? fmt$(d.paycheck.estimate) : '—'}</p>
-            <p className="text-xs text-primary-foreground/70 mt-1">{d?.paycheck.nextPayDate}</p>
+          {/* Next paycheck.
+
+              It was a solid blue block in a row of white cards, which made
+              it read as an advert rather than a figure. It keeps its
+              distinction — the accent tint and a coloured number — without
+              shouting over the three tiles beside it. */}
+          <div className="rounded-xl border border-primary/25 bg-accent px-4 py-4">
+            <p className="text-xs font-medium text-accent-foreground/80">Next Paycheck</p>
+            <p className="mt-1 text-2xl font-bold text-accent-foreground">{d ? fmt$(d.paycheck.estimate) : '—'}</p>
+            <p className="mt-1 text-xs text-accent-foreground/70">{d?.paycheck.nextPayDate}</p>
           </div>
 
           {/* Training progress */}
