@@ -1,0 +1,90 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dialer theme.
+
+   The same palette as the Creative Center, by intent rather than by
+   accident: the two are halves of one product and a rep who moves between
+   them should not feel they changed companies. The values are the ones in
+   app/creative/cc.css, restated here rather than imported so neither
+   center can repaint the other by editing its own file.
+
+   Scoped to `.dl-root`, never `:root`. The token names are the app's
+   (`--primary`, `--muted`, …), so defining them globally would repaint the
+   Team Center, the metrics pages and the Financial Center too.
+
+   `.ui-portal` is the other half of the scope. Radix renders dialogs,
+   sheets and dropdowns through a portal on <body>, outside `.dl-root`, so
+   without it every portaled surface falls back to the app's palette — a
+   dialog of black text on no background beside a page that looks right.
+   The shared primitives in app/_ui stamp that class on their overlays.
+
+   Light only, matching the Creative Center. The dialer's old theme toggle
+   drew from `dark:` variants that this palette does not define.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.dl-root,
+.ui-portal {
+  color-scheme: light;
+
+  --background: 217 20% 96%;            /* #f2f3f6 */
+  --foreground: 217 14% 11%;            /* #181b1f */
+  --card: 0 0% 100%;                    /* #ffffff */
+  --card-foreground: 217 14% 11%;       /* #181b1f */
+  --popover: 0 0% 100%;                 /* #ffffff */
+  --popover-foreground: 217 14% 11%;    /* #181b1f */
+  --primary: 214 86% 51%;               /* #1874ed */
+  --primary-foreground: 0 0% 99%;       /* #fcfcfc */
+  --secondary: 217 21% 94%;             /* #eceff3 */
+  --secondary-foreground: 217 11% 14%;  /* #1f2227 */
+  --muted: 217 19% 94%;                 /* #eef0f4 */
+  --muted-foreground: 217 6% 40%;       /* #5f636a */
+  --accent: 215 100% 94%;               /* #dfecff */
+  --accent-foreground: 213 100% 29%;    /* #004296 */
+  --destructive: 359 75% 50%;           /* #df2225 */
+  --destructive-foreground: 0 0% 100%;  /* #ffffff */
+  --success: 141 61% 37%;               /* #25984d */
+  --warning: 38 79% 51%;                /* #e49e22 */
+  --border: 217 10% 87%;                /* #dcdee2 */
+  --input: 217 8% 85%;                  /* #d5d8db */
+  --ring: 214 86% 51%;                  /* #1874ed */
+
+  --radius: 0.625rem;
+}
+
+.dl-root {
+  min-height: 100dvh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* ── Radius scale ─────────────────────────────────────────────────────────
+   Tailwind 3.4 derives only lg/md/sm from --radius; these restore the
+   larger corners the primitives ask for. */
+.dl-root .rounded-xl,
+.ui-portal.rounded-xl,
+.ui-portal .rounded-xl {
+  border-radius: calc(var(--radius) * 1.4);
+}
+.dl-root .rounded-2xl,
+.ui-portal .rounded-2xl {
+  border-radius: calc(var(--radius) * 1.8);
+}
+
+.dl-root :focus-visible {
+  outline-color: hsl(var(--ring) / 0.5);
+}
+
+/* ── The call bar's pulse ─────────────────────────────────────────────────
+   A live call is the one thing on screen that must never be mistaken for a
+   static figure, so the indicator breathes. Reduced-motion turns it to a
+   steady dot rather than removing it: the signal matters more than the
+   animation. */
+@keyframes dl-pulse {
+  0%, 100% { opacity: 1 }
+  50%      { opacity: 0.35 }
+}
+.dl-live-dot {
+  animation: dl-pulse 1.6s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dl-live-dot { animation: none }
+}

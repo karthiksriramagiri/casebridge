@@ -1,11 +1,24 @@
-import { ThemeProvider } from '../_context/theme'
+import '../dialer.css'
 import { CallProvider } from '../_context/call'
 import { AuthProvider } from '../_context/auth'
-import { DialerNav } from '../_components/DialerNav'
-import { FloatingCallBar } from '../_components/FloatingCallBar'
+import { DialerSidebar } from '../_components/ui/dialer-sidebar'
+import { CallBar } from '../_components/ui/call-bar'
 import { InboundCallOverlay } from '../_components/InboundCallOverlay'
 import { RepHeartbeat } from '../_components/RepHeartbeat'
 import { createServerSupabase } from '../_lib/supabase-server'
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The dialer shell.
+
+   Sidebar, page, and the two things that must outrank whatever page is
+   open: the call bar and the inbound-call overlay. `.dl-root` carries the
+   palette — see dialer.css — so every token below resolves to the dialer's
+   own colours rather than the app's.
+
+   The theme provider is gone. It toggled `dark:` variants the new palette
+   does not define, so the dark half was half-painted: a dark page with
+   light cards on it. Light only, the same as the Creative Center.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createServerSupabase()
@@ -20,17 +33,15 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <AuthProvider initialUser={user}>
-      <ThemeProvider>
-        <CallProvider>
-          <div className="flex h-screen overflow-hidden bg-gray-50 text-gray-900 dark:bg-gray-950 dark:text-gray-100">
-            <FloatingCallBar />
-            <InboundCallOverlay />
-            <RepHeartbeat />
-            <DialerNav role={role} />
-            <main className="flex-1 overflow-auto">{children}</main>
-          </div>
-        </CallProvider>
-      </ThemeProvider>
+      <CallProvider>
+        <div className="dl-root flex min-h-dvh flex-col md:flex-row">
+          <CallBar />
+          <InboundCallOverlay />
+          <RepHeartbeat />
+          <DialerSidebar role={role} />
+          <main className="min-w-0 flex-1">{children}</main>
+        </div>
+      </CallProvider>
     </AuthProvider>
   )
 }
