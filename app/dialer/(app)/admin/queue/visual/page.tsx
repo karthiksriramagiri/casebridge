@@ -33,8 +33,8 @@ interface RepInfo {
 const DROP_DURATION = 700
 
 const FIRM_COLORS: Record<string, { bg: string; border: string; text: string; dot: string }> = {
-  lhp:    { bg: 'bg-amber-500/10',   border: 'border-amber-500/20',   text: 'text-amber-400',   dot: 'bg-amber-400' },
-  fears:  { bg: 'bg-cyan-500/10',    border: 'border-cyan-500/20',    text: 'text-cyan-400',    dot: 'bg-cyan-400' },
+  lhp:    { bg: 'bg-warning/10',   border: 'border-amber-500/20',   text: 'text-warning',   dot: 'bg-warning' },
+  fears:  { bg: 'bg-primary/10',    border: 'border-primary/20',    text: 'text-primary',    dot: 'bg-primary' },
   jm: { bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', text: 'text-emerald-400', dot: 'bg-emerald-400' },
 }
 
@@ -57,21 +57,21 @@ function LeadCard({ lead, entering = false, index }: { lead: Lead; entering?: bo
       <div className="flex items-center justify-between gap-2">
         <div className="min-w-0 flex-1">
           <p className="text-[13px] font-semibold text-white truncate">{lead.contact_name}</p>
-          <p className="text-[10px] font-mono text-gray-500 truncate">{lead.phone}</p>
+          <p className="text-[10px] font-mono text-muted-foreground truncate">{lead.phone}</p>
         </div>
         <div className="flex flex-col items-end gap-0.5 flex-shrink-0">
           <span className={`text-[10px] font-bold uppercase ${fc.text}`}>
             {lead.firm === 'lhp' ? 'LHP' : 'Fears'}
           </span>
-          <span className="text-[9px] text-gray-500 tabular-nums">
+          <span className="text-[9px] text-muted-foreground tabular-nums">
             {lead.attempt_number}/{lead.attempts_total}
           </span>
         </div>
       </div>
       {isOnCall && (
         <div className="mt-1 flex items-center gap-1">
-          <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-          <span className="text-[9px] font-semibold uppercase tracking-wider text-green-400">On Call</span>
+          <div className="w-1.5 h-1.5 rounded-full bg-success animate-pulse" />
+          <span className="text-[9px] font-semibold uppercase tracking-wider text-success">On Call</span>
         </div>
       )}
     </div>
@@ -87,7 +87,7 @@ function UpNextCard({ lead, position, exiting = false }: { lead: Lead; position:
     <div
       className={`
         flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-500
-        ${fc.border} bg-gray-900/80 backdrop-blur-sm
+        ${fc.border} bg-muted/80 backdrop-blur-sm
         ${exiting
           ? 'animate-[cardExitDown_0.5s_ease-in_forwards]'
           : 'animate-[cardSlideUp_0.4s_ease-out_forwards]'
@@ -97,7 +97,7 @@ function UpNextCard({ lead, position, exiting = false }: { lead: Lead; position:
       {/* Position badge */}
       <div className={`
         flex items-center justify-center w-8 h-8 rounded-full text-sm font-bold tabular-nums
-        ${position === 1 ? 'bg-white/10 text-white' : 'bg-white/5 text-gray-500'}
+        ${position === 1 ? 'bg-card/10 text-white' : 'bg-card/5 text-muted-foreground'}
       `}>
         {position}
       </div>
@@ -106,9 +106,9 @@ function UpNextCard({ lead, position, exiting = false }: { lead: Lead; position:
       <div className="flex-1 min-w-0">
         <p className="text-sm font-semibold text-white truncate">{lead.contact_name}</p>
         <div className="flex items-center gap-2 mt-0.5">
-          <span className="text-xs font-mono text-gray-500">{lead.phone}</span>
-          <span className="text-[10px] text-gray-600">·</span>
-          <span className="text-[10px] text-gray-400 truncate">{lead.stage_name}</span>
+          <span className="text-xs font-mono text-muted-foreground">{lead.phone}</span>
+          <span className="text-[10px] text-muted-foreground">·</span>
+          <span className="text-[10px] text-muted-foreground truncate">{lead.stage_name}</span>
         </div>
       </div>
 
@@ -120,13 +120,13 @@ function UpNextCard({ lead, position, exiting = false }: { lead: Lead; position:
             {lead.firm === 'lhp' ? 'LHP' : 'Fears'}
           </span>
         </div>
-        <span className="text-[10px] text-gray-500 tabular-nums">
+        <span className="text-[10px] text-muted-foreground tabular-nums">
           Attempt {lead.attempt_number}/{lead.attempts_total}
         </span>
       </div>
 
       {/* Arrow indicator */}
-      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-gray-600 flex-shrink-0">
+      <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4 text-muted-foreground flex-shrink-0">
         <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" clipRule="evenodd" />
       </svg>
     </div>
@@ -147,12 +147,12 @@ function Jar({ rep, leads, newLeadIds }: {
       {/* Rep header */}
       <div className="flex items-center gap-2 mb-1">
         <div className={`w-2.5 h-2.5 rounded-full ${
-          rep.status === 'READY'   ? 'bg-green-400 shadow-green-400/50 shadow-sm' :
-          rep.status === 'ON_CALL' ? 'bg-amber-400 shadow-amber-400/50 shadow-sm animate-pulse' :
-          'bg-gray-600'
+          rep.status === 'READY'   ? 'bg-success shadow-green-400/50 shadow-sm' :
+          rep.status === 'ON_CALL' ? 'bg-warning shadow-amber-400/50 shadow-sm animate-pulse' :
+          'bg-muted-foreground/30'
         }`} />
         <span className="text-base font-bold text-white capitalize">{rep.rep_identity}</span>
-        <span className="rounded-full bg-gray-800 px-2 py-0.5 text-[10px] font-bold tabular-nums text-gray-400">
+        <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-bold tabular-nums text-muted-foreground">
           {leads.length}/5
         </span>
       </div>
@@ -163,8 +163,8 @@ function Jar({ rep, leads, newLeadIds }: {
           w-full rounded-2xl border-2 p-2 transition-all duration-300 min-h-[320px]
           flex flex-col gap-1.5
           ${isActive
-            ? 'border-white/10 bg-white/[0.02]'
-            : 'border-white/[0.04] bg-white/[0.01] opacity-40'
+            ? 'border-white/10 bg-card/[0.02]'
+            : 'border-white/[0.04] bg-card/[0.01] opacity-40'
           }
         `}
         style={{ backdropFilter: 'blur(12px)' }}
@@ -175,7 +175,7 @@ function Jar({ rep, leads, newLeadIds }: {
 
         {leads.length === 0 ? (
           <div className="flex-1 flex items-center justify-center">
-            <p className="text-xs text-gray-700 italic">Empty</p>
+            <p className="text-xs text-foreground italic">Empty</p>
           </div>
         ) : (
           leads.map((lead, i) => (
@@ -191,9 +191,9 @@ function Jar({ rep, leads, newLeadIds }: {
 
       {/* Status label */}
       <span className={`text-[10px] uppercase tracking-widest font-semibold ${
-        rep.status === 'READY'   ? 'text-green-500' :
-        rep.status === 'ON_CALL' ? 'text-amber-500' :
-        'text-gray-600'
+        rep.status === 'READY'   ? 'text-success' :
+        rep.status === 'ON_CALL' ? 'text-warning' :
+        'text-muted-foreground'
       }`}>
         {rep.status === 'READY' ? 'Ready' : rep.status === 'ON_CALL' ? 'On Call' : rep.status.toLowerCase()}
       </span>
@@ -410,7 +410,7 @@ export default function VisualQueuePage() {
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="flex h-full flex-col bg-gray-950 overflow-hidden">
+    <div className="flex h-full flex-col bg-muted overflow-hidden">
       <style>{`
         @keyframes cardDropIn {
           0%   { transform: translateY(-60px) scale(0.9); opacity: 0; }
@@ -433,11 +433,11 @@ export default function VisualQueuePage() {
       `}</style>
 
       {/* Header */}
-      <header className="flex items-center justify-between border-b border-gray-800/50 bg-gray-950 px-6 py-4">
+      <header className="flex items-center justify-between border-b border-border/50 bg-muted px-6 py-4">
         <div className="flex items-center gap-4">
           <Link
             href="/dialer/admin/queue"
-            className="flex items-center gap-1.5 rounded-lg bg-gray-800/50 px-3 py-1.5 text-xs font-medium text-gray-400 hover:text-white hover:bg-gray-800 transition-colors"
+            className="flex items-center gap-1.5 rounded-lg bg-muted/50 px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-white hover:bg-muted transition-colors"
           >
             <svg viewBox="0 0 16 16" fill="currentColor" className="w-3.5 h-3.5">
               <path fillRule="evenodd" d="M12 8a.5.5 0 01-.5.5H5.707l2.147 2.146a.5.5 0 01-.708.708l-3-3a.5.5 0 010-.708l3-3a.5.5 0 11.708.708L5.707 7.5H11.5A.5.5 0 0112 8z" clipRule="evenodd"/>
@@ -446,25 +446,25 @@ export default function VisualQueuePage() {
           </Link>
           <div>
             <h1 className="text-lg font-bold text-white">Visual Queue</h1>
-            <p className="text-xs text-gray-500">Live assignment visualization</p>
+            <p className="text-xs text-muted-foreground">Live assignment visualization</p>
           </div>
         </div>
 
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-5 mr-4">
             <div className="text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">In Queue</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">In Queue</p>
               <p className="text-lg font-bold tabular-nums text-white">{pendingLeads.length}</p>
             </div>
             <div className="text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Assigned</p>
-              <p className="text-lg font-bold tabular-nums text-cyan-400">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Assigned</p>
+              <p className="text-lg font-bold tabular-nums text-primary">
                 {leads.filter(l => ['buffered', 'leased'].includes(l.status)).length}
               </p>
             </div>
             <div className="text-center">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-500">Reps</p>
-              <p className="text-lg font-bold tabular-nums text-green-400">{readyReps.length}</p>
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Reps</p>
+              <p className="text-lg font-bold tabular-nums text-success">{readyReps.length}</p>
             </div>
           </div>
 
@@ -475,8 +475,8 @@ export default function VisualQueuePage() {
               relative flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-semibold text-white
               transition-all duration-300 disabled:opacity-40
               ${filling
-                ? 'bg-indigo-600 shadow-lg shadow-indigo-500/30'
-                : 'bg-indigo-600 hover:bg-indigo-500 hover:shadow-lg hover:shadow-indigo-500/20'
+                ? 'bg-primary shadow-lg shadow-indigo-500/30'
+                : 'bg-primary hover:bg-primary hover:shadow-lg hover:shadow-indigo-500/20'
               }
             `}
           >
@@ -488,18 +488,18 @@ export default function VisualQueuePage() {
       {/* Main area */}
       <main className="flex-1 flex flex-col overflow-hidden min-h-0">
         {/* Top section — Up Next */}
-        <div className="flex-shrink-0 border-b border-gray-800/30 bg-gray-950/50 px-6 py-5">
+        <div className="flex-shrink-0 border-b border-border/30 bg-muted/50 px-6 py-5">
           <div className="max-w-xl mx-auto">
             <div className="flex items-center gap-2 mb-3">
-              <h2 className="text-xs font-bold uppercase tracking-widest text-gray-500">Up Next</h2>
-              <span className="text-[10px] text-gray-600">
+              <h2 className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Up Next</h2>
+              <span className="text-[10px] text-muted-foreground">
                 {pendingLeads.length > 3 ? `+${pendingLeads.length - 3} more` : ''}
               </span>
             </div>
 
             <div className="flex flex-col gap-2">
               {upNext.length === 0 ? (
-                <p className="text-sm text-gray-600 italic py-4 text-center">Queue is empty</p>
+                <p className="text-sm text-muted-foreground italic py-4 text-center">Queue is empty</p>
               ) : (
                 upNext.map((lead, i) => (
                   <UpNextCard
@@ -518,7 +518,7 @@ export default function VisualQueuePage() {
         <div className="flex-shrink-0 flex justify-center py-3">
           <div className="flex flex-col items-center gap-1">
             <div className="w-px h-4 bg-gradient-to-b from-transparent to-gray-700" />
-            <svg viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5 text-gray-700">
+            <svg viewBox="0 0 16 16" fill="currentColor" className="w-5 h-5 text-foreground">
               <path fillRule="evenodd" d="M8 1a.5.5 0 01.5.5v11.793l3.146-3.147a.5.5 0 01.708.708l-4 4a.5.5 0 01-.708 0l-4-4a.5.5 0 01.708-.708L7.5 13.293V1.5A.5.5 0 018 1z" clipRule="evenodd" />
             </svg>
           </div>
@@ -529,8 +529,8 @@ export default function VisualQueuePage() {
           <div className="flex justify-center gap-6 flex-wrap">
             {readyReps.length === 0 ? (
               <div className="text-center py-16">
-                <p className="text-sm text-gray-500">No reps online</p>
-                <p className="text-xs text-gray-600 mt-1">Reps need to be READY to receive leads</p>
+                <p className="text-sm text-muted-foreground">No reps online</p>
+                <p className="text-xs text-muted-foreground mt-1">Reps need to be READY to receive leads</p>
               </div>
             ) : (
               readyReps.map(rep => (

@@ -95,26 +95,26 @@ function ActiveCallCard({ rep, monitoring, onJoin, onLeave }: {
   const isMonitored = monitoring?.repIdentity === rep.identity
 
   return (
-    <div className={`rounded-2xl border-2 bg-white shadow-md dark:bg-gray-900 transition-all ${isMonitored ? 'border-violet-400 ring-2 ring-violet-300 ring-offset-2 dark:border-violet-600 dark:ring-violet-600 dark:ring-offset-gray-950' : 'border-cyan-400 dark:border-cyan-600'}`}>
+    <div className={`rounded-2xl border-2 bg-card shadow-md transition-all ${isMonitored ? 'border-primary ring-2 ring-primary ring-offset-2 ring-offset-background' : 'border-primary'}`}>
       {/* Header row */}
-      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-cyan-100 dark:border-cyan-900/50">
+      <div className="flex items-center justify-between px-5 pt-4 pb-3 border-b border-primary/30">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-cyan-100 text-sm font-bold text-cyan-700 dark:bg-cyan-900/60 dark:text-cyan-300">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-accent text-sm font-bold text-primary">
             {rep.initials}
           </div>
           <div>
-            <p className="font-semibold text-gray-900 dark:text-white">{rep.name}</p>
+            <p className="font-semibold text-foreground">{rep.name}</p>
             <div className="flex items-center gap-1.5">
-              <span className="flex h-2 w-2 rounded-full bg-green-400 animate-pulse" />
-              <span className="text-xs font-medium text-green-600 dark:text-green-400">Live call</span>
+              <span className="flex h-2 w-2 rounded-full bg-success animate-pulse" />
+              <span className="text-xs font-medium text-success">Live call</span>
             </div>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-3xl font-mono font-bold text-cyan-700 dark:text-cyan-300 tabular-nums">
+          <p className="text-3xl font-mono font-bold text-primary tabular-nums">
             {fmtDuration(liveSecs)}
           </p>
-          <p className="text-[10px] text-gray-400">duration</p>
+          <p className="text-[10px] text-muted-foreground">duration</p>
         </div>
       </div>
 
@@ -122,21 +122,21 @@ function ActiveCallCard({ rep, monitoring, onJoin, onLeave }: {
       <div className="px-5 py-4">
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-1">On the phone with</p>
-            <p className="text-2xl font-bold text-gray-900 dark:text-white truncate">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1">On the phone with</p>
+            <p className="text-2xl font-bold text-foreground truncate">
               {rep.contactName ?? 'Unknown caller'}
             </p>
             {rep.contactPhone && (
-              <p className="mt-0.5 font-mono text-sm text-gray-500 dark:text-gray-400">{rep.contactPhone}</p>
+              <p className="mt-0.5 font-mono text-sm text-muted-foreground">{rep.contactPhone}</p>
             )}
             <div className="mt-2 flex items-center gap-2 flex-wrap">
               {rep.firm && (
-                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-600 dark:bg-gray-800 dark:text-gray-300">
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs font-medium text-muted-foreground">
                   {FIRM_LABEL[rep.firm] ?? rep.firm}
                 </span>
               )}
               {rep.campaign && (
-                <span className="rounded-full bg-gray-100 px-2.5 py-0.5 text-xs text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
                   {rep.campaign}
                 </span>
               )}
@@ -148,7 +148,7 @@ function ActiveCallCard({ rep, monitoring, onJoin, onLeave }: {
             {isMonitored ? (
               <button
                 onClick={onLeave}
-                className="flex items-center gap-2 rounded-xl bg-red-100 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-200 dark:bg-red-950/50 dark:text-red-400 dark:hover:bg-red-950"
+                className="flex items-center gap-2 rounded-xl bg-destructive/10 px-4 py-2.5 text-sm font-semibold text-destructive hover:bg-red-200"
               >
                 <PhoneOffIcon /> Leave call
               </button>
@@ -156,19 +156,19 @@ function ActiveCallCard({ rep, monitoring, onJoin, onLeave }: {
               <>
                 <button
                   onClick={() => onJoin(rep.conferenceName!, 'listen', undefined, rep.identity)}
-                  className="flex items-center gap-2 rounded-xl bg-cyan-50 border border-cyan-200 px-4 py-2.5 text-sm font-semibold text-cyan-700 hover:bg-cyan-100 dark:bg-cyan-950/40 dark:border-cyan-800 dark:text-cyan-300 dark:hover:bg-cyan-950"
+                  className="flex items-center gap-2 rounded-xl bg-accent border border-primary px-4 py-2.5 text-sm font-semibold text-primary hover:bg-accent"
                 >
                   <EarIcon /> Listen
                 </button>
                 <button
                   onClick={() => onJoin(rep.conferenceName!, 'whisper', rep.repCallSid ?? undefined, rep.identity)}
-                  className="flex items-center gap-2 rounded-xl bg-violet-50 border border-violet-200 px-4 py-2.5 text-sm font-semibold text-violet-700 hover:bg-violet-100 dark:bg-violet-950/40 dark:border-violet-800 dark:text-violet-300 dark:hover:bg-violet-950"
+                  className="flex items-center gap-2 rounded-xl bg-accent border border-primary px-4 py-2.5 text-sm font-semibold text-primary hover:bg-accent"
                 >
                   <MicIcon /> Whisper
                 </button>
                 <button
                   onClick={() => onJoin(rep.conferenceName!, 'barge', undefined, rep.identity)}
-                  className="flex items-center gap-2 rounded-xl bg-red-50 border border-red-200 px-4 py-2.5 text-sm font-semibold text-red-700 hover:bg-red-100 dark:bg-red-950/40 dark:border-red-800 dark:text-red-300 dark:hover:bg-red-950"
+                  className="flex items-center gap-2 rounded-xl bg-destructive/10 border border-destructive/40 px-4 py-2.5 text-sm font-semibold text-destructive hover:bg-destructive/10"
                 >
                   <PhoneIcon /> Barge
                 </button>
@@ -179,22 +179,22 @@ function ActiveCallCard({ rep, monitoring, onJoin, onLeave }: {
       </div>
 
       {/* Stats footer */}
-      <div className="grid grid-cols-3 divide-x divide-gray-100 border-t border-gray-100 dark:divide-gray-800 dark:border-gray-800">
+      <div className="grid grid-cols-3 divide-x divide-border border-t border-border">
         <div className="px-5 py-2.5 text-center">
-          <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">{rep.totalCalls}</p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Dials today</p>
+          <p className="text-lg font-bold tabular-nums text-foreground">{rep.totalCalls}</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Dials today</p>
         </div>
         <div className="px-5 py-2.5 text-center">
-          <p className={`text-lg font-bold tabular-nums ${rep.connectRate >= 30 ? 'text-green-600 dark:text-green-400' : rep.connectRate >= 15 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'}`}>
+          <p className={`text-lg font-bold tabular-nums ${rep.connectRate >= 30 ? 'text-success' : rep.connectRate >= 15 ? 'text-warning' : 'text-foreground'}`}>
             {rep.totalCalls > 0 ? `${rep.connectRate}%` : '—'}
           </p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Connect rate</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Connect rate</p>
         </div>
         <div className="px-5 py-2.5 text-center">
-          <p className="text-lg font-bold tabular-nums text-gray-900 dark:text-white">
+          <p className="text-lg font-bold tabular-nums text-foreground">
             {rep.connectedCalls > 0 ? fmtDuration(rep.avgDuration) : '—'}
           </p>
-          <p className="text-[10px] font-medium uppercase tracking-wider text-gray-400">Avg duration</p>
+          <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Avg duration</p>
         </div>
       </div>
     </div>
@@ -204,55 +204,55 @@ function ActiveCallCard({ rep, monitoring, onJoin, onLeave }: {
 // ── Rep Status Card (compact, for non-call status) ────────────────────────────
 
 const STATUS_BORDER: Record<string, string> = {
-  OFFLINE: 'border-gray-200 dark:border-gray-800',
-  READY:   'border-green-300 dark:border-green-800',
-  ON_CALL: 'border-cyan-400 dark:border-cyan-700',
-  PAUSED:  'border-amber-300 dark:border-amber-700',
-  WRAPUP:  'border-violet-300 dark:border-violet-700',
+  OFFLINE: 'border-border',
+  READY:   'border-success/40',
+  ON_CALL: 'border-primary',
+  PAUSED:  'border-warning/40',
+  WRAPUP:  'border-primary',
 }
 
 function RepStatusCard({ rep }: { rep: RepData }) {
   return (
-    <div className={`rounded-xl border-2 bg-white shadow-sm dark:bg-gray-900 ${STATUS_BORDER[rep.status]}`}>
+    <div className={`rounded-xl border-2 bg-card shadow-sm ${STATUS_BORDER[rep.status]}`}>
       <div className="p-4">
         <div className="flex items-center gap-3 mb-3">
           <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold
-            ${rep.status === 'ON_CALL' ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/60 dark:text-cyan-300' :
-              rep.status === 'READY'   ? 'bg-green-100 text-green-700 dark:bg-green-900/60 dark:text-green-300' :
-              rep.status === 'PAUSED'  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/60 dark:text-amber-400' :
-              rep.status === 'WRAPUP'  ? 'bg-violet-100 text-violet-700 dark:bg-violet-900/60 dark:text-violet-400' :
-              'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-500'}`}>
+            ${rep.status === 'ON_CALL' ? 'bg-accent text-primary' :
+              rep.status === 'READY'   ? 'bg-success/15 text-success' :
+              rep.status === 'PAUSED'  ? 'bg-warning/20 text-warning' :
+              rep.status === 'WRAPUP'  ? 'bg-accent text-primary' :
+              'bg-muted text-muted-foreground'}`}>
             {rep.initials}
           </div>
           <div className="min-w-0">
-            <p className="font-semibold text-gray-900 dark:text-white truncate">{rep.name}</p>
+            <p className="font-semibold text-foreground truncate">{rep.name}</p>
             <StatusPill status={rep.status as RepStatus} size="sm" pulse />
           </div>
         </div>
 
         {rep.status === 'ON_CALL' && rep.contactName && (
-          <div className="rounded-lg bg-cyan-50 px-3 py-2 dark:bg-cyan-950/30 mb-3">
-            <p className="text-xs text-cyan-600 dark:text-cyan-400 font-medium truncate">{rep.contactName}</p>
-            {rep.firm && <p className="text-[10px] text-cyan-500/70 dark:text-cyan-500/50">{FIRM_LABEL[rep.firm] ?? rep.firm}</p>}
+          <div className="rounded-lg bg-accent px-3 py-2 mb-3">
+            <p className="text-xs text-primary font-medium truncate">{rep.contactName}</p>
+            {rep.firm && <p className="text-[10px] text-primary/70">{FIRM_LABEL[rep.firm] ?? rep.firm}</p>}
           </div>
         )}
 
         <div className="grid grid-cols-3 gap-1 text-center">
           <div>
-            <p className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-200">{rep.totalCalls}</p>
-            <p className="text-[9px] font-medium uppercase tracking-wider text-gray-400">Dials</p>
+            <p className="text-base font-bold tabular-nums text-foreground">{rep.totalCalls}</p>
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Dials</p>
           </div>
           <div>
-            <p className={`text-base font-bold tabular-nums ${rep.connectRate >= 30 ? 'text-green-600 dark:text-green-400' : rep.connectRate >= 15 ? 'text-amber-500 dark:text-amber-400' : 'text-gray-700 dark:text-gray-300'}`}>
+            <p className={`text-base font-bold tabular-nums ${rep.connectRate >= 30 ? 'text-success' : rep.connectRate >= 15 ? 'text-warning' : 'text-foreground'}`}>
               {rep.totalCalls > 0 ? `${rep.connectRate}%` : '—'}
             </p>
-            <p className="text-[9px] font-medium uppercase tracking-wider text-gray-400">Connect</p>
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Connect</p>
           </div>
           <div>
-            <p className="text-base font-bold tabular-nums text-gray-800 dark:text-gray-200">
+            <p className="text-base font-bold tabular-nums text-foreground">
               {rep.connectedCalls > 0 ? fmtDuration(rep.avgDuration) : '—'}
             </p>
-            <p className="text-[9px] font-medium uppercase tracking-wider text-gray-400">Avg dur</p>
+            <p className="text-[9px] font-medium uppercase tracking-wider text-muted-foreground">Avg dur</p>
           </div>
         </div>
       </div>
@@ -264,10 +264,10 @@ function RepStatusCard({ rep }: { rep: RepData }) {
 
 function KPICard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: boolean }) {
   return (
-    <div className={`rounded-xl border bg-white px-5 py-4 shadow-sm dark:bg-gray-900 ${accent ? 'border-cyan-300 dark:border-cyan-700' : 'border-gray-200 dark:border-gray-800'}`}>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-      <p className={`mt-1 text-3xl font-bold tabular-nums ${accent ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-900 dark:text-white'}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-gray-400">{sub}</p>}
+    <div className={`rounded-xl border bg-card px-5 py-4 shadow-sm ${accent ? 'border-primary' : 'border-border'}`}>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+      <p className={`mt-1 text-3xl font-bold tabular-nums ${accent ? 'text-primary' : 'text-foreground'}`}>{value}</p>
+      {sub && <p className="mt-0.5 text-xs text-muted-foreground">{sub}</p>}
     </div>
   )
 }
@@ -408,17 +408,17 @@ export default function LiveFloorPage() {
   const connectRate = displayStats?.avgConnectRate ?? 0
 
   return (
-    <div className="flex h-full flex-col overflow-auto bg-gray-50 dark:bg-gray-950">
+    <div className="flex h-full flex-col overflow-auto bg-muted">
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-950">
+      <div className="border-b border-border bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <h1 className="text-lg font-bold text-gray-900 dark:text-white">Live Floor</h1>
-              <span className="font-mono text-sm font-semibold text-gray-600 dark:text-gray-300 tabular-nums">{pstClock} <span className="text-[10px] font-medium text-gray-400">PT</span></span>
+              <h1 className="text-lg font-bold text-foreground">Live Floor</h1>
+              <span className="font-mono text-sm font-semibold text-muted-foreground tabular-nums">{pstClock} <span className="text-[10px] font-medium text-muted-foreground">PT</span></span>
             </div>
-            <p className="text-xs text-gray-400">
-              {mockMode ? <span className="text-amber-500 font-medium">Preview mode — mock data</span> : lastUpdate
+            <p className="text-xs text-muted-foreground">
+              {mockMode ? <span className="text-warning font-medium">Preview mode — mock data</span> : lastUpdate
                 ? `Updated ${lastUpdate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: 'America/Los_Angeles' })} PT`
                 : 'Connecting…'}
               {!mockMode && ' · auto-refreshes every 5s'}
@@ -427,24 +427,24 @@ export default function LiveFloorPage() {
           <div className="flex items-center gap-3">
             <button
               onClick={() => setMockMode(m => !m)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${mockMode ? 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-950/50 dark:text-amber-400' : 'bg-gray-100 text-gray-500 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'}`}
+              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${mockMode ? 'bg-warning/20 text-warning hover:bg-amber-200' : 'bg-muted text-muted-foreground hover:bg-muted'}`}
             >
               {mockMode ? '✕ Exit preview' : 'Preview layout'}
             </button>
             {monitoring && (
-              <div className="flex items-center gap-2 rounded-lg bg-violet-100 px-3 py-2 dark:bg-violet-950/40">
-                <span className="h-2 w-2 rounded-full bg-violet-500 animate-pulse" />
-                <span className="text-xs font-semibold text-violet-700 dark:text-violet-300 capitalize">
+              <div className="flex items-center gap-2 rounded-lg bg-accent px-3 py-2">
+                <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
+                <span className="text-xs font-semibold text-primary capitalize">
                   {monitoring.mode} — {reps.find(r => r.identity === monitoring.repIdentity)?.name}
                 </span>
                 <button onClick={handleLeave}
-                  className="ml-1 text-xs text-violet-500 hover:text-violet-700 dark:text-violet-400 dark:hover:text-violet-200">
+                  className="ml-1 text-xs text-primary hover:text-primary">
                   ✕ Leave
                 </button>
               </div>
             )}
-            <div className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium ${deviceReady ? 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-400' : 'bg-gray-100 text-gray-500 dark:bg-gray-800'}`}>
-              <span className={`h-2 w-2 rounded-full ${deviceReady ? 'bg-green-500' : 'bg-gray-400'}`} />
+            <div className={`flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium ${deviceReady ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
+              <span className={`h-2 w-2 rounded-full ${deviceReady ? 'bg-success' : 'bg-muted-foreground/30'}`} />
               {deviceReady ? 'Device ready' : 'Connecting…'}
             </div>
           </div>
@@ -463,7 +463,7 @@ export default function LiveFloorPage() {
         {/* Active Calls — hero section */}
         {(!loading || mockMode) && onCallReps.length > 0 && (
           <div>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Active Calls ({onCallReps.length})
             </p>
             <div className={`grid gap-4 ${onCallReps.length === 1 ? 'grid-cols-1 max-w-2xl' : 'grid-cols-1 sm:grid-cols-2'}`}>
@@ -483,7 +483,7 @@ export default function LiveFloorPage() {
         {/* All Reps status grid */}
         {(!loading || mockMode) && (
           <div>
-            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-400">
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               {onCallReps.length > 0 ? 'Rest of Floor' : 'All Reps'}
             </p>
             {otherReps.length > 0 ? (
@@ -493,22 +493,22 @@ export default function LiveFloorPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-gray-400">All reps are currently on calls.</p>
+              <p className="text-sm text-muted-foreground">All reps are currently on calls.</p>
             )}
           </div>
         )}
 
         {/* Full rep breakdown table */}
         {(!loading || mockMode) && displayReps.length > 0 && (
-          <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
-            <div className="border-b border-gray-100 px-5 py-3 dark:border-gray-800">
-              <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">Today's Breakdown</p>
+          <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+            <div className="border-b border-border px-5 py-3">
+              <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Today's Breakdown</p>
             </div>
             <table className="w-full text-sm">
               <thead>
-                <tr className="border-b border-gray-100 dark:border-gray-800">
+                <tr className="border-b border-border">
                   {['Rep', 'Status', 'Current Call', 'Phone', 'Firm / Stage', 'Dials', 'Connected', 'Connect %', 'Avg Duration'].map(h => (
-                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                    <th key={h} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                   ))}
                 </tr>
               </thead>
@@ -516,14 +516,14 @@ export default function LiveFloorPage() {
                 {reps.map(rep => (
                   <React.Fragment key={rep.identity}>
                     <tr
-                      className={`border-b border-gray-50 hover:bg-gray-50/50 dark:border-gray-800/50 dark:hover:bg-gray-800/20 cursor-pointer ${expandedRep === rep.identity ? 'bg-gray-50 dark:bg-gray-800/30' : ''}`}
+                      className={`border-b border-border hover:bg-muted/50/50 cursor-pointer ${expandedRep === rep.identity ? 'bg-muted/50' : ''}`}
                       onClick={() => toggleRepExpand(rep.identity)}
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">{rep.initials}</div>
-                          <span className="font-medium text-gray-800 dark:text-gray-200">{rep.name}</span>
-                          <svg className={`h-3.5 w-3.5 text-gray-400 transition-transform ${expandedRep === rep.identity ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">{rep.initials}</div>
+                          <span className="font-medium text-foreground">{rep.name}</span>
+                          <svg className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${expandedRep === rep.identity ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
                             <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />
                           </svg>
                         </div>
@@ -531,101 +531,101 @@ export default function LiveFloorPage() {
                       <td className="px-4 py-3"><StatusPill status={rep.status as RepStatus} size="sm" /></td>
                       <td className="px-4 py-3 max-w-[160px]">
                         {rep.status === 'ON_CALL' && rep.contactName
-                          ? <p className="truncate font-semibold text-cyan-700 dark:text-cyan-300">{rep.contactName}</p>
-                          : <span className="text-gray-400">—</span>}
+                          ? <p className="truncate font-semibold text-primary">{rep.contactName}</p>
+                          : <span className="text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 font-mono text-xs text-gray-500">
-                        {rep.contactPhone ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
+                      <td className="px-4 py-3 font-mono text-xs text-muted-foreground">
+                        {rep.contactPhone ?? <span className="text-muted-foreground">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         {rep.firm
                           ? <div>
-                              <p className="text-xs font-medium text-gray-600 dark:text-gray-300">{FIRM_LABEL[rep.firm] ?? rep.firm}</p>
-                              {rep.campaign && <p className="text-[10px] text-gray-400 truncate max-w-[120px]">{rep.campaign}</p>}
+                              <p className="text-xs font-medium text-muted-foreground">{FIRM_LABEL[rep.firm] ?? rep.firm}</p>
+                              {rep.campaign && <p className="text-[10px] text-muted-foreground truncate max-w-[120px]">{rep.campaign}</p>}
                             </div>
-                          : <span className="text-gray-400">—</span>}
+                          : <span className="text-muted-foreground">—</span>}
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200 font-medium">{rep.totalCalls}</td>
-                      <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200">{rep.connectedCalls}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground font-medium">{rep.totalCalls}</td>
+                      <td className="px-4 py-3 tabular-nums text-foreground">{rep.connectedCalls}</td>
                       <td className="px-4 py-3 tabular-nums font-semibold">
-                        <span className={rep.connectRate >= 30 ? 'text-green-600 dark:text-green-400' : rep.connectRate >= 15 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-500 dark:text-gray-400'}>
+                        <span className={rep.connectRate >= 30 ? 'text-success' : rep.connectRate >= 15 ? 'text-warning' : 'text-muted-foreground'}>
                           {rep.totalCalls > 0 ? `${rep.connectRate}%` : '—'}
                         </span>
                       </td>
-                      <td className="px-4 py-3 tabular-nums text-gray-800 dark:text-gray-200">
+                      <td className="px-4 py-3 tabular-nums text-foreground">
                         {rep.connectedCalls > 0 ? fmtDuration(rep.avgDuration) : '—'}
                       </td>
                     </tr>
                     {expandedRep === rep.identity && (
                       <tr>
-                        <td colSpan={10} className="bg-gray-50/80 px-4 py-0 dark:bg-gray-800/20">
+                        <td colSpan={10} className="bg-muted/50/80 px-4 py-0">
                           <div className="py-3 pl-9">
                             {repCallsLoading ? (
-                              <p className="text-xs text-gray-400 animate-pulse py-2">Loading calls…</p>
+                              <p className="text-xs text-muted-foreground animate-pulse py-2">Loading calls…</p>
                             ) : repCalls.length === 0 ? (
-                              <p className="text-xs text-gray-400 py-2">No calls today.</p>
+                              <p className="text-xs text-muted-foreground py-2">No calls today.</p>
                             ) : (
                               <table className="w-full text-xs">
                                 <thead>
-                                  <tr className="border-b border-gray-200 dark:border-gray-700">
+                                  <tr className="border-b border-border">
                                     {['Time', 'Contact', 'Phone', 'Firm', 'Status', 'Duration', 'Hung Up', 'Connected', 'Disposition'].map(h => (
-                                      <th key={h} className="px-3 py-1.5 text-left text-[9px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                                      <th key={h} className="px-3 py-1.5 text-left text-[9px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                                     ))}
                                   </tr>
                                 </thead>
                                 <tbody>
                                   {repCalls.map(c => (
-                                    <tr key={c.callSid} className="border-b border-gray-100 dark:border-gray-800/50">
-                                      <td className="px-3 py-1.5 text-gray-500 tabular-nums">
+                                    <tr key={c.callSid} className="border-b border-border/50">
+                                      <td className="px-3 py-1.5 text-muted-foreground tabular-nums">
                                         {new Date(c.startedAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' })}
                                       </td>
-                                      <td className="px-3 py-1.5 font-medium text-gray-700 dark:text-gray-300 max-w-[140px] truncate">{c.contactName}</td>
-                                      <td className="px-3 py-1.5 font-mono text-gray-500">{c.phone}</td>
-                                      <td className="px-3 py-1.5 text-gray-500">{c.firm ? (FIRM_LABEL[c.firm] ?? c.firm) : '—'}</td>
+                                      <td className="px-3 py-1.5 font-medium text-foreground max-w-[140px] truncate">{c.contactName}</td>
+                                      <td className="px-3 py-1.5 font-mono text-muted-foreground">{c.phone}</td>
+                                      <td className="px-3 py-1.5 text-muted-foreground">{c.firm ? (FIRM_LABEL[c.firm] ?? c.firm) : '—'}</td>
                                       <td className="px-3 py-1.5">
                                         <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                                          c.status === 'completed' ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
-                                          c.status === 'no-answer' ? 'bg-red-50 text-red-600 dark:bg-red-950/40 dark:text-red-400' :
-                                          c.status === 'busy'      ? 'bg-amber-50 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400' :
-                                          'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                          c.status === 'completed' ? 'bg-muted text-muted-foreground' :
+                                          c.status === 'no-answer' ? 'bg-destructive/10 text-destructive' :
+                                          c.status === 'busy'      ? 'bg-warning/20 text-warning' :
+                                          'bg-muted text-muted-foreground'
                                         }`}>
                                           {c.answeredBy?.startsWith('machine') ? 'voicemail' : c.status}
                                         </span>
                                       </td>
-                                      <td className="px-3 py-1.5 tabular-nums text-gray-700 dark:text-gray-300">{fmtDuration(c.duration)}</td>
+                                      <td className="px-3 py-1.5 tabular-nums text-foreground">{fmtDuration(c.duration)}</td>
                                       <td className="px-3 py-1.5">
                                         {c.endedBy === 'contact' ? (
-                                          <span className="text-amber-600 dark:text-amber-400 font-medium text-[10px]">PC @ {fmtDuration(c.duration)}</span>
+                                          <span className="text-warning font-medium text-[10px]">PC @ {fmtDuration(c.duration)}</span>
                                         ) : c.endedBy === 'rep' ? (
-                                          <span className="text-gray-500 dark:text-gray-400 text-[10px]">Rep @ {fmtDuration(c.duration)}</span>
+                                          <span className="text-muted-foreground text-[10px]">Rep @ {fmtDuration(c.duration)}</span>
                                         ) : (
-                                          <span className="text-gray-400 text-[10px]">—</span>
+                                          <span className="text-muted-foreground text-[10px]">—</span>
                                         )}
                                       </td>
                                       <td className="px-3 py-1.5">
                                         {c.connected ? (
-                                          <span className="inline-flex items-center gap-1 text-green-600 dark:text-green-400 font-semibold">
-                                            <span className="h-1.5 w-1.5 rounded-full bg-green-500" /> Yes
+                                          <span className="inline-flex items-center gap-1 text-success font-semibold">
+                                            <span className="h-1.5 w-1.5 rounded-full bg-success" /> Yes
                                           </span>
                                         ) : (
-                                          <span className="text-gray-400">No</span>
+                                          <span className="text-muted-foreground">No</span>
                                         )}
                                       </td>
                                       <td className="px-3 py-1.5">
                                         {c.disposition ? (
                                           <span className={`inline-block rounded-full px-1.5 py-0.5 text-[9px] font-bold uppercase ${
-                                            c.disposition === 'Signed'        ? 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400' :
-                                            c.disposition === 'Qualified'     ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400' :
-                                            c.disposition === 'Callback'      ? 'bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400' :
-                                            c.disposition === 'No Response'   ? 'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300' :
-                                            c.disposition === 'Not Qualified' ? 'bg-red-100 text-red-600 dark:bg-red-950/40 dark:text-red-400' :
-                                            c.disposition === 'Wrong Number'  ? 'bg-orange-100 text-orange-600 dark:bg-orange-950/40 dark:text-orange-400' :
-                                            'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+                                            c.disposition === 'Signed'        ? 'bg-success/15 text-success' :
+                                            c.disposition === 'Qualified'     ? 'bg-emerald-100 text-emerald-700' :
+                                            c.disposition === 'Callback'      ? 'bg-accent text-primary' :
+                                            c.disposition === 'No Response'   ? 'bg-muted text-muted-foreground' :
+                                            c.disposition === 'Not Qualified' ? 'bg-destructive/10 text-destructive' :
+                                            c.disposition === 'Wrong Number'  ? 'bg-orange-100 text-orange-600' :
+                                            'bg-muted text-muted-foreground'
                                           }`}>
                                             {c.disposition}
                                           </span>
                                         ) : (
-                                          <span className="text-gray-400">—</span>
+                                          <span className="text-muted-foreground">—</span>
                                         )}
                                       </td>
                                     </tr>
@@ -647,7 +647,7 @@ export default function LiveFloorPage() {
         {loading && (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
             {[1,2,3,4].map(i => (
-              <div key={i} className="h-48 animate-pulse rounded-xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-gray-800" />
+              <div key={i} className="h-48 animate-pulse rounded-xl border border-border bg-muted" />
             ))}
           </div>
         )}

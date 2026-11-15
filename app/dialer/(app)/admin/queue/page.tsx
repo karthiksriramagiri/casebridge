@@ -56,13 +56,13 @@ const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&
 const firmLabel = (code: string) => FIRM_LABEL[code] ?? code.toUpperCase()
 
 const STATUS_BADGE: Record<string, { label: (a: Attempt) => string; cls: string }> = {
-  pending:   { label: () => 'pending',                                    cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' },
-  buffered:  { label: a => `⏳ ${a.buffered_for ?? ''}`,                  cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' },
-  leased:    { label: a => `🔒 ${a.leased_by ?? ''}`,                     cls: 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300' },
-  completed: { label: a => `✓ ${a.disposition ?? 'done'}`,                cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' },
-  merged:    { label: () => 'merged',                                      cls: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500' },
-  cancelled: { label: () => 'cancelled',                                   cls: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500' },
-  expired:   { label: () => 'expired',                                     cls: 'bg-red-50 text-red-400 dark:bg-red-950/30 dark:text-red-400' },
+  pending:   { label: () => 'pending',                                    cls: 'bg-muted text-muted-foreground' },
+  buffered:  { label: a => `⏳ ${a.buffered_for ?? ''}`,                  cls: 'bg-accent text-primary' },
+  leased:    { label: a => `🔒 ${a.leased_by ?? ''}`,                     cls: 'bg-success/15 text-success' },
+  completed: { label: a => `✓ ${a.disposition ?? 'done'}`,                cls: 'bg-emerald-50 text-emerald-700' },
+  merged:    { label: () => 'merged',                                      cls: 'bg-muted text-muted-foreground' },
+  cancelled: { label: () => 'cancelled',                                   cls: 'bg-muted text-muted-foreground' },
+  expired:   { label: () => 'expired',                                     cls: 'bg-destructive/10 text-destructive' },
 }
 
 function fmtTime(iso: string | null) {
@@ -82,13 +82,13 @@ function StatusBadge({ attempt }: { attempt: Attempt }) {
 function CallStatusBadge({ attempt }: { attempt: Attempt }) {
   const s = attempt.status
   const cfg =
-    s === 'completed'  ? { label: 'Completed',  cls: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300' } :
-    s === 'cancelled'  ? { label: 'Cancelled',  cls: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500' } :
-    s === 'expired'    ? { label: 'Expired',     cls: 'bg-red-50 text-red-400 dark:bg-red-950/30 dark:text-red-400' } :
-    s === 'merged'     ? { label: 'Merged',      cls: 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-500' } :
-    s === 'leased'     ? { label: 'On Call',     cls: 'bg-green-50 text-green-700 dark:bg-green-950/40 dark:text-green-300' } :
-    s === 'buffered'   ? { label: 'Queued',      cls: 'bg-blue-50 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300' } :
-    /* pending */        { label: 'Pending',     cls: 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400' }
+    s === 'completed'  ? { label: 'Completed',  cls: 'bg-emerald-50 text-emerald-700' } :
+    s === 'cancelled'  ? { label: 'Cancelled',  cls: 'bg-muted text-muted-foreground' } :
+    s === 'expired'    ? { label: 'Expired',     cls: 'bg-destructive/10 text-destructive' } :
+    s === 'merged'     ? { label: 'Merged',      cls: 'bg-muted text-muted-foreground' } :
+    s === 'leased'     ? { label: 'On Call',     cls: 'bg-success/15 text-success' } :
+    s === 'buffered'   ? { label: 'Queued',      cls: 'bg-accent text-primary' } :
+    /* pending */        { label: 'Pending',     cls: 'bg-muted text-muted-foreground' }
 
   return (
     <span className={`inline-block rounded-full px-2 py-0.5 text-[10px] font-medium ${cfg.cls}`}>
@@ -112,16 +112,16 @@ function PaceIndicator({ completed, totalAttempts }: { completed: number; totalA
   const diff = actualFraction - expectedFraction
 
   let label = 'On pace'
-  let cls   = 'text-green-600 dark:text-green-400'
-  if (diff < -0.15) { label = 'Falling behind'; cls = 'text-amber-500 dark:text-amber-400' }
-  if (diff < -0.30) { label = 'Behind';          cls = 'text-red-500 dark:text-red-400'   }
+  let cls   = 'text-success'
+  if (diff < -0.15) { label = 'Falling behind'; cls = 'text-warning' }
+  if (diff < -0.30) { label = 'Behind';          cls = 'text-destructive'   }
 
   const pct = Math.round(actualFraction * 100)
   return (
     <div className="flex flex-col">
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">Pace</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Pace</p>
       <p className={`text-sm font-bold ${cls}`}>{label}</p>
-      <p className="text-xs text-gray-400">{pct}% done</p>
+      <p className="text-xs text-muted-foreground">{pct}% done</p>
     </div>
   )
 }
@@ -558,21 +558,21 @@ export default function QueueAdminPage() {
     <div className="flex h-full flex-col overflow-hidden">
       {/* Toast */}
       {toast && (
-        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-gray-900 px-4 py-2 text-sm text-white shadow-lg dark:bg-gray-100 dark:text-gray-900">
+        <div className="fixed bottom-4 right-4 z-50 rounded-lg bg-muted px-4 py-2 text-sm text-white shadow-lg">
           {toast}
         </div>
       )}
 
       {/* Header */}
-      <div className="border-b border-gray-200 bg-white px-6 py-4 dark:border-gray-800 dark:bg-gray-950">
+      <div className="border-b border-border bg-card px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-lg font-bold text-gray-900 dark:text-white">Calling Queue</h1>
-            <p className="text-sm text-gray-500">Live view — today's call plan</p>
+            <h1 className="text-lg font-bold text-foreground">Calling Queue</h1>
+            <p className="text-sm text-muted-foreground">Live view — today's call plan</p>
           </div>
           <div className="flex items-center gap-3">
             <Link href="/dialer/admin/queue/visual"
-              className="flex items-center gap-1.5 rounded-lg border border-indigo-400/30 bg-indigo-500/10 px-4 py-2 text-sm font-medium text-indigo-400 hover:bg-indigo-500/20 transition-colors">
+              className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/10 px-4 py-2 text-sm font-medium text-primary hover:bg-primary/20 transition-colors">
               <svg viewBox="0 0 16 16" fill="currentColor" className="w-4 h-4">
                 <path d="M8 4a.5.5 0 01.5.5v3h3a.5.5 0 010 1h-3v3a.5.5 0 01-1 0v-3h-3a.5.5 0 010-1h3v-3A.5.5 0 018 4z"/>
                 <path fillRule="evenodd" d="M2 2a2 2 0 012-2h8a2 2 0 012 2v12a2 2 0 01-2 2H4a2 2 0 01-2-2V2zm2-1a1 1 0 00-1 1v12a1 1 0 001 1h8a1 1 0 001-1V2a1 1 0 00-1-1H4z" clipRule="evenodd"/>
@@ -580,11 +580,11 @@ export default function QueueAdminPage() {
               Visual
             </Link>
             <button onClick={handleReset} disabled={resetting}
-              className="rounded-lg border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50 transition-colors dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300">
+              className="rounded-lg border border-input bg-card px-4 py-2 text-sm font-medium text-foreground hover:bg-muted/50 disabled:opacity-50 transition-colors">
               {resetting ? 'Resetting…' : 'Reset Day'}
             </button>
             <button onClick={handleSync} disabled={syncing}
-              className="flex items-center gap-2 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50 transition-colors">
+              className="flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary disabled:opacity-50 transition-colors">
               <svg viewBox="0 0 16 16" fill="currentColor" className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`}>
                 <path fillRule="evenodd" d="M8 3a5 5 0 104.546 2.914.5.5 0 01.908-.417A6 6 0 118 2v1z" clipRule="evenodd" />
                 <path d="M8 4.466V.534a.25.25 0 01.41-.192l2.36 1.966c.12.1.12.284 0 .384L8.41 4.658A.25.25 0 018 4.466z" />
@@ -597,7 +597,7 @@ export default function QueueAdminPage() {
 
       {/* KPI strip */}
       {summary && (
-        <div className="grid grid-cols-4 gap-0 border-b border-gray-200 dark:border-gray-800 sm:grid-cols-8">
+        <div className="grid grid-cols-4 gap-0 border-b border-border sm:grid-cols-8">
           {[
             { label: 'Unique Leads',  value: summary.uniqueLeads },
             { label: 'Total Attempts', value: summary.totalAttempts },
@@ -608,27 +608,27 @@ export default function QueueAdminPage() {
             { label: 'On Call',        value: summary.leased },
             { label: 'LHP / Fears / J&M',   value: `${summary.byFirm.lhp} / ${summary.byFirm.fears} / ${summary.byFirm.jm}` },
           ].map(({ label, value, accent }) => (
-            <div key={label} className="border-r border-gray-200 bg-white px-3 py-3 last:border-r-0 dark:border-gray-800 dark:bg-gray-950">
-              <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{label}</p>
-              <p className={`text-lg font-bold tabular-nums ${accent ? 'text-cyan-600 dark:text-cyan-400' : 'text-gray-900 dark:text-white'}`}>{value}</p>
+            <div key={label} className="border-r border-border bg-card px-3 py-3 last:border-r-0">
+              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{label}</p>
+              <p className={`text-lg font-bold tabular-nums ${accent ? 'text-primary' : 'text-foreground'}`}>{value}</p>
             </div>
           ))}
         </div>
       )}
       {summary && (
-        <div className="border-b border-gray-200 bg-white px-6 py-2 dark:border-gray-800 dark:bg-gray-950">
+        <div className="border-b border-border bg-card px-6 py-2">
           <PaceIndicator completed={summary.completed} totalAttempts={summary.totalAttempts} />
         </div>
       )}
 
       {/* Filters */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-gray-200 bg-gray-50 px-6 py-3 dark:border-gray-800 dark:bg-gray-950">
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/50 px-6 py-3">
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="Search name or phone…"
-          className="w-44 rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-900 dark:text-white" />
+          className="w-44 rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground focus:border-primary focus:outline-none" />
 
         <select value={firm} onChange={e => setFirm(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+          className="rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground">
           <option value="">All firms</option>
           <option value="lhp">Larry H. Parker</option>
           <option value="fears">Fears Law</option>
@@ -636,7 +636,7 @@ export default function QueueAdminPage() {
         </select>
 
         <select value={block} onChange={e => setBlock(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+          className="rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground">
           <option value="">All blocks</option>
           <option value="morning">Morning</option>
           <option value="afternoon">Afternoon</option>
@@ -645,7 +645,7 @@ export default function QueueAdminPage() {
         </select>
 
         <select value={state} onChange={e => setState(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+          className="rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground">
           <option value="">All states</option>
           {stateCounts.map(([st, n]) => (
             <option key={st} value={st}>{st === '??' ? 'Unknown' : st} ({n})</option>
@@ -653,7 +653,7 @@ export default function QueueAdminPage() {
         </select>
 
         <select value={status} onChange={e => setStatus(e.target.value)}
-          className="rounded-lg border border-gray-300 bg-white px-3 py-1.5 text-sm text-gray-900 dark:border-gray-700 dark:bg-gray-900 dark:text-white">
+          className="rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground">
           <option value="">All statuses</option>
           <option value="pending">Pending</option>
           <option value="buffered">Buffered</option>
@@ -664,27 +664,27 @@ export default function QueueAdminPage() {
         </select>
 
         {/* Tab */}
-        <div className="flex rounded-lg border border-gray-300 overflow-hidden dark:border-gray-700">
+        <div className="flex rounded-lg border border-input overflow-hidden">
           {(['active', 'done', 'callbacks', 'all'] as const).map(t => {
             const label = t === 'done' ? 'Completed' : t === 'callbacks' ? `Callbacks${summary?.callbacks ? ` (${summary.callbacks})` : ''}` : t
             return (
               <button key={t} onClick={() => setTab(t)}
-                className={`px-3 py-1.5 text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white' : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
+                className={`px-3 py-1.5 text-sm font-medium capitalize transition-colors ${tab === t ? 'bg-muted text-foreground' : 'bg-card text-muted-foreground hover:bg-muted'}`}>
                 {label}
               </button>
             )
           })}
         </div>
 
-        <span className="text-xs text-gray-400">{filtered.length} attempts</span>
+        <span className="text-xs text-muted-foreground">{filtered.length} attempts</span>
 
         {/* Calling firms — which clients the floor is dialling at all */}
         <div className="relative ml-auto">
           <button onClick={() => setFirmsOpen(o => !o)}
             className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors
               ${savedFirmMode === 'off'
-                ? 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'
-                : 'border-amber-400/40 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300'}`}>
+                ? 'border-input bg-card text-muted-foreground hover:bg-muted/50'
+                : 'border-warning/40/40 bg-warning/20 text-warning hover:bg-warning/20'}`}>
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
               <path d="M2 14V5.5a.5.5 0 01.28-.45l5-2.5a.5.5 0 01.44 0l5 2.5A.5.5 0 0113 5.5V14h1.5a.5.5 0 010 1h-13a.5.5 0 010-1H2zm3-7a.5.5 0 000 1h1a.5.5 0 000-1H5zm0 2.5a.5.5 0 000 1h1a.5.5 0 000-1H5zM9 7a.5.5 0 000 1h1a.5.5 0 000-1H9zm0 2.5a.5.5 0 000 1h1a.5.5 0 000-1H9z"/>
             </svg>
@@ -694,27 +694,27 @@ export default function QueueAdminPage() {
                 ? `Calling only: ${savedFirms.map(firmLabel).join(', ')}`
                 : `Paused: ${savedFirms.map(firmLabel).join(', ')}`}
             {heldByFirmFilter > 0 && (
-              <span className="rounded-full bg-amber-200/70 px-1.5 text-[10px] tabular-nums text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+              <span className="rounded-full bg-amber-200/70 px-1.5 text-[10px] tabular-nums text-amber-900">
                 {heldByFirmFilter} held
               </span>
             )}
           </button>
 
           {firmsOpen && (
-            <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Which firms do reps call?</p>
-              <p className="mt-0.5 text-xs text-gray-500">
+            <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-border bg-card p-4 shadow-xl">
+              <p className="text-sm font-semibold text-foreground">Which firms do reps call?</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 Pausing a firm stops its leads being served without cancelling them — turn it back
                 on and they return. Callbacks are always served, whatever the filter says.
               </p>
 
               {filtersNeedMigration && (
-                <p className="mt-2 rounded-lg border border-amber-300 bg-amber-50 px-2 py-1.5 text-[11px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300">
+                <p className="mt-2 rounded-lg border border-warning/40 bg-warning/20 px-2 py-1.5 text-[11px] text-warning">
                   Run <code>supabase/migration_dialer_state_filter.sql</code> to enable this.
                 </p>
               )}
 
-              <div className="mt-3 flex rounded-lg border border-gray-300 overflow-hidden dark:border-gray-700">
+              <div className="mt-3 flex rounded-lg border border-input overflow-hidden">
                 {([
                   ['off',     'All firms'],
                   ['include', 'Only these'],
@@ -723,29 +723,29 @@ export default function QueueAdminPage() {
                   <button key={m} onClick={() => setDraftFirmMode(m)}
                     className={`flex-1 px-2 py-1.5 text-xs font-medium transition-colors
                       ${draftFirmMode === m
-                        ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white'
-                        : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
+                        ? 'bg-muted text-foreground'
+                        : 'bg-card text-muted-foreground hover:bg-muted'}`}>
                     {label}
                   </button>
                 ))}
               </div>
 
               {draftFirmMode !== 'off' && (
-                <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-border">
                   {firmCounts.length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-gray-400">No leads in today's plan yet — sync from GHL first.</p>
+                    <p className="px-3 py-3 text-xs text-muted-foreground">No leads in today's plan yet — sync from GHL first.</p>
                   ) : firmCounts.map(([code, n]) => {
                     const on = draftFirms.includes(code)
                     return (
                       <label key={code}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50">
                         <input type="checkbox" checked={on}
                           onChange={() => setDraftFirms(prev =>
                             on ? prev.filter(x => x !== code) : [...prev, code].sort()
                           )}
                           className="h-3.5 w-3.5 accent-cyan-600" />
-                        <span className="font-medium text-gray-700 dark:text-gray-200">{firmLabel(code)}</span>
-                        <span className="ml-auto text-xs tabular-nums text-gray-400">{n}</span>
+                        <span className="font-medium text-foreground">{firmLabel(code)}</span>
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{n}</span>
                       </label>
                     )
                   })}
@@ -753,7 +753,7 @@ export default function QueueAdminPage() {
               )}
 
               {draftFirmMode !== 'off' && draftFirms.length > 0 && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-muted-foreground">
                   {draftFirmMode === 'include'
                     ? `Reps will only be served ${draftFirms.map(firmLabel).join(', ')} leads.`
                     : `${draftFirms.map(firmLabel).join(', ')} will not be dialled.`}
@@ -762,12 +762,12 @@ export default function QueueAdminPage() {
 
               <div className="mt-3 flex items-center justify-end gap-2">
                 <button onClick={() => { setDraftFirmMode(savedFirmMode); setDraftFirms(savedFirms); setFirmsOpen(false) }}
-                  className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                  className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
                   Cancel
                 </button>
                 <button onClick={saveFirmFilter}
                   disabled={savingFirms || (draftFirmMode !== 'off' && draftFirms.length === 0)}
-                  className="rounded-lg bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50 transition-colors">
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary disabled:opacity-50 transition-colors">
                   {savingFirms ? 'Saving…' : 'Apply to queue'}
                 </button>
               </div>
@@ -780,8 +780,8 @@ export default function QueueAdminPage() {
           <button onClick={() => setStatesOpen(o => !o)}
             className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-medium transition-colors
               ${savedMode === 'off'
-                ? 'border-gray-300 bg-white text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300'
-                : 'border-amber-400/40 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-950/30 dark:text-amber-300'}`}>
+                ? 'border-input bg-card text-muted-foreground hover:bg-muted/50'
+                : 'border-warning/40/40 bg-warning/20 text-warning hover:bg-warning/20'}`}>
             <svg viewBox="0 0 16 16" fill="currentColor" className="h-3.5 w-3.5">
               <path d="M1.5 2.5A.5.5 0 012 2h12a.5.5 0 01.39.812L10 8.34V13a.5.5 0 01-.724.447l-3-1.5A.5.5 0 016 11.5V8.34L1.61 2.812A.5.5 0 011.5 2.5z" />
             </svg>
@@ -791,20 +791,20 @@ export default function QueueAdminPage() {
                 ? `Calling only: ${savedStates.join(', ')}`
                 : `Skipping: ${savedStates.join(', ')}`}
             {skippedByFilter > 0 && (
-              <span className="rounded-full bg-amber-200/70 px-1.5 text-[10px] tabular-nums text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+              <span className="rounded-full bg-amber-200/70 px-1.5 text-[10px] tabular-nums text-amber-900">
                 {skippedByFilter} held
               </span>
             )}
           </button>
 
           {statesOpen && (
-            <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-gray-200 bg-white p-4 shadow-xl dark:border-gray-700 dark:bg-gray-900">
-              <p className="text-sm font-semibold text-gray-900 dark:text-white">Which states do reps call?</p>
-              <p className="mt-0.5 text-xs text-gray-500">
+            <div className="absolute right-0 z-40 mt-2 w-80 rounded-xl border border-border bg-card p-4 shadow-xl">
+              <p className="text-sm font-semibold text-foreground">Which states do reps call?</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 State comes from the lead's area code. Callbacks are always served, whatever the filter says.
               </p>
 
-              <div className="mt-3 flex rounded-lg border border-gray-300 overflow-hidden dark:border-gray-700">
+              <div className="mt-3 flex rounded-lg border border-input overflow-hidden">
                 {([
                   ['off',     'All states'],
                   ['include', 'Only these'],
@@ -813,29 +813,29 @@ export default function QueueAdminPage() {
                   <button key={m} onClick={() => setDraftMode(m)}
                     className={`flex-1 px-2 py-1.5 text-xs font-medium transition-colors
                       ${draftMode === m
-                        ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white'
-                        : 'bg-white text-gray-500 hover:bg-gray-50 dark:bg-gray-900 dark:text-gray-400'}`}>
+                        ? 'bg-muted text-foreground'
+                        : 'bg-card text-muted-foreground hover:bg-muted'}`}>
                     {label}
                   </button>
                 ))}
               </div>
 
               {draftMode !== 'off' && (
-                <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800">
+                <div className="mt-3 max-h-56 overflow-auto rounded-lg border border-border">
                   {stateCounts.filter(([st]) => st !== '??').length === 0 ? (
-                    <p className="px-3 py-3 text-xs text-gray-400">No leads in today's plan yet — sync from GHL first.</p>
+                    <p className="px-3 py-3 text-xs text-muted-foreground">No leads in today's plan yet — sync from GHL first.</p>
                   ) : stateCounts.filter(([st]) => st !== '??').map(([st, n]) => {
                     const on = draftStates.includes(st)
                     return (
                       <label key={st}
-                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/60">
+                        className="flex cursor-pointer items-center gap-2 px-3 py-1.5 text-sm hover:bg-muted/50">
                         <input type="checkbox" checked={on}
                           onChange={() => setDraftStates(prev =>
                             on ? prev.filter(x => x !== st) : [...prev, st].sort()
                           )}
                           className="h-3.5 w-3.5 accent-cyan-600" />
-                        <span className="font-medium text-gray-700 dark:text-gray-200">{st}</span>
-                        <span className="ml-auto text-xs tabular-nums text-gray-400">{n}</span>
+                        <span className="font-medium text-foreground">{st}</span>
+                        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{n}</span>
                       </label>
                     )
                   })}
@@ -843,7 +843,7 @@ export default function QueueAdminPage() {
               )}
 
               {draftMode !== 'off' && draftStates.length > 0 && (
-                <p className="mt-2 text-xs text-gray-500">
+                <p className="mt-2 text-xs text-muted-foreground">
                   {draftMode === 'include'
                     ? `Reps will only be served ${draftStates.join(', ')} leads.`
                     : `Reps will be served everything except ${draftStates.join(', ')}.`}
@@ -852,12 +852,12 @@ export default function QueueAdminPage() {
 
               <div className="mt-3 flex items-center justify-end gap-2">
                 <button onClick={() => { setDraftMode(savedMode); setDraftStates(savedStates); setStatesOpen(false) }}
-                  className="rounded-lg px-3 py-1.5 text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+                  className="rounded-lg px-3 py-1.5 text-sm text-muted-foreground hover:text-foreground">
                   Cancel
                 </button>
                 <button onClick={saveStateFilter}
                   disabled={savingStates || (draftMode !== 'off' && draftStates.length === 0)}
-                  className="rounded-lg bg-cyan-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-50 transition-colors">
+                  className="rounded-lg bg-primary px-3 py-1.5 text-sm font-medium text-white hover:bg-primary disabled:opacity-50 transition-colors">
                   {savingStates ? 'Saving…' : 'Apply to queue'}
                 </button>
               </div>
@@ -870,15 +870,15 @@ export default function QueueAdminPage() {
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex h-full items-center justify-center">
-            <p className="text-sm text-gray-400 animate-pulse">Loading queue…</p>
+            <p className="text-sm text-muted-foreground animate-pulse">Loading queue…</p>
           </div>
         ) : filtered.length === 0 ? (
           <div className="flex h-full items-center justify-center">
             <div className="text-center">
-              <p className="text-sm text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 {tab === 'callbacks' ? 'No callbacks scheduled' : 'No attempts found'}
               </p>
-              <p className="mt-1 text-xs text-gray-400">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {tab === 'callbacks'
                   ? 'Callbacks will appear here when reps set the Callback disposition'
                   : 'Click "Sync from GHL" to plan today\'s calls'}
@@ -895,16 +895,16 @@ export default function QueueAdminPage() {
                 <div key={item.id}
                   className={`rounded-xl border p-4 transition-colors
                     ${isDone
-                      ? 'border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20'
+                      ? 'border-emerald-200 bg-emerald-50/50'
                       : isPast
-                        ? 'border-red-200 bg-red-50/40 dark:border-red-800 dark:bg-red-950/20'
-                        : 'border-blue-200 bg-blue-50/40 dark:border-blue-800 dark:bg-blue-950/20'}`}>
+                        ? 'border-destructive/40 bg-destructive/10/40'
+                        : 'border-primary bg-accent/40'}`}>
                   {/* Callback time — prominent */}
                   <div className="mb-3 flex items-center justify-between">
                     <span className={`text-lg font-bold tabular-nums
-                      ${isDone ? 'text-emerald-600 dark:text-emerald-400'
-                        : isPast ? 'text-red-500 dark:text-red-400'
-                        : 'text-blue-600 dark:text-blue-400'}`}>
+                      ${isDone ? 'text-emerald-600'
+                        : isPast ? 'text-destructive'
+                        : 'text-primary'}`}>
                       {item.callback_at
                         ? new Date(item.callback_at).toLocaleString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
                         : '—'}
@@ -912,20 +912,20 @@ export default function QueueAdminPage() {
                     <CallStatusBadge attempt={item} />
                   </div>
                   {/* Lead info */}
-                  <p className="font-semibold text-gray-900 dark:text-white">{item.contact_name}</p>
-                  <p className="text-xs font-mono text-gray-400">{item.phone}</p>
+                  <p className="font-semibold text-foreground">{item.contact_name}</p>
+                  <p className="text-xs font-mono text-muted-foreground">{item.phone}</p>
                   {/* Meta row */}
-                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-gray-500">
-                    <span className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800 dark:text-gray-400">
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                    <span className="rounded bg-muted px-1.5 py-0.5">
                       {FIRM_LABEL[item.firm] ?? item.firm}
                     </span>
                     {item.disposition && (
-                      <span className="rounded bg-gray-100 px-1.5 py-0.5 dark:bg-gray-800 dark:text-gray-400">
+                      <span className="rounded bg-muted px-1.5 py-0.5">
                         {item.disposition}
                       </span>
                     )}
                     {isPast && !isDone && (
-                      <span className="rounded bg-red-100 px-1.5 py-0.5 text-red-600 dark:bg-red-950/40 dark:text-red-300">
+                      <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-destructive">
                         Overdue
                       </span>
                     )}
@@ -936,10 +936,10 @@ export default function QueueAdminPage() {
           </div>
         ) : (
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-white dark:bg-gray-950 border-b border-gray-200 dark:border-gray-800">
+            <thead className="sticky top-0 bg-card border-b border-border">
               <tr>
                 {['#', 'Lead', 'State', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Assigned', 'Status', 'Disposition', ''].map(h => (
-                  <th key={h || '_actions'} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                  <th key={h || '_actions'} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
@@ -948,75 +948,75 @@ export default function QueueAdminPage() {
                 const isActive = !['completed','cancelled','expired','merged'].includes(item.status)
                 return (
                   <tr key={item.id}
-                    className={`border-b border-gray-50 dark:border-gray-800/50 transition-colors
-                      ${item.status === 'leased'    ? 'bg-green-50/40 dark:bg-green-950/10'   : ''}
-                      ${item.status === 'buffered'  ? 'bg-blue-50/30 dark:bg-blue-950/10'     : ''}
-                      ${item.status === 'completed' ? 'bg-gray-50/50 dark:bg-gray-800/10 opacity-60' : ''}
-                      ${isActive && item.is_carryover ? 'bg-amber-50/30 dark:bg-amber-950/10' : ''}
+                    className={`border-b border-border transition-colors
+                      ${item.status === 'leased'    ? 'bg-success/15/40'   : ''}
+                      ${item.status === 'buffered'  ? 'bg-accent/30'     : ''}
+                      ${item.status === 'completed' ? 'bg-muted/50/50 opacity-60' : ''}
+                      ${isActive && item.is_carryover ? 'bg-warning/20/30' : ''}
                     `}>
-                    <td className="px-4 py-2.5 text-xs tabular-nums text-gray-400 w-10">{idx + 1}</td>
+                    <td className="px-4 py-2.5 text-xs tabular-nums text-muted-foreground w-10">{idx + 1}</td>
                     <td className="px-4 py-2.5">
-                      <p className="font-medium text-gray-800 dark:text-gray-200">{item.contact_name}</p>
-                      <p className="text-xs text-gray-400 font-mono">{item.phone}</p>
+                      <p className="font-medium text-foreground">{item.contact_name}</p>
+                      <p className="text-xs text-muted-foreground font-mono">{item.phone}</p>
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {(() => {
                         const st = stateForPhone(item.phone)
-                        if (!st) return <span className="text-gray-300 dark:text-gray-700">—</span>
+                        if (!st) return <span className="text-muted-foreground">—</span>
                         const held = savedMode !== 'off' && !item.is_callback && (
                           savedMode === 'include' ? !savedStates.includes(st) : savedStates.includes(st)
                         )
                         return (
                           <span title={held ? 'Not served — filtered out by the state filter' : undefined}
                             className={`inline-block rounded px-1.5 py-0.5 font-medium ${held
-                              ? 'bg-amber-100 text-amber-700 line-through dark:bg-amber-950/40 dark:text-amber-400'
-                              : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300'}`}>
+                              ? 'bg-warning/20 text-warning line-through'
+                              : 'bg-muted text-muted-foreground'}`}>
                             {st}
                           </span>
                         )
                       })()}
                     </td>
                     <td className="px-4 py-2.5">
-                      <p className="font-medium text-gray-700 dark:text-gray-300">{FIRM_LABEL[item.firm] ?? item.firm}</p>
-                      <p className="text-xs text-gray-400">{item.stage_name}</p>
+                      <p className="font-medium text-foreground">{FIRM_LABEL[item.firm] ?? item.firm}</p>
+                      <p className="text-xs text-muted-foreground">{item.stage_name}</p>
                     </td>
                     <td className="px-4 py-2.5 text-xs tabular-nums">
-                      <span className="rounded-full bg-gray-100 px-1.5 py-0.5 text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                      <span className="rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground">
                         {item.attempt_number}/{item.attempts_total}
                       </span>
                       {item.is_carryover && (
-                        <span className="ml-1 rounded-full bg-amber-100 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400 text-[9px]">
+                        <span className="ml-1 rounded-full bg-warning/20 px-1.5 py-0.5 text-warning text-[9px]">
                           carried
                         </span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
-                      <p className="text-xs text-gray-600 dark:text-gray-400">
+                      <p className="text-xs text-muted-foreground">
                         {formatBlockWindow(item.block as BlockName, item.due_from, item.due_until, item.lead_timezone)}
                       </p>
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {item.is_callback && item.callback_at ? (
-                        <span className="text-blue-600 dark:text-blue-400">{fmtTime(item.callback_at)}</span>
-                      ) : <span className="text-gray-300 dark:text-gray-700">—</span>}
+                        <span className="text-primary">{fmtTime(item.callback_at)}</span>
+                      ) : <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="px-4 py-2.5 text-xs">
                       {item.buffered_for
-                        ? <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 font-medium text-blue-700 dark:bg-blue-950/40 dark:text-blue-300">
+                        ? <span className="inline-flex items-center gap-1 rounded-full bg-accent px-2 py-0.5 font-medium text-primary">
                             {item.buffered_for}
                           </span>
                         : item.leased_by
-                          ? <span className="inline-flex items-center gap-1 rounded-full bg-green-50 px-2 py-0.5 font-medium text-green-700 dark:bg-green-950/40 dark:text-green-300">
+                          ? <span className="inline-flex items-center gap-1 rounded-full bg-success/15 px-2 py-0.5 font-medium text-success">
                               {item.leased_by}
                             </span>
-                          : <span className="text-gray-300 dark:text-gray-700">—</span>
+                          : <span className="text-muted-foreground">—</span>
                       }
                     </td>
                     <td className="px-4 py-2.5">
                       <CallStatusBadge attempt={item} />
                     </td>
-                    <td className="px-4 py-2.5 text-xs text-gray-500">
-                      {item.disposition ?? <span className="text-gray-300 dark:text-gray-700">—</span>}
+                    <td className="px-4 py-2.5 text-xs text-muted-foreground">
+                      {item.disposition ?? <span className="text-muted-foreground">—</span>}
                     </td>
                     <td className="px-4 py-2.5">
                       {isActive && (
@@ -1028,7 +1028,7 @@ export default function QueueAdminPage() {
                               setItems(prev => prev.filter(i => i.id !== item.id))
                             }
                           }}
-                          className="rounded p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors"
+                          className="rounded p-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
                           title="Remove from queue"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">

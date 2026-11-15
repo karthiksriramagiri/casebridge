@@ -201,19 +201,19 @@ import { DISPOSITIONS } from '../../_types'
 import type { Disposition } from '../../_types'
 
 const DISP_PILL_COLORS: Record<string, string> = {
-  'Qualified':     'bg-green-100 text-green-700 dark:bg-green-950 dark:text-green-400',
-  'Not Qualified': 'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
-  'Callback':      'bg-yellow-100 text-yellow-700 dark:bg-yellow-950 dark:text-yellow-400',
-  'No Answer':     'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
-  'Signed':        'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
-  'DNC':           'bg-red-100 text-red-700 dark:bg-red-950 dark:text-red-400',
+  'Qualified':     'bg-success/15 text-success',
+  'Not Qualified': 'bg-destructive/10 text-destructive',
+  'Callback':      'bg-warning/20 text-warning',
+  'No Answer':     'bg-muted text-muted-foreground',
+  'Signed':        'bg-accent text-primary',
+  'DNC':           'bg-destructive/10 text-destructive',
 }
 
 const FIRM_PILL: Record<string, string> = {
-  'Larry H. Parker':           'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
-  'Larry H. Parker (Spanish)': 'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400',
-  'Fears Law':                 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
-  'J&M':                       'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+  'Larry H. Parker':           'bg-accent text-primary',
+  'Larry H. Parker (Spanish)': 'bg-accent text-primary',
+  'Fears Law':                 'bg-accent text-primary',
+  'J&M':                       'bg-emerald-100 text-emerald-700',
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
@@ -278,10 +278,10 @@ function NewConvoModal({ onClose, onStart }: {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="border-b border-gray-200 px-5 py-4 dark:border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-900 dark:text-white">New Message</h2>
-          <p className="mt-0.5 text-xs text-gray-400">Search for a lead by name or phone</p>
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-2xl">
+        <div className="border-b border-border px-5 py-4">
+          <h2 className="text-sm font-semibold text-foreground">New Message</h2>
+          <p className="mt-0.5 text-xs text-muted-foreground">Search for a lead by name or phone</p>
         </div>
         <div className="p-4 space-y-3">
           <div className="relative">
@@ -290,27 +290,27 @@ function NewConvoModal({ onClose, onStart }: {
               value={query}
               onChange={e => onQueryChange(e.target.value)}
               placeholder="Search leads…"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
             {loading && (
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-gray-400 animate-pulse">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-muted-foreground animate-pulse">
                 Searching…
               </span>
             )}
             {results.length > 0 && (
-              <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800">
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-y-auto rounded-lg border border-border bg-card shadow-lg">
                 {results.map(c => (
                   <button
                     key={c.id}
                     onClick={() => pick(c)}
-                    className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700"
+                    className="flex w-full items-center justify-between px-3 py-2.5 text-left hover:bg-muted/50"
                   >
                     <div className="min-w-0">
-                      <span className="block text-sm font-medium text-gray-900 dark:text-white">{c.name}</span>
-                      <span className="font-mono text-xs text-gray-400">{fmtPhone(c.phone)}</span>
+                      <span className="block text-sm font-medium text-foreground">{c.name}</span>
+                      <span className="font-mono text-xs text-muted-foreground">{fmtPhone(c.phone)}</span>
                     </div>
                     {c.firm && (
-                      <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${FIRM_PILL[c.firm] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                      <span className={`ml-2 shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium ${FIRM_PILL[c.firm] ?? 'bg-muted text-muted-foreground'}`}>
                         {c.firm}
                       </span>
                     )}
@@ -319,26 +319,26 @@ function NewConvoModal({ onClose, onStart }: {
               </div>
             )}
             {!loading && query.trim() && results.length === 0 && !selected && (
-              <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-gray-200 bg-white px-3 py-3 shadow-lg dark:border-gray-700 dark:bg-gray-800">
-                <p className="text-xs text-gray-400">No leads found.</p>
+              <div className="absolute left-0 right-0 top-full z-10 mt-1 rounded-lg border border-border bg-card px-3 py-3 shadow-lg">
+                <p className="text-xs text-muted-foreground">No leads found.</p>
               </div>
             )}
           </div>
 
           {selected && (
-            <div className="rounded-lg border border-cyan-200 bg-cyan-50 px-3 py-2.5 dark:border-cyan-800 dark:bg-cyan-950/30">
-              <p className="text-sm font-medium text-gray-900 dark:text-white">{selected.name}</p>
-              <p className="font-mono text-xs text-gray-500">{fmtPhone(selected.phone)}</p>
+            <div className="rounded-lg border border-primary bg-accent px-3 py-2.5">
+              <p className="text-sm font-medium text-foreground">{selected.name}</p>
+              <p className="font-mono text-xs text-muted-foreground">{fmtPhone(selected.phone)}</p>
             </div>
           )}
 
           <div className="flex justify-end gap-2 pt-1">
             <button onClick={onClose}
-              className="rounded-lg px-3 py-2 text-sm text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">
+              className="rounded-lg px-3 py-2 text-sm text-muted-foreground hover:bg-muted">
               Cancel
             </button>
             <button onClick={submit} disabled={!selected}
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500 disabled:opacity-40">
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary disabled:opacity-40">
               Open Chat
             </button>
           </div>
@@ -569,35 +569,35 @@ export default function MessagesPage() {
       )}
 
       {/* ── Left: conversation list ── */}
-      <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
+      <div className="flex w-72 shrink-0 flex-col border-r border-border bg-muted/50">
         {/* Header */}
-        <div className="border-b border-gray-200 px-3 py-3 dark:border-gray-800">
+        <div className="border-b border-border px-3 py-3">
           <div className="flex items-center justify-between mb-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
               Messages
               {totalUnread > 0 && (
-                <span className="ml-1.5 rounded-full bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                <span className="ml-1.5 rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-white">
                   {totalUnread}
                 </span>
               )}
             </p>
             <button
               onClick={() => setShowNew(true)}
-              className="flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-xs font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+              className="flex items-center gap-1 rounded-md border border-border bg-card px-2 py-1 text-xs font-medium text-muted-foreground hover:bg-muted/50"
             >
               <PlusIcon /> New
             </button>
           </div>
           <div className="relative">
             <svg viewBox="0 0 20 20" fill="currentColor"
-              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400">
+              className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground">
               <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
             </svg>
             <input
               value={search}
               onChange={e => setSearch(e.target.value)}
               placeholder="Search…"
-              className="w-full rounded-lg border border-gray-200 bg-white py-1.5 pl-7 pr-3 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+              className="w-full rounded-lg border border-border bg-card py-1.5 pl-7 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
           </div>
         </div>
@@ -607,7 +607,7 @@ export default function MessagesPage() {
           {convoLoading && (
             <div className="space-y-1 p-2">
               {Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-16 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />
+                <div key={i} className="h-16 animate-pulse rounded-lg bg-muted" />
               ))}
             </div>
           )}
@@ -615,7 +615,7 @@ export default function MessagesPage() {
           {!convoLoading && filtered.length === 0 && (
             <div className="flex flex-col items-center justify-center gap-2 py-12 text-center px-4">
               <MsgIcon />
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 {search ? 'No leads match.' : 'No leads found. Start by making some calls first.'}
               </p>
             </div>
@@ -628,48 +628,48 @@ export default function MessagesPage() {
               <button
                 key={convo.contactId || convo.leadPhone}
                 onClick={() => openThread(convo)}
-                className={`w-full border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-100 dark:border-gray-800/40 dark:hover:bg-gray-900/60 ${
-                  isActive ? 'border-l-2 border-l-cyan-500 bg-cyan-50/60 dark:bg-cyan-950/20' : ''
+                className={`w-full border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted ${
+                  isActive ? 'border-l-2 border-l-cyan-500 bg-accent/60' : ''
                 }`}
               >
                 <div className="flex items-start justify-between gap-2">
                   {/* Avatar */}
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gray-300 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-muted-foreground/30 text-xs font-bold text-muted-foreground">
                     {name.charAt(0).toUpperCase()}
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-1">
-                      <p className={`truncate text-sm ${convo.unreadCount > 0 ? 'font-bold text-gray-900 dark:text-white' : 'font-medium text-gray-700 dark:text-gray-200'}`}>
+                      <p className={`truncate text-sm ${convo.unreadCount > 0 ? 'font-bold text-foreground' : 'font-medium text-foreground'}`}>
                         {name}
                       </p>
-                      <span className="shrink-0 text-[10px] text-gray-400">{fmtTime(convo.lastAt)}</span>
+                      <span className="shrink-0 text-[10px] text-muted-foreground">{fmtTime(convo.lastAt)}</span>
                     </div>
                     {convo.lastMessage != null ? (
-                      <p className={`truncate text-xs ${convo.unreadCount > 0 ? 'text-gray-700 dark:text-gray-300 font-medium' : 'text-gray-400'}`}>
-                        {convo.direction === 'outbound' && <span className="text-gray-300 dark:text-gray-600">You: </span>}
+                      <p className={`truncate text-xs ${convo.unreadCount > 0 ? 'text-foreground font-medium' : 'text-muted-foreground'}`}>
+                        {convo.direction === 'outbound' && <span className="text-muted-foreground">You: </span>}
                         {convo.lastMessage}
                       </p>
                     ) : (
-                      <p className="text-xs italic text-gray-500 dark:text-gray-600">No messages yet</p>
+                      <p className="text-xs italic text-muted-foreground">No messages yet</p>
                     )}
                     <div className="mt-1 flex items-center gap-1.5">
                       {convo.firm && (
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${FIRM_PILL[convo.firm] ?? 'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400'}`}>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${FIRM_PILL[convo.firm] ?? 'bg-muted text-muted-foreground'}`}>
                           {convo.firm}
                         </span>
                       )}
                       {convo.smsDisposition && (
-                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${DISP_PILL_COLORS[convo.smsDisposition] ?? 'bg-gray-100 text-gray-600'}`}>
+                        <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${DISP_PILL_COLORS[convo.smsDisposition] ?? 'bg-muted text-muted-foreground'}`}>
                           {convo.smsDisposition}
                         </span>
                       )}
                       {convo.smsBotActive && (
-                        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">
+                        <span className="rounded px-1.5 py-0.5 text-[10px] font-medium bg-accent text-primary">
                           Bot
                         </span>
                       )}
                       {convo.unreadCount > 0 && (
-                        <span className="rounded-full bg-cyan-500 px-1.5 py-0.5 text-[10px] font-bold text-white">
+                        <span className="rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-bold text-white">
                           {convo.unreadCount}
                         </span>
                       )}
@@ -683,7 +683,7 @@ export default function MessagesPage() {
       </div>
 
       {/* ── Right: chat thread ── */}
-      <div className="flex flex-1 flex-col bg-white dark:bg-gray-950">
+      <div className="flex flex-1 flex-col bg-card">
         {selected ? (
           <>
             {/* Thread header */}
@@ -695,19 +695,19 @@ export default function MessagesPage() {
               const currentDispColor = DISP_PILL_COLORS[selected.smsDisposition ?? ''] ?? ''
 
               return (
-                <div className="border-b border-gray-200 dark:border-gray-800">
+                <div className="border-b border-border">
                   {/* Disposition modal */}
                   {showDisposition && (
                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-                      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-                        <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-800">
-                          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Disposition</h2>
-                          <p className="mt-0.5 text-sm text-gray-500">{displayName} · {fmtPhone(selected.leadPhone)}</p>
+                      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
+                        <div className="border-b border-border px-6 py-4">
+                          <h2 className="text-base font-semibold text-foreground">Disposition</h2>
+                          <p className="mt-0.5 text-sm text-muted-foreground">{displayName} · {fmtPhone(selected.leadPhone)}</p>
                         </div>
                         <div className="grid grid-cols-2 gap-2 p-4">
                           {DISPOSITIONS.map(d => (
                             <button key={d.id} onClick={() => setDispSelection(d)}
-                              className={`rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-all ${d.color} ${dispSelection?.id === d.id ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-gray-900' : 'opacity-80 hover:opacity-100'}`}>
+                              className={`rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-all ${d.color} ${dispSelection?.id === d.id ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : 'opacity-80 hover:opacity-100'}`}>
                               {d.label}
                             </button>
                           ))}
@@ -715,45 +715,45 @@ export default function MessagesPage() {
 
                         {/* Callback time picker */}
                         {dispSelection?.category === 'CALLBACK' && (
-                          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
-                            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                          <div className="border-t border-border px-4 pb-4 space-y-2">
+                            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                               Callback time (your local time)
                             </label>
                             <input type="datetime-local" value={dispCbTime} onChange={e => setDispCbTime(e.target.value)}
-                              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+                              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" />
                             <input
                               value={dispNotes} onChange={e => setDispNotes(e.target.value)}
                               placeholder="Callback notes (optional)…"
-                              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                             />
                           </div>
                         )}
 
                         {/* NQ reason */}
                         {dispSelection?.requiresReason && (
-                          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
-                            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+                          <div className="border-t border-border px-4 pb-4 space-y-2">
+                            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
                               Reason for not qualifying
                             </label>
                             <input
                               value={dispNqReason} onChange={e => setDispNqReason(e.target.value)}
                               placeholder="Enter reason…"
-                              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                             />
                           </div>
                         )}
 
-                        <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+                        <div className="flex items-center justify-between border-t border-border px-4 py-3">
                           <button
                             onClick={() => { setShowDisposition(false); setDispSelection(null); setDispNqReason(''); setDispCbTime(''); setDispNotes('') }}
-                            className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
+                            className="rounded-lg border border-input px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/50">
                             Cancel
                           </button>
                           {selected.smsDisposition && (
                             <button
                               onClick={() => updateLeadSettings({ smsDisposition: null })}
                               disabled={savingSettings}
-                              className="rounded-lg border border-gray-300 px-3 py-2 text-sm font-medium text-gray-400 hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800">
+                              className="rounded-lg border border-input px-3 py-2 text-sm font-medium text-muted-foreground hover:bg-muted/50">
                               Clear
                             </button>
                           )}
@@ -765,7 +765,7 @@ export default function MessagesPage() {
                               callbackAt: dispCbTime ? new Date(dispCbTime).toISOString() : undefined,
                               notes: dispNotes.trim() || undefined,
                             })}
-                            className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
+                            className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-40">
                             {savingSettings ? 'Saving…' : 'Submit'}
                           </button>
                         </div>
@@ -776,19 +776,19 @@ export default function MessagesPage() {
                   {/* Top row: name + actions */}
                   <div className="flex items-center justify-between px-5 py-3">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-gray-200 text-sm font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-bold text-muted-foreground">
                         {displayName.charAt(0).toUpperCase()}
                       </div>
                       <div>
-                        <p className="text-sm font-semibold text-gray-900 dark:text-white">
+                        <p className="text-sm font-semibold text-foreground">
                           {displayName}
                         </p>
                         {resolvedName && (
-                          <p className="text-xs font-mono text-gray-400">{fmtPhone(selected.leadPhone)}</p>
+                          <p className="text-xs font-mono text-muted-foreground">{fmtPhone(selected.leadPhone)}</p>
                         )}
                       </div>
                       {selected.firm && (
-                        <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${FIRM_PILL[selected.firm] ?? 'bg-gray-100 text-gray-500'}`}>
+                        <span className={`ml-2 rounded-full px-2.5 py-0.5 text-xs font-medium ${FIRM_PILL[selected.firm] ?? 'bg-muted text-muted-foreground'}`}>
                           {selected.firm}
                         </span>
                       )}
@@ -800,7 +800,7 @@ export default function MessagesPage() {
                         className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                           currentDispColor
                             ? `${currentDispColor} border-transparent`
-                            : 'border-gray-200 bg-gray-50 text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                            : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted'
                         }`}
                       >
                         <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
@@ -817,8 +817,8 @@ export default function MessagesPage() {
                           title={selected.smsBotActive ? 'Bot is ON — click to turn off' : 'Bot is OFF — click to turn on'}
                           className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
                             selected.smsBotActive
-                              ? 'border-cyan-300 bg-cyan-50 text-cyan-700 dark:border-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-400'
-                              : 'border-gray-200 bg-gray-50 text-gray-400 hover:bg-gray-100 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:bg-gray-700'
+                              ? 'border-primary bg-accent text-primary'
+                              : 'border-border bg-muted/50 text-muted-foreground hover:bg-muted'
                           }`}
                         >
                           <svg viewBox="0 0 20 20" fill="currentColor" className="h-3.5 w-3.5">
@@ -846,7 +846,7 @@ export default function MessagesPage() {
                           placeCall(lead, { firm: selected.firm ?? undefined })
                         }}
                         title="Call this contact"
-                        className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-green-500 disabled:opacity-40 disabled:hover:bg-green-600"
+                        className="flex items-center gap-1.5 rounded-lg bg-success px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-success disabled:opacity-40 disabled:hover:bg-success"
                       >
                         <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4">
                           <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
@@ -863,13 +863,13 @@ export default function MessagesPage() {
             <div className="flex-1 overflow-y-auto px-5 py-4 space-y-3">
               {msgLoading && (
                 <div className="flex h-full items-center justify-center">
-                  <p className="text-xs text-gray-400 animate-pulse">Loading…</p>
+                  <p className="text-xs text-muted-foreground animate-pulse">Loading…</p>
                 </div>
               )}
 
               {!msgLoading && messages.length === 0 && (
                 <div className="flex h-full flex-col items-center justify-center text-center">
-                  <p className="text-xs text-gray-400">No messages yet.<br />Use a quick reply or type a message below.</p>
+                  <p className="text-xs text-muted-foreground">No messages yet.<br />Use a quick reply or type a message below.</p>
                 </div>
               )}
 
@@ -882,39 +882,39 @@ export default function MessagesPage() {
                   <div key={msg.id}>
                     {showDate && (
                       <div className="flex items-center gap-2 py-1">
-                        <div className="flex-1 border-t border-gray-100 dark:border-gray-800" />
-                        <span className="text-[10px] text-gray-400">{fmtFull(msg.created_at)}</span>
-                        <div className="flex-1 border-t border-gray-100 dark:border-gray-800" />
+                        <div className="flex-1 border-t border-border" />
+                        <span className="text-[10px] text-muted-foreground">{fmtFull(msg.created_at)}</span>
+                        <div className="flex-1 border-t border-border" />
                       </div>
                     )}
                     <div className={`flex ${isOut ? 'justify-end' : 'justify-start'}`}>
                       <div className={`max-w-[70%] rounded-2xl px-4 py-2.5 ${
                         isOut
-                          ? 'rounded-br-sm bg-cyan-600 text-white'
-                          : 'rounded-bl-sm bg-gray-100 text-gray-800 dark:bg-gray-800 dark:text-gray-200'
+                          ? 'rounded-br-sm bg-primary text-white'
+                          : 'rounded-bl-sm bg-muted text-foreground'
                       }`}>
                         {msg.media_url && (
                           <a href={msg.media_url} target="_blank" rel="noopener noreferrer"
-                            className={`mb-1.5 block text-xs underline ${isOut ? 'text-cyan-200' : 'text-cyan-600 dark:text-cyan-400'}`}>
+                            className={`mb-1.5 block text-xs underline ${isOut ? 'text-primary' : 'text-primary'}`}>
                             View attachment
                           </a>
                         )}
                         <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.body}</p>
                         <div className={`mt-1 flex items-center gap-1 ${isOut ? 'justify-end' : 'justify-start'}`}>
-                          <span className={`text-[10px] ${isOut ? 'text-cyan-200' : 'text-gray-400'}`}>
+                          <span className={`text-[10px] ${isOut ? 'text-primary' : 'text-muted-foreground'}`}>
                             {fmtTime(msg.created_at)}
                           </span>
                           {isOut && (
                             <span className={`text-[10px] ${
-                              msg.status === 'delivered' ? 'text-cyan-200' :
-                              msg.status === 'failed'    ? 'text-red-300'  :
-                              'text-cyan-300/60'
+                              msg.status === 'delivered' ? 'text-primary' :
+                              msg.status === 'failed'    ? 'text-destructive'  :
+                              'text-primary/60'
                             }`}>
                               · {msg.status}
                             </span>
                           )}
                           {isOut && msg.rep_identity && (
-                            <span className="text-[10px] text-cyan-200/70 capitalize">· {msg.rep_identity}</span>
+                            <span className="text-[10px] text-primary/70 capitalize">· {msg.rep_identity}</span>
                           )}
                         </div>
                       </div>
@@ -926,36 +926,36 @@ export default function MessagesPage() {
             </div>
 
             {/* ── Template picker + Send box ── */}
-            <div className="border-t border-gray-200 dark:border-gray-800">
+            <div className="border-t border-border">
               {/* Quick replies */}
               {showTemplates && (
-                <div className="max-h-72 overflow-y-auto border-b border-gray-100 bg-gray-50 px-3 py-2.5 dark:border-gray-800 dark:bg-gray-900">
+                <div className="max-h-72 overflow-y-auto border-b border-border bg-muted/50 px-3 py-2.5">
                   {/* Qualification Flow */}
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Qualification Flow</p>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-primary">Qualification Flow</p>
                   <div className="grid grid-cols-3 gap-1.5 mb-3">
                     {FLOW_TEMPLATES.map(tpl => (
                       <button
                         key={tpl.id}
                         onClick={() => applyTemplate(tpl)}
-                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left transition-colors hover:border-cyan-300 hover:bg-cyan-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-cyan-700 dark:hover:bg-cyan-950/30"
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-primary hover:bg-accent"
                       >
                         <span className="text-sm">{tpl.icon}</span>
-                        <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">{tpl.label}</span>
+                        <span className="text-[11px] font-medium text-foreground truncate">{tpl.label}</span>
                       </button>
                     ))}
                   </div>
 
                   {/* Additional */}
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Additional</p>
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Additional</p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {ADDITIONAL_TEMPLATES.map(tpl => (
                       <button
                         key={tpl.id}
                         onClick={() => applyTemplate(tpl)}
-                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-2.5 py-2 text-left transition-colors hover:border-violet-300 hover:bg-violet-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:border-violet-700 dark:hover:bg-violet-950/30"
+                        className="flex items-center gap-1.5 rounded-lg border border-border bg-card px-2.5 py-2 text-left transition-colors hover:border-primary hover:bg-accent"
                       >
                         <span className="text-sm">{tpl.icon}</span>
-                        <span className="text-[11px] font-medium text-gray-700 dark:text-gray-300 truncate">{tpl.label}</span>
+                        <span className="text-[11px] font-medium text-foreground truncate">{tpl.label}</span>
                       </button>
                     ))}
                   </div>
@@ -970,8 +970,8 @@ export default function MessagesPage() {
                     title="Quick replies"
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border transition-colors ${
                       showTemplates
-                        ? 'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-400'
-                        : 'border-gray-300 bg-gray-50 text-gray-400 hover:border-gray-400 hover:text-gray-500 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-500 dark:hover:text-gray-400'
+                        ? 'border-primary bg-accent text-primary'
+                        : 'border-input bg-muted/50 text-muted-foreground hover:border-input hover:text-muted-foreground'
                     }`}
                   >
                     <svg viewBox="0 0 20 20" fill="currentColor" className="h-4.5 w-4.5">
@@ -990,12 +990,12 @@ export default function MessagesPage() {
                     }}
                     placeholder="Type a message… (Enter to send, Shift+Enter for new line)"
                     rows={2}
-                    className="flex-1 resize-none rounded-xl border border-gray-300 bg-gray-50 px-3.5 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                    className="flex-1 resize-none rounded-xl border border-input bg-muted/50 px-3.5 py-2.5 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                   />
                   <button
                     onClick={sendMessage}
                     disabled={!draft.trim() || sending}
-                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-cyan-600 text-white hover:bg-cyan-500 disabled:opacity-40 transition-colors"
+                    className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary text-white hover:bg-primary disabled:opacity-40 transition-colors"
                   >
                     <SendIcon />
                   </button>
@@ -1005,16 +1005,16 @@ export default function MessagesPage() {
           </>
         ) : (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-gray-200 bg-gray-50 text-gray-300 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-700">
+            <div className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-muted/50 text-muted-foreground">
               <MsgIcon />
             </div>
             <div>
-              <p className="text-sm font-medium text-gray-500 dark:text-gray-400">Your messages</p>
-              <p className="mt-1 text-xs text-gray-400">Select a conversation or start a new one.</p>
+              <p className="text-sm font-medium text-muted-foreground">Your messages</p>
+              <p className="mt-1 text-xs text-muted-foreground">Select a conversation or start a new one.</p>
             </div>
             <button
               onClick={() => setShowNew(true)}
-              className="mt-1 flex items-center gap-1.5 rounded-lg bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-500"
+              className="mt-1 flex items-center gap-1.5 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary"
             >
               <PlusIcon /> New Message
             </button>

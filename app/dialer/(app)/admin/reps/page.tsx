@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { PageBody, PageHeader } from '../../../_components/ui/shell'
 
 interface Rep {
   id:              string
@@ -50,20 +51,20 @@ function AddRepModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-800">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Add Rep</h2>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-base font-semibold text-foreground">Add Rep</h2>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Full Name</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Full Name</label>
             <input
               type="text"
               value={form.name}
               onChange={e => handleNameChange(e.target.value)}
               placeholder="Pablo García"
               required
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             />
           </div>
           {[
@@ -71,48 +72,48 @@ function AddRepModal({ onClose, onCreated }: { onClose: () => void; onCreated: (
             { label: 'Password', key: 'password', type: 'password', placeholder: 'Min 8 characters' },
           ].map(f => (
             <div key={f.key}>
-              <label className="block text-xs font-medium text-gray-500 mb-1">{f.label}</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">{f.label}</label>
               <input
                 type={f.type}
                 value={(form as any)[f.key]}
                 onChange={e => setForm(p => ({ ...p, [f.key]: e.target.value }))}
                 placeholder={f.placeholder}
                 required
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
               />
             </div>
           ))}
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">
-              Twilio Identity <span className="text-gray-400">(auto-filled from name)</span>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">
+              Twilio Identity <span className="text-muted-foreground">(auto-filled from name)</span>
             </label>
             <input
               type="text"
               value={form.twilio_identity}
               onChange={e => setForm(p => ({ ...p, twilio_identity: e.target.value }))}
               placeholder="pablo"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Role</label>
             <select
               value={form.role}
               onChange={e => setForm(p => ({ ...p, role: e.target.value }))}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             >
               <option value="REP">Rep</option>
               <option value="ADMIN">Admin</option>
             </select>
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+              className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
               Cancel
             </button>
             <button type="submit" disabled={loading}
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50">
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary disabled:opacity-50">
               {loading ? 'Creating…' : 'Create Rep'}
             </button>
           </div>
@@ -144,50 +145,50 @@ function EditRepModal({ rep, onClose, onSaved }: { rep: Rep; onClose: () => void
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-800">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Edit {rep.name}</h2>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-base font-semibold text-foreground">Edit {rep.name}</h2>
         </div>
         <form onSubmit={submit} className="p-6 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Full Name</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Full Name</label>
             <input
               type="text"
               value={form.name}
               onChange={e => setForm(p => ({ ...p, name: e.target.value }))}
               required
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Twilio Identity</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Twilio Identity</label>
             <input
               type="text"
               value={form.twilio_identity}
               onChange={e => setForm(p => ({ ...p, twilio_identity: e.target.value }))}
               placeholder="pablo"
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Role</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Role</label>
             <select
               value={form.role}
               onChange={e => setForm(p => ({ ...p, role: e.target.value as any }))}
-              className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+              className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
             >
               <option value="REP">Rep</option>
               <option value="ADMIN">Admin</option>
             </select>
           </div>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
           <div className="flex justify-end gap-3 pt-2">
             <button type="button" onClick={onClose}
-              className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400">
+              className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:text-foreground">
               Cancel
             </button>
             <button type="submit" disabled={loading}
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50">
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary disabled:opacity-50">
               {loading ? 'Saving…' : 'Save'}
             </button>
           </div>
@@ -236,57 +237,58 @@ export default function RepsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Users</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{reps.length} accounts</p>
-        </div>
+    <>
+      <PageHeader
+        title="Users"
+        description={`${reps.length} accounts`}
+        actions={
         <button onClick={() => setShowAdd(true)}
-          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500">
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary">
           + Add Rep
         </button>
-      </div>
+        }
+      />
+      <PageBody>
 
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
         {loading ? (
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-gray-50 dark:bg-gray-800/50" />)}
+          <div className="divide-y divide-border">
+            {[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-muted/50" />)}
           </div>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100 dark:border-gray-800">
+              <tr className="border-b border-border">
                 {['Name', 'Email', 'Role', 'Twilio Identity', 'Spanish', 'Status', ''].map(h => (
-                  <th key={h} className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                  <th key={h} className="px-5 py-3 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+            <tbody className="divide-y divide-gray-50">
               {reps.map(rep => (
-                <tr key={rep.id} className={`hover:bg-gray-50/50 dark:hover:bg-gray-800/20 ${!rep.active ? 'opacity-50' : ''}`}>
+                <tr key={rep.id} className={`hover:bg-muted/50/50 ${!rep.active ? 'opacity-50' : ''}`}>
                   <td className="px-5 py-3.5">
                     <div className="flex items-center gap-3">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gray-200 text-xs font-bold text-gray-600 dark:bg-gray-700 dark:text-gray-300">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-bold text-muted-foreground">
                         {rep.name.charAt(0).toUpperCase()}
                       </div>
-                      <span className="font-medium text-gray-900 dark:text-white">{rep.name}</span>
+                      <span className="font-medium text-foreground">{rep.name}</span>
                     </div>
                   </td>
-                  <td className="px-5 py-3.5 text-gray-500">{rep.email}</td>
+                  <td className="px-5 py-3.5 text-muted-foreground">{rep.email}</td>
                   <td className="px-5 py-3.5">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider ${
                       rep.role === 'ADMIN'
-                        ? 'bg-violet-100 text-violet-700 dark:bg-violet-950/50 dark:text-violet-300'
-                        : 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
+                        ? 'bg-accent text-primary'
+                        : 'bg-muted text-muted-foreground'
                     }`}>
                       {rep.role}
                     </span>
                   </td>
                   <td className="px-5 py-3.5 font-mono text-xs">
                     {rep.twilio_identity
-                      ? <span className="text-gray-500">{rep.twilio_identity}</span>
-                      : <span className="text-amber-500 font-semibold">not set</span>
+                      ? <span className="text-muted-foreground">{rep.twilio_identity}</span>
+                      : <span className="text-warning font-semibold">not set</span>
                     }
                   </td>
                   <td className="px-5 py-3.5">
@@ -295,15 +297,15 @@ export default function RepsPage() {
                       disabled={updating === rep.id}
                       className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold transition-colors disabled:opacity-40 ${
                         rep.spanish
-                          ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300'
-                          : 'bg-gray-100 text-gray-400 dark:bg-gray-800 dark:text-gray-600'
+                          ? 'bg-warning/20 text-warning'
+                          : 'bg-muted text-muted-foreground'
                       }`}
                     >
                       {rep.spanish ? 'ES' : '—'}
                     </button>
                   </td>
                   <td className="px-5 py-3.5">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${rep.active ? 'bg-green-100 text-green-700 dark:bg-green-950/50 dark:text-green-400' : 'bg-gray-100 text-gray-500'}`}>
+                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${rep.active ? 'bg-success/15 text-success' : 'bg-muted text-muted-foreground'}`}>
                       {rep.active ? 'Active' : 'Inactive'}
                     </span>
                   </td>
@@ -311,14 +313,14 @@ export default function RepsPage() {
                     <div className="flex items-center justify-end gap-3">
                       <button
                         onClick={() => setEditRep(rep)}
-                        className="text-xs text-gray-400 hover:text-cyan-500 transition-colors"
+                        className="text-xs text-muted-foreground hover:text-primary transition-colors"
                       >
                         Edit
                       </button>
                       <button
                         onClick={() => toggleActive(rep)}
                         disabled={updating === rep.id}
-                        className="text-xs text-gray-400 hover:text-red-500 disabled:opacity-40 transition-colors"
+                        className="text-xs text-muted-foreground hover:text-destructive disabled:opacity-40 transition-colors"
                       >
                         {updating === rep.id ? '…' : rep.active ? 'Deactivate' : 'Reactivate'}
                       </button>
@@ -333,6 +335,7 @@ export default function RepsPage() {
 
       {showAdd  && <AddRepModal  onClose={() => setShowAdd(false)}  onCreated={fetchReps} />}
       {editRep  && <EditRepModal rep={editRep} onClose={() => setEditRep(null)} onSaved={fetchReps} />}
-    </div>
+      </PageBody>
+    </>
   )
 }

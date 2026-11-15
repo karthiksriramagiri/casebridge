@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../_context/auth'
 import { useCall } from '../../_context/call'
 import type { Lead } from '../../_types'
+import { PageBody, PageHeader } from '../../_components/ui/shell'
 
 interface Callback {
   id: string
@@ -36,9 +37,9 @@ const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', lhp_s: 'PT', fears: '
 
 const SOURCE_LABEL: Record<string, string> = { ghl: 'GHL', disposition: 'Dialer', manual: 'Manual' }
 const SOURCE_PILL: Record<string, string> = {
-  ghl:         'bg-orange-100 text-orange-700 dark:bg-orange-950/40 dark:text-orange-400',
-  disposition: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950/40 dark:text-cyan-400',
-  manual:      'bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400',
+  ghl:         'bg-orange-100 text-orange-700',
+  disposition: 'bg-accent text-primary',
+  manual:      'bg-muted text-muted-foreground',
 }
 
 function wallClockToUTC(localStr: string, tz: string): string {
@@ -201,54 +202,55 @@ export default function CallbacksPage() {
   const completed = callbacks.filter(c => c.status === 'completed' || c.status === 'cancelled')
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Callbacks</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{pending.length} upcoming · {completed.length} completed</p>
-        </div>
+    <>
+      <PageHeader
+        title="Callbacks"
+        description={`${pending.length} upcoming · ${completed.length} completed`}
+        actions={
         <button
           onClick={() => setShowForm(!showForm)}
-          className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary"
         >
           + Add Callback
         </button>
-      </div>
+        }
+      />
+      <PageBody>
 
       {/* Add Callback Form */}
       {showForm && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Schedule Callback</h3>
+        <div className="rounded-xl border border-border bg-card shadow-sm p-5 space-y-4">
+          <h3 className="text-sm font-semibold text-foreground">Schedule Callback</h3>
 
           {/* Contact search */}
           {!selectedContact ? (
             <div className="relative">
-              <label className="block text-xs font-medium text-gray-500 mb-1">Search Lead</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Search Lead</label>
               <input
                 type="text"
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Type name or phone number…"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
                 autoFocus
               />
               {searching && (
-                <p className="mt-1 text-xs text-gray-400">Searching…</p>
+                <p className="mt-1 text-xs text-muted-foreground">Searching…</p>
               )}
               {results.length > 0 && (
-                <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800 max-h-48 overflow-y-auto">
+                <div className="absolute z-20 mt-1 w-full rounded-lg border border-border bg-card shadow-lg max-h-48 overflow-y-auto">
                   {results.map(c => (
                     <button
                       key={c.id}
                       onClick={() => { setSelectedContact(c); setSearch(''); setResults([]); setCbTime(nowPlusTwoInTz(FIRM_TZ[c.firm ?? 'lhp'] ?? 'America/Los_Angeles')) }}
-                      className="w-full px-4 py-2.5 text-left hover:bg-gray-50 dark:hover:bg-gray-700 flex items-center justify-between"
+                      className="w-full px-4 py-2.5 text-left hover:bg-muted/50 flex items-center justify-between"
                     >
                       <div>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">{c.name}</p>
-                        <p className="text-xs text-gray-500">{c.phone}</p>
+                        <p className="text-sm font-medium text-foreground">{c.name}</p>
+                        <p className="text-xs text-muted-foreground">{c.phone}</p>
                       </div>
                       {c.firm && (
-                        <span className="text-[10px] font-semibold text-gray-400 uppercase">
+                        <span className="text-[10px] font-semibold text-muted-foreground uppercase">
                           {FIRM_LABEL[c.firm] ?? c.firm}
                         </span>
                       )}
@@ -257,18 +259,18 @@ export default function CallbacksPage() {
                 </div>
               )}
               {search.length >= 2 && !searching && results.length === 0 && (
-                <p className="mt-1 text-xs text-gray-400">No leads found</p>
+                <p className="mt-1 text-xs text-muted-foreground">No leads found</p>
               )}
             </div>
           ) : (
-            <div className="flex items-center justify-between rounded-lg border border-cyan-200 bg-cyan-50 px-4 py-2.5 dark:border-cyan-800 dark:bg-cyan-950/30">
+            <div className="flex items-center justify-between rounded-lg border border-primary bg-accent px-4 py-2.5">
               <div>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">{selectedContact.name}</p>
-                <p className="text-xs text-gray-500">{selectedContact.phone} {selectedContact.firm && `· ${FIRM_LABEL[selectedContact.firm] ?? selectedContact.firm}`}</p>
+                <p className="text-sm font-medium text-foreground">{selectedContact.name}</p>
+                <p className="text-xs text-muted-foreground">{selectedContact.phone} {selectedContact.firm && `· ${FIRM_LABEL[selectedContact.firm] ?? selectedContact.firm}`}</p>
               </div>
               <button
                 onClick={() => setSelectedContact(null)}
-                className="text-xs text-gray-400 hover:text-red-500"
+                className="text-xs text-muted-foreground hover:text-destructive"
               >
                 Change
               </button>
@@ -278,24 +280,24 @@ export default function CallbacksPage() {
           {/* Time + Notes */}
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
                 Callback Time ({FIRM_TZ_LABEL[selectedContact?.firm ?? 'lhp'] ?? 'PT'})
               </label>
               <input
                 type="datetime-local"
                 value={cbTime}
                 onChange={e => setCbTime(e.target.value)}
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-gray-500 mb-1">Notes (optional)</label>
+              <label className="block text-xs font-medium text-muted-foreground mb-1">Notes (optional)</label>
               <input
                 type="text"
                 value={cbNotes}
                 onChange={e => setCbNotes(e.target.value)}
                 placeholder="e.g. Call back after 2pm…"
-                className="w-full rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-lg border border-input bg-card px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none"
               />
             </div>
           </div>
@@ -303,14 +305,14 @@ export default function CallbacksPage() {
           <div className="flex justify-end gap-3">
             <button
               onClick={() => { setShowForm(false); setSelectedContact(null); setSearch('') }}
-              className="rounded-lg px-4 py-2 text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+              className="rounded-lg px-4 py-2 text-sm text-muted-foreground hover:text-foreground"
             >
               Cancel
             </button>
             <button
               onClick={submitCallback}
               disabled={!selectedContact || !cbTime || submitting}
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary disabled:opacity-50"
             >
               {submitting ? 'Scheduling…' : 'Schedule Callback'}
             </button>
@@ -319,41 +321,41 @@ export default function CallbacksPage() {
       )}
 
       {/* Upcoming Callbacks */}
-      <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
-        <div className="border-b border-gray-100 px-5 py-3 dark:border-gray-800">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Upcoming</h3>
+      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+        <div className="border-b border-border px-5 py-3">
+          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Upcoming</h3>
         </div>
         {loading ? (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800">
-            {[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-gray-50 dark:bg-gray-800/50" />)}
+          <div className="divide-y divide-gray-50">
+            {[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-muted/50" />)}
           </div>
         ) : pending.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-gray-400">No upcoming callbacks</p>
+          <p className="px-5 py-8 text-center text-sm text-muted-foreground">No upcoming callbacks</p>
         ) : (
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-50 dark:border-gray-800">
+              <tr className="border-b border-border">
                 {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Notes', 'Assigned To', ''].map(h => (
-                  <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                  <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+            <tbody className="divide-y divide-gray-50">
               {pending.map(cb => {
                 const isPast = new Date(cb.callback_at).getTime() < now
                 return (
-                  <tr key={cb.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20">
-                    <td className="px-5 py-3 font-medium text-gray-900 dark:text-white">{cb.contact_name}</td>
-                    <td className="px-5 py-3 text-gray-500 font-mono text-xs">{cb.phone}</td>
+                  <tr key={cb.id} className="hover:bg-muted/50/50">
+                    <td className="px-5 py-3 font-medium text-foreground">{cb.contact_name}</td>
+                    <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{cb.phone}</td>
                     <td className="px-5 py-3">
-                      <span className="text-[10px] font-semibold uppercase text-gray-400">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
+                      <span className="text-[10px] font-semibold uppercase text-muted-foreground">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
                     </td>
                     <td className="px-5 py-3">
                       <div>
-                        <span className={`text-xs font-medium ${isPast ? 'text-red-500' : 'text-cyan-600 dark:text-cyan-400'}`}>
+                        <span className={`text-xs font-medium ${isPast ? 'text-destructive' : 'text-primary'}`}>
                           {fmtRelative(cb.callback_at)}
                         </span>
-                        <p className="text-[10px] text-gray-400">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</p>
+                        <p className="text-[10px] text-muted-foreground">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</p>
                       </div>
                     </td>
                     <td className="px-5 py-3">
@@ -361,16 +363,16 @@ export default function CallbacksPage() {
                         {SOURCE_LABEL[cb.source] ?? cb.source}
                       </span>
                     </td>
-                    <td className="px-5 py-3 text-xs text-gray-500 max-w-[200px] truncate">
+                    <td className="px-5 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
                       {cb.callback_context ? stripHtml(cb.callback_context) : '—'}
                     </td>
-                    <td className="px-5 py-3 text-xs text-gray-500">{cb.owner_rep || '—'}</td>
+                    <td className="px-5 py-3 text-xs text-muted-foreground">{cb.owner_rep || '—'}</td>
                     <td className="px-5 py-3">
                       <div className="flex items-center gap-1.5">
                         <button
                           onClick={() => handleCall(cb)}
                           disabled={!deviceReady || callState !== 'idle'}
-                          className="flex items-center gap-1 rounded-lg bg-green-600 px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                          className="flex items-center gap-1 rounded-lg bg-success px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-success disabled:opacity-40 disabled:cursor-not-allowed"
                         >
                           <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
                             <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
@@ -379,7 +381,7 @@ export default function CallbacksPage() {
                         </button>
                         <button
                           onClick={() => cancelCallback(cb.id)}
-                          className="rounded-lg border border-gray-200 px-2 py-1.5 text-[11px] text-gray-400 hover:border-red-300 hover:text-red-500 dark:border-gray-700 dark:hover:border-red-800 dark:hover:text-red-400"
+                          className="rounded-lg border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:border-destructive/40 hover:text-destructive"
                         >
                           Cancel
                         </button>
@@ -395,47 +397,48 @@ export default function CallbacksPage() {
 
       {/* Completed Callbacks */}
       {completed.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white shadow-sm dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
-          <div className="border-b border-gray-100 px-5 py-3 dark:border-gray-800">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-gray-400">Completed</h3>
+        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
+          <div className="border-b border-border px-5 py-3">
+            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Completed</h3>
           </div>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-50 dark:border-gray-800">
+              <tr className="border-b border-border">
                 {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Completed', 'Result', 'Rep'].map(h => (
-                  <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-gray-400">{h}</th>
+                  <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800/50">
+            <tbody className="divide-y divide-gray-50">
               {completed.map(cb => (
-                <tr key={cb.id} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/20 opacity-60">
-                  <td className="px-5 py-3 font-medium text-gray-900 dark:text-white">{cb.contact_name}</td>
-                  <td className="px-5 py-3 text-gray-500 font-mono text-xs">{cb.phone}</td>
+                <tr key={cb.id} className="hover:bg-muted/50/50 opacity-60">
+                  <td className="px-5 py-3 font-medium text-foreground">{cb.contact_name}</td>
+                  <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{cb.phone}</td>
                   <td className="px-5 py-3">
-                    <span className="text-[10px] font-semibold uppercase text-gray-400">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
+                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</td>
+                  <td className="px-5 py-3 text-xs text-muted-foreground">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${SOURCE_PILL[cb.source] ?? SOURCE_PILL.manual}`}>
                       {SOURCE_LABEL[cb.source] ?? cb.source}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_at ? fmtTime(cb.completed_at, cb.firm) : '—'}</td>
+                  <td className="px-5 py-3 text-xs text-muted-foreground">{cb.completed_at ? fmtTime(cb.completed_at, cb.firm) : '—'}</td>
                   <td className="px-5 py-3">
                     <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      cb.status === 'cancelled' ? 'bg-gray-100 text-gray-500' : 'bg-green-100 text-green-700 dark:bg-green-950/40 dark:text-green-400'
+                      cb.status === 'cancelled' ? 'bg-muted text-muted-foreground' : 'bg-success/15 text-success'
                     }`}>
                       {cb.status === 'cancelled' ? 'Cancelled' : cb.disposition ?? 'Called'}
                     </span>
                   </td>
-                  <td className="px-5 py-3 text-xs text-gray-500">{cb.completed_by || cb.owner_rep || '—'}</td>
+                  <td className="px-5 py-3 text-xs text-muted-foreground">{cb.completed_by || cb.owner_rep || '—'}</td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }

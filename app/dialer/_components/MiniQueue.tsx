@@ -56,41 +56,41 @@ function LeadRow({ lead, position, repIdentity, selected, onClick }: {
   return (
     <div
       onClick={onClick}
-      className={`border-b border-gray-100 px-4 py-2.5 dark:border-gray-800/40 cursor-pointer transition-colors
-      ${selected ? 'bg-cyan-50/40 border-l-2 border-l-cyan-500 dark:bg-cyan-950/20' : ''}
-      ${!selected && isNext ? 'border-l-2 border-l-green-500 bg-green-50/30 dark:bg-green-950/10' : ''}
-      ${!selected && lead.is_carryover ? 'bg-amber-50/20 dark:bg-amber-950/10' : ''}
-      ${!selected ? 'hover:bg-gray-50 dark:hover:bg-gray-900/50' : ''}
+      className={`border-b border-border px-4 py-2.5 cursor-pointer transition-colors
+      ${selected ? 'bg-accent/40 border-l-2 border-l-cyan-500' : ''}
+      ${!selected && isNext ? 'border-l-2 border-l-green-500 bg-success/15/30' : ''}
+      ${!selected && lead.is_carryover ? 'bg-warning/20/20' : ''}
+      ${!selected ? 'hover:bg-muted/50' : ''}
     `}>
       <div className="flex items-start justify-between gap-2">
         <div className="flex items-center gap-2 shrink-0">
           <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold
-            ${isNext ? 'bg-green-600 text-white' : 'bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400'}`}>
+            ${isNext ? 'bg-success text-white' : 'bg-muted text-muted-foreground'}`}>
             {position}
           </span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
+            <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>
             {isNext && (
-              <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold uppercase text-green-700 dark:bg-green-950/50 dark:text-green-400">Next</span>
+              <span className="shrink-0 rounded-full bg-success/15 px-1.5 py-0.5 text-[9px] font-bold uppercase text-success">Next</span>
             )}
             {lead.isCallback && (
-              <span className="shrink-0 rounded-full bg-blue-100 px-1.5 py-0.5 text-[9px] font-bold text-blue-700 dark:bg-blue-950/50 dark:text-blue-400">CB</span>
+              <span className="shrink-0 rounded-full bg-accent px-1.5 py-0.5 text-[9px] font-bold text-primary">CB</span>
             )}
             {lead.is_carryover && (
-              <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">carried</span>
+              <span className="shrink-0 rounded-full bg-warning/20 px-1.5 py-0.5 text-[9px] font-bold text-warning">carried</span>
             )}
           </div>
-          <p className="text-xs text-gray-500 font-mono">{lead.phone}</p>
-          <p className="mt-0.5 text-[10px] text-gray-400 truncate">{reasonLine(lead)}</p>
+          <p className="text-xs text-muted-foreground font-mono">{lead.phone}</p>
+          <p className="mt-0.5 text-[10px] text-muted-foreground truncate">{reasonLine(lead)}</p>
           {lead.ownerRepIdentity && lead.ownerRepIdentity !== repIdentity && (
-            <p className="mt-0.5 text-[10px] text-amber-600 dark:text-amber-400">
+            <p className="mt-0.5 text-[10px] text-warning">
               Owner: {lead.ownerRepIdentity} (offline)
             </p>
           )}
         </div>
-        <span className="shrink-0 text-[10px] font-medium text-gray-400 mt-0.5">{FIRM_LABEL[lead.firm] ?? lead.firm}</span>
+        <span className="shrink-0 text-[10px] font-medium text-muted-foreground mt-0.5">{FIRM_LABEL[lead.firm] ?? lead.firm}</span>
       </div>
     </div>
   )
@@ -178,27 +178,27 @@ export function MiniQueue({ repIdentity, disabled, onCall, onSelect, refreshKey,
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b border-gray-200 px-4 pt-3 pb-2 dark:border-gray-800">
+      <div className="border-b border-border px-4 pt-3 pb-2">
         <div className="flex items-center justify-between">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
             My Queue
-            {!loading && <span className="ml-1 text-gray-400">({ordered.length}/5)</span>}
-            {loading  && <span className="animate-pulse text-gray-400"> loading…</span>}
+            {!loading && <span className="ml-1 text-muted-foreground">({ordered.length}/5)</span>}
+            {loading  && <span className="animate-pulse text-muted-foreground"> loading…</span>}
           </p>
           {/* Live indicator */}
-          <span className="flex items-center gap-1 text-[10px] text-green-500">
-            <span className="h-1.5 w-1.5 rounded-full bg-green-500 animate-pulse" />
+          <span className="flex items-center gap-1 text-[10px] text-success">
+            <span className="h-1.5 w-1.5 rounded-full bg-success animate-pulse" />
             Live
           </span>
         </div>
       </div>
 
       {/* Call Next */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+      <div className="px-4 py-3 border-b border-border">
         <button
           onClick={() => next && !disabled && onCall(next as QueueLead)}
           disabled={!next || disabled}
-          className="w-full rounded-lg bg-green-600 py-2 text-sm font-semibold text-white transition-colors hover:bg-green-500 disabled:cursor-not-allowed disabled:opacity-40">
+          className="w-full rounded-lg bg-success py-2 text-sm font-semibold text-white transition-colors hover:bg-success disabled:cursor-not-allowed disabled:opacity-40">
           {next ? 'Call Next' : 'Queue empty'}
         </button>
       </div>
@@ -207,8 +207,8 @@ export function MiniQueue({ repIdentity, disabled, onCall, onSelect, refreshKey,
       <div className="flex-1 overflow-y-auto">
         {ordered.length === 0 && !loading ? (
           <div className="px-4 py-6 text-center">
-            <p className="text-xs text-gray-400">No leads in queue.</p>
-            <p className="mt-1 text-[10px] text-gray-400">Leads will appear here as they become due.</p>
+            <p className="text-xs text-muted-foreground">No leads in queue.</p>
+            <p className="mt-1 text-[10px] text-muted-foreground">Leads will appear here as they become due.</p>
           </div>
         ) : (
           ordered.map((lead, i) => (

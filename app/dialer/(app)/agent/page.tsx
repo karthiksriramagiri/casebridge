@@ -88,25 +88,25 @@ function TagEditor({ lead, onTagsChange }: { lead: Lead; onTagsChange: (tags: st
   return (
     <div>
       <div className="flex items-center justify-between mb-1.5">
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Tags</p>
-        {saving && <span className="text-[10px] text-gray-400 animate-pulse">Saving…</span>}
-        {saved  && <span className="text-[10px] text-green-600 dark:text-green-400">Saved ✓</span>}
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Tags</p>
+        {saving && <span className="text-[10px] text-muted-foreground animate-pulse">Saving…</span>}
+        {saved  && <span className="text-[10px] text-success">Saved ✓</span>}
       </div>
       <div className="flex flex-wrap gap-1.5 mb-2 min-h-[24px]">
         {tags.map(t => (
-          <span key={t} className="group inline-flex items-center gap-1 rounded-full bg-gray-200 px-2 py-0.5 text-xs text-gray-700 dark:bg-gray-700 dark:text-gray-300">
+          <span key={t} className="group inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs text-foreground">
             {t}
             <button onClick={() => removeTag(t)} className="opacity-40 hover:opacity-100 transition-opacity leading-none">×</button>
           </span>
         ))}
-        {tags.length === 0 && <span className="text-xs text-gray-400">No tags</span>}
+        {tags.length === 0 && <span className="text-xs text-muted-foreground">No tags</span>}
       </div>
       <div className="flex gap-1.5">
         <input value={input} onChange={e => setInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && addTag()}
           placeholder="Add tag…"
-          className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600" />
+          className="flex-1 rounded-md border border-input bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
         <button onClick={addTag} disabled={!input.trim()}
-          className="rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-40">Add</button>
+          className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-white hover:bg-primary disabled:opacity-40">Add</button>
       </div>
     </div>
   )
@@ -120,7 +120,7 @@ function DtmfPad({ onKey }: { onKey: (k: string) => void }) {
     <div className="grid grid-cols-3 gap-1.5">
       {DTMF_KEYS.flat().map(k => (
         <button key={k} onClick={() => onKey(k)}
-          className="flex h-10 w-10 items-center justify-center rounded-lg border border-gray-300 bg-gray-100 text-sm font-semibold text-gray-700 transition-colors hover:bg-gray-200 active:bg-gray-300 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700">
+          className="flex h-10 w-10 items-center justify-center rounded-lg border border-input bg-muted text-sm font-semibold text-foreground transition-colors hover:bg-muted active:bg-muted-foreground/30">
           {k}
         </button>
       ))}
@@ -173,10 +173,10 @@ function DispositionModal({ lead, leadTimezone, firm, stageName, onSubmit, onCal
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-      <div className="w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-2xl dark:border-gray-700 dark:bg-gray-900">
-        <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-800">
-          <h2 className="text-base font-semibold text-gray-900 dark:text-white">Disposition Call</h2>
-          <p className="mt-0.5 text-sm text-gray-500">{lead.name} · {lead.phone}</p>
+      <div className="w-full max-w-md rounded-xl border border-border bg-card shadow-2xl">
+        <div className="border-b border-border px-6 py-4">
+          <h2 className="text-base font-semibold text-foreground">Disposition Call</h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">{lead.name} · {lead.phone}</p>
         </div>
         <div className="grid grid-cols-2 gap-2 p-4">
           {DISPOSITIONS.filter(d => {
@@ -185,70 +185,70 @@ function DispositionModal({ lead, leadTimezone, firm, stageName, onSubmit, onCal
             return true
           }).map(d => (
             <button key={d.id} onClick={() => setSelected(d)}
-              className={`rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-all ${d.color} ${selected?.id === d.id ? 'ring-2 ring-gray-900 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-gray-900' : 'opacity-80 hover:opacity-100'}`}>
+              className={`rounded-lg px-3 py-2.5 text-sm font-medium text-white transition-all ${d.color} ${selected?.id === d.id ? 'ring-2 ring-foreground ring-offset-2 ring-offset-card' : 'opacity-80 hover:opacity-100'}`}>
               {d.label}
             </button>
           ))}
         </div>
 
         {selected?.category === 'CALLBACK' && (
-          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+          <div className="border-t border-border px-4 pb-4 space-y-2">
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
               Callback time (your local time)
-              {leadTimezone && <span className="ml-1 text-gray-400">— lead is in {leadTimezone}</span>}
+              {leadTimezone && <span className="ml-1 text-muted-foreground">— lead is in {leadTimezone}</span>}
             </label>
             <input type="datetime-local" value={callbackTime} onChange={e => setCallbackTime(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white" />
+              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm text-foreground focus:border-primary focus:outline-none" />
             {localEquivalent && (
-              <p className="text-xs text-gray-500">
-                In their timezone: <span className="font-medium text-gray-700 dark:text-gray-300">{localEquivalent}</span>
+              <p className="text-xs text-muted-foreground">
+                In their timezone: <span className="font-medium text-foreground">{localEquivalent}</span>
               </p>
             )}
             {outsideHours && (
-              <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-400">
+              <p className="rounded-lg border border-warning/40 bg-warning/20 px-3 py-2 text-xs text-warning">
                 ⚠ This time is outside the lead's calling hours (8:30am–8:30pm their time)
               </p>
             )}
             <input
               value={context} onChange={e => setContext(e.target.value)}
               placeholder="Callback notes (optional)…"
-              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
           </div>
         )}
 
         {selected?.requiresReason && (
-          <div className="border-t border-gray-200 px-4 pb-4 space-y-2 dark:border-gray-800">
-            <label className="mb-1.5 block text-xs font-medium text-gray-500">
+          <div className="border-t border-border px-4 pb-4 space-y-2">
+            <label className="mb-1.5 block text-xs font-medium text-muted-foreground">
               Reason for not qualifying
             </label>
             <input
               value={nqReason} onChange={e => setNqReason(e.target.value)}
               placeholder="Enter reason…"
-              className="w-full rounded-lg border border-gray-300 bg-gray-50 px-3 py-2 text-sm text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+              className="w-full rounded-lg border border-input bg-muted/50 px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
             />
           </div>
         )}
 
-        <div className="flex items-center justify-between border-t border-gray-200 px-4 py-3 dark:border-gray-800">
+        <div className="flex items-center justify-between border-t border-border px-4 py-3">
           <button
             disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
             onClick={() => selected && onSubmit(selected, callbackTime, true, context, nqReason)}
-            className="flex items-center gap-1.5 rounded-lg border border-red-300 px-3 py-2 text-sm font-medium text-red-600 transition-colors hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950/30">
+            className="flex items-center gap-1.5 rounded-lg border border-destructive/40 px-3 py-2 text-sm font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:cursor-not-allowed disabled:opacity-40">
             <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><rect x="4" y="4" width="12" height="12" rx="1" /></svg>
             Stop
           </button>
           <div className="flex items-center gap-2">
             <button
               onClick={onCallAgain}
-              className="flex items-center gap-1.5 rounded-lg border border-green-300 px-3 py-2 text-sm font-medium text-green-600 transition-colors hover:bg-green-50 dark:border-green-800 dark:text-green-400 dark:hover:bg-green-950/30">
+              className="flex items-center gap-1.5 rounded-lg border border-success/40 px-3 py-2 text-sm font-medium text-success transition-colors hover:bg-success/15">
               <svg viewBox="0 0 20 20" fill="currentColor" className="h-4 w-4"><path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" /></svg>
               Call Again
             </button>
             <button
               disabled={!selected || (selected.category === 'CALLBACK' && !callbackTime) || (selected.requiresReason && !nqReason.trim())}
               onClick={() => selected && onSubmit(selected, callbackTime, false, context, nqReason)}
-              className="rounded-lg bg-cyan-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-cyan-500 disabled:cursor-not-allowed disabled:opacity-40">
+              className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-primary disabled:cursor-not-allowed disabled:opacity-40">
               Submit & Next
             </button>
           </div>
@@ -335,16 +335,16 @@ function RepLeadBrowser({
     : leads
 
   return (
-    <div className="border-t border-gray-200 dark:border-gray-800">
+    <div className="border-t border-border">
       {/* Toggle header */}
       <button
         onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-gray-100 dark:hover:bg-gray-900/50 transition-colors"
+        className="flex w-full items-center justify-between px-4 py-2.5 text-left hover:bg-muted transition-colors"
       >
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Browse Leads</p>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Browse Leads</p>
         <svg
           viewBox="0 0 20 20" fill="currentColor"
-          className={`h-4 w-4 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}
+          className={`h-4 w-4 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}
         >
           <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
         </svg>
@@ -355,12 +355,12 @@ function RepLeadBrowser({
           {/* Stage picker */}
           <div className="px-4 pb-2">
             {campaignsLoading ? (
-              <div className="h-7 animate-pulse rounded-md bg-gray-200 dark:bg-gray-800" />
+              <div className="h-7 animate-pulse rounded-md bg-muted" />
             ) : (
               <select
                 value={selectedCampaign?.id ?? ''}
                 onChange={e => setSelectedCampaign(campaigns.find(x => x.id === e.target.value) ?? null)}
-                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+                className="w-full rounded-md border border-input bg-card px-2 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
               >
                 <option value="">Select a stage…</option>
                 {campaigns.map(c => (
@@ -377,7 +377,7 @@ function RepLeadBrowser({
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Search name or phone…"
-                className="w-full rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                className="w-full rounded-md border border-input bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
               />
             </div>
           )}
@@ -385,15 +385,15 @@ function RepLeadBrowser({
           {/* Lead list */}
           <div className="flex-1 overflow-y-auto">
             {!selectedCampaign && (
-              <p className="px-4 py-4 text-center text-xs text-gray-400">Select a stage to browse leads.</p>
+              <p className="px-4 py-4 text-center text-xs text-muted-foreground">Select a stage to browse leads.</p>
             )}
             {selectedCampaign && leadsLoading && (
               <div className="space-y-2 p-4">
-                {[1,2,3].map(i => <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />)}
+                {[1,2,3].map(i => <div key={i} className="h-10 animate-pulse rounded-lg bg-muted" />)}
               </div>
             )}
             {selectedCampaign && !leadsLoading && filtered.length === 0 && (
-              <p className="px-4 py-4 text-center text-xs text-gray-400">
+              <p className="px-4 py-4 text-center text-xs text-muted-foreground">
                 {search ? 'No matches.' : 'No leads in this stage.'}
               </p>
             )}
@@ -402,10 +402,10 @@ function RepLeadBrowser({
                 key={lead.id}
                 onClick={() => selectedCampaign && !disabled && onCall(lead, selectedCampaign)}
                 disabled={disabled || !lead.phone}
-                className="w-full border-b border-gray-100 px-4 py-2 text-left transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800/40 dark:hover:bg-gray-900"
+                className="w-full border-b border-border px-4 py-2 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <p className="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
-                <p className="text-[10px] font-mono text-gray-500">{lead.phone || 'No phone'}</p>
+                <p className="truncate text-xs font-medium text-foreground">{lead.name}</p>
+                <p className="text-[10px] font-mono text-muted-foreground">{lead.phone || 'No phone'}</p>
               </button>
             ))}
             {hasMore && !search && (
@@ -413,7 +413,7 @@ function RepLeadBrowser({
                 <button
                   onClick={loadMore}
                   disabled={loadingMore}
-                  className="w-full rounded-md border border-gray-300 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+                  className="w-full rounded-md border border-input py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
                 >
                   {loadingMore ? 'Loading…' : 'Load more'}
                 </button>
@@ -510,12 +510,12 @@ function AdminLeadPicker({
   return (
     <div className="flex flex-col h-full">
       {/* Campaign selector */}
-      <div className="border-b border-gray-200 px-4 pt-3 pb-3 dark:border-gray-800">
-        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-gray-500">
+      <div className="border-b border-border px-4 pt-3 pb-3">
+        <label className="mb-1.5 block text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
           Pipeline Stage
         </label>
         {campaignsLoading ? (
-          <div className="h-8 animate-pulse rounded-md bg-gray-200 dark:bg-gray-800" />
+          <div className="h-8 animate-pulse rounded-md bg-muted" />
         ) : (
           <select
             value={selectedCampaign?.id ?? ''}
@@ -523,7 +523,7 @@ function AdminLeadPicker({
               const c = campaigns.find(x => x.id === e.target.value) ?? null
               setSelectedCampaign(c)
             }}
-            className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-900 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white"
+            className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
           >
             <option value="">Select a stage…</option>
             {campaigns.map(c => (
@@ -536,29 +536,29 @@ function AdminLeadPicker({
       {/* Lead list */}
       <div className="flex-1 overflow-y-auto">
         {!selectedCampaign && (
-          <p className="px-4 py-6 text-center text-xs text-gray-400">Select a stage to see leads.</p>
+          <p className="px-4 py-6 text-center text-xs text-muted-foreground">Select a stage to see leads.</p>
         )}
         {selectedCampaign && leadsLoading && (
           <div className="space-y-2 p-4">
-            {[1,2,3,4,5].map(i => <div key={i} className="h-14 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />)}
+            {[1,2,3,4,5].map(i => <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />)}
           </div>
         )}
         {selectedCampaign && !leadsLoading && leads.length === 0 && (
-          <p className="px-4 py-6 text-center text-xs text-gray-400">No leads in this stage.</p>
+          <p className="px-4 py-6 text-center text-xs text-muted-foreground">No leads in this stage.</p>
         )}
         {leads.map(lead => (
           <button
             key={lead.id}
             onClick={() => selectedCampaign && !disabled && onCall(lead, selectedCampaign)}
             disabled={disabled || !lead.phone}
-            className="w-full border-b border-gray-100 px-4 py-2.5 text-left transition-colors hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-800/40 dark:hover:bg-gray-900"
+            className="w-full border-b border-border px-4 py-2.5 text-left transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
-            <p className="text-xs font-mono text-gray-500">{lead.phone || 'No phone'}</p>
+            <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>
+            <p className="text-xs font-mono text-muted-foreground">{lead.phone || 'No phone'}</p>
             {lead.tags.length > 0 && (
               <div className="mt-1 flex flex-wrap gap-1">
                 {lead.tags.slice(0, 3).map(t => (
-                  <span key={t} className="rounded-full bg-gray-200 px-1.5 py-0.5 text-[9px] text-gray-600 dark:bg-gray-700 dark:text-gray-400">{t}</span>
+                  <span key={t} className="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">{t}</span>
                 ))}
               </div>
             )}
@@ -569,7 +569,7 @@ function AdminLeadPicker({
             <button
               onClick={loadMore}
               disabled={loadingMore}
-              className="w-full rounded-md border border-gray-300 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-100 disabled:opacity-40 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+              className="w-full rounded-md border border-input py-1.5 text-xs text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
             >
               {loadingMore ? 'Loading…' : 'Load more'}
             </button>
@@ -578,20 +578,20 @@ function AdminLeadPicker({
       </div>
 
       {/* Manual dial */}
-      <div className="border-t border-gray-200 p-3 dark:border-gray-800">
-        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">Manual dial</label>
+      <div className="border-t border-border p-3">
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Manual dial</label>
         <div className="flex gap-1.5">
           <input
             value={manualDial}
             onChange={e => setManualDial(e.target.value)}
             placeholder="+1 (555) 000-0000"
             onKeyDown={e => e.key === 'Enter' && handleManualDial()}
-            className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+            className="flex-1 rounded-md border border-input bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
           />
           <button
             onClick={handleManualDial}
             disabled={!deviceReady || !manualDial || disabled}
-            className="rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-40"
+            className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-white hover:bg-primary disabled:opacity-40"
           >
             Dial
           </button>
@@ -599,18 +599,18 @@ function AdminLeadPicker({
       </div>
 
       {/* Today's calls */}
-      <div className="max-h-44 overflow-y-auto border-t border-gray-200 dark:border-gray-800">
-        <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Today ({todayDisps.length})</p>
+      <div className="max-h-44 overflow-y-auto border-t border-border">
+        <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Today ({todayDisps.length})</p>
         {todayDisps.map((d, i) => (
           <div key={i} className="flex items-center justify-between px-4 py-1.5">
             <div>
-              <p className="truncate text-xs text-gray-700 max-w-[140px] dark:text-gray-300">{d.lead}</p>
+              <p className="truncate text-xs text-foreground max-w-[140px]">{d.lead}</p>
               <p className={`text-xs ${d.color}`}>{d.result}</p>
             </div>
-            <span className="text-xs text-gray-400">{d.time}</span>
+            <span className="text-xs text-muted-foreground">{d.time}</span>
           </div>
         ))}
-        {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-gray-400">No calls yet today.</p>}
+        {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-muted-foreground">No calls yet today.</p>}
       </div>
     </div>
   )
@@ -835,9 +835,9 @@ export default function AgentPage() {
       lead:   disposedLead?.name ?? '—',
       result: d.label,
       time:   new Date().toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Los_Angeles' }),
-      color:  d.category === 'POSITIVE' ? 'text-green-600 dark:text-green-400'
-            : d.category === 'CALLBACK' ? 'text-blue-600 dark:text-blue-400'
-            : 'text-red-600 dark:text-red-400',
+      color:  d.category === 'POSITIVE' ? 'text-success'
+            : d.category === 'CALLBACK' ? 'text-primary'
+            : 'text-destructive',
     }, ...prev])
 
     setCurrentLead(null)
@@ -974,9 +974,19 @@ export default function AgentPage() {
     ?? (['lhp', 'lhp_s', 'jm'].includes(currentLead?.source ?? '') ? 'America/Los_Angeles' : 'America/Chicago')
 
   return (
-    <div className="flex h-full">
-      {/* ── Left rail ── */}
-      <div className="flex w-72 shrink-0 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950">
+    /* Three rails: the queue, the phone, the lead.
+
+       The phone is the middle one and the widest because it is the only
+       part a rep looks at while talking. The queue on the left answers
+       "who is next" and the detail on the right answers "who is this" —
+       both are read between calls, not during one.
+
+       `h-dvh` rather than `h-full`: the shell is a flex row now, and a
+       percentage height inside it resolved to nothing, which is what
+       collapsed the three rails into a stack. */
+    <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
+      {/* ── Left rail: what to call ── */}
+      <div className="flex w-full shrink-0 flex-col border-b border-border bg-muted/50 md:h-full md:w-72 md:border-b-0 md:border-r">
         {isAdmin ? (
           /* Admin: campaign picker + GHL lead list */
           <AdminLeadPicker
@@ -1000,8 +1010,8 @@ export default function AgentPage() {
             </div>
 
             {/* Manual dial */}
-            <div className="border-t border-gray-200 p-3 dark:border-gray-800">
-              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-gray-500">Manual dial</label>
+            <div className="border-t border-border p-3">
+              <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Manual dial</label>
               <div className="flex gap-1.5">
                 <input
                   onChange={e => {}}
@@ -1012,7 +1022,7 @@ export default function AgentPage() {
                       ctxPlaceCall({ id: 'manual', name: val, phone: val, email: '', company: '', source: 'manual', tags: [], lastActivity: new Date().toISOString(), contactId: '' })
                     }
                   }}
-                  className="flex-1 rounded-md border border-gray-300 bg-white px-2 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                  className="flex-1 rounded-md border border-input bg-card px-2 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                 />
                 <button
                   disabled={!deviceReady || status !== 'READY'}
@@ -1020,25 +1030,25 @@ export default function AgentPage() {
                     const input = (e.currentTarget.previousElementSibling as HTMLInputElement)
                     if (input?.value) ctxPlaceCall({ id: 'manual', name: input.value, phone: input.value, email: '', company: '', source: 'manual', tags: [], lastActivity: new Date().toISOString(), contactId: '' })
                   }}
-                  className="rounded-md bg-cyan-600 px-2.5 py-1.5 text-xs font-medium text-white hover:bg-cyan-500 disabled:opacity-40">
+                  className="rounded-md bg-primary px-2.5 py-1.5 text-xs font-medium text-white hover:bg-primary disabled:opacity-40">
                   Dial
                 </button>
               </div>
             </div>
 
             {/* Today's calls */}
-            <div className="max-h-44 overflow-y-auto border-t border-gray-200 dark:border-gray-800">
-              <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Today ({todayDisps.length})</p>
+            <div className="max-h-44 overflow-y-auto border-t border-border">
+              <p className="px-4 pt-2.5 pb-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Today ({todayDisps.length})</p>
               {todayDisps.map((d, i) => (
                 <div key={i} className="flex items-center justify-between px-4 py-1.5">
                   <div>
-                    <p className="truncate text-xs text-gray-700 max-w-[140px] dark:text-gray-300">{d.lead}</p>
+                    <p className="truncate text-xs text-foreground max-w-[140px]">{d.lead}</p>
                     <p className={`text-xs ${d.color}`}>{d.result}</p>
                   </div>
-                  <span className="text-xs text-gray-400">{d.time}</span>
+                  <span className="text-xs text-muted-foreground">{d.time}</span>
                 </div>
               ))}
-              {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-gray-400">No calls yet today.</p>}
+              {todayDisps.length === 0 && <p className="px-4 py-2 text-xs text-muted-foreground">No calls yet today.</p>}
             </div>
 
             {/* Browse all leads */}
@@ -1050,30 +1060,30 @@ export default function AgentPage() {
         )}
       </div>
 
-      {/* ── Center: softphone ── */}
-      <div className="flex flex-1 flex-col items-center justify-center gap-6 p-6">
+      {/* ── Center: the phone ── */}
+      <div className="flex min-w-0 flex-1 flex-col items-center justify-center gap-5 overflow-y-auto p-6">
         {deviceError && (
-          <div className="w-full max-w-sm rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-800 dark:bg-red-950/40 dark:text-red-400">
+          <div className="w-full max-w-sm rounded-lg border border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive">
             ⚠ Twilio error: {deviceError}
           </div>
         )}
         {!deviceReady && !deviceError && (
-          <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs text-gray-400 animate-pulse dark:border-gray-800 dark:bg-gray-900/60">
+          <div className="w-full max-w-sm rounded-lg border border-border bg-card px-4 py-2 text-xs text-muted-foreground animate-pulse">
             Connecting to Twilio…
           </div>
         )}
 
         {/* Status bar */}
-        <div className="flex w-full max-w-sm items-center justify-between rounded-xl border border-gray-200 bg-white px-4 py-3 shadow-sm dark:border-gray-800 dark:bg-gray-900">
+        <div className="flex w-full max-w-sm items-center justify-between rounded-xl border border-border bg-card px-4 py-3 shadow-sm">
           <div>
-            <p className="text-xs text-gray-500">Your status</p>
+            <p className="text-xs text-muted-foreground">Your status</p>
             <StatusPill status={status} size="lg" pulse />
           </div>
           <div className="flex gap-2">
             {(['READY', 'PAUSED'] as RepStatus[]).map(s => (
               <button key={s} onClick={() => { if (callState === 'idle' && deviceReady) setStatus(s) }}
                 disabled={callState !== 'idle' || !deviceReady || status === s}
-                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${status === s ? 'bg-gray-200 text-gray-900 dark:bg-gray-700 dark:text-white' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-700 disabled:opacity-30 dark:text-gray-500 dark:hover:bg-gray-800 dark:hover:text-gray-300'}`}>
+                className={`rounded-md px-2.5 py-1 text-xs font-medium transition-colors ${status === s ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30'}`}>
                 {s === 'READY' ? 'Ready' : 'Pause'}
               </button>
             ))}
@@ -1081,13 +1091,13 @@ export default function AgentPage() {
         </div>
 
         {/* Call card */}
-        <div className="w-full max-w-sm rounded-xl border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-900">
+        <div className="w-full max-w-sm rounded-xl border border-border bg-card shadow-lg">
           {callState === 'idle' ? (
             <div className="flex flex-col items-center gap-3 py-10 px-6">
-              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-gray-200 bg-gray-100 text-gray-400 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-600">
+              <div className="flex h-16 w-16 items-center justify-center rounded-full border border-border bg-muted text-muted-foreground">
                 <PhoneInIcon />
               </div>
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 {deviceReady
                   ? isAdmin ? 'Ready — pick a lead from the left' : 'Ready — use the queue on the left'
                   : 'Initialising device…'}
@@ -1095,35 +1105,35 @@ export default function AgentPage() {
             </div>
           ) : (
             <>
-              <div className={`rounded-t-xl px-5 py-4 ${callState === 'ringing' ? 'bg-amber-50 dark:bg-amber-950/50' : callState === 'wrapup' ? 'bg-violet-50 dark:bg-violet-950/50' : 'bg-cyan-50 dark:bg-cyan-950/50'}`}>
+              <div className={`rounded-t-xl px-5 py-4 ${callState === 'ringing' ? 'bg-warning/20' : callState === 'wrapup' ? 'bg-accent' : 'bg-accent'}`}>
                 <div className="flex items-start justify-between">
                   <div>
-                    <p className="text-lg font-semibold text-gray-900 dark:text-white">{currentLead?.name}</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-300">{currentLead?.phone}</p>
+                    <p className="text-lg font-semibold text-foreground">{currentLead?.name}</p>
+                    <p className="text-sm text-muted-foreground">{currentLead?.phone}</p>
                     {currentQueueLead.current && (
-                      <p className="mt-0.5 text-xs text-gray-500">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         {currentQueueLead.current.stageName} · {currentQueueLead.current.firm.toUpperCase()}
                       </p>
                     )}
                     {callerIdUsed && (
-                      <p className="mt-0.5 text-[10px] text-gray-400">
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
                         Calling from: <span className="font-mono">{callerIdUsed}</span>
                       </p>
                     )}
                   </div>
                   <div className="text-right">
-                    {callState === 'ringing'   && <span className="text-xs font-medium text-amber-600 dark:text-amber-400 animate-pulse">Ringing…</span>}
-                    {callState === 'connected' && <span className="text-xl font-mono font-bold text-cyan-700 dark:text-cyan-300">{fmtDuration(callDuration)}</span>}
-                    {callState === 'wrapup'    && <span className="text-xs font-medium text-violet-600 dark:text-violet-400">Wrap-up</span>}
+                    {callState === 'ringing'   && <span className="text-xs font-medium text-warning animate-pulse">Ringing…</span>}
+                    {callState === 'connected' && <span className="text-xl font-mono font-bold text-primary">{fmtDuration(callDuration)}</span>}
+                    {callState === 'wrapup'    && <span className="text-xs font-medium text-primary">Wrap-up</span>}
                   </div>
                 </div>
                 {currentQueueLead.current?.isCallback && (
-                  <div className="mt-2 rounded-md bg-blue-100 px-2.5 py-1.5 text-xs text-blue-700 dark:bg-blue-950/50 dark:text-blue-300">
+                  <div className="mt-2 rounded-md bg-accent px-2.5 py-1.5 text-xs text-primary">
                     📅 Callback — {currentQueueLead.current.callbackContext || 'scheduled callback'}
                   </div>
                 )}
                 {answeredBy && answeredBy.startsWith('machine') && (
-                  <div className="mt-2 rounded-md bg-amber-100 px-2.5 py-1.5 text-xs font-medium text-amber-700 dark:bg-amber-950/50 dark:text-amber-400">
+                  <div className="mt-2 rounded-md bg-warning/20 px-2.5 py-1.5 text-xs font-medium text-warning">
                     📠 Voicemail detected
                   </div>
                 )}
@@ -1131,8 +1141,8 @@ export default function AgentPage() {
 
               {/* ── Call Checklist ── */}
               {callState !== 'wrapup' && (
-                <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2">Call Checklist</p>
+                <div className="px-5 py-3 border-t border-border">
+                  <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-2">Call Checklist</p>
                   <div className="space-y-1.5">
                     {[
                       { key: 'connected', label: 'Connected' },
@@ -1147,9 +1157,9 @@ export default function AgentPage() {
                           type="checkbox"
                           checked={!!checklist[item.key]}
                           onChange={() => toggleCheck(item.key)}
-                          className="mt-0.5 h-4 w-4 rounded border-gray-300 text-cyan-600 focus:ring-cyan-500 dark:border-gray-600 dark:bg-gray-800"
+                          className="mt-0.5 h-4 w-4 rounded border-input text-primary focus:ring-primary"
                         />
-                        <span className={`text-xs transition-colors ${checklist[item.key] ? 'text-green-600 dark:text-green-400 line-through' : 'text-gray-700 dark:text-gray-300'}`}>
+                        <span className={`text-xs transition-colors ${checklist[item.key] ? 'text-success line-through' : 'text-foreground'}`}>
                           {item.label}
                         </span>
                       </label>
@@ -1162,31 +1172,31 @@ export default function AgentPage() {
                 <div className="px-5 py-4">
                   <div className="mb-4 flex items-center justify-center gap-3">
                     <button onClick={toggleMute}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${muted ? 'border-red-300 bg-red-50 text-red-500 dark:border-red-500 dark:bg-red-900/50 dark:text-red-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${muted ? 'border-destructive/40 bg-destructive/10 text-destructive' : 'border-input bg-muted text-muted-foreground hover:border-input hover:text-foreground'}`}>
                       {muted ? <MicOffIcon /> : <MicIcon />}
                     </button>
                     <button onClick={() => setHeld(h => !h)}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${held ? 'border-amber-300 bg-amber-50 text-amber-600 dark:border-amber-500 dark:bg-amber-900/50 dark:text-amber-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${held ? 'border-warning/40 bg-warning/20 text-warning' : 'border-input bg-muted text-muted-foreground hover:border-input hover:text-foreground'}`}>
                       <PauseIcon />
                     </button>
                     <button onClick={() => setShowDtmf(d => !d)}
-                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${showDtmf ? 'border-cyan-300 bg-cyan-50 text-cyan-600 dark:border-cyan-500 dark:bg-cyan-900/50 dark:text-cyan-400' : 'border-gray-300 bg-gray-100 text-gray-500 hover:border-gray-400 hover:text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-400'}`}>
+                      className={`flex h-11 w-11 items-center justify-center rounded-full border transition-colors ${showDtmf ? 'border-primary bg-accent text-primary' : 'border-input bg-muted text-muted-foreground hover:border-input hover:text-foreground'}`}>
                       <GridIcon />
                     </button>
                     <button onClick={hangUp}
-                      className="flex h-12 w-12 items-center justify-center rounded-full bg-red-600 text-white shadow-lg transition-colors hover:bg-red-500">
+                      className="flex h-12 w-12 items-center justify-center rounded-full bg-destructive text-white shadow-lg transition-colors hover:bg-destructive">
                       <PhoneOffIcon />
                     </button>
                   </div>
                   {showDtmf && (
                     <div className="flex flex-col items-center gap-2">
                       <input readOnly value={dtmfBuffer} placeholder="—"
-                        className="w-full rounded border border-gray-300 bg-gray-50 px-3 py-1.5 text-center font-mono text-sm text-cyan-700 dark:border-gray-700 dark:bg-gray-800/50 dark:text-cyan-300" />
+                        className="w-full rounded border border-input bg-muted/50 px-3 py-1.5 text-center font-mono text-sm text-primary" />
                       <DtmfPad onKey={onDtmfKey} />
                     </div>
                   )}
                   {held && (
-                    <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-center text-xs font-medium text-amber-700 dark:border-amber-800 dark:bg-amber-950/50 dark:text-amber-400">
+                    <div className="mt-3 rounded-lg border border-warning/40 bg-warning/20 px-3 py-2 text-center text-xs font-medium text-warning">
                       Call is on hold
                     </div>
                   )}
@@ -1194,7 +1204,7 @@ export default function AgentPage() {
               )}
               {callState === 'wrapup' && (
                 <div className="px-5 py-6 text-center">
-                  <p className="text-sm text-gray-500">Select a disposition to continue…</p>
+                  <p className="text-sm text-muted-foreground">Select a disposition to continue…</p>
                 </div>
               )}
             </>
@@ -1202,26 +1212,26 @@ export default function AgentPage() {
         </div>
 
         {/* AI Case Summary */}
-        <div className="w-full max-w-sm rounded-xl border border-cyan-200 bg-white shadow-sm dark:border-cyan-900 dark:bg-gray-900">
-          <div className="border-b border-cyan-100 px-4 py-2.5 dark:border-cyan-900/60">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
+        <div className="w-full max-w-sm rounded-xl border border-primary bg-card shadow-sm">
+          <div className="border-b border-primary/30 px-4 py-2.5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Case Summary</p>
           </div>
           <div className="px-4 py-3 max-h-48 overflow-y-auto">
             {contactLoading ? (
               <div className="space-y-2">
-                {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
+                {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-muted" />)}
               </div>
             ) : aiSummary ? (
               <ul className="space-y-1.5">
                 {aiSummary.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean).map((line, i) => (
-                  <li key={i} className="flex items-start gap-2 text-xs text-gray-700 dark:text-gray-300">
-                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+                  <li key={i} className="flex items-start gap-2 text-xs text-foreground">
+                    <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                     {line}
                   </li>
                 ))}
               </ul>
             ) : (
-              <p className="text-xs italic text-gray-400 dark:text-gray-600">
+              <p className="text-xs italic text-muted-foreground">
                 {currentLead ? 'Generating summary…' : 'Select a lead to see their case summary.'}
               </p>
             )}
@@ -1229,20 +1239,20 @@ export default function AgentPage() {
         </div>
 
         {/* Identity */}
-        <div className="flex items-center gap-2 text-xs text-gray-400">
+        <div className="flex items-center gap-2 text-xs text-muted-foreground">
           <span>Signed in as</span>
-          <span className="font-medium text-gray-600 dark:text-gray-300">{authName}</span>
+          <span className="font-medium text-muted-foreground">{authName}</span>
           <span>·</span>
-          <span className={deviceReady ? 'text-green-600 dark:text-green-500' : 'text-gray-400'}>
+          <span className={deviceReady ? 'text-success' : 'text-muted-foreground'}>
             {deviceReady ? '● device ready' : '○ not registered'}
           </span>
           <span>·</span>
-          <button onClick={signOut} className="text-gray-400 hover:text-red-400 transition-colors">Sign out</button>
+          <button onClick={signOut} className="text-muted-foreground hover:text-destructive transition-colors">Sign out</button>
         </div>
       </div>
 
-      {/* ── Right rail: Lead Detail ── */}
-      <div className="w-72 shrink-0 border-l border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950 overflow-y-auto">
+      {/* ── Right rail: who it is ── */}
+      <div className="w-full shrink-0 overflow-y-auto border-t border-border bg-muted/50 md:h-full md:w-80 md:border-t-0 md:border-l">
         {(currentLead || selectedQueueLead) ? (() => {
           const isLive = !!currentLead
           const displayName  = currentLead?.name  ?? selectedQueueLead?.name  ?? ''
@@ -1253,12 +1263,12 @@ export default function AgentPage() {
           return (
             <div className="p-4 space-y-4">
               <div className="flex items-center justify-between">
-                <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Lead Detail</p>
+                <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Lead Detail</p>
                 {isLive && (
-                  <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-medium text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400">Live</span>
+                  <span className="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-primary">Live</span>
                 )}
                 {!isLive && (
-                  <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500 dark:bg-gray-800 dark:text-gray-400">Preview</span>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">Preview</span>
                 )}
               </div>
 
@@ -1266,18 +1276,18 @@ export default function AgentPage() {
               {!showDocuseal && !docusealSent && (
                 <button
                   onClick={() => { setShowDocuseal(true); setDocusealSent(false); setDsFirm('') }}
-                  className="w-full rounded-lg bg-indigo-600 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700">
+                  className="w-full rounded-lg bg-primary py-2.5 text-sm font-semibold text-white transition-colors hover:bg-primary active:bg-primary">
                   Send Docuseal
                 </button>
               )}
               {docusealSent && (
-                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-center dark:border-green-900 dark:bg-green-950/30">
-                  <p className="text-xs font-medium text-green-700 dark:text-green-400">Docuseal sent &amp; tagged</p>
+                <div className="rounded-lg border border-success/40 bg-success/15 px-3 py-2 text-center">
+                  <p className="text-xs font-medium text-success">Docuseal sent &amp; tagged</p>
                 </div>
               )}
               {showDocuseal && !docusealSent && !dsFirm && (
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2 dark:border-indigo-900 dark:bg-indigo-950/20">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Select Firm</p>
+                <div className="rounded-lg border border-primary bg-accent/50 p-3 space-y-2">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Select Firm</p>
                   <div className="grid grid-cols-2 gap-1.5">
                     {([
                       { key: 'lhp',     label: 'Larry H. Parker' },
@@ -1289,59 +1299,59 @@ export default function AgentPage() {
                       { key: 'eb',      label: 'EB Agreement' },
                     ] as const).map(f => (
                       <button key={f.key} onClick={() => setDsFirm(f.key)}
-                        className="rounded-md border border-gray-300 px-2 py-2 text-xs font-medium text-gray-700 hover:bg-indigo-50 hover:border-indigo-400 hover:text-indigo-700 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-indigo-950/30 dark:hover:border-indigo-600 dark:hover:text-indigo-400 transition-colors">
+                        className="rounded-md border border-input px-2 py-2 text-xs font-medium text-foreground hover:bg-accent hover:border-primary hover:text-primary transition-colors">
                         {f.label}
                       </button>
                     ))}
                   </div>
                   <button
                     onClick={() => { setShowDocuseal(false); setDsFirm('') }}
-                    className="w-full rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800 mt-1">
+                    className="w-full rounded-md border border-input py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted mt-1">
                     Cancel
                   </button>
                 </div>
               )}
               {showDocuseal && !docusealSent && dsFirm && (
-                <div className="rounded-lg border border-indigo-200 bg-indigo-50/50 p-3 space-y-2.5 dark:border-indigo-900 dark:bg-indigo-950/20">
+                <div className="rounded-lg border border-primary bg-accent/50 p-3 space-y-2.5">
                   <div className="flex items-center justify-between">
-                    <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400">Docuseal Details</p>
-                    <button onClick={() => setDsFirm('')} className="text-[10px] text-indigo-500 hover:text-indigo-400">Change firm</button>
+                    <p className="text-[11px] font-semibold uppercase tracking-wider text-primary">Docuseal Details</p>
+                    <button onClick={() => setDsFirm('')} className="text-[10px] text-primary hover:text-primary">Change firm</button>
                   </div>
-                  <p className="text-xs font-medium text-gray-700 dark:text-gray-300">
+                  <p className="text-xs font-medium text-foreground">
                     {({ lhp: 'Larry H. Parker', lhp_s: 'LHP Spanish', jm: 'Jacoby & Meyers', cowen: 'Cowen Law', fears: 'Fears Law', bernard: 'Bernard Law', eb: 'EB Agreement' } as Record<string, string>)[dsFirm] ?? dsFirm}
                   </p>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Accident</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Date of Accident</label>
                     <input
                       type="date"
                       value={dsAccidentDate}
                       onChange={e => setDsAccidentDate(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">City of Accident</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">City of Accident</label>
                     <input
                       type="text"
                       value={dsAccidentCity}
                       onChange={e => setDsAccidentCity(e.target.value)}
                       placeholder="e.g. Los Angeles"
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Birth</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Date of Birth</label>
                     <input
                       type="date"
                       value={dsDob}
                       onChange={e => setDsDob(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-indigo-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200"
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground focus:border-primary focus:outline-none"
                     />
                   </div>
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => { setShowDocuseal(false); setDsFirm(''); setDsAccidentDate(''); setDsAccidentCity(''); setDsDob('') }}
-                      className="flex-1 rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
+                      className="flex-1 rounded-md border border-input py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted">
                       Cancel
                     </button>
                     <button
@@ -1380,7 +1390,7 @@ export default function AgentPage() {
                           setDocusealSending(false)
                         }
                       }}
-                      className="flex-1 rounded-md bg-indigo-600 py-1.5 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-40 disabled:cursor-not-allowed">
+                      className="flex-1 rounded-md bg-primary py-1.5 text-xs font-semibold text-white hover:bg-primary disabled:opacity-40 disabled:cursor-not-allowed">
                       {docusealSending ? 'Sending…' : 'Submit'}
                     </button>
                   </div>
@@ -1391,54 +1401,54 @@ export default function AgentPage() {
               {!showPassenger && !passengerSent && (
                 <button
                   onClick={() => { setShowPassenger(true); setPassengerSent(false) }}
-                  className="w-full rounded-lg border border-indigo-300 py-2.5 text-sm font-semibold text-indigo-600 transition-colors hover:bg-indigo-50 active:bg-indigo-100 dark:border-indigo-700 dark:text-indigo-400 dark:hover:bg-indigo-950/30">
+                  className="w-full rounded-lg border border-primary py-2.5 text-sm font-semibold text-primary transition-colors hover:bg-accent active:bg-accent">
                   Add Passenger
                 </button>
               )}
               {passengerSent && (
-                <div className="rounded-lg border border-green-200 bg-green-50 px-3 py-2 dark:border-green-900 dark:bg-green-950/30 flex items-center justify-between">
-                  <p className="text-xs font-medium text-green-700 dark:text-green-400">Passenger contract sent</p>
+                <div className="rounded-lg border border-success/40 bg-success/15 px-3 py-2 flex items-center justify-between">
+                  <p className="text-xs font-medium text-success">Passenger contract sent</p>
                   <button onClick={() => { setPassengerSent(false) }}
-                    className="text-[10px] text-green-600 hover:text-green-500 dark:text-green-400">Send Another</button>
+                    className="text-[10px] text-success hover:text-success">Send Another</button>
                 </div>
               )}
               {showPassenger && !passengerSent && (
-                <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 space-y-2.5 dark:border-orange-900 dark:bg-orange-950/20">
-                  <p className="text-[11px] font-semibold uppercase tracking-wider text-orange-600 dark:text-orange-400">Passenger Details</p>
+                <div className="rounded-lg border border-orange-200 bg-orange-50/50 p-3 space-y-2.5">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-orange-600">Passenger Details</p>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Name</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Name</label>
                     <input type="text" value={pName} placeholder="Full Name"
                       onChange={e => setPName(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-orange-500 focus:outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Phone Number</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Phone Number</label>
                     <input type="tel" value={pPhone} placeholder="+1"
                       onChange={e => setPPhone(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-orange-500 focus:outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Accident</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Date of Accident</label>
                     <input type="date" value={pAccidentDate}
                       onChange={e => setPAccidentDate(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground focus:border-orange-500 focus:outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">City of Accident</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">City of Accident</label>
                     <input type="text" value={pAccidentCity} placeholder="e.g. Los Angeles"
                       onChange={e => setPAccidentCity(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 placeholder-gray-400 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground focus:border-orange-500 focus:outline-none" />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-medium text-gray-500 mb-0.5">Date of Birth</label>
+                    <label className="block text-[10px] font-medium text-muted-foreground mb-0.5">Date of Birth</label>
                     <input type="date" value={pDob}
                       onChange={e => setPDob(e.target.value)}
-                      className="w-full rounded-md border border-gray-300 bg-white px-2.5 py-1.5 text-xs text-gray-800 focus:border-orange-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200" />
+                      className="w-full rounded-md border border-input bg-card px-2.5 py-1.5 text-xs text-foreground focus:border-orange-500 focus:outline-none" />
                   </div>
                   <div className="flex gap-2 pt-1">
                     <button
                       onClick={() => { setShowPassenger(false); setPName(''); setPPhone('+1'); setPDob(''); setPAccidentDate(''); setPAccidentCity('') }}
-                      className="flex-1 rounded-md border border-gray-300 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-100 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800">
+                      className="flex-1 rounded-md border border-input py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted">
                       Cancel
                     </button>
                     <button
@@ -1494,31 +1504,31 @@ export default function AgentPage() {
                   ['Via',      contactDetail?.attributionSource],
                 ] as [string, string | undefined][]).map(([label, value]) => value ? (
                   <div key={label}>
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
-                    <p className="text-sm text-gray-800 dark:text-gray-200 break-words">{value}</p>
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="text-sm text-foreground break-words">{value}</p>
                   </div>
                 ) : null)}
               </div>
 
               {/* GHL Tags */}
-              <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
+              <div className="border-t border-border pt-3">
                 {isLive && currentLead ? (
                   <TagEditor key={currentLead.id} lead={currentLead} onTagsChange={() => {}} />
                 ) : (
                   <>
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Tags</p>
+                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tags</p>
                     {contactLoading ? (
                       <div className="flex flex-wrap gap-1">
-                        {[1,2,3].map(i => <div key={i} className="h-5 w-14 animate-pulse rounded-full bg-gray-200 dark:bg-gray-800" />)}
+                        {[1,2,3].map(i => <div key={i} className="h-5 w-14 animate-pulse rounded-full bg-muted" />)}
                       </div>
                     ) : (contactDetail?.tags ?? []).length > 0 ? (
                       <div className="flex flex-wrap gap-1">
                         {contactDetail!.tags.map((tag, i) => (
-                          <span key={i} className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-gray-700 dark:text-gray-300">{tag}</span>
+                          <span key={i} className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">{tag}</span>
                         ))}
                       </div>
                     ) : (
-                      <p className="text-xs italic text-gray-400">No tags</p>
+                      <p className="text-xs italic text-muted-foreground">No tags</p>
                     )}
                   </>
                 )}
@@ -1526,13 +1536,13 @@ export default function AgentPage() {
 
               {/* Custom Fields */}
               {(contactDetail?.customFields ?? []).length > 0 && (
-                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-gray-500">Custom Fields</p>
+                <div className="border-t border-border pt-3">
+                  <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Custom Fields</p>
                   <div className="space-y-1.5">
                     {contactDetail!.customFields.map((cf, i) => (
                       <div key={i}>
-                        <p className="text-[10px] font-medium text-gray-400">{cf.label}</p>
-                        <p className="text-xs text-gray-700 dark:text-gray-300 break-words">{cf.value}</p>
+                        <p className="text-[10px] font-medium text-muted-foreground">{cf.label}</p>
+                        <p className="text-xs text-foreground break-words">{cf.value}</p>
                       </div>
                     ))}
                   </div>
@@ -1540,39 +1550,39 @@ export default function AgentPage() {
               )}
 
               {/* Case Summary */}
-              <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-cyan-600 dark:text-cyan-400">Case Summary</p>
+              <div className="border-t border-border pt-3">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-primary">Case Summary</p>
                 {contactLoading ? (
                   <div className="space-y-1.5">
-                    {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
+                    {[1,2,3].map(i => <div key={i} className="h-3 animate-pulse rounded bg-muted" />)}
                   </div>
                 ) : aiSummary ? (
                   <ul className="space-y-1.5">
                     {aiSummary.split('\n').map(l => l.replace(/^•\s*/, '').trim()).filter(Boolean).map((line, i) => (
-                      <li key={i} className="flex items-start gap-1.5 text-xs text-gray-700 dark:text-gray-300">
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+                      <li key={i} className="flex items-start gap-1.5 text-xs text-foreground">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                         {line}
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <p className="text-xs italic text-gray-400 dark:text-gray-600">No summary yet.</p>
+                  <p className="text-xs italic text-muted-foreground">No summary yet.</p>
                 )}
               </div>
 
               {/* Notes — only during active call */}
               {isLive && (
-                <div className="border-t border-gray-200 pt-3 dark:border-gray-800">
-                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Notes</p>
+                <div className="border-t border-border pt-3">
+                  <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Notes</p>
                   <textarea placeholder="Add call notes…" rows={3}
-                    className="w-full resize-none rounded-lg border border-gray-300 bg-white px-3 py-2 text-xs text-gray-800 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-gray-200 dark:placeholder-gray-600" />
+                    className="w-full resize-none rounded-lg border border-input bg-card px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none" />
                 </div>
               )}
             </div>
           )
         })() : (
           <div className="flex h-full flex-col items-center justify-center text-center p-4">
-            <p className="text-xs text-gray-400">Click a lead in your queue<br />to preview their details.</p>
+            <p className="text-xs text-muted-foreground">Click a lead in your queue<br />to preview their details.</p>
           </div>
         )}
       </div>

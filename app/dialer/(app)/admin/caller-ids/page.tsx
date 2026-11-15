@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { PageBody, PageHeader } from '../../../_components/ui/shell'
 
 interface NumberInfo {
   phoneNumber:    string
@@ -139,23 +140,21 @@ export default function CallerIDsPage() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Caller IDs</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {loading ? 'Loading…' : `${total} numbers across ${statesUsed} states`}
-          </p>
-        </div>
+    <>
+      <PageHeader
+        title="Caller IDs"
+        description={loading ? 'Loading…' : `${total} numbers across ${statesUsed} states`}
+        actions={
         <button
           onClick={fetchNumbers}
           disabled={loading}
-          className="rounded-lg border border-gray-300 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-800"
+          className="rounded-lg border border-input px-3 py-1.5 text-xs font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
         >
           {loading ? 'Refreshing…' : 'Refresh from Twilio'}
         </button>
-      </div>
+        }
+      />
+      <PageBody>
 
       {/* Summary cards */}
       <div className="grid grid-cols-4 gap-4">
@@ -165,17 +164,17 @@ export default function CallerIDsPage() {
           { label: 'Total Calls',     value: totalCalls.toLocaleString() },
           { label: 'Connect Rate',    value: `${overallRate}%` },
         ].map(card => (
-          <div key={card.label} className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-            <p className="text-[10px] font-semibold uppercase tracking-wider text-gray-400">{card.label}</p>
-            <p className="mt-1 text-2xl font-bold text-gray-900 dark:text-white">{card.value}</p>
+          <div key={card.label} className="rounded-xl border border-border bg-card p-4">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{card.label}</p>
+            <p className="mt-1 text-2xl font-bold text-foreground">{card.value}</p>
           </div>
         ))}
       </div>
 
       {/* State coverage bar */}
       {stateCoverage.length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">State Coverage</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">State Coverage</p>
           <div className="flex flex-wrap gap-1.5">
             {stateCoverage.map(sc => (
               <button
@@ -183,8 +182,8 @@ export default function CallerIDsPage() {
                 onClick={() => setStateFilter(stateFilter === sc.state ? 'all' : sc.state)}
                 className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
                   stateFilter === sc.state
-                    ? 'bg-cyan-600 text-white'
-                    : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                    ? 'bg-primary text-white'
+                    : 'bg-muted text-muted-foreground hover:bg-muted'
                 }`}
               >
                 {sc.state} <span className="opacity-60">({sc.count})</span>
@@ -193,7 +192,7 @@ export default function CallerIDsPage() {
             {stateFilter !== 'all' && (
               <button
                 onClick={() => setStateFilter('all')}
-                className="rounded-full px-2.5 py-1 text-[11px] font-medium text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30"
+                className="rounded-full px-2.5 py-1 text-[11px] font-medium text-destructive hover:bg-destructive/10"
               >
                 Clear filter
               </button>
@@ -204,13 +203,13 @@ export default function CallerIDsPage() {
 
       {/* Firm filter */}
       <div className="flex items-center gap-2">
-        <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">Firm:</span>
+        <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Firm:</span>
         {[{ slug: 'all', label: 'All' }, ...FIRMS, { slug: 'unassigned', label: 'Unassigned' }].map(f => (
           <button key={f.slug} onClick={() => setFirmFilter(f.slug)}
             className={`rounded-full px-2.5 py-1 text-[11px] font-medium transition-colors ${
               firmFilter === f.slug
-                ? 'bg-cyan-600 text-white'
-                : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-400 dark:hover:bg-gray-700'
+                ? 'bg-primary text-white'
+                : 'bg-muted text-muted-foreground hover:bg-muted'
             }`}>
             {f.label}
           </button>
@@ -218,11 +217,11 @@ export default function CallerIDsPage() {
       </div>
 
       {/* Numbers table */}
-      <div className="rounded-xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900 overflow-hidden">
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
-              <tr className="border-b border-gray-100 bg-gray-50/50 dark:border-gray-800 dark:bg-gray-950/50">
+              <tr className="border-b border-border bg-muted/50/50">
                 {([
                   ['phone',      'Phone Number'],
                   ['state',      'State'],
@@ -234,81 +233,81 @@ export default function CallerIDsPage() {
                   <th
                     key={key}
                     onClick={() => handleSort(key)}
-                    className="cursor-pointer select-none px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                    className="cursor-pointer select-none px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground hover:text-muted-foreground"
                   >
                     {label}<SortArrow k={key} />
                   </th>
                 ))}
-                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-gray-400">Firm</th>
+                <th className="px-4 py-3 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Firm</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center">
-                    <p className="text-sm text-gray-400 animate-pulse">Fetching numbers from Twilio…</p>
+                    <p className="text-sm text-muted-foreground animate-pulse">Fetching numbers from Twilio…</p>
                   </td>
                 </tr>
               ) : filtered.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="px-4 py-12 text-center">
-                    <p className="text-sm text-gray-400">
+                    <p className="text-sm text-muted-foreground">
                       {stateFilter !== 'all' ? `No numbers in ${STATE_NAMES[stateFilter] ?? stateFilter}` : 'No numbers found. Purchase numbers in your Twilio console.'}
                     </p>
                   </td>
                 </tr>
               ) : filtered.map(n => (
-                <tr key={n.phoneNumber} className="border-b border-gray-50 hover:bg-gray-50/50 dark:border-gray-800/50 dark:hover:bg-gray-900/50">
+                <tr key={n.phoneNumber} className="border-b border-border hover:bg-muted/50/50">
                   <td className="px-4 py-3">
-                    <p className="font-mono text-sm font-medium text-gray-900 dark:text-white">{fmtPhone(n.phoneNumber)}</p>
-                    <p className="text-[10px] text-gray-400">{n.areaCode}</p>
+                    <p className="font-mono text-sm font-medium text-foreground">{fmtPhone(n.phoneNumber)}</p>
+                    <p className="text-[10px] text-muted-foreground">{n.areaCode}</p>
                   </td>
                   <td className="px-4 py-3">
                     {n.state ? (
                       <span className="inline-flex items-center gap-1">
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 text-[11px] font-bold text-gray-600 dark:bg-gray-800 dark:text-gray-400">{n.state}</span>
-                        <span className="text-xs text-gray-400">{STATE_NAMES[n.state] ?? ''}</span>
+                        <span className="rounded bg-muted px-1.5 py-0.5 text-[11px] font-bold text-muted-foreground">{n.state}</span>
+                        <span className="text-xs text-muted-foreground">{STATE_NAMES[n.state] ?? ''}</span>
                       </span>
                     ) : (
-                      <span className="text-xs text-gray-400">Unknown</span>
+                      <span className="text-xs text-muted-foreground">Unknown</span>
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <p className="text-sm text-gray-900 dark:text-white">{n.totalCalls}</p>
-                    <p className="text-[10px] text-gray-400">{n.connectedCalls} connected</p>
+                    <p className="text-sm text-foreground">{n.totalCalls}</p>
+                    <p className="text-[10px] text-muted-foreground">{n.connectedCalls} connected</p>
                   </td>
                   <td className="px-4 py-3">
                     <div className="flex items-center gap-2">
-                      <div className="h-1.5 w-16 rounded-full bg-gray-200 dark:bg-gray-800">
+                      <div className="h-1.5 w-16 rounded-full bg-muted">
                         <div
                           className={`h-1.5 rounded-full ${
-                            n.connectRate >= 50 ? 'bg-green-500' :
+                            n.connectRate >= 50 ? 'bg-success' :
                             n.connectRate >= 25 ? 'bg-yellow-500' :
-                            n.connectRate > 0   ? 'bg-red-500' : 'bg-gray-300 dark:bg-gray-700'
+                            n.connectRate > 0   ? 'bg-destructive' : 'bg-muted-foreground/30'
                           }`}
                           style={{ width: `${Math.min(n.connectRate, 100)}%` }}
                         />
                       </div>
                       <span className={`text-sm font-medium ${
-                        n.connectRate >= 50 ? 'text-green-600 dark:text-green-400' :
-                        n.connectRate >= 25 ? 'text-yellow-600 dark:text-yellow-400' :
-                        n.connectRate > 0   ? 'text-red-600 dark:text-red-400' : 'text-gray-400'
+                        n.connectRate >= 50 ? 'text-success' :
+                        n.connectRate >= 25 ? 'text-warning' :
+                        n.connectRate > 0   ? 'text-destructive' : 'text-muted-foreground'
                       }`}>
                         {n.totalCalls > 0 ? `${n.connectRate}%` : '—'}
                       </span>
                     </div>
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
                     {n.avgDuration > 0 ? fmtDuration(n.avgDuration) : '—'}
                   </td>
-                  <td className="px-4 py-3 text-sm text-gray-400">
+                  <td className="px-4 py-3 text-sm text-muted-foreground">
                     {fmtDate(n.lastUsed)}
                   </td>
                   <td className="px-4 py-3">
                     <select
                       value={n.firm ?? ''}
                       onChange={e => assignFirm(n.phoneNumber, e.target.value || null)}
-                      className="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300"
+                      className="rounded border border-border bg-card px-2 py-1 text-xs text-foreground"
                     >
                       <option value="">—</option>
                       {FIRMS.map(f => <option key={f.slug} value={f.slug}>{f.label}</option>)}
@@ -323,24 +322,24 @@ export default function CallerIDsPage() {
 
       {/* Top performers */}
       {numbers.filter(n => n.totalCalls >= 5).length > 0 && (
-        <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-gray-900">
-          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-gray-500">Top Performers (5+ calls)</p>
+        <div className="rounded-xl border border-border bg-card p-4">
+          <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Top Performers (5+ calls)</p>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {numbers
               .filter(n => n.totalCalls >= 5)
               .sort((a, b) => b.connectRate - a.connectRate)
               .slice(0, 6)
               .map(n => (
-                <div key={n.phoneNumber} className="flex items-center gap-3 rounded-lg border border-gray-100 p-3 dark:border-gray-800">
+                <div key={n.phoneNumber} className="flex items-center gap-3 rounded-lg border border-border p-3">
                   <div className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-bold text-white ${
-                    n.connectRate >= 50 ? 'bg-green-600' :
-                    n.connectRate >= 25 ? 'bg-yellow-600' : 'bg-red-600'
+                    n.connectRate >= 50 ? 'bg-success' :
+                    n.connectRate >= 25 ? 'bg-yellow-600' : 'bg-destructive'
                   }`}>
                     {n.connectRate}%
                   </div>
                   <div>
-                    <p className="font-mono text-sm font-medium text-gray-900 dark:text-white">{fmtPhone(n.phoneNumber)}</p>
-                    <p className="text-[10px] text-gray-400">
+                    <p className="font-mono text-sm font-medium text-foreground">{fmtPhone(n.phoneNumber)}</p>
+                    <p className="text-[10px] text-muted-foreground">
                       {n.state ? `${STATE_NAMES[n.state] ?? n.state} · ` : ''}{n.connectedCalls}/{n.totalCalls} calls · avg {fmtDuration(n.avgDuration)}
                     </p>
                   </div>
@@ -349,6 +348,7 @@ export default function CallerIDsPage() {
           </div>
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }
