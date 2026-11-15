@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState, type ReactNode } from 'react'
-import { ArrowDown, Copy, ArrowUp, ChevronDown, ChevronRight, EyeOff, Eye, History, RotateCcw, Search, Skull, TrendingUp } from 'lucide-react'
+import { ArrowDown, Copy, ArrowUp, ChevronDown, ChevronRight, EyeOff, Eye, History, RefreshCw, RotateCcw, Search, Skull, TrendingUp } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
@@ -17,6 +17,7 @@ import { cn } from '@/lib/utils'
 import { CreativeDetail } from './creative-detail'
 import { PeopleDialog } from './people-dialog'
 import { PageHeader, Pill, RangeSelect, StatCard, Thumb } from './shared'
+import { PlayableThumb } from './creative-player'
 import { WeekOnWeek } from './week-on-week'
 import { BoardStatus } from './board-status'
 
@@ -191,7 +192,7 @@ function namesOf(signed: { name: string }[]): string | undefined {
 }
 
 export function AnalysisView() {
-  const { creatives, killedIds, watch, kill, addToWatch, addToKill, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals, today } = useStore()
+  const { creatives, killedIds, watch, kill, addToWatch, addToKill, relaunch, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals, today } = useStore()
   const [range, setRange] = useState<RangeKey>('today')
   const [query, setQuery] = useState('')
   const [account, setAccount] = useState('all')
@@ -380,6 +381,38 @@ export function AnalysisView() {
       fresh.length
         ? `Sent ${fresh.length} to double down`
         : 'Already sent to double down',
+    )
+    setSelected(new Set())
+  }
+
+  /* Relaunch, from the table the decision is made in.
+
+     The same pair of writes the Watch List does: the ad comes down and a
+     fresh version goes into today's launch queue, bumped to the next
+     version. They are one action because an ad that wore out is still a
+     winner — the audience has had enough of this cut, not of the idea —
+     and doing the kill on one screen and the launch on another is how one
+     of the two gets forgotten.
+
+     It was only on the Watch List, which meant seeing the fatigue here and
+     acting on it were two different pages. An ad already on the kill list
+     is skipped rather than killed twice. */
+  /* On the kill list at all, pending or done — the same guard the Watch
+     List uses. `killedIds` holds only the kills already carried out, so
+     relaunching off it would queue a second kill for an ad that is
+     already waiting to come down. */
+  const onKillList = useMemo(() => new Set(kill.map((k) => k.creativeId)), [kill])
+
+  const bulkRelaunch = (ids: string[], label?: string) => {
+    const fresh = ids.filter((id) => !onKillList.has(id))
+    for (const id of fresh) {
+      addToKill([id])
+      relaunch(id)
+    }
+    toast(
+      fresh.length
+        ? `${label ? `${label} — ` : ''}${fresh.length} killed and queued to relaunch today`
+        : 'Already on the kill list',
     )
     setSelected(new Set())
   }
@@ -652,7 +685,9 @@ export function AnalysisView() {
                               >
                                 {open ? <ChevronDown className="size-4" aria-hidden /> : <ChevronRight className="size-4" aria-hidden />}
                               </button>
-                              <Thumb c={head} />
+                              <PlayableThumb c={head} title={head.convention || head.name} subtitle={g.adset}>
+                                <Thumb c={head} />
+                              </PlayableThumb>
                               <div className="flex min-w-0 flex-col gap-1">
                                 <button
                                   type="button"
@@ -733,6 +768,16 @@ export function AnalysisView() {
                               <Button size="icon-sm" variant="ghost" aria-label={`Add every ad in ${g.adset} to kill list`} title="Add the whole ad set to the kill list" onClick={() => bulkKill(groupIds)}>
                                 <Skull aria-hidden />
                               </Button>
+                              <Button
+                                size="icon-sm"
+                                variant="ghost"
+                                aria-label={`Relaunch ${g.adset}`}
+                                title="Relaunch — kill this ad set and put fresh versions in today's launch queue"
+                                disabled={groupIds.every((id) => onKillList.has(id))}
+                                onClick={() => bulkRelaunch(groupIds, g.adset)}
+                              >
+                                <RefreshCw aria-hidden />
+                              </Button>
                               <Button size="icon-sm" variant="ghost" aria-label={`Exclude ${g.adset} from view`} onClick={() => bulkExclude(groupIds)}>
                                 <EyeOff aria-hidden />
                               </Button>
@@ -754,7 +799,9 @@ export function AnalysisView() {
                                       larger still here made the expanded row tower over
                                       every other one and broke the scan down the table. */}
                                   <div className="flex items-center gap-2.5 border-l-2 border-border pl-3">
-                                    <Thumb c={c} />
+                                    <PlayableThumb c={c} title={c.convention || c.name} subtitle={c.adset}>
+                                      <Thumb c={c} />
+                                    </PlayableThumb>
                                     <div className="flex min-w-0 flex-col gap-1">
                                       <button
                                         onClick={() => setDetailId(c.id)}
@@ -853,6 +900,18 @@ export function AnalysisView() {
                                     </Button>
                                     <Button size="icon-sm" variant="ghost" aria-label="Add to kill list" title="Add to kill list" onClick={() => bulkKill([c.id])}>
                                       <Skull aria-hidden />
+                                    </Button>
+                                    <Button
+                                      size="icon-sm"
+                                      variant="ghost"
+                                      aria-label={onKillList.has(c.id) ? 'Already on the kill list' : 'Relaunch'}
+                                      title={onKillList.has(c.id)
+                                        ? 'Already on the kill list'
+                                        : "Relaunch — kill it and put a fresh version in today's launch queue"}
+                                      disabled={onKillList.has(c.id)}
+                                      onClick={() => bulkRelaunch([c.id])}
+                                    >
+                                      <RefreshCw aria-hidden />
                                     </Button>
                                     <Button size="icon-sm" variant="ghost" aria-label="Exclude from view" title="Hide for the rest of today" onClick={() => bulkExclude([c.id])}>
                                       <EyeOff aria-hidden />

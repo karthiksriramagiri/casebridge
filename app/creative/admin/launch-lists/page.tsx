@@ -332,21 +332,9 @@ export default function LaunchListsPage() {
             >
               <Send aria-hidden /> {notifying === 'ready' ? 'Sending…' : 'Launch list ready — notify K-Team'}
             </Button>
-            {/* Not admin-only: whoever just put the ads up is the one who
-                knows they are up. */}
-            <Button
-              variant={launched.length > 0 && scheduled.length === 0 ? 'default' : 'outline'}
-              onClick={() => void tellSlack('done')}
-              disabled={date !== today || launched.length === 0 || notifying !== null}
-              title={
-                date !== today ? 'Only today’s list can be reported'
-                  : launched.length === 0 ? 'Nothing has gone out yet'
-                  : scheduled.length > 0 ? `${scheduled.length} still queued — this reports the ${launched.length} already live`
-                  : 'Tell Jason the list is live'
-              }
-            >
-              <CheckCircle2 aria-hidden /> {notifying === 'done' ? 'Sending…' : 'Launch list completed — notify Jason'}
-            </Button>
+            {/* "Completed — notify Jason" is on Execute now, beside the
+                export: the ads go up during the meeting, so that is where
+                saying so belongs. This page still sends the morning list. */}
             <Button
               variant="outline"
               onClick={() =>

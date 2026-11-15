@@ -1,6 +1,6 @@
 'use client'
 
-import type { KillItem, LaunchTask, Notification, WatchItem } from './types'
+import type { KillItem, LaunchTask, WatchItem } from './types'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Talking to the watch, kill and launch tables.
@@ -28,13 +28,12 @@ export type BoardState = {
   kill: KillItem[]
   launches: LaunchTask[]
   exclusions: StoredExclusion[]
-  notifications: Notification[]
   setupNeeded: boolean
   error: string | null
 }
 
 export const emptyBoardState: BoardState = {
-  watch: [], kill: [], launches: [], exclusions: [], notifications: [],
+  watch: [], kill: [], launches: [], exclusions: [],
   setupNeeded: false, error: null,
 }
 
@@ -47,7 +46,6 @@ export async function fetchBoardState(): Promise<BoardState> {
       kill: d.kill ?? [],
       launches: d.launches ?? [],
       exclusions: d.exclusions ?? [],
-      notifications: d.notifications ?? [],
       setupNeeded: !!d.setupNeeded,
       error: d.error ?? null,
     }
@@ -56,7 +54,7 @@ export async function fetchBoardState(): Promise<BoardState> {
   }
 }
 
-type Board = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
+type Board = 'watch' | 'kill' | 'launches' | 'exclusions'
 
 async function send(board: Board, method: 'POST' | 'PATCH', body: unknown): Promise<any> {
   const res = await fetch(`${URL}?board=${board}`, {

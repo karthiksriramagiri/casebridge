@@ -18,7 +18,6 @@ import {
   LogOut,
   type LucideIcon,
 } from 'lucide-react'
-import { NotificationBell } from '@/app/creative/_components/notification-bell'
 import { useCenterHref, useRole, useRoleBase } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { isCreativeWork } from '@/app/creative/_lib/types'
@@ -119,7 +118,6 @@ export function WorkspaceSidebar() {
             <span className="text-sm font-semibold">Creative Center</span>
             <span className="truncate text-xs text-muted-foreground">{SUBTITLE[role]}</span>
           </div>
-          <NotificationBell />
         </div>
         <nav aria-label="Workspace" className="flex flex-1 flex-col gap-5 overflow-y-auto p-3">
           {groups.map((g) => (
@@ -169,7 +167,6 @@ export function WorkspaceSidebar() {
             CC
           </Link>
           <span className="flex-1 truncate text-sm font-semibold">{SUBTITLE[role]}</span>
-          <NotificationBell />
         </div>
         <nav aria-label="Workspace" className="flex gap-1 overflow-x-auto px-2 pb-2">
           {allItems.map((item) => {

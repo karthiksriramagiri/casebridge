@@ -121,7 +121,6 @@ const BOARDS = {
   kill:          { table: 'creative_kill',          cols: KILL_COLS,         to: toKill,         order: 'added_at' },
   launches:      { table: 'creative_launches',      cols: LAUNCH_COLS,       to: toLaunch,       order: 'launch_date' },
   exclusions:    { table: 'creative_exclusions',    cols: EXCLUSION_COLS,    to: toExclusion,    order: 'excluded_on' },
-  notifications: { table: 'creative_notifications', cols: NOTIFICATION_COLS, to: toNotification, order: 'created_at' },
 } as const
 
 type BoardKey = keyof typeof BOARDS
@@ -135,22 +134,23 @@ const columnsFrom = (board: BoardKey, body: Record<string, unknown>) => {
   return out
 }
 
-const empty = { watch: [], kill: [], launches: [], exclusions: [], notifications: [] }
+const empty = { watch: [], kill: [], launches: [], exclusions: [] }
 
-/* ── GET: all three boards ───────────────────────────────────────────────── */
+/* ── GET: every board ────────────────────────────────────────────────────────
+   Notifications are gone from the center, so the table is no longer read.
+   It is left in place rather than dropped: the rows are a record of what
+   was told to whom, and deleting history to tidy up a feature is not the
+   same as removing the feature.                                            */
 
 export async function GET() {
   const supabase = db()
   if (!supabase) return NextResponse.json({ ...empty, setupNeeded: true, setup: 'Supabase env vars are missing.' })
 
-  const [w, k, l, x, n] = await Promise.all([
+  const [w, k, l, x] = await Promise.all([
     supabase.from('creative_watch').select('*').order('watch_date', { ascending: false }),
     supabase.from('creative_kill').select('*').order('added_at', { ascending: false }),
     supabase.from('creative_launches').select('*').order('launch_date', { ascending: false }),
     supabase.from('creative_exclusions').select('*').order('excluded_on', { ascending: false }),
-    /* The bell only ever shows the recent end of the list, and an unbounded
-       read grows forever. */
-    supabase.from('creative_notifications').select('*').order('created_at', { ascending: false }).limit(100),
   ])
 
   /* Each table answers for itself.
@@ -178,7 +178,6 @@ export async function GET() {
     kill:          rows(k, 'creative_kill', toKill),
     launches:      rows(l, 'creative_launches', toLaunch),
     exclusions:    rows(x, 'creative_exclusions', toExclusion),
-    notifications: rows(n, 'creative_notifications', toNotification),
   }
 
   return NextResponse.json({

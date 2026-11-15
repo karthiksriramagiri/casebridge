@@ -11,7 +11,7 @@ import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildCon
 const AUTO_REFRESH_MS = 5 * 60_000
 
 /** The row collections /api/creative/board writes. */
-type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions' | 'notifications'
+type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions'
 import { api, fetchBoard, isPersisted } from './assignments-api'
 import { uploadFile } from './uploads'
 import { boardApi, fetchBoardState, type StoredExclusion, type StoredWatch } from './board-api'
@@ -37,7 +37,6 @@ import {
   type KTaskType,
   type LaunchTags,
   type LaunchTask,
-  type Notification,
   type Role,
   type WatchItem,
   RELAUNCH_TYPE,
@@ -163,11 +162,6 @@ const seedLaunches: LaunchTask[] = [
   },
 ]
 
-const seedNotifications: Notification[] = [
-  { id: uid('n'), to: 'creative', text: 'Jason left feedback on “Insurance Lowball – tighter body”', href: '/team/assignments', at: now(), read: false },
-  { id: uid('n'), to: 'admin', text: 'Faisal requested feedback on “Truck Accident – 3 hook variants”', href: '/admin/assignments', at: now(), read: false },
-]
-
 type AddAssignmentInput = {
   title: string
   type: AssignmentType
@@ -279,7 +273,6 @@ type Store = {
   assignments: Assignment[]
   ktasks: KTask[]
   launches: LaunchTask[]
-  notifications: Notification[]
   getCreative: (id?: string) => Creative | undefined
   addToWatch: (ids: string[]) => number
   removeWatch: (id: string) => void
@@ -333,7 +326,6 @@ type Store = {
   /** Tick an assignment live, or put it back in the day's queue. */
   setLaunched: (assignmentId: string, done: boolean) => void
   cancelLaunch: (id: string) => void
-  markNotificationsRead: (role: Role) => void
   /** Every watch row including ones taken off the list, for reading a past
    *  day back as it actually was. */
   watchAll: StoredWatch[]
@@ -667,7 +659,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setKill(b.kill)
     setLaunches(b.launches)
     setExclusions(b.exclusions)
-    setNotifications(b.notifications)
     setBoardSetupNeeded(d.setupNeeded || b.setupNeeded)
     setBoardError(d.error ?? b.error)
     if (opts?.initial) setBoardLoading(false)
@@ -775,18 +766,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /* Both start empty and arrive from the database a moment later. Seeding
      them would show a bell count and a set of dismissals that are not real
      and then take them away. */
-  const [notifications, setNotifications] = useState<Notification[]>([])
   const [exclusions, setExclusions] = useState<StoredExclusion[]>([])
-
-  const notify = useCallback((to: Role, text: string, href: string) => {
-    const temp: Notification = { id: uid('n'), to, text, href, at: now(), read: false }
-    setNotifications((prev) => [temp, ...prev])
-    inFlight.current += 1
-    boardApi.create('notifications', { to, text, href, read: false })
-      .then((saved) => setNotifications((prev) => prev.map((x) => (x.id === temp.id ? { ...x, id: saved.id } : x))))
-      .catch((e: Error) => setBoardError(e.message))
-      .finally(() => { inFlight.current -= 1 })
-  }, [])
 
   /* What the pages see: today's hidden rows stay hidden, across reloads and
      across people, until the date rolls over and a new day's list is built. */
@@ -929,9 +909,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          Only the briefs that are his. A relaunch is nothing anyone makes,
          and an image double down is Jason's own build; neither is a job
          being handed over, so neither rings. */
-      if (tellFaisal) notify('creative', `Task assigned: ${a.title}`, '/team/assignments')
     },
-    [assignments, persist, notify, notifySlack],
+    [assignments, persist, notifySlack],
   )
 
   /* The watch list is judged on the ad set, so its totals are built once here
@@ -1081,7 +1060,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       }
       return fresh.length
     },
-    [kill, watchRows, notify, findCreative, seedWatchDay, createOn, patchOn, lockedDay],
+    [kill, watchRows, findCreative, seedWatchDay, createOn, patchOn, lockedDay],
   )
 
   /* The fields both names are built from. Changing any of them changes what
@@ -1182,10 +1161,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
 
       void notifySlack(a, { kind: handoff, by: ROLE_LABEL[by], status, files: a.attachments.length })
 
-      if (by === 'creative') notify('admin', `Faisal moved “${a.title}” to ${status}`, '/admin/assignments')
-      else notify('creative', `${ROLE_LABEL[by]} moved “${a.title}” to ${status}`, '/team/assignments')
     },
-    [assignments, updateAssignment, notify, notifySlack],
+    [assignments, updateAssignment, notifySlack],
   )
 
   const nextConvention = (opts: { angle: string; type: string; sourceCreativeId?: string; isNewTestBatch: boolean }) => {
@@ -1228,7 +1205,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     assignments,
     ktasks,
     launches,
-    notifications,
     getCreative: findCreative,
     adsetTotals,
     watchAll: watchRows,
@@ -1266,7 +1242,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         prev.map((x) => (x.id === id ? { ...x, kind: 'fatigue', reason: x.reason || 'Fatigued' } : x)),
       )
       patchOn('kill', id, { kind: 'fatigue', reason: k?.reason || 'Fatigued' })
-      if (k) notify('creative', `“${findCreative(k.creativeId)?.convention ?? 'A creative'}” was marked fatigued`, '/team/archives')
     },
     markKillDone: (id, done, by) => {
       if (lockedDay()) return
@@ -1360,8 +1335,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          never cost someone their comment. */
       void notifySlack(a, { kind: 'comment', author: by, by: ROLE_LABEL[by], text, stage })
 
-      if (by === 'creative') notify('admin', `Faisal commented on “${a.title}”`, '/admin/assignments')
-      else notify('creative', `Jason commented on “${a.title}”`, '/team/assignments')
     },
     addAttachments: (assignmentId, by, files, stage) => {
       const a = assignments.find((x) => x.id === assignmentId)
@@ -1419,7 +1392,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         }),
       )
 
-      if (by === 'creative') notify('admin', `Faisal uploaded ${files.length} file${files.length > 1 ? 's' : ''} to “${a.title}”`, '/admin/assignments')
     },
     addKTask: (t) => {
       const order = Math.max(-1, ...ktasks.map((p) => p.order)) + 1
@@ -1661,7 +1633,6 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       /* The only notification worth keeping here: Faisal cannot see the
          launch list, so this is how the maker learns their ad went live.
          Jason marking his own launch done needs no telling. */
-      if (l && done && l.assignmentId) notify('creative', `Your ad “${l.name}” is live`, '/team/assignments')
     },
 
     /* "Launched" is one fact kept in two places: the status on the card, and
@@ -1679,18 +1650,12 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         x.id === row.id ? { ...x, status: done ? 'done' : 'pending', doneAt: done ? today : undefined } : x
       )))
       patchOn('launches', row.id, { status: done ? 'done' : 'pending', doneAt: done ? today : null })
-      if (done) notify('creative', `Your ad “${row.name}” is live`, '/team/assignments')
     },
     cancelLaunch: (id) => {
       const l = launches.find((x) => x.id === id)
       setLaunches((prev) => prev.map((x) => (x.id === id ? { ...x, status: 'cancelled' } : x)))
       patchOn('launches', id, { status: 'cancelled' })
       if (l?.assignmentId) updateAssignment(l.assignmentId, { status: 'Ready to Launch' })
-    },
-    markNotificationsRead: (role) => {
-      const unread = notifications.filter((n) => n.to === role && !n.read)
-      setNotifications((prev) => prev.map((n) => (n.to === role ? { ...n, read: true } : n)))
-      for (const n of unread) patchOn('notifications', n.id, { read: true })
     },
 
     /* Watch List Mode dismissals, shared and dated. Keyed to the Pacific day

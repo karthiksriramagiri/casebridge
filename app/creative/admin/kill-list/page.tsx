@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useMemo, useState } from 'react'
-import { AlertTriangle, BatteryLow, CheckCircle2, ChevronRight, History, Send, Skull, Trash2, Undo2 } from 'lucide-react'
+import { AlertTriangle, BatteryLow, ChevronRight, History, Send, Skull, Trash2, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { Checkbox } from '@/app/creative/_ui/checkbox'
@@ -395,23 +395,10 @@ export default function KillListPage() {
                 <Send aria-hidden /> {notifying === 'ready' ? 'Sending…' : 'Kill list ready — notify K-Team'}
               </Button>
             )}
-            {/* The other end of it, and not admin-only: the person clicking
-                this is whoever just worked through Ads Manager. It needs
-                something actually done to report — a day where nothing was
-                ticked off is not a finished list. */}
-            <Button
-              variant={done.length > 0 && pending.length === 0 ? 'default' : 'outline'}
-              onClick={() => void tellSlack('done')}
-              disabled={!isToday || done.length === 0 || notifying !== null}
-              title={
-                !isToday ? 'Only today’s list can be reported'
-                  : done.length === 0 ? 'Nothing has been ticked off yet'
-                  : pending.length > 0 ? `${pending.length} still pending — this reports the ${done.length} already done`
-                  : 'Tell Jason the list is carried out'
-              }
-            >
-              <CheckCircle2 aria-hidden /> {notifying === 'done' ? 'Sending…' : 'Kill list completed — notify Jason'}
-            </Button>
+            {/* "Completed — notify Jason" is on Execute now, beside the
+                export. The ticking happens in the meeting, so the report
+                of it belongs where the ticking is rather than two pages
+                away. This page still sends the list out in the morning. */}
           </div>
         }
       />

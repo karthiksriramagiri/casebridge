@@ -16,6 +16,7 @@ import { adsetBudget, adsetKey, formatMix, isDelivering, formatDate, sumTotals, 
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
+import { NotifyDoneButton, type NotifyDone } from '@/app/creative/_components/admin/notify-done'
 import {
   FIRM_KEYS, FIRM_KEY_LABEL, firmKey, RELAUNCH_TYPE,
   type Assignment, type Creative, type FirmKey, type KillItem, type WatchItem,
@@ -59,6 +60,8 @@ type FirmBlockData = {
   launchPending: Assignment[]
   /** What the day's launches will add, once they are up. */
   launchBudget: number
+  /** What the ones already ticked live have added. */
+  launchedBudget: number
   budget: number
   /** Ad sets live right now: Meta's, plus the ones ticked up today that it
       has not reported yet. */
@@ -276,6 +279,9 @@ export default function ExecutePage() {
         launching,
         launchPending,
         launchBudget: launchPending.reduce((t, a) => t + launchCost2(a), 0),
+        /* What the ones already up added — what the "completed" report
+           tells Jason went on the account today. */
+        launchedBudget: launchedLive,
         /* The ad sets Meta reports, plus what has been ticked up today and
            is not in its numbers yet. Striking a launch through is the
            moment the money starts: before the tick it is the "+ launches"
@@ -337,12 +343,62 @@ export default function ExecutePage() {
     return out.filter((f) => f.killSets.length || f.watchSets.length || f.liveSets.length || f.launching.length)
   }, [firms, query])
 
+  /* What to tell Jason, built from the meeting itself.
+
+     The kill figure counts ad sets fully off, the same rule the budget
+     total uses: pulling one cut of three frees nothing, because the other
+     two keep spending the set's budget. */
+  const killDone = firms.flatMap((f) => f.toKill.filter((r) => r.k.status !== 'pending'))
+  const launchDone = firms.flatMap((f) => f.launching.filter((a) => a.status !== 'Launching'))
+
+  const killPayload: NotifyDone = {
+    board: 'kill',
+    day: date,
+    dateLabel: formatDate(date),
+    count: killDone.length,
+    pending: total.kill,
+    amount: firms.reduce((t, f) => t + f.killSets.filter((g) => g.items.every((r) => r.k.status !== 'pending')).reduce((s, g) => s + g.freed, 0), 0),
+    groups: firms
+      .filter((f) => f.toKill.some((r) => r.k.status !== 'pending'))
+      .map((f) => ({
+        firm: FIRM_KEY_LABEL[f.key],
+        adsets: f.killSets
+          .map((g) => ({ name: g.adset, ads: g.items.filter((r) => r.k.status !== 'pending').map((r) => r.c.convention || r.c.name) }))
+          .filter((g) => g.ads.length > 0),
+      })),
+  }
+
+  const launchPayload: NotifyDone = {
+    board: 'launch',
+    day: date,
+    dateLabel: formatDate(date),
+    count: launchDone.length,
+    pending: total.launching,
+    amount: firms.reduce((t, f) => t + f.launchedBudget, 0),
+    groups: firms
+      .filter((f) => f.launching.some((a) => a.status !== 'Launching'))
+      .map((f) => ({
+        firm: FIRM_KEY_LABEL[f.key],
+        adsets: f.launching
+          .filter((a) => a.status !== 'Launching')
+          .map((a) => ({ name: a.adsetName || a.title, ads: [a.creativeName || a.title] })),
+      })),
+  }
+
+  /* Only today's meeting can be reported — a list read back from last
+     Tuesday is history, and telling Slack it was finished today would be
+     untrue of both days. */
+  const notToday = date !== today ? 'Only today’s meeting can be reported' : undefined
+
   return (
     <div className="flex flex-col">
       <PageHeader
         title="Execute"
         description="The ad meeting, by firm — what comes off, what we are watching, what is running, and what goes live."
         actions={
+          <>
+          <NotifyDoneButton label="Kill list completed — notify Jason" payload={killPayload} disabledReason={notToday} />
+          <NotifyDoneButton label="Launch list completed — notify Jason" payload={launchPayload} disabledReason={notToday} />
           <Button
             variant="outline"
             onClick={() =>
@@ -359,6 +415,7 @@ export default function ExecutePage() {
           >
             <Download aria-hidden /> Export meeting
           </Button>
+          </>
         }
       />
 
