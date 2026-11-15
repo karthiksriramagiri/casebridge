@@ -1,8 +1,21 @@
 import type { ReactNode } from 'react'
-import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
-import AdminNav from './AdminNav'
-import LogoutButton from '../dashboard/LogoutButton'
+import { createClient } from '@/lib/supabase/server'
+import { TeamsShell } from '@/app/teams/_components/teams-shell'
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   The admin workspace.
+
+   The guard is unchanged — signed in, and `profile.role === 'admin'`, or you
+   are sent back to the rep dashboard. What changed is everything it used to
+   draw around the page: a navy `#0f1e3c` bar, a date, and thirteen tabs in a
+   scrolling row. That is now the center's sidebar, which also reaches the
+   three admin pages the tab row never listed.
+
+   The page is no longer boxed to `max-w-7xl` with its own padding. Pages set
+   their own gutter through PageHeader and PageBody, so a wide table is free
+   to use the width it needs instead of scrolling inside a 1280px column.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export default async function AdminLayout({ children }: { children: ReactNode }) {
   const supabase = await createClient()
@@ -20,35 +33,9 @@ export default async function AdminLayout({ children }: { children: ReactNode })
     redirect('/teams/dashboard')
   }
 
-  // Format today's date: "Thu, Apr 9"
-  const now = new Date()
-  const dateStr = now.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  })
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-[#0f1e3c] px-6 py-3.5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <span className="text-white font-bold text-lg tracking-tight">CaseBridge Teams</span>
-          <span className="text-blue-300 text-sm font-normal">· Training Admin</span>
-        </div>
-        <div className="flex items-center gap-4">
-          <span className="text-blue-200 text-sm font-medium">{dateStr}</span>
-          <LogoutButton />
-        </div>
-      </header>
-
-      {/* Tab Navigation */}
-      <AdminNav />
-
-      {/* Page content */}
-      <main className="max-w-7xl mx-auto px-6 py-6">
-        {children}
-      </main>
-    </div>
+    <TeamsShell role="admin" name={profile.name}>
+      {children}
+    </TeamsShell>
   )
 }

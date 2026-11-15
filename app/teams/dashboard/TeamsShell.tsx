@@ -1,10 +1,22 @@
 'use client'
 
 import type { ReactNode } from 'react'
-import { useState, useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import UserNav from './UserNav'
-import LogoutButton from './LogoutButton'
+import { TeamsShell as Shell } from '@/app/teams/_components/teams-shell'
+
+/* The rep-side shell.
+
+   Kept at this path and with this exact prop signature because all eleven
+   rep pages already render it — rebuilding here is what re-shells the whole
+   rep side without touching them. The chrome it draws is now the center's
+   sidebar (see _components/teams-shell); the navy header bar and the row of
+   tabs it used to draw are gone.
+
+   `phase` is still fetched here rather than passed in. It gates three nav
+   items and the pages do not know it; defaulting to 1 — the most restricted
+   — while the fetch is in flight keeps items from appearing and then
+   vanishing a moment later. */
 
 interface Props {
   timeclockEnabled: boolean
@@ -13,8 +25,8 @@ interface Props {
 }
 
 export default function TeamsShell({ timeclockEnabled, teamType, children }: Props) {
-  // Default to phase 1 (most restricted) while loading to avoid tab flicker
   const [phase, setPhase] = useState<number>(1)
+  const [name, setName] = useState<string | null>(null)
 
   useEffect(() => {
     const supabase = createClient()
@@ -22,34 +34,25 @@ export default function TeamsShell({ timeclockEnabled, teamType, children }: Pro
       if (!user) return
       supabase
         .from('profiles')
-        .select('rep_phase')
+        .select('rep_phase, name')
         .eq('id', user.id)
         .single()
         .then(({ data }) => {
           if (data?.rep_phase != null) setPhase(data.rep_phase)
+          if (data?.name) setName(data.name)
         })
     })
   }, [])
 
   return (
-    <>
-      {/* Header — always full width */}
-      <header className="bg-[#0f1e3c] px-6 py-4 flex items-center justify-between">
-        <div>
-          <span className="text-white font-bold text-lg tracking-tight">CaseBridge Teams</span>
-          <span className="text-blue-300 text-sm font-normal ml-2">· Training Portal</span>
-        </div>
-        <LogoutButton />
-      </header>
-
-      {/* Nav — always in a consistent max-w-4xl wrapper */}
-      <div className="bg-white border-b border-gray-200 px-6">
-        <div className="max-w-4xl mx-auto">
-          <UserNav timeclockEnabled={timeclockEnabled} teamType={teamType} phase={phase} />
-        </div>
-      </div>
-
+    <Shell
+      role="rep"
+      teamType={teamType}
+      phase={phase}
+      timeclockEnabled={timeclockEnabled}
+      name={name}
+    >
       {children}
-    </>
+    </Shell>
   )
 }

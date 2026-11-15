@@ -1,0 +1,150 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Team Center theme.
+
+   The same palette as the Creative Center and the Dialer, by intent rather
+   than by accident: they are three halves of one product — a rep who moves
+   from the dialer to their pay page and an admin who moves from creative
+   analysis to the floor should not feel they changed companies. The values
+   are the ones in app/creative/cc.css, restated here rather than imported so
+   no center can repaint another by editing its own file.
+
+   Scoped to `.tc-root`, never `:root`. The token names are the app's
+   (`--primary`, `--muted`, …), so defining them globally would repaint the
+   dialer, the metrics pages and the Financial Center too.
+
+   `.ui-portal` is the other half of the scope. Radix renders dialogs, sheets
+   and dropdowns through a portal on <body>, outside `.tc-root`, so without it
+   every portaled surface falls back to the app's palette — a dialog of black
+   text on no background beside a page that looks right. The shared primitives
+   in app/_ui stamp that class on their overlays.
+
+   What this replaces: the navy `#0f1e3c` header bar and the gray-50 ground
+   the Team Center was built on. Those were hard-coded hex values scattered
+   across thirty pages, which is why the center could not be restyled without
+   editing all of them. Nothing here is hard-coded per page again.
+
+   Light only, matching the other two centers.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+.tc-root,
+.ui-portal {
+  color-scheme: light;
+
+  --background: 217 20% 96%;            /* #f2f3f6 */
+  --foreground: 217 14% 11%;            /* #181b1f */
+  --card: 0 0% 100%;                    /* #ffffff */
+  --card-foreground: 217 14% 11%;       /* #181b1f */
+  --popover: 0 0% 100%;                 /* #ffffff */
+  --popover-foreground: 217 14% 11%;    /* #181b1f */
+  --primary: 214 86% 51%;               /* #1874ed */
+  --primary-foreground: 0 0% 99%;       /* #fcfcfc */
+  --secondary: 217 21% 94%;             /* #eceff3 */
+  --secondary-foreground: 217 11% 14%;  /* #1f2227 */
+  --muted: 217 19% 94%;                 /* #eef0f4 */
+  --muted-foreground: 217 6% 40%;       /* #5f636a */
+  --accent: 215 100% 94%;               /* #dfecff */
+  --accent-foreground: 213 100% 29%;    /* #004296 */
+  --destructive: 359 75% 50%;           /* #df2225 */
+  --destructive-foreground: 0 0% 100%;  /* #ffffff */
+  --success: 141 61% 37%;               /* #25984d */
+  --warning: 38 79% 51%;                /* #e49e22 */
+  --border: 217 10% 87%;                /* #dcdee2 */
+  --input: 217 8% 85%;                  /* #d5d8db */
+  --ring: 214 86% 51%;                  /* #1874ed */
+
+  --radius: 0.625rem;
+
+  /* The creative programme, as a colour.
+
+     Modules, Exams and Programs are each split by team — intake on one tab,
+     creative on the other — and the split was carried by purple against the
+     intake blue. The palette has no purple, and mapping it onto --primary
+     would have made the two tabs identical, so the distinction keeps a token
+     of its own rather than being flattened away. Violet, tuned to sit at the
+     same lightness as --primary so neither tab looks louder than the other. */
+  --team-creative: 265 72% 52%;         /* #7b3fe4 */
+  --team-creative-soft: 265 90% 96%;    /* #f3edff */
+}
+
+.tc-root {
+  min-height: 100dvh;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* ── Radius scale ─────────────────────────────────────────────────────────
+   Tailwind 3.4 derives only lg/md/sm from --radius; these restore the
+   proportions the design was drawn at for the larger corners. */
+.tc-root .rounded-xl,
+.ui-portal.rounded-xl,
+.ui-portal .rounded-xl {
+  border-radius: calc(var(--radius) * 1.4);
+}
+.tc-root .rounded-2xl,
+.ui-portal .rounded-2xl {
+  border-radius: calc(var(--radius) * 1.8);
+}
+
+/* ── Focus ring ───────────────────────────────────────────────────────────
+   The base outline the design applies to every element. The primitives in
+   app/_ui ask for `ring-[3px]` themselves; this is only the fallback. */
+.tc-root :focus-visible {
+  outline-color: hsl(var(--ring) / 0.5);
+}
+
+/* ── Tables ───────────────────────────────────────────────────────────────
+   The Team Center is mostly tables — reps, cases, completions, timeclock,
+   response times. Giving them one set of rules here is what stops thirty
+   pages from each inventing their own cell padding and border colour, which
+   is the state this revamp is undoing.
+
+   Only `.tc-table` opts in, so a page that needs a bespoke grid still can. */
+.tc-root .tc-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 0.875rem;
+}
+.tc-root .tc-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  font-size: 0.6875rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  text-align: left;
+  white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.tc-root .tc-table tbody td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid hsl(var(--border) / 0.6);
+  vertical-align: middle;
+}
+.tc-root .tc-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+.tc-root .tc-table tbody tr:hover td {
+  background-color: hsl(var(--muted) / 0.45);
+}
+/* Figures line up in a column or they cannot be compared down it. */
+.tc-root .tc-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── The creative programme accent ────────────────────────────────────────
+   Utility classes, because Tailwind 3.4 only generates colour utilities for
+   tokens named in its config and these two are the Team Center's alone. */
+.tc-root .text-team-creative,
+.ui-portal .text-team-creative { color: hsl(var(--team-creative)); }
+.tc-root .bg-team-creative,
+.ui-portal .bg-team-creative { background-color: hsl(var(--team-creative)); }
+.tc-root .bg-team-creative-soft,
+.ui-portal .bg-team-creative-soft { background-color: hsl(var(--team-creative-soft)); }
+.tc-root .border-team-creative,
+.ui-portal .border-team-creative { border-color: hsl(var(--team-creative)); }
