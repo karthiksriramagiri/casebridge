@@ -3,6 +3,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import TeamsShell from '@/app/teams/dashboard/TeamsShell'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 const notifications = [
   {
@@ -17,7 +18,7 @@ const notifications = [
       {
         heading: 'Overview',
         content: (
-          <p className="text-sm text-gray-700 leading-relaxed">
+          <p className="text-sm text-foreground/90 leading-relaxed">
             To become eligible for live leads, every caller must pass the <strong>Case Bridge Nuance Certification</strong> and <strong>Jason&rsquo;s Final Mock Call Certification</strong>.
           </p>
         ),
@@ -56,20 +57,20 @@ const notifications = [
                 ],
               },
             ].map(({ day, title, paid, items }) => (
-              <div key={day} className="border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gray-50 px-4 py-2.5 flex items-center justify-between border-b border-gray-200">
+              <div key={day} className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-muted/40 px-4 py-2.5 flex items-center justify-between border-b border-border">
                   <div className="flex items-center gap-2.5">
-                    <span className="bg-[#0f1e3c] text-white text-xs font-bold px-2 py-0.5 rounded">{day}</span>
-                    <span className="text-sm font-semibold text-gray-900">{title}</span>
+                    <span className="bg-primary text-primary-foreground text-xs font-bold px-2 py-0.5 rounded">{day}</span>
+                    <span className="text-sm font-semibold text-foreground">{title}</span>
                   </div>
-                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${paid ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                  <span className={`text-xs font-bold px-2 py-0.5 rounded-full ${paid ? 'bg-success/15 text-success' : 'bg-destructive/10 text-destructive'}`}>
                     {paid ? 'PAID' : 'UNPAID'}
                   </span>
                 </div>
                 <ul className="px-4 py-3 space-y-1.5">
                   {items.map(item => (
-                    <li key={item} className="flex items-start gap-2 text-sm text-gray-700">
-                      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+                    <li key={item} className="flex items-start gap-2 text-sm text-foreground/90">
+                      <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
                       {item}
                     </li>
                   ))}
@@ -106,31 +107,31 @@ const notifications = [
               },
             ].map(({ level, title, color, req, benefits }) => {
               const badge: Record<string, string> = {
-                amber: 'bg-amber-400 text-amber-900',
-                blue: 'bg-blue-600 text-white',
-                orange: 'bg-orange-400 text-white',
-                red: 'bg-red-600 text-white',
+                amber: 'bg-warning text-warning',
+                blue: 'bg-primary text-primary-foreground',
+                orange: 'bg-warning text-primary-foreground',
+                red: 'bg-destructive text-primary-foreground',
               }
               const border: Record<string, string> = {
-                amber: 'border-amber-200',
-                blue: 'border-blue-200',
-                orange: 'border-orange-200',
-                red: 'border-red-200',
+                amber: 'border-warning/30',
+                blue: 'border-primary/30',
+                orange: 'border-warning/30',
+                red: 'border-destructive/30',
               }
               return (
                 <div key={level} className={`border ${border[color]} rounded-xl overflow-hidden`}>
                   <div className="px-4 py-2.5 flex items-center gap-2.5 border-b" style={{ borderColor: 'inherit' }}>
                     <span className={`${badge[color]} w-7 h-7 text-sm font-black rounded-lg flex items-center justify-center shrink-0`}>{level}</span>
-                    <span className="text-sm font-bold text-gray-900">{title}</span>
+                    <span className="text-sm font-bold text-foreground">{title}</span>
                   </div>
                   <div className="px-4 py-3 grid grid-cols-2 gap-3">
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Requirements</p>
-                      <ul className="space-y-1">{req.map(r => <li key={r} className="text-xs text-gray-700 flex gap-1.5"><span className="mt-1 w-1 h-1 rounded-full bg-gray-400 shrink-0"/>{r}</li>)}</ul>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Requirements</p>
+                      <ul className="space-y-1">{req.map(r => <li key={r} className="text-xs text-foreground/90 flex gap-1.5"><span className="mt-1 w-1 h-1 rounded-full bg-muted-foreground/50 shrink-0"/>{r}</li>)}</ul>
                     </div>
                     <div>
-                      <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-1.5">Result / Benefits</p>
-                      <ul className="space-y-1">{benefits.map(b => <li key={b} className="text-xs text-gray-700 flex gap-1.5"><span className="mt-1 w-1 h-1 rounded-full bg-gray-400 shrink-0"/>{b}</li>)}</ul>
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1.5">Result / Benefits</p>
+                      <ul className="space-y-1">{benefits.map(b => <li key={b} className="text-xs text-foreground/90 flex gap-1.5"><span className="mt-1 w-1 h-1 rounded-full bg-muted-foreground/50 shrink-0"/>{b}</li>)}</ul>
                     </div>
                   </div>
                 </div>
@@ -153,7 +154,7 @@ const notifications = [
       {
         heading: 'What Changed',
         content: (
-          <div className="space-y-3 text-sm text-gray-700 leading-relaxed">
+          <div className="space-y-3 text-sm text-foreground/90 leading-relaxed">
             <p>We have updated our commission structure. Effective immediately:</p>
             <ul className="list-disc pl-5 space-y-1">
               <li>Commission: <strong>$30 per closed case</strong></li>
@@ -183,14 +184,14 @@ const notifications = [
               href="https://meet.google.com/cwv-xecz-anc"
               target="_blank"
               rel="noopener noreferrer"
-              className="flex items-center gap-3 bg-green-50 border border-green-200 rounded-xl px-4 py-3 hover:bg-green-100 transition-colors"
+              className="flex items-center gap-3 bg-success/10 border border-success/30 rounded-xl px-4 py-3 hover:bg-success/10 transition-colors"
             >
-              <svg className="w-5 h-5 text-green-600 shrink-0" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="w-5 h-5 text-success shrink-0" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M20 18H4a2 2 0 01-2-2V8a2 2 0 012-2h16a2 2 0 012 2v8a2 2 0 01-2 2zM4 8v8h16V8H4zm10 1l5 3-5 3V9z" />
               </svg>
               <div>
-                <p className="text-xs text-gray-500 font-medium">Google Meet · Every Friday 3:00 PM PST</p>
-                <p className="text-sm font-semibold text-green-700">meet.google.com/cwv-xecz-anc</p>
+                <p className="text-xs text-muted-foreground font-medium">Google Meet · Every Friday 3:00 PM PST</p>
+                <p className="text-sm font-semibold text-success">meet.google.com/cwv-xecz-anc</p>
               </div>
             </a>
             <div className="space-y-3">
@@ -200,8 +201,8 @@ const notifications = [
                 { title: 'Evaluation Session', items: ['Scoreboard Analysis'] },
               ].map(s => (
                 <div key={s.title}>
-                  <p className="text-sm font-bold text-gray-900 mb-1">{s.title}</p>
-                  <ul className="space-y-1">{s.items.map(i => <li key={i} className="flex items-start gap-2 text-sm text-gray-600"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-gray-300 shrink-0"/>{i}</li>)}</ul>
+                  <p className="text-sm font-bold text-foreground mb-1">{s.title}</p>
+                  <ul className="space-y-1">{s.items.map(i => <li key={i} className="flex items-start gap-2 text-sm text-muted-foreground"><span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-border shrink-0"/>{i}</li>)}</ul>
                 </div>
               ))}
             </div>
@@ -213,9 +214,9 @@ const notifications = [
 ]
 
 const tagColors: Record<string, string> = {
-  red:  'bg-red-100 text-red-700',
-  blue: 'bg-blue-100 text-blue-700',
-  gray: 'bg-gray-100 text-gray-600',
+  red:  'bg-destructive/10 text-destructive',
+  blue: 'bg-accent text-primary',
+  gray: 'bg-muted text-muted-foreground',
 }
 
 export default function NotificationsPage() {
@@ -236,18 +237,17 @@ export default function NotificationsPage() {
   if (checking) return null
 
   return (
-    <div className="min-h-screen bg-gray-50">
       <TeamsShell timeclockEnabled={false} teamType="intake">
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <PageHeader
+        title="Notifications"
+        description="Announcements, policy updates and recurring reminders."
+      />
+      <PageBody>
 
-        <div className="mb-6">
-          <h1 className="text-xl font-bold text-gray-900">Notifications</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Announcements, policy updates, and recurring reminders.</p>
-        </div>
 
         <div className="space-y-3">
           {notifications.map(n => (
-            <div key={n.id} className="bg-white border border-gray-200 rounded-2xl overflow-hidden shadow-sm">
+            <div key={n.id} className="bg-card border border-border rounded-2xl overflow-hidden ">
               {/* Card header — always visible */}
               <button
                 className="w-full text-left px-5 py-4 flex items-start gap-4"
@@ -257,13 +257,13 @@ export default function NotificationsPage() {
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap mb-1">
                     <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${tagColors[n.tagColor]}`}>{n.tag}</span>
-                    <span className="text-xs text-gray-400">{n.date}</span>
+                    <span className="text-xs text-muted-foreground">{n.date}</span>
                   </div>
-                  <p className="font-bold text-gray-900 text-sm leading-snug">{n.title}</p>
-                  <p className="text-xs text-gray-500 mt-0.5 leading-snug">{n.summary}</p>
+                  <p className="font-bold text-foreground text-sm leading-snug">{n.title}</p>
+                  <p className="text-xs text-muted-foreground mt-0.5 leading-snug">{n.summary}</p>
                 </div>
                 <svg
-                  className={`w-4 h-4 text-gray-400 shrink-0 mt-1 transition-transform ${expanded === n.id ? 'rotate-180' : ''}`}
+                  className={`w-4 h-4 text-muted-foreground shrink-0 mt-1 transition-transform ${expanded === n.id ? 'rotate-180' : ''}`}
                   fill="none" stroke="currentColor" viewBox="0 0 24 24"
                 >
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -272,10 +272,10 @@ export default function NotificationsPage() {
 
               {/* Expanded content */}
               {expanded === n.id && (
-                <div className="px-5 pb-6 space-y-5 border-t border-gray-100 pt-4">
+                <div className="px-5 pb-6 space-y-5 border-t border-border pt-4">
                   {n.sections.map(s => (
                     <div key={s.heading}>
-                      <p className="text-xs font-bold text-gray-400 uppercase tracking-widest mb-2">{s.heading}</p>
+                      <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-2">{s.heading}</p>
                       {s.content}
                     </div>
                   ))}
@@ -284,8 +284,7 @@ export default function NotificationsPage() {
             </div>
           ))}
         </div>
-      </main>
+        </PageBody>
       </TeamsShell>
-    </div>
   )
 }

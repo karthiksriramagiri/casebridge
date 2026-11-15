@@ -24,13 +24,13 @@ export default function CommissionNotice() {
     <>
       {/* Sticky top banner — visible until June 17 */}
       {showBanner && (
-        <div className="w-full bg-[#0f1e3c] border-b border-blue-900 px-4 py-2.5 flex items-center justify-center gap-3 text-sm text-white sticky top-0 z-40">
-          <span className="text-yellow-400 shrink-0">📋</span>
+        <div className="w-full bg-primary border-b border-primary px-4 py-2.5 flex items-center justify-center gap-3 text-sm text-primary-foreground sticky top-0 z-40">
+          <span className="text-warning shrink-0">📋</span>
           <span>
             <strong>Commission Structure Update:</strong> $30 per closed case. Replacement cases are not eligible.{' '}
             <button
               onClick={() => setShowModal(true)}
-              className="underline text-blue-300 hover:text-white transition-colors"
+              className="underline text-primary-foreground/75 hover:text-white transition-colors"
             >
               View full notice
             </button>
@@ -45,11 +45,11 @@ export default function CommissionNotice() {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
           {/* Panel */}
-          <div className="relative bg-white rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto">
+          <div className="relative bg-card rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] overflow-y-auto">
             <div className="px-8 py-7">
-              <h2 className="text-2xl font-bold text-gray-900 mb-6">Commission Structure Update</h2>
+              <h2 className="text-2xl font-bold text-foreground mb-6">Commission Structure Update</h2>
 
-              <div className="space-y-4 text-sm text-gray-700 leading-relaxed">
+              <div className="space-y-4 text-sm text-foreground/90 leading-relaxed">
                 <p>We have updated our commission structure.</p>
 
                 <p>
@@ -83,7 +83,7 @@ export default function CommissionNotice() {
 
               <button
                 onClick={acknowledge}
-                className="mt-7 w-full bg-[#0f1e3c] hover:bg-[#1a3060] text-white font-bold text-sm py-3 rounded-xl transition-colors"
+                className="mt-7 w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm py-3 rounded-xl transition-colors"
               >
                 I Agree
               </button>

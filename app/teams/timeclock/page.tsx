@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
 import TeamsShell from '../dashboard/TeamsShell'
 import TimeclockWidget from '../dashboard/TimeclockWidget'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 export default async function TimeclockPage() {
   const supabase = await createClient()
@@ -21,18 +22,13 @@ export default async function TimeclockPage() {
   if (!profile.timeclock_enabled) redirect('/teams/dashboard')
 
   return (
-    <div className="min-h-screen bg-gray-50">
       <TeamsShell timeclockEnabled={true} teamType={profile.team_type ?? 'intake'}>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <PageHeader title="Timeclock" description={`Track your hours, ${profile.name}.`} />
+      <PageBody>
 
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Timeclock</h1>
-          <p className="text-gray-500 mt-1">Track your hours, {profile.name}.</p>
-        </div>
 
         <TimeclockWidget profileId={profile.id} />
-      </main>
+        </PageBody>
       </TeamsShell>
-    </div>
   )
 }

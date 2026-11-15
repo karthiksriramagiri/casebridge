@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { format } from 'date-fns'
 import { STAGES, STAGE_LABEL, type StageKey } from './stages'
+import { PageHeader, PageBody, TeamToggle } from '@/app/teams/_components/shared'
+import { Button } from '@/app/teams/_ui/button'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Candidates — where every rep sits between getting a login and going live.
@@ -108,35 +110,31 @@ export default function CandidatesPage() {
   }
 
   if (loading) {
-    return <div className="text-center py-16 text-gray-400 text-sm">Loading candidates…</div>
+    return <div className="text-center py-16 text-muted-foreground text-sm">Loading candidates…</div>
   }
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Candidates</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
-            {cands.length} rep{cands.length === 1 ? '' : 's'} · drag a card to move it
-          </p>
-        </div>
-        <button
-          onClick={() => { setLoading(true); load() }}
-          className="text-sm border border-gray-200 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
-        >
-          Refresh
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="Candidates"
+        description={`${cands.length} rep${cands.length === 1 ? '' : 's'} · drag a card to move it`}
+        actions={
+          <Button variant="outline" size="sm" onClick={() => { setLoading(true); load() }}>
+            Refresh
+          </Button>
+        }
+      />
+      <PageBody>
 
       {needsMigration && (
-        <div className="bg-amber-50 border border-amber-200 text-amber-800 text-sm rounded-lg px-4 py-3 mb-4">
-          Moves won&apos;t save yet — run <code className="font-mono text-xs bg-amber-100 px-1.5 py-0.5 rounded">supabase/migration_candidate_board.sql</code>.
+        <div className="bg-warning/10 border border-warning/30 text-warning text-sm rounded-lg px-4 py-3 mb-4">
+          Moves won&apos;t save yet — run <code className="font-mono text-xs bg-warning/15 px-1.5 py-0.5 rounded">supabase/migration_candidate_board.sql</code>.
           Until then the board shows where each rep sits from their booking and module&nbsp;2 progress.
         </div>
       )}
 
       {error && (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3 mb-4">
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-3 mb-4">
           {error}
         </div>
       )}
@@ -152,21 +150,21 @@ export default function CandidatesPage() {
               onDragLeave={() => setOverStage(s => (s === stage.key ? null : s))}
               onDrop={e => { e.preventDefault(); onDrop(stage.key) }}
               className={`flex-none w-64 rounded-xl border transition-colors ${
-                isOver ? 'border-blue-300 bg-blue-50/60' : 'border-gray-100 bg-gray-50'
+ isOver ? 'border-primary/30 bg-primary/10/60' : 'border-border bg-muted/40'
               }`}
             >
               <div className="px-3 pt-3 pb-2 flex items-start justify-between gap-2">
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5">
                     <span className={`w-1.5 h-1.5 rounded-full flex-none ${
-                      stage.auto ? 'bg-blue-400' : 'bg-gray-300'}`} />
-                    <h2 className="text-xs font-semibold text-gray-700 truncate">{stage.label}</h2>
+ stage.auto ? 'bg-primary' : 'bg-border'}`} />
+                    <h2 className="text-xs font-semibold text-foreground/90 truncate">{stage.label}</h2>
                   </div>
                   {stage.hint && (
-                    <p className="text-[10px] leading-snug text-gray-400 mt-1">{stage.hint}</p>
+                    <p className="text-[10px] leading-snug text-muted-foreground mt-1">{stage.hint}</p>
                   )}
                 </div>
-                <span className="text-xs font-medium text-gray-400 tabular-nums">{column.length}</span>
+                <span className="text-xs font-medium text-muted-foreground tabular-nums">{column.length}</span>
               </div>
 
               <div className="px-2 pb-2 space-y-2 min-h-[120px]">
@@ -176,31 +174,31 @@ export default function CandidatesPage() {
                     draggable
                     onDragStart={() => setDragId(c.id)}
                     onDragEnd={() => { setDragId(null); setOverStage(null) }}
-                    className={`bg-white rounded-lg border border-gray-200 shadow-sm px-3 py-2.5 cursor-grab active:cursor-grabbing ${
-                      dragId === c.id ? 'opacity-40' : 'hover:border-gray-300'
+                    className={`bg-card rounded-lg border border-border px-3 py-2.5 cursor-grab active:cursor-grabbing ${
+                      dragId === c.id ? 'opacity-40' : 'hover:border-border'
                     }`}
                   >
-                    <p className="text-sm font-semibold text-gray-900 leading-tight">{c.name}</p>
+                    <p className="text-sm font-semibold text-foreground leading-tight">{c.name}</p>
                     <div className="flex flex-wrap items-center gap-1 mt-1.5">
                       {c.team && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                           {c.team}
                         </span>
                       )}
                       {c.shift && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-gray-100 text-gray-600">
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
                           {c.shift}
                         </span>
                       )}
                       {!c.placed && (
-                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-blue-50 text-blue-600"
+                        <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-accent text-primary"
                               title="Placed from their booking and module 2 progress, not moved by hand">
                           auto
                         </span>
                       )}
                     </div>
                     {(c.bookedAt || c.level2At) && (
-                      <p className="text-[10px] text-gray-400 mt-1.5 leading-snug">
+                      <p className="text-[10px] text-muted-foreground mt-1.5 leading-snug">
                         {c.level2At
                           ? `Module 2 · ${format(new Date(c.level2At), 'MMM d')}`
                           : `Booked · ${format(new Date(c.bookedAt!), 'MMM d, h:mm a')}`}
@@ -210,7 +208,7 @@ export default function CandidatesPage() {
                 ))}
 
                 {column.length === 0 && (
-                  <p className="text-[11px] text-gray-300 text-center py-6">Drop here</p>
+                  <p className="text-[11px] text-muted-foreground/50 text-center py-6">Drop here</p>
                 )}
               </div>
             </div>
@@ -218,10 +216,11 @@ export default function CandidatesPage() {
         })}
       </div>
 
-      <p className="text-xs text-gray-400 mt-2">
-        <span className="inline-block w-1.5 h-1.5 rounded-full bg-blue-400 align-middle mr-1.5" />
+      <p className="mt-2 text-xs text-muted-foreground">
+        <span className="mr-1.5 inline-block size-1.5 rounded-full bg-primary align-middle" />
         These columns fill themselves — a rep moves here on their own when they book the call or start module 2.
       </p>
-    </div>
+      </PageBody>
+    </>
   )
 }

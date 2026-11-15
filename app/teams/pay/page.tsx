@@ -6,8 +6,15 @@ import { useRouter } from 'next/navigation'
 import { format, parseISO } from 'date-fns'
 import TeamsShell from '../dashboard/TeamsShell'
 import TimeclockWidget from '../dashboard/TimeclockWidget'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
-interface CaseEntry { id: string; name: string; date: string; commission: number; tier?: number; closeNumber?: number }
+interface CaseEntry {
+  id: string; name: string; date: string; commission: number; tier?: number; closeNumber?: number
+  /** The day its replacement window closes. */
+  clearsOn?: string
+  /** Already through that window. False means it clears before payday. */
+  cleared?: boolean
+}
 interface Session { id: string; clock_in: string; clock_out: string | null; hours: number; pay: number }
 interface DaySession { date: string; totalHours: number; totalPay: number; sessions: Session[] }
 
@@ -28,7 +35,12 @@ interface PayData {
   period: { start: string; end: string; nextPayDate: string }
   hours: { total: number; dailySessions: DaySession[] }
   cases: { eligibleThisPeriod: CaseEntry[]; pending: CaseEntry[] }
-  pay: { hourlyRate: number; hourlyEarnings: number; commissionSigned: number; totalEstimated: number }
+  pay: {
+    hourlyRate: number; hourlyEarnings: number; commissionSigned: number; totalEstimated: number
+    /* Split so the page can say which part of the figure is banked and
+       which is still inside a replacement window. */
+    commissionCleared?: number; commissionClearing?: number; clearingCount?: number
+  }
   previousPeriods: PreviousPeriod[]
   todayEntries: { id: string; clock_in: string; clock_out: string | null }[]
 }
@@ -70,36 +82,36 @@ function HoursBreakdown({ dailySessions, totalHours, hourlyRate, hourlyPay }: {
   hourlyPay: number
 }) {
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-        <h2 className="font-semibold text-gray-900">Hours</h2>
-        <span className="text-sm font-bold text-gray-700">{totalHours.toFixed(2)}h</span>
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+        <h2 className="font-semibold text-foreground">Hours</h2>
+        <span className="text-sm font-bold text-foreground/90">{totalHours.toFixed(2)}h</span>
       </div>
       {dailySessions.length === 0 ? (
-        <p className="px-5 py-8 text-center text-sm text-gray-400">No hours logged this period.</p>
+        <p className="px-5 py-8 text-center text-sm text-muted-foreground">No hours logged this period.</p>
       ) : (
-        <div className="divide-y divide-gray-100">
+        <div className="divide-y divide-border">
           {dailySessions.map(day => (
             <div key={day.date}>
-              <div className="flex items-center justify-between px-5 py-2 bg-gray-50">
-                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">
+              <div className="flex items-center justify-between px-5 py-2 bg-muted/40">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   {format(parseISO(day.date), 'EEE, MMM d')}
                 </p>
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-gray-600">{day.totalHours.toFixed(2)}h</span>
-                  <span className="text-xs font-semibold text-green-700">{fmt$(day.totalPay)}</span>
+                  <span className="text-xs font-semibold text-muted-foreground">{day.totalHours.toFixed(2)}h</span>
+                  <span className="text-xs font-semibold text-success">{fmt$(day.totalPay)}</span>
                 </div>
               </div>
               {day.sessions.map(s => (
                 <div key={s.id} className="flex items-center justify-between px-5 py-2.5 pl-8">
-                  <div className="flex items-center gap-2 text-sm text-gray-700">
+                  <div className="flex items-center gap-2 text-sm text-foreground/90">
                     <span>{fmtTime(s.clock_in)}</span>
-                    <span className="text-gray-300">→</span>
-                    <span>{s.clock_out ? fmtTime(s.clock_out) : <span className="text-green-600 font-semibold">Active</span>}</span>
+                    <span className="text-muted-foreground/50">→</span>
+                    <span>{s.clock_out ? fmtTime(s.clock_out) : <span className="text-success font-semibold">Active</span>}</span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <span className="text-sm text-gray-500">{s.hours.toFixed(2)}h</span>
-                    <span className="text-sm font-semibold text-gray-800">{fmt$(s.pay)}</span>
+                    <span className="text-sm text-muted-foreground">{s.hours.toFixed(2)}h</span>
+                    <span className="text-sm font-semibold text-foreground">{fmt$(s.pay)}</span>
                   </div>
                 </div>
               ))}
@@ -107,47 +119,84 @@ function HoursBreakdown({ dailySessions, totalHours, hourlyRate, hourlyPay }: {
           ))}
         </div>
       )}
-      <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between text-sm">
-        <span className="text-gray-500">{totalHours.toFixed(2)}h × ${hourlyRate}/hr</span>
-        <span className="font-bold text-gray-900">{fmt$(hourlyPay)}</span>
+      <div className="px-5 py-3 bg-muted/40 border-t border-border flex justify-between text-sm">
+        <span className="text-muted-foreground">{totalHours.toFixed(2)}h × ${hourlyRate}/hr</span>
+        <span className="font-bold text-foreground">{fmt$(hourlyPay)}</span>
       </div>
     </div>
   )
 }
 
-function CommissionBreakdown({ eligibleCases, commission }: { eligibleCases: CaseEntry[]; commission: number }) {
+/* The whole cheque, not just the part that has already cleared.
+
+   This used to list only cases whose replacement window had closed on or
+   before today, which meant the figure crept up through the fortnight and
+   was only the real one on the morning of payday — you could not plan
+   against it, and a case clearing tomorrow looked like it belonged to next
+   month. It now covers the period to its own end, with the few still to
+   clear marked as such: they are on this cheque unless the case is
+   replaced first, and that is worth seeing rather than hiding. */
+function CommissionBreakdown({
+  eligibleCases, commission, clearing, clearingCount, payDate,
+}: {
+  eligibleCases: CaseEntry[]
+  commission: number
+  clearing?: number
+  clearingCount?: number
+  payDate?: string
+}) {
+  const stillClearing = clearingCount ?? 0
   return (
-    <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-      <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+    <div className="bg-card rounded-xl border border-border overflow-hidden">
+      <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <div>
-          <h2 className="font-semibold text-gray-900">Commission</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Cases cleared during this pay period</p>
+          <h2 className="font-semibold text-foreground">Commission</h2>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            {eligibleCases.length} case{eligibleCases.length === 1 ? '' : 's'} on this paycheck
+            {payDate ? ` · ${payDate}` : ''}
+          </p>
         </div>
-        <span className="text-sm font-bold text-green-700">{fmt$(commission)}</span>
+        <span className="text-sm font-bold text-success">{fmt$(commission)}</span>
       </div>
+      {stillClearing > 0 && (
+        /* Said once at the top rather than inferred from the rows: part of
+           the total is not final yet. */
+        <p className="px-5 py-2 bg-warning/10 border-b border-warning/30 text-xs text-warning">
+          {fmt$(clearing ?? 0)} of this ({stillClearing} case{stillClearing === 1 ? '' : 's'}) clears its
+          replacement window before payday — included here, and only at risk if a case is replaced.
+        </p>
+      )}
       {eligibleCases.length === 0 ? (
-        <p className="px-5 py-6 text-center text-sm text-gray-400">No commission this period.</p>
+        <p className="px-5 py-6 text-center text-sm text-muted-foreground">No commission this period.</p>
       ) : (
-        <div className="divide-y divide-gray-50">
-          {eligibleCases.map(c => (
-            <div key={c.id} className="flex items-center justify-between px-5 py-3">
-              <div>
-                <p className="text-sm font-semibold text-gray-900">
-                  {c.name}
-                  {c.tier != null && c.closeNumber != null && (
-                    <span className="ml-1.5 text-xs font-normal text-gray-400">
-                      (Tier {c.tier}, {ordinal(c.closeNumber)} Close)
-                    </span>
-                  )}
-                </p>
-                <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
+        <div className="divide-y divide-border">
+          {eligibleCases.map(c => {
+            const pendingClear = c.cleared === false
+            return (
+              <div key={c.id} className="flex items-center justify-between px-5 py-3">
+                <div>
+                  <p className="text-sm font-semibold text-foreground">
+                    {c.name}
+                    {c.tier != null && c.closeNumber != null && (
+                      <span className="ml-1.5 text-xs font-normal text-muted-foreground">
+                        (Tier {c.tier}, {ordinal(c.closeNumber)} Close)
+                      </span>
+                    )}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}
+                    {pendingClear && c.clearsOn && ` · clears ${format(parseISO(c.clearsOn), 'MMM d')}`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${pendingClear ? 'bg-warning/15 text-warning' : 'bg-success/15 text-success'}`}>
+                    {pendingClear ? 'Clearing' : 'Signed'}
+                  </span>
+                  <span className={`text-sm font-bold ${pendingClear ? 'text-warning' : 'text-success'}`}>+{fmt$(c.commission)}</span>
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Signed</span>
-                <span className="text-sm font-bold text-green-700">+{fmt$(c.commission)}</span>
-              </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -163,32 +212,28 @@ function CreativePayView({ data, teamType, timeclockEnabled }: {
   const { period, pay, cases, commissionPerCase, previousPeriods } = data
 
   return (
-    <div className="min-h-screen bg-gray-50">
       <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
-      <main className="max-w-3xl mx-auto px-6 py-8">
-
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Pay</h1>
-          <p className="text-gray-500 mt-1">
-            Period: {format(parseISO(period.start), 'MMM d')} – {format(parseISO(period.end), 'MMM d, yyyy')} · Next paycheck: <span className="font-semibold text-gray-700">{period.nextPayDate}</span>
-          </p>
-        </div>
+      <PageHeader
+        title="Pay"
+        description={`Period ${format(parseISO(period.start), 'MMM d')} – ${format(parseISO(period.end), 'MMM d, yyyy')} · next paycheck ${period.nextPayDate}`}
+      />
+      <PageBody>
 
         {/* Estimated paycheck */}
-        <div className="bg-[#0f1e3c] rounded-xl px-6 py-5 mb-6">
+        <div className="bg-primary rounded-xl px-6 py-5 mb-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-blue-300 text-xs font-semibold uppercase tracking-wide mb-1">Estimated Next Paycheck</p>
-              <p className="text-4xl font-bold text-white">{fmt$(pay.totalEstimated)}</p>
-              <p className="text-blue-300 text-xs mt-1">{period.nextPayDate}</p>
+              <p className="text-primary-foreground/75 text-xs font-semibold uppercase tracking-wide mb-1">Estimated Next Paycheck</p>
+              <p className="text-4xl font-bold text-primary-foreground">{fmt$(pay.totalEstimated)}</p>
+              <p className="text-primary-foreground/75 text-xs mt-1">{period.nextPayDate}</p>
             </div>
             <div className="text-right space-y-1.5 shrink-0">
-              <p className="text-sm text-blue-200">
-                Salary: <span className="text-white font-semibold">{fmt$(pay.salary)}</span>
+              <p className="text-sm text-primary-foreground/85">
+                Salary: <span className="text-primary-foreground font-semibold">{fmt$(pay.salary)}</span>
               </p>
-              <p className="text-sm text-blue-200">
-                <span className="text-white font-semibold">{cases.thisPeriod.length}</span> case{cases.thisPeriod.length !== 1 ? 's' : ''} × ${commissionPerCase} =
-                <span className="text-white font-semibold ml-1">{fmt$(pay.commission)}</span>
+              <p className="text-sm text-primary-foreground/85">
+                <span className="text-primary-foreground font-semibold">{cases.thisPeriod.length}</span> case{cases.thisPeriod.length !== 1 ? 's' : ''} × ${commissionPerCase} =
+                <span className="text-primary-foreground font-semibold ml-1">{fmt$(pay.commission)}</span>
               </p>
             </div>
           </div>
@@ -197,47 +242,47 @@ function CreativePayView({ data, teamType, timeclockEnabled }: {
         {/* Breakdown */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {/* Salary card */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
-              <h2 className="font-semibold text-gray-900">Salary</h2>
-              <span className="text-sm font-bold text-gray-700">{fmt$(pay.salary)}</span>
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="font-semibold text-foreground">Salary</h2>
+              <span className="text-sm font-bold text-foreground/90">{fmt$(pay.salary)}</span>
             </div>
             <div className="px-5 py-6 text-center">
-              <p className="text-3xl font-bold text-gray-900">{fmt$(pay.salary)}</p>
-              <p className="text-xs text-gray-400 mt-1">Bi-weekly fixed salary</p>
+              <p className="text-3xl font-bold text-foreground">{fmt$(pay.salary)}</p>
+              <p className="text-xs text-muted-foreground mt-1">Bi-weekly fixed salary</p>
             </div>
           </div>
 
           {/* Commission card */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+          <div className="bg-card rounded-xl border border-border overflow-hidden">
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
               <div>
-                <h2 className="font-semibold text-gray-900">Commission</h2>
-                <p className="text-xs text-gray-400 mt-0.5">${commissionPerCase} per signed case</p>
+                <h2 className="font-semibold text-foreground">Commission</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">${commissionPerCase} per signed case</p>
               </div>
-              <span className="text-sm font-bold text-green-700">{fmt$(pay.commission)}</span>
+              <span className="text-sm font-bold text-success">{fmt$(pay.commission)}</span>
             </div>
             {cases.thisPeriod.length === 0 ? (
-              <p className="px-5 py-6 text-center text-sm text-gray-400">No cases this period.</p>
+              <p className="px-5 py-6 text-center text-sm text-muted-foreground">No cases this period.</p>
             ) : (
-              <div className="divide-y divide-gray-50">
+              <div className="divide-y divide-border">
                 {cases.thisPeriod.map(c => (
                   <div key={c.id} className="flex items-center justify-between px-5 py-3">
                     <div>
-                      <p className="text-sm font-semibold text-gray-900">{c.name}</p>
-                      <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
+                      <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                      <p className="text-xs text-muted-foreground">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-green-100 text-green-700">Signed</span>
-                      <span className="text-sm font-bold text-green-700">+{fmt$(commissionPerCase)}</span>
+                      <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-success/15 text-success">Signed</span>
+                      <span className="text-sm font-bold text-success">+{fmt$(commissionPerCase)}</span>
                     </div>
                   </div>
                 ))}
               </div>
             )}
-            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex justify-between text-sm">
-              <span className="text-gray-500">{cases.thisPeriod.length} case{cases.thisPeriod.length !== 1 ? 's' : ''} × ${commissionPerCase}</span>
-              <span className="font-bold text-gray-900">{fmt$(pay.commission)}</span>
+            <div className="px-5 py-3 bg-muted/40 border-t border-border flex justify-between text-sm">
+              <span className="text-muted-foreground">{cases.thisPeriod.length} case{cases.thisPeriod.length !== 1 ? 's' : ''} × ${commissionPerCase}</span>
+              <span className="font-bold text-foreground">{fmt$(pay.commission)}</span>
             </div>
           </div>
         </div>
@@ -245,32 +290,32 @@ function CreativePayView({ data, teamType, timeclockEnabled }: {
         {/* Previous Paychecks */}
         {previousPeriods.length > 0 && (
           <div className="mt-10">
-            <h2 className="text-lg font-bold text-gray-900 mb-3">Previous Paychecks</h2>
+            <h2 className="text-lg font-bold text-foreground mb-3">Previous Paychecks</h2>
             <div className="space-y-3">
               {previousPeriods.map(p => {
                 const isOpen = expandedPeriod === p.start
                 return (
-                  <div key={p.start} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div key={p.start} className="bg-card rounded-xl border border-border overflow-hidden">
                     <button
-                      className="w-full text-left px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      className="w-full text-left px-5 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
                       onClick={() => setExpandedPeriod(isOpen ? null : p.start)}
                     >
                       <div>
-                        <p className="font-semibold text-gray-900">{p.payDate}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <p className="font-semibold text-foreground">{p.payDate}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {format(parseISO(p.start), 'MMM d')} – {format(parseISO(p.end), 'MMM d, yyyy')}
                         </p>
-                        <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                          <span>Salary: <span className="font-semibold text-gray-700">{fmt$(p.salary)}</span></span>
+                        <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                          <span>Salary: <span className="font-semibold text-foreground/90">{fmt$(p.salary)}</span></span>
                           {p.cases > 0 && (
-                            <span>{p.cases} case{p.cases !== 1 ? 's' : ''} = <span className="font-semibold text-gray-700">{fmt$(p.commission)}</span></span>
+                            <span>{p.cases} case{p.cases !== 1 ? 's' : ''} = <span className="font-semibold text-foreground/90">{fmt$(p.commission)}</span></span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <p className="text-xl font-bold text-gray-900">{fmt$(p.total)}</p>
+                        <p className="text-xl font-bold text-foreground">{fmt$(p.total)}</p>
                         <svg
-                          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                          className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
                           fill="none" stroke="currentColor" viewBox="0 0 24 24"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -279,18 +324,18 @@ function CreativePayView({ data, teamType, timeclockEnabled }: {
                     </button>
 
                     {isOpen && (
-                      <div className="border-t border-gray-100">
+                      <div className="border-t border-border">
                         {p.caseList.length === 0 ? (
-                          <p className="px-5 py-6 text-center text-sm text-gray-400">No cases this period.</p>
+                          <p className="px-5 py-6 text-center text-sm text-muted-foreground">No cases this period.</p>
                         ) : (
-                          <div className="divide-y divide-gray-50">
+                          <div className="divide-y divide-border">
                             {p.caseList.map(c => (
                               <div key={c.id} className="flex items-center justify-between px-5 py-3">
                                 <div>
-                                  <p className="text-sm font-semibold text-gray-900">{c.name}</p>
-                                  <p className="text-xs text-gray-400">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
+                                  <p className="text-sm font-semibold text-foreground">{c.name}</p>
+                                  <p className="text-xs text-muted-foreground">{c.date ? format(parseISO(c.date), 'MMM d, yyyy') : '—'}</p>
                                 </div>
-                                <span className="text-sm font-bold text-green-700">+{fmt$(commissionPerCase)}</span>
+                                <span className="text-sm font-bold text-success">+{fmt$(commissionPerCase)}</span>
                               </div>
                             ))}
                           </div>
@@ -303,9 +348,8 @@ function CreativePayView({ data, teamType, timeclockEnabled }: {
             </div>
           </div>
         )}
-      </main>
+        </PageBody>
       </TeamsShell>
-    </div>
   )
 }
 
@@ -354,8 +398,8 @@ export default function PayPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-400">Loading...</p>
+      <div className="tc-root min-h-dvh flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     )
   }
@@ -368,8 +412,8 @@ export default function PayPage() {
   // Intake team view
   if (!data) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <p className="text-gray-400">Unable to load pay data.</p>
+      <div className="tc-root min-h-dvh flex items-center justify-center">
+        <p className="text-muted-foreground">Unable to load pay data.</p>
       </div>
     )
   }
@@ -380,45 +424,41 @@ export default function PayPage() {
   const pendingTotal = cases.pending.reduce((sum, c) => sum + c.commission, 0)
 
   return (
-    <div className="min-h-screen bg-gray-50">
       <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
-      <main className="max-w-4xl mx-auto px-6 py-8">
-
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">Pay</h1>
-          <p className="text-gray-500 mt-1">
-            Period: {format(parseISO(period.start), 'MMM d')} – {format(parseISO(period.end), 'MMM d, yyyy')} · Next paycheck: <span className="font-semibold text-gray-700">{period.nextPayDate}</span>
-          </p>
-        </div>
+      <PageHeader
+        title="Pay"
+        description={`Period ${format(parseISO(period.start), 'MMM d')} – ${format(parseISO(period.end), 'MMM d, yyyy')} · next paycheck ${period.nextPayDate}`}
+      />
+      <PageBody>
 
         {timeclockEnabled && profileId && (
           <TimeclockWidget profileId={profileId} />
         )}
 
         {/* Estimated paycheck */}
-        <div className="bg-[#0f1e3c] rounded-xl px-6 py-5 mb-6">
+        <div className="bg-primary rounded-xl px-6 py-5 mb-6">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-blue-300 text-xs font-semibold uppercase tracking-wide mb-1">Estimated Next Paycheck</p>
-              <p className="text-4xl font-bold text-white">{fmt$(pay.totalEstimated)}</p>
-              <p className="text-blue-300 text-xs mt-1">{period.nextPayDate}</p>
+              <p className="text-primary-foreground/75 text-xs font-semibold uppercase tracking-wide mb-1">Estimated Next Paycheck</p>
+              <p className="text-4xl font-bold text-primary-foreground">{fmt$(pay.totalEstimated)}</p>
+              <p className="text-primary-foreground/75 text-xs mt-1">{period.nextPayDate}</p>
             </div>
             <div className="text-right space-y-1.5 shrink-0">
-              <p className="text-sm text-blue-200">
-                <span className="text-white font-semibold">{totalHours.toFixed(2)}h</span> × ${pay.hourlyRate}/hr
-                <span className="text-white font-semibold ml-1">= {fmt$(pay.hourlyEarnings)}</span>
+              <p className="text-sm text-primary-foreground/85">
+                <span className="text-primary-foreground font-semibold">{totalHours.toFixed(2)}h</span> × ${pay.hourlyRate}/hr
+                <span className="text-primary-foreground font-semibold ml-1">= {fmt$(pay.hourlyEarnings)}</span>
               </p>
               {cases.eligibleThisPeriod.length > 0 && (
-                <p className="text-sm text-blue-200">
-                  <span className="text-white font-semibold">{cases.eligibleThisPeriod.length}</span> signed =
-                  <span className="text-white font-semibold ml-1">{fmt$(pay.commissionSigned)}</span>
+                <p className="text-sm text-primary-foreground/85">
+                  <span className="text-primary-foreground font-semibold">{cases.eligibleThisPeriod.length}</span> signed =
+                  <span className="text-primary-foreground font-semibold ml-1">{fmt$(pay.commissionSigned)}</span>
                 </p>
               )}
             </div>
           </div>
           {cases.pending.length > 0 && (
             <div className="mt-4 pt-4 border-t border-white/10">
-              <p className="text-yellow-300 text-xs font-semibold">
+              <p className="text-warning/70 text-xs font-semibold">
                 ⏳ {cases.pending.length} case{cases.pending.length !== 1 ? 's' : ''} ({fmt$(pendingTotal)}) still in replacement window — not included yet.
               </p>
             </div>
@@ -438,36 +478,39 @@ export default function PayPage() {
             <CommissionBreakdown
               eligibleCases={cases.eligibleThisPeriod}
               commission={totalCommission}
+              clearing={pay.commissionClearing}
+              clearingCount={pay.clearingCount}
+              payDate={period.nextPayDate}
             />
 
             {cases.pending.length > 0 && (
-              <div className="bg-yellow-50 rounded-xl border border-yellow-200 shadow-sm overflow-hidden">
-                <div className="px-5 py-4 border-b border-yellow-200 flex items-center justify-between">
+              <div className="bg-warning/10 rounded-xl border border-warning/30 overflow-hidden">
+                <div className="px-5 py-4 border-b border-warning/30 flex items-center justify-between">
                   <div>
-                    <h2 className="font-semibold text-yellow-900">Pending Commission</h2>
-                    <p className="text-xs text-yellow-700 mt-0.5">Awaiting end of replacement window</p>
+                    <h2 className="font-semibold text-warning">Pending Commission</h2>
+                    <p className="text-xs text-warning mt-0.5">Awaiting end of replacement window</p>
                   </div>
-                  <span className="text-sm font-bold text-yellow-800">{fmt$(pendingTotal)}</span>
+                  <span className="text-sm font-bold text-warning">{fmt$(pendingTotal)}</span>
                 </div>
-                <div className="divide-y divide-yellow-100">
+                <div className="divide-y divide-warning/30">
                   {cases.pending.map(c => (
                     <div key={c.id} className="flex items-center justify-between px-5 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-yellow-900">
+                        <p className="text-sm font-semibold text-warning">
                           {c.name}
                           {c.tier != null && c.closeNumber != null && (
-                            <span className="ml-1.5 text-xs font-normal text-yellow-700">
+                            <span className="ml-1.5 text-xs font-normal text-warning">
                               (Tier {c.tier}, {ordinal(c.closeNumber)} Close)
                             </span>
                           )}
                         </p>
-                        <p className="text-xs text-yellow-700">
+                        <p className="text-xs text-warning">
                           Signed {c.date ? format(parseISO(c.date), 'MMM d') : '—'}
                         </p>
                       </div>
                       <div className="flex items-center gap-2">
-                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-yellow-200 text-yellow-800">⏳ Pending</span>
-                        <span className="text-sm font-semibold text-yellow-800">{fmt$(c.commission)}</span>
+                        <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-warning/25 text-warning">⏳ Pending</span>
+                        <span className="text-sm font-semibold text-warning">{fmt$(c.commission)}</span>
                       </div>
                     </div>
                   ))}
@@ -480,33 +523,33 @@ export default function PayPage() {
         {/* Previous Paychecks */}
         {previousPeriods.length > 0 && (
           <div className="mt-10">
-            <h2 className="text-lg font-bold text-gray-900 mb-3">Previous Paychecks</h2>
+            <h2 className="text-lg font-bold text-foreground mb-3">Previous Paychecks</h2>
             <div className="space-y-3">
               {previousPeriods.map(p => {
                 const isOpen = expandedPeriod === p.start
                 return (
-                  <div key={p.start} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                  <div key={p.start} className="bg-card rounded-xl border border-border overflow-hidden">
                     {/* Summary row — click to expand */}
                     <button
-                      className="w-full text-left px-5 py-4 flex items-center justify-between hover:bg-gray-50 transition-colors"
+                      className="w-full text-left px-5 py-4 flex items-center justify-between hover:bg-muted/50 transition-colors"
                       onClick={() => setExpandedPeriod(isOpen ? null : p.start)}
                     >
                       <div>
-                        <p className="font-semibold text-gray-900">{p.payDate}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <p className="font-semibold text-foreground">{p.payDate}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {format(parseISO(p.start), 'MMM d')} – {format(parseISO(p.end), 'MMM d, yyyy')}
                         </p>
-                        <div className="flex gap-4 mt-1 text-xs text-gray-500">
-                          <span>{p.hours.toFixed(2)}h × $5/hr = <span className="font-semibold text-gray-700">{fmt$(p.hourlyPay)}</span></span>
+                        <div className="flex gap-4 mt-1 text-xs text-muted-foreground">
+                          <span>{p.hours.toFixed(2)}h × $5/hr = <span className="font-semibold text-foreground/90">{fmt$(p.hourlyPay)}</span></span>
                           {p.commissionCases > 0 && (
-                            <span>{p.commissionCases} signed = <span className="font-semibold text-gray-700">{fmt$(p.commission)}</span></span>
+                            <span>{p.commissionCases} signed = <span className="font-semibold text-foreground/90">{fmt$(p.commission)}</span></span>
                           )}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
-                        <p className="text-xl font-bold text-gray-900">{fmt$(p.total)}</p>
+                        <p className="text-xl font-bold text-foreground">{fmt$(p.total)}</p>
                         <svg
-                          className={`w-4 h-4 text-gray-400 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+                          className={`w-4 h-4 text-muted-foreground transition-transform ${isOpen ? 'rotate-180' : ''}`}
                           fill="none" stroke="currentColor" viewBox="0 0 24 24"
                         >
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -516,7 +559,7 @@ export default function PayPage() {
 
                     {/* Expanded breakdown */}
                     {isOpen && (
-                      <div className="border-t border-gray-100 px-5 pb-5 pt-4 space-y-4">
+                      <div className="border-t border-border px-5 pb-5 pt-4 space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <HoursBreakdown
                             dailySessions={p.dailySessions}
@@ -527,6 +570,7 @@ export default function PayPage() {
                           <CommissionBreakdown
                             eligibleCases={p.eligibleCases}
                             commission={p.commission}
+                            payDate={p.payDate}
                           />
                         </div>
                       </div>
@@ -537,8 +581,7 @@ export default function PayPage() {
             </div>
           </div>
         )}
-      </main>
+        </PageBody>
       </TeamsShell>
-    </div>
   )
 }

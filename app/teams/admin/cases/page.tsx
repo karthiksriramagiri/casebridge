@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import { format } from 'date-fns'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 interface Rep { id: string; name: string }
 interface CaseEntry {
@@ -17,9 +18,9 @@ interface CaseEntry {
 
 const STATUSES = ['signed', 'replacement', 'cancelled']
 const STATUS_STYLES: Record<string, string> = {
-  signed: 'bg-green-100 text-green-700',
-  replacement: 'bg-orange-100 text-orange-700',
-  cancelled: 'bg-red-100 text-red-600',
+  signed: 'bg-success/15 text-success',
+  replacement: 'bg-warning/15 text-warning',
+  cancelled: 'bg-destructive/10 text-destructive',
 }
 
 export default function AdminCasesPage() {
@@ -104,43 +105,44 @@ export default function AdminCasesPage() {
   }
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-900">Rep Cases</h1>
-        <p className="text-sm text-gray-500 mt-1">Log signed cases, replacements, and cancellations for each rep.</p>
-      </div>
+    <>
+      <PageHeader
+        title="Rep Cases"
+        description="Log signed cases, replacements and cancellations against each rep."
+      />
+      <PageBody>
 
       {/* Entry form */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-5">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Log Case</h2>
+      <div className="bg-card rounded-xl border border-border px-6 py-5">
+        <h2 className="text-sm font-semibold text-foreground/90 mb-4">Log Case</h2>
         <form onSubmit={handleSubmit} className="grid grid-cols-2 sm:grid-cols-3 gap-4">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Rep</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Rep</label>
             <select
               value={userId}
               onChange={e => setUserId(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               <option value="">Select rep...</option>
               {reps.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Contact Name</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Contact Name</label>
             <input
               type="text"
               value={contactName}
               onChange={e => setContactName(e.target.value)}
               placeholder="John Doe"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Status</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Status</label>
             <select
               value={status}
               onChange={e => setStatus(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             >
               {STATUSES.map(s => (
                 <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
@@ -148,53 +150,53 @@ export default function AdminCasesPage() {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Case Value ($)</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Case Value ($)</label>
             <input
               type="number"
               value={caseValue}
               onChange={e => setCaseValue(e.target.value)}
               placeholder="e.g. 2500"
               min="0"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Date Closed</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Date Closed</label>
             <input
               type="date"
               value={closedAt}
               onChange={e => setClosedAt(e.target.value)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Notes (optional)</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Notes (optional)</label>
             <input
               type="text"
               value={notes}
               onChange={e => setNotes(e.target.value)}
               placeholder="Any relevant notes"
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             />
           </div>
           <div className="col-span-2 sm:col-span-3 flex items-center gap-4">
             <button
               type="submit"
               disabled={saving}
-              className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
+              className="bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-semibold px-6 py-2 rounded-lg transition-colors"
             >
               {saving ? 'Saving...' : 'Log Case'}
             </button>
-            {msg && <p className={`text-sm font-medium ${msg.startsWith('Error') ? 'text-red-500' : 'text-green-600'}`}>{msg}</p>}
+            {msg && <p className={`text-sm font-medium ${msg.startsWith('Error') ? 'text-destructive' : 'text-success'}`}>{msg}</p>}
           </div>
         </form>
       </div>
 
       {/* Case history */}
       {loading ? (
-        <div className="text-center py-8 text-gray-400">Loading...</div>
+        <div className="text-center py-8 text-muted-foreground">Loading...</div>
       ) : cases.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-12 text-center text-gray-400 text-sm">
+        <div className="bg-card rounded-xl border border-border px-6 py-12 text-center text-muted-foreground text-sm">
           No cases logged yet.
         </div>
       ) : (
@@ -203,38 +205,38 @@ export default function AdminCasesPage() {
             const signed = repCases.filter(c => c.status === 'signed').length
             const totalValue = repCases.filter(c => c.status === 'signed').reduce((sum, c) => sum + (c.case_value || 0), 0)
             return (
-              <div key={repName} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50">
-                  <span className="font-semibold text-gray-900">{repName}</span>
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
+              <div key={repName} className="bg-card rounded-xl border border-border overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+                  <span className="font-semibold text-foreground">{repName}</span>
+                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
                     <span>{signed} signed</span>
-                    {totalValue > 0 && <span className="font-semibold text-gray-700">${totalValue.toLocaleString()}</span>}
+                    {totalValue > 0 && <span className="font-semibold text-foreground/90">${totalValue.toLocaleString()}</span>}
                   </div>
                 </div>
-                <div className="divide-y divide-gray-50">
+                <div className="divide-y divide-border">
                   {repCases.map(c => (
                     <div key={c.id} className="flex items-center justify-between px-5 py-3 gap-4">
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold text-gray-900">{c.contact_name}</p>
-                        <p className="text-xs text-gray-400 mt-0.5">
+                        <p className="text-sm font-semibold text-foreground">{c.contact_name}</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">
                           {format(new Date(c.closed_at + 'T12:00:00'), 'MMM d, yyyy')}
                           {c.notes && ` · ${c.notes}`}
                         </p>
                       </div>
                       <div className="flex items-center gap-3 shrink-0">
                         {c.case_value && (
-                          <span className="text-sm font-semibold text-gray-700">${Number(c.case_value).toLocaleString()}</span>
+                          <span className="text-sm font-semibold text-foreground/90">${Number(c.case_value).toLocaleString()}</span>
                         )}
                         <select
                           value={c.status}
                           onChange={e => handleStatusChange(c.id, e.target.value)}
-                          className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500 ${STATUS_STYLES[c.status] || 'bg-gray-100 text-gray-600'}`}
+                          className={`text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none focus:ring-2 focus:ring-ring ${STATUS_STYLES[c.status] || 'bg-muted text-muted-foreground'}`}
                         >
                           {STATUSES.map(s => (
                             <option key={s} value={s}>{s.charAt(0).toUpperCase() + s.slice(1)}</option>
                           ))}
                         </select>
-                        <button onClick={() => handleDelete(c.id)} className="text-red-400 hover:text-red-600 text-xs">Delete</button>
+                        <button onClick={() => handleDelete(c.id)} className="text-destructive/70 hover:text-destructive text-xs">Delete</button>
                       </div>
                     </div>
                   ))}
@@ -244,6 +246,7 @@ export default function AdminCasesPage() {
           })}
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }

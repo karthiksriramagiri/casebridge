@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 interface WorkerStats {
   workerName: string
@@ -21,59 +22,60 @@ export default function ResponseTimesPage() {
   }, [days])
 
   function pctColor(pct: number) {
-    if (pct >= 80) return 'text-green-700'
-    if (pct >= 50) return 'text-yellow-600'
-    return 'text-red-600'
+    if (pct >= 80) return 'text-success'
+    if (pct >= 50) return 'text-warning'
+    return 'text-destructive'
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-5xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Response Times</h1>
-            <p className="text-gray-500 text-sm mt-1">How fast workers react to new leads (Slack) and log calls (Queue)</p>
-          </div>
+    <>
+      <PageHeader
+        title="Response Times"
+        description="How fast workers react to a new lead in Slack, and how fast they log the call."
+        actions={
           <select
             value={days}
-            onChange={e => setDays(Number(e.target.value))}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm"
+            onChange={(e) => setDays(Number(e.target.value))}
+            aria-label="Date range"
+            className="rounded-md border bg-card px-3 py-1.5 text-sm"
           >
             <option value={1}>Today</option>
             <option value={7}>Last 7 days</option>
             <option value={14}>Last 14 days</option>
             <option value={30}>Last 30 days</option>
           </select>
-        </div>
+        }
+      />
+      <PageBody>
 
         {loading ? (
-          <p className="text-gray-400 text-center py-16">Loading…</p>
+          <p className="text-muted-foreground text-center py-16">Loading…</p>
         ) : data.length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-100 p-12 text-center">
-            <p className="text-gray-400 text-sm">No response data yet.</p>
-            <p className="text-gray-400 text-xs mt-2">Data appears once workers start reacting to Slack messages and logging calls.</p>
+          <div className="bg-card rounded-xl border border-border p-12 text-center">
+            <p className="text-muted-foreground text-sm">No response data yet.</p>
+            <p className="text-muted-foreground text-xs mt-2">Data appears once workers start reacting to Slack messages and logging calls.</p>
           </div>
         ) : (
           <div className="space-y-4">
             {data.map(w => (
-              <div key={w.workerName} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                <div className="px-5 py-3 bg-gray-50 border-b border-gray-100">
-                  <h2 className="font-semibold text-gray-900">{w.workerName}</h2>
+              <div key={w.workerName} className="bg-card rounded-xl border border-border overflow-hidden">
+                <div className="px-5 py-3 bg-muted/40 border-b border-border">
+                  <h2 className="font-semibold text-foreground">{w.workerName}</h2>
                 </div>
-                <div className="grid grid-cols-2 divide-x divide-gray-100">
+                <div className="grid grid-cols-2 divide-x divide-border">
                   {/* Slack reaction */}
                   <div className="px-5 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Slack Reaction</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Slack Reaction</p>
                     {w.slack.count === 0 ? (
-                      <p className="text-sm text-gray-400">No data</p>
+                      <p className="text-sm text-muted-foreground">No data</p>
                     ) : (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Median</span>
-                          <span className="font-semibold text-gray-900">{w.slack.medFmt}</span>
+                          <span className="text-muted-foreground">Median</span>
+                          <span className="font-semibold text-foreground">{w.slack.medFmt}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Under 90s</span>
+                          <span className="text-muted-foreground">Under 90s</span>
                           <span className={`font-bold ${pctColor(w.slack.pctUnder90)}`}>
                             {w.slack.under90}/{w.slack.count} ({w.slack.pctUnder90}%)
                           </span>
@@ -84,17 +86,17 @@ export default function ResponseTimesPage() {
 
                   {/* GHL call */}
                   <div className="px-5 py-4">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-3">Call Queue Response</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-3">Call Queue Response</p>
                     {w.call.count === 0 ? (
-                      <p className="text-sm text-gray-400">No data</p>
+                      <p className="text-sm text-muted-foreground">No data</p>
                     ) : (
                       <div className="space-y-2">
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Median</span>
-                          <span className="font-semibold text-gray-900">{w.call.medFmt}</span>
+                          <span className="text-muted-foreground">Median</span>
+                          <span className="font-semibold text-foreground">{w.call.medFmt}</span>
                         </div>
                         <div className="flex justify-between text-sm">
-                          <span className="text-gray-500">Under 90s</span>
+                          <span className="text-muted-foreground">Under 90s</span>
                           <span className={`font-bold ${pctColor(w.call.pctUnder90)}`}>
                             {w.call.under90}/{w.call.count} ({w.call.pctUnder90}%)
                           </span>
@@ -107,7 +109,7 @@ export default function ResponseTimesPage() {
             ))}
           </div>
         )}
-      </div>
-    </div>
+      </PageBody>
+    </>
   )
 }

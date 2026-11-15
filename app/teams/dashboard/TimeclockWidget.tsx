@@ -76,22 +76,22 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
   }
 
   return (
-    <div className={`rounded-xl border shadow-sm px-5 py-4 mb-6 transition-colors ${openEntry ? 'bg-green-50 border-green-200' : 'bg-white border-gray-100'}`}>
+    <div className={`rounded-xl border px-5 py-4 mb-6 transition-colors ${openEntry ? 'bg-success/10 border-success/30' : 'bg-card border-border'}`}>
       <div className="flex items-center justify-between gap-4">
         {/* Left: status */}
         <div className="flex items-center gap-3 min-w-0">
-          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${openEntry ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} />
+          <div className={`w-3 h-3 rounded-full flex-shrink-0 ${openEntry ? 'bg-success animate-pulse' : 'bg-border'}`} />
           <div>
-            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400 mb-0.5">Timeclock</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground mb-0.5">Timeclock</p>
             {!loaded ? (
-              <p className="text-sm text-gray-400">Loading…</p>
+              <p className="text-sm text-muted-foreground">Loading…</p>
             ) : openEntry ? (
-              <p className="text-sm font-semibold text-green-700">
+              <p className="text-sm font-semibold text-success">
                 Clocked in · {elapsed}
-                {totalMins > 0 && <span className="font-normal text-green-600 ml-2">({(totalMins / 60).toFixed(1)}h today)</span>}
+                {totalMins > 0 && <span className="font-normal text-success ml-2">({(totalMins / 60).toFixed(1)}h today)</span>}
               </p>
             ) : (
-              <p className="text-sm text-gray-500">
+              <p className="text-sm text-muted-foreground">
                 {totalMins > 0 ? `${(totalMins / 60).toFixed(1)}h logged today · Not clocked in` : 'Not clocked in today'}
               </p>
             )}
@@ -103,19 +103,19 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
           onClick={openEntry ? clockOut : clockIn}
           disabled={acting || !loaded}
           className={`text-sm font-bold px-6 py-2.5 rounded-lg transition-colors disabled:opacity-40 whitespace-nowrap flex-shrink-0 ${
-            openEntry
-              ? 'bg-red-600 text-white hover:bg-red-700'
-              : 'bg-[#0f1e3c] text-white hover:bg-[#1a3060]'
+ openEntry
+              ? 'bg-destructive text-primary-foreground hover:bg-destructive/90'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90'
           }`}
         >
           {acting ? '…' : openEntry ? 'Clock Out' : 'Clock In'}
         </button>
       </div>
-      {err && <p className="text-xs text-red-500 mt-2">{err}</p>}
+      {err && <p className="text-xs text-destructive mt-2">{err}</p>}
 
       {/* Session history for today */}
       {entries.length > 0 && (
-        <div className="mt-3 pt-3 border-t border-green-200 flex flex-wrap gap-2">
+        <div className="mt-3 pt-3 border-t border-success/30 flex flex-wrap gap-2">
           {entries.map(e => {
             const inTime = new Date(e.clock_in).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })
             const outTime = e.clock_out
@@ -125,8 +125,8 @@ export default function TimeclockWidget({ profileId }: { profileId: string }) {
               ? (new Date(e.clock_out).getTime() - new Date(e.clock_in).getTime()) / 60000
               : (now - new Date(e.clock_in).getTime()) / 60000
             return (
-              <span key={e.id} className="text-xs bg-white border border-green-200 rounded-full px-3 py-1 text-gray-600">
-                {inTime} → {outTime} <span className="text-gray-400">· {(Math.max(0, mins) / 60).toFixed(1)}h</span>
+              <span key={e.id} className="text-xs bg-card border border-success/30 rounded-full px-3 py-1 text-muted-foreground">
+                {inTime} → {outTime} <span className="text-muted-foreground">· {(Math.max(0, mins) / 60).toFixed(1)}h</span>
               </span>
             )
           })}

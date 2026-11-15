@@ -99,17 +99,17 @@ export default function ModuleList({ modules: initialModules }: Props) {
     <>
       {message && (
         <div className={`mb-4 text-sm font-medium px-4 py-3 rounded-lg ${
-          message.startsWith('Error')
-            ? 'bg-red-50 text-red-700 border border-red-200'
-            : 'bg-green-50 text-green-700 border border-green-200'
+ message.startsWith('Error')
+            ? 'bg-destructive/10 text-destructive border border-destructive/30'
+            : 'bg-success/10 text-success border border-success/30'
         }`}>
           {message}
         </div>
       )}
 
       {modules.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-12 text-center">
-          <p className="text-gray-500">No modules yet. Create your first module!</p>
+        <div className="bg-card rounded-xl border border-border px-6 py-12 text-center">
+          <p className="text-muted-foreground">No modules yet. Create your first module!</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -119,21 +119,21 @@ export default function ModuleList({ modules: initialModules }: Props) {
             const isToggling = togglingId === mod.id
 
             return (
-              <div key={mod.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div key={mod.id} className="bg-card rounded-xl border border-border overflow-hidden">
                 {/* Module header row */}
                 <div className="flex items-center gap-3 px-5 py-4">
                   {/* Status dot */}
                   <span
-                    className={`w-3 h-3 rounded-full shrink-0 ${mod.is_active ? 'bg-green-500' : 'bg-gray-300'}`}
+                    className={`w-3 h-3 rounded-full shrink-0 ${mod.is_active ? 'bg-success' : 'bg-border'}`}
                     title={mod.is_active ? 'Active' : 'Inactive'}
                   />
 
                   {/* Module info */}
                   <div className="flex-1 min-w-0">
-                    <span className={`font-semibold ${mod.is_active ? 'text-gray-900' : 'text-gray-400'}`}>
+                    <span className={`font-semibold ${mod.is_active ? 'text-foreground' : 'text-muted-foreground'}`}>
                       {mod.title}
                     </span>
-                    <div className="text-xs text-gray-400 mt-0.5 flex flex-wrap gap-2">
+                    <div className="text-xs text-muted-foreground mt-0.5 flex flex-wrap gap-2">
                       <span>{mod.questionCount} question{mod.questionCount !== 1 ? 's' : ''}</span>
                       <span>·</span>
                       <span>Pass: {mod.pass_threshold}%</span>
@@ -148,16 +148,16 @@ export default function ModuleList({ modules: initialModules }: Props) {
                   <div className="flex items-center gap-2 shrink-0">
                     <button
                       onClick={() => router.push(`/teams/admin/modules/${mod.id}/edit`)}
-                      className="text-xs border border-gray-200 hover:bg-gray-50 text-gray-600 font-medium px-3 py-1.5 rounded-lg transition-colors"
+                      className="text-xs border border-border hover:bg-muted/50 text-muted-foreground font-medium px-3 py-1.5 rounded-lg transition-colors"
                     >
                       ✏️ Edit
                     </button>
                     <button
                       onClick={() => copyLink(mod.id)}
                       className={`text-xs border rounded-lg px-3 py-1.5 transition-colors font-medium ${
-                        isCopied
-                          ? 'border-green-300 bg-green-50 text-green-700'
-                          : 'border-gray-200 hover:bg-gray-50 text-gray-600'
+ isCopied
+                          ? 'border-success/30 bg-success/10 text-success'
+                          : 'border-border hover:bg-muted/50 text-muted-foreground'
                       }`}
                     >
                       {isCopied ? '✓ Copied!' : '🔗 Copy Link'}
@@ -166,16 +166,16 @@ export default function ModuleList({ modules: initialModules }: Props) {
                       onClick={() => toggleActive(mod.id, mod.is_active)}
                       disabled={isToggling}
                       className={`text-xs border rounded-lg px-3 py-1.5 transition-colors font-medium disabled:opacity-50 ${
-                        mod.is_active
-                          ? 'border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700'
-                          : 'border-green-200 bg-green-50 hover:bg-green-100 text-green-700'
+ mod.is_active
+                          ? 'border-warning/30 bg-warning/10 hover:bg-warning/10 text-warning'
+                          : 'border-success/30 bg-success/10 hover:bg-success/10 text-success'
                       }`}
                     >
                       {isToggling ? '...' : mod.is_active ? 'Deactivate' : 'Activate'}
                     </button>
                     <button
                       onClick={() => toggleExpand(mod.id)}
-                      className="text-gray-400 hover:text-gray-600 p-1 transition-colors"
+                      className="text-muted-foreground hover:text-foreground p-1 transition-colors"
                     >
                       <svg
                         className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
@@ -192,17 +192,17 @@ export default function ModuleList({ modules: initialModules }: Props) {
 
                 {/* Expanded questions */}
                 {isExpanded && (
-                  <div className="border-t border-gray-100 bg-gray-50 px-5 py-4">
+                  <div className="border-t border-border bg-muted/40 px-5 py-4">
                     {mod.description && (
-                      <p className="text-sm text-gray-600 mb-4 italic">{mod.description}</p>
+                      <p className="text-sm text-muted-foreground mb-4 italic">{mod.description}</p>
                     )}
                     {mod.questions.length === 0 ? (
-                      <p className="text-sm text-gray-400">No questions yet for this module.</p>
+                      <p className="text-sm text-muted-foreground">No questions yet for this module.</p>
                     ) : (
                       <div className="space-y-4">
                         {mod.questions.map((question, qi) => (
-                          <div key={question.id} className="bg-white rounded-lg border border-gray-200 p-4">
-                            <p className="text-sm font-semibold text-gray-800 mb-2">
+                          <div key={question.id} className="bg-card rounded-lg border border-border p-4">
+                            <p className="text-sm font-semibold text-foreground mb-2">
                               Q{qi + 1}: {question.question_text}
                             </p>
                             <div className="space-y-1.5">
@@ -212,15 +212,15 @@ export default function ModuleList({ modules: initialModules }: Props) {
                                   <div
                                     key={option.id}
                                     className={`flex items-center gap-2 text-sm px-3 py-1.5 rounded-md ${
-                                      option.is_correct
-                                        ? 'bg-green-50 text-green-800 font-medium'
-                                        : 'text-gray-600'
+ option.is_correct
+                                        ? 'bg-success/10 text-success font-medium'
+                                        : 'text-muted-foreground'
                                     }`}
                                   >
                                     <span className={`w-4 h-4 rounded-full border flex items-center justify-center text-xs shrink-0 ${
-                                      option.is_correct
-                                        ? 'border-green-500 bg-green-500 text-white'
-                                        : 'border-gray-300'
+ option.is_correct
+                                        ? 'border-success bg-success text-primary-foreground'
+                                        : 'border-border'
                                     }`}>
                                       {option.is_correct && '✓'}
                                     </span>

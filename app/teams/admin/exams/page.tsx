@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { PageHeader, PageBody, TeamToggle } from '@/app/teams/_components/shared'
+import { Button } from '@/app/teams/_ui/button'
 
 interface Module { id: string; title: string; pass_threshold: number }
 interface Option { id: string; option_text: string; is_correct: boolean; position: number }
@@ -340,82 +342,70 @@ export default function AdminExamsPage() {
   if (loading || !config) {
     return (
       <div className="flex items-center justify-center py-24">
-        <p className="text-gray-400">Loading...</p>
+        <p className="text-muted-foreground">Loading...</p>
       </div>
     )
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Exams</h1>
-          <p className="text-gray-500 mt-1 text-sm">Create and manage exams for your reps.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-            <button
-              onClick={() => setTeam('intake')}
-              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-                team === 'intake' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >Intake</button>
-            <button
-              onClick={() => setTeam('creative')}
-              className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-                team === 'creative' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-              }`}
-            >Creative</button>
-          </div>
-          <button
-            onClick={() => { setShowCreate(v => !v); setCreateErr('') }}
-            className="px-4 py-2 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] transition-colors"
-          >
-            {showCreate ? 'Cancel' : '+ New Exam'}
-          </button>
-        </div>
-      </div>
+    <>
+      <PageHeader
+        title="Exams"
+        description="Create and manage the exams your reps sit."
+        actions={
+          <>
+            <TeamToggle value={team} onChange={setTeam} />
+            <Button
+              size="sm"
+              variant={showCreate ? 'outline' : 'default'}
+              onClick={() => { setShowCreate((v) => !v); setCreateErr('') }}
+            >
+              {showCreate ? 'Cancel' : 'New exam'}
+            </Button>
+          </>
+        }
+      />
+      <PageBody>
 
       {/* Create Exam Panel */}
       {showCreate && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
-          <h2 className="font-semibold text-gray-900 text-base">Create New Exam</h2>
+        <div className="bg-card rounded-xl border border-border p-6 space-y-5">
+          <h2 className="font-semibold text-foreground text-base">Create New Exam</h2>
 
           {createErr && (
-            <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{createErr}</div>
+            <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-3">{createErr}</div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Exam Title *</label>
+              <label className="block text-sm font-medium text-foreground/90 mb-1.5">Exam Title *</label>
               <input
                 type="text"
                 value={newTitle}
                 onChange={e => setNewTitle(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="e.g. Nuance Book Exam"
               />
             </div>
             <div className="sm:col-span-2">
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Description (optional)</label>
+              <label className="block text-sm font-medium text-foreground/90 mb-1.5">Description (optional)</label>
               <textarea
                 value={newDesc}
                 onChange={e => setNewDesc(e.target.value)}
                 rows={2}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Brief description..."
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Pass Threshold (%)</label>
+              <label className="block text-sm font-medium text-foreground/90 mb-1.5">Pass Threshold (%)</label>
               <input
                 type="number"
                 min={1}
                 max={100}
                 value={newPassThreshold}
                 onChange={e => setNewPassThreshold(parseInt(e.target.value) || 80)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
             </div>
           </div>
@@ -423,25 +413,25 @@ export default function AdminExamsPage() {
           {/* Question Builder */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-semibold text-gray-800">
+              <h3 className="text-sm font-semibold text-foreground">
                 Questions
-                <span className="ml-2 text-xs font-normal bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                <span className="ml-2 text-xs font-normal bg-accent text-primary px-2 py-0.5 rounded-full">
                   {newQuestions.filter(q => q.question_text.trim()).length}
                 </span>
               </h3>
             </div>
 
             {/* Tab switcher */}
-            <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
+            <div className="flex gap-1 bg-muted rounded-lg p-1 mb-4">
               <button
                 onClick={() => setCreateTab('builder')}
-                className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${createTab === 'builder' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${createTab === 'builder' ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Question Builder
               </button>
               <button
                 onClick={() => setCreateTab('bulk')}
-                className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${createTab === 'bulk' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${createTab === 'bulk' ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'}`}
               >
                 Bulk Import
               </button>
@@ -464,7 +454,7 @@ export default function AdminExamsPage() {
                 ))}
                 <button
                   onClick={() => setNewQuestions(prev => [...prev, newQuestion()])}
-                  className="w-full border-2 border-dashed border-gray-200 hover:border-blue-400 hover:bg-blue-50 text-gray-400 hover:text-blue-600 rounded-xl py-3 text-sm font-medium transition-all"
+                  className="w-full border-2 border-dashed border-border hover:border-primary hover:bg-accent text-muted-foreground hover:text-primary rounded-xl py-3 text-sm font-medium transition-all"
                 >
                   + Add Question
                 </button>
@@ -475,10 +465,10 @@ export default function AdminExamsPage() {
               <div className="space-y-3">
                 <BulkFormatGuide />
                 {bulkErrors.length > 0 && (
-                  <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                    <p className="text-sm font-semibold text-red-700 mb-1">Fix these errors:</p>
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3">
+                    <p className="text-sm font-semibold text-destructive mb-1">Fix these errors:</p>
                     <ul className="list-disc list-inside space-y-0.5">
-                      {bulkErrors.map((e, i) => <li key={i} className="text-xs text-red-600">{e}</li>)}
+                      {bulkErrors.map((e, i) => <li key={i} className="text-xs text-destructive">{e}</li>)}
                     </ul>
                   </div>
                 )}
@@ -486,14 +476,14 @@ export default function AdminExamsPage() {
                   value={bulkText}
                   onChange={e => { setBulkText(e.target.value); setBulkErrors([]) }}
                   rows={12}
-                  className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-border rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="Paste your questions here..."
                 />
                 <div className="flex items-center justify-between gap-3">
                   <div className="flex gap-3">
                     {(['replace', 'append'] as const).map(m => (
-                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-600">
-                        <input type="radio" name="bulkMode" checked={bulkMode === m} onChange={() => setBulkMode(m)} className="w-3.5 h-3.5 text-blue-600" />
+                      <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm text-muted-foreground">
+                        <input type="radio" name="bulkMode" checked={bulkMode === m} onChange={() => setBulkMode(m)} className="w-3.5 h-3.5 text-primary" />
                         {m === 'replace' ? 'Replace all' : `Append to existing (${newQuestions.filter(q => q.question_text.trim()).length})`}
                       </label>
                     ))}
@@ -501,7 +491,7 @@ export default function AdminExamsPage() {
                   <button
                     onClick={handleBulkImport}
                     disabled={!bulkText.trim()}
-                    className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                    className="bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
                   >
                     Import Questions
                   </button>
@@ -510,17 +500,17 @@ export default function AdminExamsPage() {
             )}
           </div>
 
-          <div className="flex items-center gap-3 pt-2 border-t border-gray-100">
+          <div className="flex items-center gap-3 pt-2 border-t border-border">
             <button
               onClick={handleCreateExam}
               disabled={creating}
-              className="px-6 py-2.5 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] disabled:opacity-50 transition-colors"
+              className="px-6 py-2.5 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
             >
               {creating ? 'Creating...' : 'Create Exam'}
             </button>
             <button
               onClick={() => { setShowCreate(false); setCreateErr('') }}
-              className="px-4 py-2.5 text-sm text-gray-500 hover:text-gray-700"
+              className="px-4 py-2.5 text-sm text-muted-foreground hover:text-foreground"
             >
               Cancel
             </button>
@@ -530,11 +520,11 @@ export default function AdminExamsPage() {
 
       {/* Exam List */}
       {config.modules.length > 0 && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100">
-            <h2 className="font-semibold text-gray-900">Exams</h2>
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h2 className="font-semibold text-foreground">Exams</h2>
           </div>
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-border">
             {config.modules.map(m => (
               <div key={m.id} className="flex items-center justify-between px-6 py-3">
                 <div className="flex items-center gap-3">
@@ -543,16 +533,16 @@ export default function AdminExamsPage() {
                     name="selectedExam"
                     checked={selectedExamId === m.id}
                     onChange={() => setSelectedExamId(m.id)}
-                    className="w-4 h-4 text-blue-600"
+                    className="w-4 h-4 text-primary"
                   />
                   <div>
-                    <p className="text-sm font-semibold text-gray-900">{m.title}</p>
-                    <p className="text-xs text-gray-400">Pass: {m.pass_threshold}%</p>
+                    <p className="text-sm font-semibold text-foreground">{m.title}</p>
+                    <p className="text-xs text-muted-foreground">Pass: {m.pass_threshold}%</p>
                   </div>
                 </div>
                 <button
                   onClick={() => handleDeleteExam(m.id, m.title)}
-                  className="text-xs text-red-400 hover:text-red-600 font-medium transition-colors"
+                  className="text-xs text-destructive/70 hover:text-destructive font-medium transition-colors"
                 >
                   Delete
                 </button>
@@ -563,15 +553,15 @@ export default function AdminExamsPage() {
       )}
 
       {/* Config card */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 space-y-5">
-        <h2 className="font-semibold text-gray-900">Exam Configuration</h2>
+      <div className="bg-card rounded-xl border border-border p-6 space-y-5">
+        <h2 className="font-semibold text-foreground">Exam Configuration</h2>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Active Exam</label>
+          <label className="block text-sm font-medium text-foreground/90 mb-1.5">Active Exam</label>
           <select
             value={selectedExamId}
             onChange={e => setSelectedExamId(e.target.value)}
-            className="w-full max-w-md border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full max-w-md border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           >
             <option value="">— No exam selected —</option>
             {config.modules.map(m => (
@@ -583,22 +573,22 @@ export default function AdminExamsPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Exam Start Time</label>
-          <p className="text-xs text-gray-400 mb-2">
+          <label className="block text-sm font-medium text-foreground/90 mb-1.5">Exam Start Time</label>
+          <p className="text-xs text-muted-foreground mb-2">
             Reps cannot access the exam until this time. Leave blank to allow access immediately.
           </p>
           <input
             type="datetime-local"
             value={startTime}
             onChange={e => setStartTime(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           />
           {startTime && (
             <>
-              <p className="text-xs text-gray-500 mt-1">
+              <p className="text-xs text-muted-foreground mt-1">
                 Reps see: exam unlocks {fmt(new Date(startTime).toISOString())} ET
               </p>
-              <button onClick={() => setStartTime('')} className="mt-1 text-xs text-red-500 hover:underline">
+              <button onClick={() => setStartTime('')} className="mt-1 text-xs text-destructive hover:underline">
                 Clear time (open immediately)
               </button>
             </>
@@ -609,12 +599,12 @@ export default function AdminExamsPage() {
           <button
             onClick={handleSave}
             disabled={saving}
-            className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors"
+            className="px-5 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
           >
             {saving ? 'Saving...' : 'Save Configuration'}
           </button>
           {saveMsg && (
-            <p className={`text-sm font-medium ${saveMsg.type === 'ok' ? 'text-green-600' : 'text-red-600'}`}>
+            <p className={`text-sm font-medium ${saveMsg.type === 'ok' ? 'text-success' : 'text-destructive'}`}>
               {saveMsg.text}
             </p>
           )}
@@ -623,17 +613,17 @@ export default function AdminExamsPage() {
 
       {/* Question Manager */}
       {selectedExamId && (
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-          <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-card rounded-xl border border-border overflow-hidden">
+          <div className="px-6 py-4 border-b border-border flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <h2 className="font-semibold text-gray-900">Questions</h2>
-              <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+              <h2 className="font-semibold text-foreground">Questions</h2>
+              <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
                 {loadingQ ? '...' : `${questions.length}`}
               </span>
             </div>
             <button
               onClick={() => { setShowAddQ(v => !v); setAddQErr('') }}
-              className="px-3 py-1.5 text-sm font-semibold text-blue-600 border border-blue-200 rounded-lg hover:bg-blue-50 transition-colors"
+              className="px-3 py-1.5 text-sm font-semibold text-primary border border-primary/30 rounded-lg hover:bg-accent transition-colors"
             >
               {showAddQ ? 'Cancel' : '+ Add Question'}
             </button>
@@ -641,18 +631,18 @@ export default function AdminExamsPage() {
 
           {/* Add Question Form */}
           {showAddQ && (
-            <div className="p-6 border-b border-gray-100 bg-gray-50">
+            <div className="p-6 border-b border-border bg-muted/40">
               {/* Tab switcher */}
-              <div className="flex gap-1 bg-gray-200 rounded-lg p-1 mb-4">
+              <div className="flex gap-1 bg-muted rounded-lg p-1 mb-4">
                 <button
                   onClick={() => setAddQTab('builder')}
-                  className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${addQTab === 'builder' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${addQTab === 'builder' ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   Question Builder
                 </button>
                 <button
                   onClick={() => setAddQTab('bulk')}
-                  className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${addQTab === 'bulk' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${addQTab === 'bulk' ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'}`}
                 >
                   Bulk Import
                 </button>
@@ -661,7 +651,7 @@ export default function AdminExamsPage() {
               {addQTab === 'builder' && (
                 <>
                   {addQErr && (
-                    <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-2 mb-3">{addQErr}</div>
+                    <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-2 mb-3">{addQErr}</div>
                   )}
                   <QuestionBuilder
                     question={addQForm}
@@ -684,7 +674,7 @@ export default function AdminExamsPage() {
                     <button
                       onClick={handleAddQuestion}
                       disabled={addingQ}
-                      className="px-5 py-2 bg-[#0f1e3c] text-white text-sm font-semibold rounded-lg hover:bg-[#1a2f5a] disabled:opacity-50 transition-colors"
+                      className="px-5 py-2 bg-primary text-primary-foreground text-sm font-semibold rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
                     >
                       {addingQ ? 'Saving...' : 'Save Question'}
                     </button>
@@ -696,9 +686,9 @@ export default function AdminExamsPage() {
                 <div className="space-y-3">
                   <BulkFormatGuide />
                   {addBulkErrors.length > 0 && (
-                    <div className="bg-red-50 border border-red-200 rounded-xl p-3">
+                    <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-3">
                       <ul className="list-disc list-inside space-y-0.5">
-                        {addBulkErrors.map((e, i) => <li key={i} className="text-xs text-red-600">{e}</li>)}
+                        {addBulkErrors.map((e, i) => <li key={i} className="text-xs text-destructive">{e}</li>)}
                       </ul>
                     </div>
                   )}
@@ -706,14 +696,14 @@ export default function AdminExamsPage() {
                     value={addBulkText}
                     onChange={e => { setAddBulkText(e.target.value); setAddBulkErrors([]) }}
                     rows={12}
-                    className="w-full border border-gray-200 bg-white rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full border border-border bg-card rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                     placeholder="Paste your questions here..."
                   />
                   <div className="flex justify-end">
                     <button
                       onClick={handleAddBulkQuestions}
                       disabled={!addBulkText.trim() || addingBulk}
-                      className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
+                      className="bg-primary hover:bg-primary/90 disabled:opacity-40 text-primary-foreground text-sm font-semibold px-5 py-2 rounded-lg transition-colors"
                     >
                       {addingBulk ? 'Importing...' : 'Import Questions'}
                     </button>
@@ -725,30 +715,30 @@ export default function AdminExamsPage() {
 
           {/* Question List */}
           {loadingQ ? (
-            <p className="px-6 py-10 text-center text-sm text-gray-400">Loading...</p>
+            <p className="px-6 py-10 text-center text-sm text-muted-foreground">Loading...</p>
           ) : questions.length === 0 ? (
-            <p className="px-6 py-10 text-center text-sm text-gray-400">
+            <p className="px-6 py-10 text-center text-sm text-muted-foreground">
               No questions yet. Click "+ Add Question" to get started.
             </p>
           ) : (
-            <div className="divide-y divide-gray-50">
+            <div className="divide-y divide-border">
               {questions.map((q, qi) => (
                 <div key={q.id} className="px-6 py-4">
                   <div className="flex items-start gap-3">
-                    <span className="flex-shrink-0 text-xs font-bold text-gray-400 w-6 mt-0.5">{qi + 1}.</span>
+                    <span className="flex-shrink-0 text-xs font-bold text-muted-foreground w-6 mt-0.5">{qi + 1}.</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm text-gray-800">{q.question_text}</p>
+                      <p className="text-sm text-foreground">{q.question_text}</p>
                       <div className="mt-2 space-y-1">
                         {q.options.sort((a, b) => a.position - b.position).map(opt => (
                           <div
                             key={opt.id}
                             className={`flex items-start gap-2 text-xs rounded-lg px-2.5 py-1.5 ${
-                              opt.is_correct
-                                ? 'bg-green-50 border border-green-200 text-green-800'
-                                : 'bg-gray-50 text-gray-500'
+ opt.is_correct
+                                ? 'bg-success/10 border border-success/30 text-success'
+                                : 'bg-muted/40 text-muted-foreground'
                             }`}
                           >
-                            {opt.is_correct && <span className="flex-shrink-0 text-green-600 font-bold">✓</span>}
+                            {opt.is_correct && <span className="flex-shrink-0 text-success font-bold">✓</span>}
                             <span>{opt.option_text}</span>
                           </div>
                         ))}
@@ -756,7 +746,7 @@ export default function AdminExamsPage() {
                     </div>
                     <button
                       onClick={() => handleDeleteQuestion(q.id)}
-                      className="flex-shrink-0 text-xs text-red-400 hover:text-red-600 font-medium transition-colors ml-2"
+                      className="flex-shrink-0 text-xs text-destructive/70 hover:text-destructive font-medium transition-colors ml-2"
                     >
                       Delete
                     </button>
@@ -769,46 +759,46 @@ export default function AdminExamsPage() {
       )}
 
       {/* Results */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
-          <h2 className="font-semibold text-gray-900">Exam Results</h2>
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        <div className="px-6 py-4 border-b border-border flex items-center justify-between">
+          <h2 className="font-semibold text-foreground">Exam Results</h2>
           {examAttempts.length > 0 && (
-            <div className="flex items-center gap-4 text-sm text-gray-500">
-              {avgScore !== null && <span>Avg: <span className="font-bold text-gray-900">{avgScore}%</span></span>}
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              {avgScore !== null && <span>Avg: <span className="font-bold text-foreground">{avgScore}%</span></span>}
               {passRate !== null && (
-                <span>Pass rate: <span className={`font-bold ${passRate >= 70 ? 'text-green-600' : 'text-red-600'}`}>{passRate}%</span></span>
+                <span>Pass rate: <span className={`font-bold ${passRate >= 70 ? 'text-success' : 'text-destructive'}`}>{passRate}%</span></span>
               )}
             </div>
           )}
         </div>
         {examAttempts.length === 0 ? (
-          <p className="px-6 py-10 text-center text-sm text-gray-400">
+          <p className="px-6 py-10 text-center text-sm text-muted-foreground">
             {selectedExamId ? 'No attempts yet.' : 'Select an exam to see results.'}
           </p>
         ) : (
-          <div className="divide-y divide-gray-50">
+          <div className="divide-y divide-border">
             {examAttempts.map(a => (
               <div key={a.id} className="flex items-center justify-between px-6 py-3">
                 <div>
-                  <p className="text-sm font-semibold text-gray-900">
+                  <p className="text-sm font-semibold text-foreground">
                     {(a.profiles as any)?.name ?? 'Unknown'}
                   </p>
-                  <p className="text-xs text-gray-400">{fmt(a.created_at)}</p>
+                  <p className="text-xs text-muted-foreground">{fmt(a.created_at)}</p>
                 </div>
                 <div className="flex items-center gap-3">
                   {a.attempt_number > 1 && (
-                    <span className="text-xs bg-gray-100 text-gray-500 px-2 py-0.5 rounded-full">
+                    <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">
                       Attempt #{a.attempt_number}
                     </span>
                   )}
                   <span className={`text-sm font-bold ${
-                    a.score >= (config.modules.find(m => m.id === selectedExamId)?.pass_threshold ?? 80)
-                      ? 'text-green-600' : 'text-red-600'
+ a.score >= (config.modules.find(m => m.id === selectedExamId)?.pass_threshold ?? 80)
+                      ? 'text-success' : 'text-destructive'
                   }`}>
                     {a.score}%
                   </span>
                   <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
-                    a.passed ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'
+ a.passed ? 'bg-success/15 text-success' : 'bg-destructive/10 text-destructive'
                   }`}>
                     {a.passed ? 'Passed' : 'Failed'}
                   </span>
@@ -818,16 +808,17 @@ export default function AdminExamsPage() {
           </div>
         )}
       </div>
-    </div>
+      </PageBody>
+    </>
   )
 }
 
 // ── Bulk format guide ─────────────────────────────────────────────────────────
 function BulkFormatGuide() {
   return (
-    <div className="bg-white border border-gray-200 rounded-xl p-4">
-      <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">Format Guide</p>
-      <pre className="text-xs text-gray-600 leading-relaxed font-mono whitespace-pre-wrap">{`Q: What is the first step when receiving a new lead?
+    <div className="bg-card border border-border rounded-xl p-4">
+      <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Format Guide</p>
+      <pre className="text-xs text-muted-foreground leading-relaxed font-mono whitespace-pre-wrap">{`Q: What is the first step when receiving a new lead?
 A) Check the CRM for duplicates
 *B) Verify the case type meets firm criteria
 C) Call the potential client immediately
@@ -837,8 +828,8 @@ Q: Which of the following is NOT accepted?
 *A) Workers compensation
 B) Motor vehicle accidents
 C) Slip and fall`}</pre>
-      <p className="text-xs text-gray-400 mt-2">
-        Start each question with <code className="bg-gray-100 px-1 rounded">Q:</code> · Mark the correct answer with <code className="bg-gray-100 px-1 rounded">*</code> before the letter
+      <p className="text-xs text-muted-foreground mt-2">
+        Start each question with <code className="bg-muted px-1 rounded">Q:</code> · Mark the correct answer with <code className="bg-muted px-1 rounded">*</code> before the letter
       </p>
     </div>
   )
@@ -867,10 +858,10 @@ function QuestionBuilder({
   onRemove: () => void
 }) {
   return (
-    <div className="bg-gray-50 rounded-xl border border-gray-200 p-4">
+    <div className="bg-muted/40 rounded-xl border border-border p-4">
       <div className="flex items-start gap-3 mb-3">
         {!hideNumber && (
-          <span className="bg-blue-100 text-blue-700 text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">
+          <span className="bg-accent text-primary text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">
             {index + 1}
           </span>
         )}
@@ -878,18 +869,18 @@ function QuestionBuilder({
           type="text"
           value={question.question_text}
           onChange={e => onUpdateText(e.target.value)}
-          className="flex-1 border border-gray-200 bg-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="flex-1 border border-border bg-card rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
           placeholder="Enter question text..."
         />
         {canRemove && (
-          <button onClick={onRemove} className="text-red-400 hover:text-red-600 text-lg font-bold shrink-0 leading-none mt-1">
+          <button onClick={onRemove} className="text-destructive/70 hover:text-destructive text-lg font-bold shrink-0 leading-none mt-1">
             ×
           </button>
         )}
       </div>
 
       <div className={`space-y-2 ${!hideNumber ? 'ml-9' : ''}`}>
-        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-1">Options (select correct)</p>
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-1">Options (select correct)</p>
         {question.options.map((opt, oi) => (
           <div key={opt.id} className="flex items-center gap-2">
             <input
@@ -897,24 +888,24 @@ function QuestionBuilder({
               name={`correct-${question.id}`}
               checked={opt.is_correct}
               onChange={() => onUpdateOpt(opt.id, 'is_correct', true)}
-              className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500 shrink-0"
+              className="w-4 h-4 text-success border-border focus:ring-success shrink-0"
               title="Mark as correct"
             />
             <input
               type="text"
               value={opt.option_text}
               onChange={e => onUpdateOpt(opt.id, 'option_text', e.target.value)}
-              className="flex-1 border border-gray-200 bg-white rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="flex-1 border border-border bg-card rounded-lg px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder={`Option ${oi + 1}...`}
             />
             {question.options.length > 2 && (
-              <button onClick={() => onRemoveOpt(opt.id)} className="text-red-400 hover:text-red-600 text-lg font-bold shrink-0 leading-none">×</button>
+              <button onClick={() => onRemoveOpt(opt.id)} className="text-destructive/70 hover:text-destructive text-lg font-bold shrink-0 leading-none">×</button>
             )}
           </div>
         ))}
         <button
           onClick={onAddOpt}
-          className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 mt-1"
+          className="text-primary hover:text-primary text-sm font-medium flex items-center gap-1 mt-1"
         >
           + Add option
         </button>

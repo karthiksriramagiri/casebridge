@@ -20,7 +20,7 @@ export default function StartLevelButton({ level }: { level: number }) {
     <button
       onClick={handleStart}
       disabled={loading}
-      className="bg-[#0f1e3c] text-white text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-[#1a3060] disabled:opacity-60 transition-colors"
+      className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg hover:bg-primary/90 disabled:opacity-60 transition-colors"
     >
       {loading ? 'Starting…' : `Start Level ${level}`}
     </button>

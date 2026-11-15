@@ -9,6 +9,7 @@ import BookingScheduler from './BookingScheduler'
 import AutoRefresh from './AutoRefresh'
 import NewModulePopup from './NewModulePopup'
 import RetakeNotificationPopup from './RetakeNotificationPopup'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 type AttemptData = {
   completed: boolean
@@ -88,32 +89,32 @@ function ModuleCard({
 }) {
   if (isLocked) {
     return (
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-center gap-4 opacity-50">
-        <div className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center shrink-0">
-          <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <div className="bg-card rounded-xl border border-border px-5 py-4 flex items-center gap-4 opacity-50">
+        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center shrink-0">
+          <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
               d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
           </svg>
         </div>
         <div className="flex-1 min-w-0">
-          <span className="font-semibold text-gray-400">{position + 1}. {mod.title}</span>
-          <p className="text-xs text-gray-300 mt-0.5">
-            {prevModTitle ? <>Complete <strong className="text-gray-400">{prevModTitle}</strong> first to unlock</> : 'Complete the previous lesson to unlock'}
+          <span className="font-semibold text-muted-foreground">{position + 1}. {mod.title}</span>
+          <p className="text-xs text-muted-foreground/50 mt-0.5">
+            {prevModTitle ? <>Complete <strong className="text-muted-foreground">{prevModTitle}</strong> first to unlock</> : 'Complete the previous lesson to unlock'}
           </p>
         </div>
-        <span className="text-xs text-gray-300 shrink-0">Locked</span>
+        <span className="text-xs text-muted-foreground/50 shrink-0">Locked</span>
       </div>
     )
   }
 
   let statusLabel = 'Not Started'
-  let statusClass = 'bg-gray-100 text-gray-500'
+  let statusClass = 'bg-muted text-muted-foreground'
   if (data.completed) {
     statusLabel = 'Completed ✓'
-    statusClass = 'bg-green-100 text-green-700 font-semibold'
+    statusClass = 'bg-success/15 text-success font-semibold'
   } else if (data.attemptCount > 0) {
     statusLabel = 'Failed'
-    statusClass = 'bg-red-100 text-red-600'
+    statusClass = 'bg-destructive/10 text-destructive'
   }
 
   const isVideoOnly = qCount === 0
@@ -122,19 +123,19 @@ function ModuleCard({
     : (isVideoOnly ? 'Watch' : data.attemptCount > 0 ? 'Retry Quiz' : 'Start')
 
   return (
-    <div className={`bg-white rounded-xl border shadow-sm px-5 py-4 flex items-center gap-4 ${
-      !data.completed && data.attemptCount === 0 ? 'border-blue-200 ring-1 ring-blue-100' : 'border-gray-100'
+    <div className={`bg-card rounded-xl border px-5 py-4 flex items-center gap-4 ${
+      !data.completed && data.attemptCount === 0 ? 'border-primary/30 ring-1 ring-primary/30' : 'border-border'
     }`}>
       <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold ${
-        data.completed ? 'bg-green-100 text-green-600' : 'bg-blue-50 text-blue-700'
+ data.completed ? 'bg-success/15 text-success' : 'bg-accent text-primary'
       }`}>
         {data.completed ? '✓' : position + 1}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-semibold text-gray-900">{mod.title}</span>
+          <span className="font-semibold text-foreground">{mod.title}</span>
         </div>
-        <div className="flex items-center gap-3 mt-1 text-xs text-gray-400 flex-wrap">
+        <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
           {isVideoOnly ? <span>Video lesson</span> : (
             <>
               <span>{qCount} question{qCount !== 1 ? 's' : ''}</span>
@@ -163,9 +164,9 @@ function ModuleCard({
         <Link
           href={`/teams/module/${mod.id}`}
           className={`text-sm font-semibold px-4 py-2 rounded-lg transition-colors whitespace-nowrap ${
-            data.completed
-              ? 'border border-gray-300 text-gray-600 hover:bg-gray-50'
-              : 'bg-[#0f1e3c] text-white hover:bg-[#1a3060]'
+ data.completed
+              ? 'border border-border text-muted-foreground hover:bg-muted/50'
+              : 'bg-primary text-primary-foreground hover:bg-primary/90'
           }`}
         >
           {btnLabel}
@@ -196,23 +197,23 @@ function SectionBlock({
       <div className={`flex items-center justify-between mb-3 ${!section.isUnlocked ? 'opacity-40' : ''}`}>
         <div className="flex items-center gap-2">
           {!section.isUnlocked ? (
-            <svg className="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-muted-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                 d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
             </svg>
           ) : section.isDone ? (
-            <span className="text-green-500 text-sm">✓</span>
+            <span className="text-success text-sm">✓</span>
           ) : (
-            <span className="w-2 h-2 rounded-full bg-blue-500 inline-block" />
+            <span className="w-2 h-2 rounded-full bg-primary inline-block" />
           )}
-          <h3 className="text-sm font-bold text-gray-900">{section.name}</h3>
+          <h3 className="text-sm font-bold text-foreground">{section.name}</h3>
         </div>
-        <span className="text-xs text-gray-400 font-medium">{doneCount} / {totalCount} complete</span>
+        <span className="text-xs text-muted-foreground font-medium">{doneCount} / {totalCount} complete</span>
       </div>
 
       {!section.isUnlocked && prevSectionName && (
-        <div className="bg-gray-50 border border-gray-200 rounded-xl px-5 py-4 text-center text-sm text-gray-400">
-          Complete <strong className="text-gray-500">{prevSectionName}</strong> to unlock this section.
+        <div className="bg-muted/40 border border-border rounded-xl px-5 py-4 text-center text-sm text-muted-foreground">
+          Complete <strong className="text-muted-foreground">{prevSectionName}</strong> to unlock this section.
         </div>
       )}
 
@@ -448,20 +449,27 @@ export default async function DashboardPage() {
   }))
 
   return (
-    <div className="min-h-screen bg-gray-50">
       <TeamsShell timeclockEnabled={!!profile.timeclock_enabled} teamType={(profile as any).team_type ?? 'intake'}>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <PageHeader
+        title={`Welcome back, ${profile.name || 'there'}`}
+        description={
+          teamType === 'creative'
+            ? 'Your training modules.'
+            : 'Complete each level in order to progress through your training.'
+        }
+      />
+      <PageBody>
 
         {expiredLevel !== null && (
-          <div className="mt-8 bg-white rounded-2xl border border-red-200 shadow-sm px-8 py-12 text-center">
-            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-5">
-              <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="mt-8 bg-card rounded-2xl border border-destructive/30 px-8 py-12 text-center">
+            <div className="w-16 h-16 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-5">
+              <svg className="w-8 h-8 text-destructive" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" />
               </svg>
             </div>
-            <h2 className="text-xl font-bold text-gray-900 mb-2">Training Window Expired</h2>
-            <p className="text-gray-500 max-w-sm mx-auto">
+            <h2 className="text-xl font-bold text-foreground mb-2">Training Window Expired</h2>
+            <p className="text-muted-foreground max-w-sm mx-auto">
               You did not complete Level {expiredLevel} within the required time. Please reach out to your manager to discuss next steps.
             </p>
           </div>
@@ -470,21 +478,18 @@ export default async function DashboardPage() {
         {expiredLevel === null && (
           <>
           {announcement && (
-            <div className="mb-6 bg-blue-50 border border-blue-200 rounded-xl px-5 py-4 flex items-start gap-3">
+            <div className="mb-6 bg-accent border border-primary/30 rounded-xl px-5 py-4 flex items-start gap-3">
               <span className="text-xl shrink-0">📢</span>
-              <p className="text-sm text-blue-800 font-medium">{announcement.content}</p>
+              <p className="text-sm text-accent-foreground font-medium">{announcement.content}</p>
             </div>
           )}
 
           {/* ── Creative team: flat module list, no levels/booking/timers ── */}
           {teamType === 'creative' && (
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 mb-6">
-                Welcome back, {profile.name || 'there'}!
-              </h1>
               {modules.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center">
-                  <p className="text-gray-500">No training modules available yet.</p>
+                <div className="bg-card rounded-xl border border-border px-6 py-10 text-center">
+                  <p className="text-muted-foreground">No training modules available yet.</p>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -507,25 +512,22 @@ export default async function DashboardPage() {
           <NewModulePopup modules={(modules ?? []).map((m) => ({ id: m.id, title: m.title }))} />
           <RetakeNotificationPopup />
 
-          <div className="mb-6 flex items-start justify-between gap-4 flex-wrap">
-            <div>
-              <h1 className="text-2xl font-bold text-gray-900">
-                Welcome back, {profile.name || 'there'}!
-              </h1>
-              <p className="text-gray-500 mt-1">Complete each level in order to progress through your training.</p>
-            </div>
+          {/* The "modules left" badge. It shared this row with the greeting,
+              which is now the page header, so the row right-aligns rather
+              than spreading one item across the full width. */}
+          <div className="mb-6 flex flex-wrap items-start justify-end gap-4">
             {requiredModules.length - completedRequired > 0 && (
-              <div className="flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 shrink-0">
+              <div className="flex items-center gap-2 bg-warning/10 border border-warning/30 rounded-xl px-4 py-2.5 shrink-0">
                 <div className="relative">
-                  <svg className="w-5 h-5 text-amber-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-5 h-5 text-warning" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                       d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
                   </svg>
-                  <span className="absolute -top-1.5 -right-1.5 bg-red-500 text-white text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
+                  <span className="absolute -top-1.5 -right-1.5 bg-destructive text-primary-foreground text-[10px] font-bold rounded-full w-4 h-4 flex items-center justify-center leading-none">
                     {requiredModules.length - completedRequired}
                   </span>
                 </div>
-                <span className="text-sm font-semibold text-amber-700">
+                <span className="text-sm font-semibold text-warning">
                   {requiredModules.length - completedRequired} lesson{requiredModules.length - completedRequired !== 1 ? 's' : ''} remaining
                 </span>
               </div>
@@ -533,31 +535,31 @@ export default async function DashboardPage() {
           </div>
 
           {/* Overall progress */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-8">
+          <div className="bg-card rounded-xl border border-border px-5 py-4 mb-8">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm text-gray-500">Overall progress</p>
-              <p className="text-2xl font-bold text-gray-900 mt-0.5">
-                <span className="text-green-600">{completedRequired}</span>
-                <span className="text-gray-400 text-lg"> / {requiredModules.length} lessons</span>
+              <p className="text-sm text-muted-foreground">Overall progress</p>
+              <p className="text-2xl font-bold text-foreground mt-0.5">
+                <span className="text-success">{completedRequired}</span>
+                <span className="text-muted-foreground text-lg"> / {requiredModules.length} lessons</span>
               </p>
             </div>
             <div className="text-right">
               {completedRequired === requiredModules.length && requiredModules.length > 0 ? (
-                <span className="bg-green-100 text-green-700 font-semibold text-sm px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                <span className="bg-success/15 text-success font-semibold text-sm px-3 py-1.5 rounded-full flex items-center gap-1.5">
                   <span>✓</span> Certified!
                 </span>
               ) : (
-                <span className="bg-gray-100 text-gray-600 font-medium text-sm px-3 py-1.5 rounded-full">
+                <span className="bg-muted text-muted-foreground font-medium text-sm px-3 py-1.5 rounded-full">
                   In Progress
                 </span>
               )}
             </div>
           </div>
           {requiredModules.length > 0 && (
-            <div className="mt-3 bg-gray-100 rounded-full h-2 overflow-hidden">
+            <div className="mt-3 bg-muted rounded-full h-2 overflow-hidden">
               <div
-                className="bg-green-500 h-2 rounded-full transition-all"
+                className="bg-success h-2 rounded-full transition-all"
                 style={{ width: `${Math.round((completedRequired / requiredModules.length) * 100)}%` }}
               />
             </div>
@@ -566,8 +568,8 @@ export default async function DashboardPage() {
 
         {/* Levels (or flat view if certified) */}
         {(modules ?? []).length === 0 ? (
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-10 text-center">
-            <p className="text-gray-500">No training modules available yet.</p>
+          <div className="bg-card rounded-xl border border-border px-6 py-10 text-center">
+            <p className="text-muted-foreground">No training modules available yet.</p>
           </div>
         ) : effectivelyCertified ? (
           /* ── Flat post-certification view ── */
@@ -584,7 +586,7 @@ export default async function DashboardPage() {
             ))}
             {ungroupedModules.length > 0 && (
               <div>
-                <h2 className="text-sm font-bold text-gray-900 mb-3">Other Modules</h2>
+                <h2 className="text-sm font-bold text-foreground mb-3">Other Modules</h2>
                 <div className="space-y-2">
                   {ungroupedModules.map((mod, idx) => (
                     <ModuleCard
@@ -635,26 +637,26 @@ export default async function DashboardPage() {
                 <div key={num}>
                   {/* Level header */}
                   <div className={`rounded-2xl border px-5 py-4 mb-4 ${
-                    !isLevelUnlocked
-                      ? 'bg-gray-50 border-gray-200 opacity-60'
+ !isLevelUnlocked
+                      ? 'bg-muted/40 border-border opacity-60'
                       : num === 1
-                      ? 'bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200'
+                      ? 'bg-gradient-to-r from-primary/10 to-primary/10 border-primary/30'
                       : num === 2
-                      ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200'
-                      : 'bg-gradient-to-r from-green-50 to-emerald-50 border-green-200'
+                      ? 'bg-gradient-to-r from-team-creative/10 to-team-creative/10 border-team-creative'
+                      : 'bg-gradient-to-r from-success/10 to-success/10 border-success/30'
                   }`}>
                     <div className="flex items-center justify-between gap-4 flex-wrap">
                       <div className="flex items-center gap-3">
                         <div className={`w-9 h-9 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
-                          !isLevelUnlocked
-                            ? 'bg-gray-200 text-gray-400'
+ !isLevelUnlocked
+                            ? 'bg-muted text-muted-foreground'
                             : isLevelDone
-                            ? 'bg-green-500 text-white'
+                            ? 'bg-success text-primary-foreground'
                             : num === 1
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-primary text-primary-foreground'
                             : num === 2
-                            ? 'bg-purple-600 text-white'
-                            : 'bg-green-600 text-white'
+                            ? 'bg-team-creative text-primary-foreground'
+                            : 'bg-success text-primary-foreground'
                         }`}>
                           {!isLevelUnlocked ? (
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -665,12 +667,12 @@ export default async function DashboardPage() {
                         </div>
                         <div>
                           <div className="flex items-center gap-2">
-                            <h2 className="text-base font-bold text-gray-900">Level {num}: {label}</h2>
+                            <h2 className="text-base font-bold text-foreground">Level {num}: {label}</h2>
                             {sublabel && !isLevelDone && (
-                              <span className="text-xs text-gray-400 font-medium">{sublabel}</span>
+                              <span className="text-xs text-muted-foreground font-medium">{sublabel}</span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-500 mt-0.5">
+                          <p className="text-xs text-muted-foreground mt-0.5">
                             {levelTotalCount > 0
                               ? `${levelDoneCount} / ${levelTotalCount} lessons complete`
                               : 'No lessons yet'}
@@ -679,7 +681,7 @@ export default async function DashboardPage() {
                       </div>
                       <div className="flex items-center gap-3">
                         {isLevelDone && isLevelUnlocked && (
-                          <span className="text-sm font-semibold text-green-700 bg-green-50 border border-green-200 px-3 py-1.5 rounded-full flex items-center gap-1.5">
+                          <span className="text-sm font-semibold text-success bg-success/10 border border-success/30 px-3 py-1.5 rounded-full flex items-center gap-1.5">
                             <span>✓</span> Completed
                           </span>
                         )}
@@ -692,14 +694,14 @@ export default async function DashboardPage() {
 
                     {/* Level locked message */}
                     {!isLevelUnlocked && prevLevel && !callBooked && (
-                      <p className="text-xs text-gray-400 mt-2 ml-12">
+                      <p className="text-xs text-muted-foreground mt-2 ml-12">
                         Complete Level {prevLevel.num}: {prevLevel.label} to unlock this level.
                       </p>
                     )}
 
                     {/* Level 2: call booked, waiting for call to end */}
                     {callBooked && existingBooking && callCompletedAtIso && (
-                      <p className="text-xs text-gray-500 mt-2 ml-12">
+                      <p className="text-xs text-muted-foreground mt-2 ml-12">
                         Your call is at{' '}
                         <strong>{new Date(existingBooking.slot_time).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</strong>.
                         {' '}Level 2 will unlock automatically 30 minutes after it starts.
@@ -734,7 +736,7 @@ export default async function DashboardPage() {
             {/* Ungrouped modules */}
             {ungroupedModules.length > 0 && (
               <div>
-                <h2 className="text-base font-bold text-gray-900 mb-3">Other Modules</h2>
+                <h2 className="text-base font-bold text-foreground mb-3">Other Modules</h2>
                 <div className="space-y-2">
                   {ungroupedModules.map((mod, idx) => (
                     <ModuleCard
@@ -754,8 +756,7 @@ export default async function DashboardPage() {
           </>}
           </>
         )}
-      </main>
+        </PageBody>
       </TeamsShell>
-    </div>
   )
 }
