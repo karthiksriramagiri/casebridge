@@ -66,8 +66,18 @@ export async function POST(req: NextRequest) {
     status:          'ringing',
   }, { onConflict: 'call_sid' })
 
-  // Slack notification — fire and forget
-  const INBOUND_SLACK_WEBHOOK = process.env.SLACK_INBOUND_CALL_WEBHOOK ?? ''
+  /* Slack notification — fire and forget.
+
+     Two spellings of this variable exist in the environment and the two
+     routes that post inbound calls each read a different one:
+     SLACK_INBOUND_CALL_WEBHOOK here, SLACK_INBOUND_CALLS_WEBHOOK in the
+     Quo webhook. Production happens to define both, which is the only
+     reason this has been firing; locally it defines only the plural, so
+     the notification was silently dead in development and would have
+     been dead in production the day somebody tidied the unused-looking
+     one away. Either name works now. */
+  const INBOUND_SLACK_WEBHOOK =
+    (process.env.SLACK_INBOUND_CALL_WEBHOOK ?? process.env.SLACK_INBOUND_CALLS_WEBHOOK ?? '').trim()
   if (INBOUND_SLACK_WEBHOOK) fetch(INBOUND_SLACK_WEBHOOK, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
