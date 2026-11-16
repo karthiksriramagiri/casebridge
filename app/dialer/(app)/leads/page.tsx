@@ -406,22 +406,24 @@ function LeadDetail({
             )
           })()}
 
-          {/* Transcripts — aggregated from all calls + orphan transcripts */}
+          {/* Transcripts with no call to sit under.
+
+              This panel used to aggregate every transcript on the contact.
+              Now that each call carries its own, that repeated the whole
+              lot a second time further up the page. What is left is the
+              remainder: transcripts whose call_sid matches no call row, so
+              there is nowhere else for them to appear. Usually a recording
+              that arrived after its call was written, or a leg Twilio
+              reported under a different sid. */}
           {!loading && (() => {
-            const callTx = calls.flatMap(c =>
-              c.transcripts
-                .filter(t => t.status === 'completed' && (t.full_text || (t.utterances && t.utterances.length > 0)))
-                .map(t => ({ ...t, rep: c.rep_identity, startedAt: c.started_at, disposition: c.disposition }))
-            )
-            const orphaned = orphanTx
+            const allTx = orphanTx
               .filter(t => t.status === 'completed' && (t.full_text || (t.utterances && t.utterances.length > 0)))
               .map(t => ({ ...t, rep: null as string | null, startedAt: t.completed_at, disposition: null as string | null }))
-            const allTx = [...callTx, ...orphaned]
             if (allTx.length === 0) return null
             return (
               <div className="rounded-lg border border-primary bg-accent/60">
                 <p className="border-b border-primary/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
-                  Transcripts ({allTx.length})
+                  Unmatched transcripts ({allTx.length})
                 </p>
                 <div className="px-4 py-3 space-y-4 max-h-[500px] overflow-y-auto">
                   {allTx.map(tx => (
