@@ -501,11 +501,6 @@ function AddDialog({
 
   const submit = async () => {
     if (!name.trim()) { toast.error('A name is required'); return }
-    /* The note is required, not merely asked for. Whoever rings first opens
-       with it, and a card added without one sends them in knowing nothing
-       but the name — which is how the second call goes the same way as the
-       first. */
-    if (!note.trim()) { toast.error('Add a note', { description: 'Whoever calls first opens with it.' }); return }
     setBusy(true)
     try {
       const res = await fetch('/api/mia', {
@@ -657,11 +652,11 @@ function AddDialog({
                 </span>
               )}
             </Field>
-            <Field label="Note" required>
-              {/* Not optional in practice: whoever rings first opens with it.
-                  A card that says only "went quiet" sends a rep in with
-                  nothing, which is how the second call goes the same way as
-                  the first. */}
+            <Field label="Note">
+              {/* Worth filling in — whoever rings first opens with it — but not
+                  enforced. An admin putting a case on the board at speed should
+                  not be held up by a field they may not have an answer for yet;
+                  the note can be added from the card afterwards. */}
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
                 placeholder="Why they went quiet, what has been tried, what to open with" />
             </Field>
@@ -670,7 +665,7 @@ function AddDialog({
 
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={busy || !name.trim() || !note.trim()}>
+          <Button size="sm" onClick={submit} disabled={busy || !name.trim()}>
             {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden />} Add to board
           </Button>
         </div>
