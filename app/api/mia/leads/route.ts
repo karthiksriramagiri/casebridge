@@ -42,7 +42,7 @@ export async function GET(req: NextRequest) {
 
   let query = admin
     .from('ghl_leads')
-    .select('id, contact_name, contact_phone, contact_id, firm_id, invoice_code, qualified_at, closer, case_status')
+    .select('id, contact_name, contact_phone, contact_id, firm_id, invoice_code, qualified_at, closer, closed_by_profile_id, case_status')
     .is('pipeline_stage', null)
     /* A replaced case has already been swapped out — chasing the person is
        no longer the job, so it is not offered. */
@@ -83,7 +83,11 @@ export async function GET(req: NextRequest) {
       firmId: r.firm_id ?? null,
       firmName: r.firm_id ? firmById.get(r.firm_id) ?? null : null,
       invoiceCode: r.invoice_code ?? null,
+      /* The closer, in both forms. Preferring the id and falling back to the
+         text is how the rest of the app reads this field — a case closed
+         before the Team Center existed has only the name. */
       closer: r.closer ?? null,
+      closerId: r.closed_by_profile_id ?? null,
       signedOn: String(r.qualified_at ?? '').slice(0, 10),
       /* Which column it is already in, if any. */
       onBoard: placed.get(String(r.id)) ?? null,

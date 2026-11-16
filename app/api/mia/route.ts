@@ -66,6 +66,10 @@ const toCase = (r: Row, firmName: (id: string | null) => string | null, repName:
   order: Number(r.sort_order ?? 0),
   ownerId: r.owner_id ?? null,
   ownerName: repName(r.owner_id ?? null),
+  closerId: r.closer_id ?? null,
+  /* The stored name wins over the looked-up one: a closer who has since left
+     still has a name on the row and no longer has a profile. */
+  closerName: r.closer ?? repName(r.closer_id ?? null),
   note: r.note ?? '',
   createdBy: r.created_by ?? null,
   createdAt: String(r.created_at ?? ''),
@@ -174,6 +178,8 @@ export async function POST(req: NextRequest) {
     status,
     sort_order: sort,
     owner_id: body.ownerId || null,
+    closer_id: body.closerId || null,
+    closer: clean(body.closer, 120) || null,
     note: clean(body.note, 2000),
     created_by: me.id,
   }
@@ -186,7 +192,8 @@ export async function POST(req: NextRequest) {
 
   await logEvent({
     caseId: data.id, kind: 'created', toStatus: status,
-    detail: `Added to ${status}`, actorId: me.id, actorName: me.name,
+    detail: row.closer ? `Added to ${status} · closed by ${row.closer}` : `Added to ${status}`,
+    actorId: me.id, actorName: me.name,
   })
   return NextResponse.json({ id: data.id })
 }

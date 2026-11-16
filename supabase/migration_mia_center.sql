@@ -48,6 +48,23 @@ create table if not exists public.mia_cases (
   -- the board should show it as one rather than pretending someone owns it.
   owner_id      uuid references public.profiles(id) on delete set null,
 
+  -- Who closed the case in the first place.
+  --
+  -- Kept because they get to call first: they are the one voice the person
+  -- already agreed to, and a stranger ringing about a case they half
+  -- remember signing is how a reconnect turns into a cancellation. Without
+  -- it on the card, whoever picks the board up has no idea whose call it
+  -- should be and rings it themselves.
+  --
+  -- Both forms, the same way the rest of the app reads a closer: the id is
+  -- the reliable link and the text is what survives when the closer has no
+  -- profile — a contractor, someone long gone, a case closed before the
+  -- Team Center existed. Copied onto the row rather than joined through
+  -- `lead_id`, because a card may have no lead at all and the question
+  -- "who closed this" still has an answer.
+  closer_id     uuid references public.profiles(id) on delete set null,
+  closer        text,
+
   -- Why they went quiet, what was tried. Free text: this is a note between
   -- people, not a field anything computes on.
   note          text not null default '',
@@ -59,6 +76,11 @@ create table if not exists public.mia_cases (
   -- has sat in `mia` for nine days is the one that needs a call.
   moved_at      timestamptz not null default now()
 );
+
+-- Added after the first version of this table. Safe to re-run; does nothing
+-- on a database where the create above has just made them.
+alter table public.mia_cases add column if not exists closer_id uuid references public.profiles(id) on delete set null;
+alter table public.mia_cases add column if not exists closer    text;
 
 create index if not exists mia_cases_status_idx on public.mia_cases (status, sort_order);
 create index if not exists mia_cases_owner_idx  on public.mia_cases (owner_id);

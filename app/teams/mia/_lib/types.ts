@@ -38,6 +38,11 @@ export type MiaCase = {
   order: number
   ownerId: string | null
   ownerName: string | null
+  /* Who closed the case originally — they get to call first. Two forms: the
+     id links to a rep so the board can offer to hand the card to them, the
+     name is what shows when there is no profile behind it. */
+  closerId: string | null
+  closerName: string | null
   note: string
   createdBy: string | null
   createdAt: string

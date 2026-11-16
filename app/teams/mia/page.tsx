@@ -80,6 +80,10 @@ export default async function MiaPage() {
       order: Number(r.sort_order ?? 0),
       ownerId: r.owner_id ?? null,
       ownerName: r.owner_id ? repById.get(r.owner_id) ?? null : null,
+      closerId: r.closer_id ?? null,
+      /* The name stored on the row wins: a closer who has since left still
+         has a name here and no longer has a profile to look up. */
+      closerName: r.closer ?? (r.closer_id ? repById.get(r.closer_id) ?? null : null),
       note: r.note ?? '',
       createdBy: r.created_by ?? null,
       createdAt: String(r.created_at ?? ''),

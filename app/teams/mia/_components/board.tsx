@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
-  Clock, GripVertical, Loader2, Phone, Plus, Search, Trash2, TriangleAlert, User, X,
+  Clock, GripVertical, Loader2, Phone, PhoneOutgoing, Plus, Search, Trash2, TriangleAlert, User, X,
 } from 'lucide-react'
 import { toast } from 'sonner'
 import {
@@ -364,6 +364,13 @@ function Card({
           <Pill tone="blue">
             <User className="size-2.5" aria-hidden /> {c.ownerName}
           </Pill>
+        ) : c.closerName ? (
+          /* Unclaimed, but not unassigned in spirit: the closer gets the
+             first call, so an untouched card says whose it is rather than
+             inviting whoever is nearest to ring a stranger's client. */
+          <Pill tone="amber">
+            <PhoneOutgoing className="size-2.5" aria-hidden /> {c.closerName} calls first
+          </Pill>
         ) : (
           <span className="rounded-full px-1.5 py-0.5 text-[10px] text-muted-foreground/70">unclaimed</span>
         )}
@@ -376,6 +383,24 @@ function Card({
           <Clock className="size-2.5" aria-hidden /> {agoLabel(c.movedAt)}
         </span>
       </div>
+
+      {/* Who closed it, once somebody else has taken the card. While it is
+          unclaimed the chip above already says it; repeating it here would
+          be the same fact twice on a card three lines tall. */}
+      {c.closerName && c.ownerName && c.ownerId !== c.closerId && (
+        <p className="truncate pl-5 pt-1 text-[10px] text-muted-foreground">
+          closed by {c.closerName}
+        </p>
+      )}
+
+      {/* The note, on the card rather than one click into it. It is what the
+          first call opens with, and a board you have to open every card on
+          to know anything is a board nobody reads before dialling. */}
+      {c.note && (
+        <p className="line-clamp-2 pl-5 pt-1 text-[11px] leading-snug text-muted-foreground">
+          {c.note}
+        </p>
+      )}
 
       {/* Touch and keyboard get the same moves the mouse does. A board that
           can only be driven by dragging is a board nobody can use from a
@@ -406,6 +431,7 @@ type SignedLeadHit = {
   firmName: string | null
   invoiceCode: string | null
   closer: string | null
+  closerId: string | null
   signedOn: string
   onBoard: string | null
 }
@@ -431,6 +457,8 @@ function AddDialog({
   const [email, setEmail] = useState('')
   const [firmId, setFirmId] = useState('')
   const [ownerId, setOwnerId] = useState('')
+  const [closer, setCloser] = useState('')
+  const [closerId, setCloserId] = useState<string | null>(null)
   const [note, setNote] = useState('')
   const [leadId, setLeadId] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
@@ -461,17 +489,36 @@ function AddDialog({
     setName(l.name)
     setPhone(l.phone ?? '')
     setFirmId(l.firmId ?? '')
+    setCloser(l.closer ?? '')
+    setCloserId(l.closerId ?? null)
+    /* Assigned to the closer by default, because they get to call first:
+       they are the one voice the person already agreed to. Only when the
+       closer is a rep with a profile — a name with nobody behind it cannot
+       own a card — and the admin can still change it before adding. */
+    if (l.closerId && reps.some((r) => r.id === l.closerId)) setOwnerId(l.closerId)
     setMode('manual')
   }
 
   const submit = async () => {
     if (!name.trim()) { toast.error('A name is required'); return }
+    /* The note is required, not merely asked for. Whoever rings first opens
+       with it, and a card added without one sends them in knowing nothing
+       but the name — which is how the second call goes the same way as the
+       first. */
+    if (!note.trim()) { toast.error('Add a note', { description: 'Whoever calls first opens with it.' }); return }
     setBusy(true)
     try {
       const res = await fetch('/api/mia', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ name, phone, email, firmId: firmId || null, ownerId: ownerId || null, note, leadId }),
+        body: JSON.stringify({
+          name, phone, email,
+          firmId: firmId || null,
+          ownerId: ownerId || null,
+          closer: closer || null,
+          closerId: closerId || null,
+          note, leadId,
+        }),
       })
       const d = await res.json().catch(() => ({}))
       if (!res.ok || d.error) { toast.error('Not added', { description: d.error }); return }
@@ -587,23 +634,43 @@ function AddDialog({
                   {firms.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
                 </select>
               </Field>
-              <Field label="Assign to">
-                <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputCls}>
-                  <option value="">Unclaimed</option>
-                  {reps.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
-                </select>
+              <Field label="Closed by">
+                {/* Filled in from the signed case when one was picked, and
+                    typeable otherwise — plenty of closers have no profile.
+                    Editing the name clears the link to the rep so the card
+                    cannot claim to be owned by somebody it no longer names. */}
+                <Input
+                  value={closer}
+                  onChange={(e) => { setCloser(e.target.value); setCloserId(null) }}
+                  placeholder="Who signed them"
+                />
               </Field>
             </div>
-            <Field label="Note">
+            <Field label="Assign to">
+              <select value={ownerId} onChange={(e) => setOwnerId(e.target.value)} className={inputCls}>
+                <option value="">Unclaimed</option>
+                {reps.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              {closerId && ownerId === closerId && (
+                <span className="text-[11px] text-muted-foreground">
+                  {closer} closed this case, so the first call is theirs.
+                </span>
+              )}
+            </Field>
+            <Field label="Note" required>
+              {/* Not optional in practice: whoever rings first opens with it.
+                  A card that says only "went quiet" sends a rep in with
+                  nothing, which is how the second call goes the same way as
+                  the first. */}
               <Textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3}
-                placeholder="Why they went quiet, what has been tried" />
+                placeholder="Why they went quiet, what has been tried, what to open with" />
             </Field>
           </div>
         )}
 
         <div className="flex justify-end gap-2 pt-4">
           <Button variant="outline" size="sm" onClick={onClose}>Cancel</Button>
-          <Button size="sm" onClick={submit} disabled={busy || !name.trim()}>
+          <Button size="sm" onClick={submit} disabled={busy || !name.trim() || !note.trim()}>
             {busy && <Loader2 className="size-3.5 animate-spin" aria-hidden />} Add to board
           </Button>
         </div>
@@ -674,6 +741,25 @@ function DetailSheet({
               ))}
             </div>
           </div>
+
+          {/* Who closed it, stated before the owner picker rather than after,
+              because it is the fact that decides who the owner should be. */}
+          {c.closerName && (
+            <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2.5">
+              <p className="text-xs">
+                Closed by <b className="font-semibold">{c.closerName}</b> — they call first.
+              </p>
+              {c.closerId && c.ownerId !== c.closerId && reps.some((r) => r.id === c.closerId) && (
+                <button
+                  type="button"
+                  onClick={() => onClaim(c.closerId)}
+                  className="pt-1 text-xs font-medium text-primary hover:underline"
+                >
+                  Hand it to {c.closerName}
+                </button>
+              )}
+            </div>
+          )}
 
           <div>
             <p className="pb-1.5 text-xs font-medium text-muted-foreground">Owner</p>
