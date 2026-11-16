@@ -67,11 +67,11 @@ async function announce(c: {
 }) {
   if (!MIA_WEBHOOK) return
 
-  /* Who rings first, stated as an instruction rather than a field, because
-     that is the one thing the channel needs to act on. */
-  const lead = c.closer
-    ? `*${c.closer}* closed this one — first call is theirs.`
-    : '_No closer recorded — whoever picks it up should claim it on the board._'
+  /* Who closed it, as a plain labelled field. Stated flat rather than as an
+     instruction: the channel already knows the closer calls first, and a
+     message that re-explains the rule every time reads as noise by the
+     third one. */
+  const lead = `Closer: ${c.closer ? `*${c.closer}*` : '_not recorded_'}`
 
   const facts = [
     c.phone ? `📞 ${c.phone}` : null,
@@ -81,7 +81,7 @@ async function announce(c: {
   const blocks: unknown[] = [
     {
       type: 'section',
-      text: { type: 'mrkdwn', text: `:large_red_circle: *Gone quiet — ${c.name}*\n${lead}` },
+      text: { type: 'mrkdwn', text: `🔴 *MIA — ${c.name}*\n${lead}` },
     },
   ]
   if (facts) {
@@ -106,7 +106,7 @@ async function announce(c: {
       // `text` is the notification and the fallback for anywhere blocks do
       // not render — a push notification reading "undefined" is worse than
       // one that simply says what happened.
-      body: JSON.stringify({ text: `Gone quiet — ${c.name}`, blocks }),
+      body: JSON.stringify({ text: `MIA — ${c.name}`, blocks }),
       signal: ctrl.signal,
     })
     clearTimeout(timer)
