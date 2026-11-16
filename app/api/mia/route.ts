@@ -36,6 +36,86 @@ const MISSING = (msg: string) =>
 
 const SETUP = 'Run supabase/migration_mia_center.sql in the Supabase SQL editor to create the MIA board tables.'
 
+/* ── Telling the floor ─────────────────────────────────────────────────────
+
+   A case only lands on this board because somebody noticed it had gone
+   quiet, and the person who should ring it is usually not the person who
+   noticed. Posting the moment it is added is what turns the board from a
+   list somebody has to remember to open into something that reaches the
+   closer the same day.
+
+   Its own webhook, not shared with another channel. Webhooks here are
+   per-channel and consolidating two onto one silently redirects the other's
+   messages.
+
+   The trailing-newline strip is deliberate: a value pasted into an env file
+   through a shell heredoc picks one up, and Slack answers a URL with a
+   newline in it with `no_service`, which reads as a dead webhook. */
+const MIA_WEBHOOK = (process.env.SLACK_MIA_WEBHOOK || '').trim().replace(/\\n$/, '')
+
+const BOARD_URL = 'https://teams.case-bridge.com/teams/mia'
+
+/** Post that a case went on the board. Never throws: the card is the record,
+ *  and a Slack outage must not make adding one fail. */
+async function announce(c: {
+  name: string
+  phone: string | null
+  firmName: string | null
+  closer: string | null
+  note: string
+  addedBy: string
+}) {
+  if (!MIA_WEBHOOK) return
+
+  /* Who rings first, stated as an instruction rather than a field, because
+     that is the one thing the channel needs to act on. */
+  const lead = c.closer
+    ? `*${c.closer}* closed this one — first call is theirs.`
+    : '_No closer recorded — whoever picks it up should claim it on the board._'
+
+  const facts = [
+    c.phone ? `📞 ${c.phone}` : null,
+    c.firmName,
+  ].filter(Boolean).join('  ·  ')
+
+  const blocks: unknown[] = [
+    {
+      type: 'section',
+      text: { type: 'mrkdwn', text: `:large_red_circle: *Gone quiet — ${c.name}*\n${lead}` },
+    },
+  ]
+  if (facts) {
+    blocks.push({ type: 'context', elements: [{ type: 'mrkdwn', text: facts }] })
+  }
+  if (c.note.trim()) {
+    blocks.push({ type: 'section', text: { type: 'mrkdwn', text: `>${c.note.trim().replace(/\n/g, '\n>')}` } })
+  }
+  blocks.push({
+    type: 'context',
+    elements: [{ type: 'mrkdwn', text: `Added by ${c.addedBy}  ·  <${BOARD_URL}|Open the MIA board>` }],
+  })
+
+  try {
+    /* A deadline, so a slow Slack cannot hold the request that is adding the
+       card. Five seconds is far longer than a webhook normally takes. */
+    const ctrl = new AbortController()
+    const timer = setTimeout(() => ctrl.abort(), 5000)
+    const res = await fetch(MIA_WEBHOOK, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      // `text` is the notification and the fallback for anywhere blocks do
+      // not render — a push notification reading "undefined" is worse than
+      // one that simply says what happened.
+      body: JSON.stringify({ text: `Gone quiet — ${c.name}`, blocks }),
+      signal: ctrl.signal,
+    })
+    clearTimeout(timer)
+    if (!res.ok) console.error('[mia] slack webhook returned', res.status, await res.text().catch(() => ''))
+  } catch (e) {
+    console.error('[mia] slack webhook failed:', (e as Error).message)
+  }
+}
+
 /** Who is asking, and may they add or delete? */
 async function viewer() {
   const supabase = await createClient()
@@ -195,6 +275,30 @@ export async function POST(req: NextRequest) {
     detail: row.closer ? `Added to ${status} · closed by ${row.closer}` : `Added to ${status}`,
     actorId: me.id, actorName: me.name,
   })
+
+  /* After the insert, never before: the channel should only hear about a
+     case that is actually on the board. The firm is looked up for the
+     message rather than stored on the row — the card holds an id and Slack
+     needs a name.
+
+     Awaited rather than left floating, because this runs in a serverless
+     function that can be frozen the moment the response is returned, which
+     drops an in-flight request. `announce` swallows its own failures, so
+     this cannot turn a Slack problem into a failed add. */
+  let firmName: string | null = null
+  if (row.firm_id) {
+    const { data: firm } = await admin.from('firms').select('name').eq('id', row.firm_id).maybeSingle()
+    firmName = (firm?.name as string) ?? null
+  }
+  await announce({
+    name: row.name,
+    phone: row.phone,
+    firmName,
+    closer: row.closer,
+    note: row.note,
+    addedBy: me.name,
+  })
+
   return NextResponse.json({ id: data.id })
 }
 
