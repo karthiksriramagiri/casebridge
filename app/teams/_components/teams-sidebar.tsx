@@ -5,7 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   BadgeDollarSign,
   Award, BadgeCheck, BarChart3, BookOpen, CalendarClock, ClipboardCheck, ClipboardList,
-  Clock, FileQuestion, Flame, GraduationCap, Home, LayoutGrid, LogOut, Mic, Repeat,
+  Clock, FileQuestion, Flame, GraduationCap, Home, LayoutGrid, LogOut, Mic, PhoneOff, Repeat,
   Timer, Trophy, UserPlus, Users, Wallet, type LucideIcon,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
@@ -64,6 +64,7 @@ const ADMIN_GROUPS: Group[] = [
     items: [
       { href: '/teams/admin', label: 'Overview', icon: LayoutGrid },
       { href: '/teams/admin/urgent-tasks', label: 'Urgent Tasks', icon: Flame },
+      { href: '/teams/mia', label: 'MIA Board', icon: PhoneOff },
       { href: '/teams/admin/timeclock', label: 'Timeclock', icon: Clock },
     ],
   },
@@ -130,6 +131,7 @@ function repGroups(timeclockEnabled: boolean): Group[] {
       items: [
         { href: '/teams/home', label: 'Home', icon: Home },
         { href: '/teams/todos', label: 'Todos', icon: ClipboardList, activeOnly: true },
+        { href: '/teams/mia', label: 'MIA Board', icon: PhoneOff },
         { href: '/teams/notifications', label: 'Notifications', icon: BadgeCheck },
         /* Previously unreachable. `timeclockEnabled` was threaded all the way
            through the old shell and then never read, so /teams/timeclock had

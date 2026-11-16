@@ -106,10 +106,11 @@ export async function proxy(request: NextRequest) {
     effectivePath.startsWith('/teams') ||
     (effectivePath.startsWith('/venu') && !isVenuApply) ||
     effectivePath.startsWith('/dialer') ||
-    /* The MIA board is worked by reps on their Team Center account, so it
-       reads a Supabase user like /teams does rather than the centers'
-       cookie. */
-    effectivePath.startsWith('/mia')
+    /* The MIA board's API is called from the Team Center and authorises on
+       a Supabase user like /teams does, rather than the centers' cookie.
+       The board itself is a Team Center page now and is covered by the
+       /teams prefix above. */
+    effectivePath.startsWith('/api/mia')
 
   if (!needsSupabaseAuth) {
     /* The Creative Center's front door is its own sign-in — one login per
@@ -224,18 +225,6 @@ export async function proxy(request: NextRequest) {
       supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
       return res
     }
-  }
-
-  /* The MIA board — same account as Team Center, no second sign-in.
-
-     Any signed-in rep may open it: moving a card is the job, and the route
-     behind it is what stops a rep adding or deleting one. Sending them to
-     the Team Center login with `next` set means they land back here rather
-     than on a dashboard they did not ask for. */
-  if (pathname.startsWith('/mia') && !user) {
-    const res = NextResponse.redirect(new URL(`/teams/login?next=${encodeURIComponent(pathname)}`, request.url))
-    supabaseResponse.cookies.getAll().forEach(c => res.cookies.set(c.name, c.value))
-    return res
   }
 
   // Protect /venu — same credentials as Teams, but its own sign-in page
