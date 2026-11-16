@@ -161,8 +161,6 @@ export interface ReportData {
       sharedAdAccounts: number
       unmatchedAdSpend: Cents
       errors: string[]
-      accruedCommission: Cents
-      nextPayday: ISODate | null
     }
     filters: ReportFilters
     window: PeriodWindow

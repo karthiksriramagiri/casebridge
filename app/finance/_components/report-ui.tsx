@@ -512,37 +512,6 @@ export function OpexTable({ report }: { report: ReportData }) {
   )
 }
 
-/** What the report could not know, said out loud. */
-export function DataGaps({ report }: { report: ReportData }) {
-  const g = report.meta.gaps
-  const notes: string[] = []
-  if (g.accruedCommission > 0) {
-    notes.push(
-      `${formatUSD(g.accruedCommission)} of commission has been earned on cases already signed but is not in intake cost yet — it reaches a paycheck${g.nextPayday ? ` on ${g.nextPayday}` : ' at the next pay run'}.`,
-    )
-  }
-  if (g.payRatesMissing)
-    notes.push('The Team Center pay-rate table could not be read, so base pay falls back to the standard rate for everyone — commission is unaffected.')
-  if (g.unmatchedAdSpend > 0)
-    notes.push(
-      `${formatUSD(g.unmatchedAdSpend)} of advertising ran on campaigns whose names carry no firm's code, so nothing in the campaign said whose it was. It is charged to the firms live on its ad account instead — name the campaign after the firm, or add its code in lib/finance/campaigns.ts, and it will go straight there.`,
-    )
-  if (g.sharedAdAccounts > 0)
-    notes.push(
-      `${g.sharedAdAccounts} ad account${g.sharedAdAccounts === 1 ? ' is' : 's are'} billed by more than one firm. That spend is split between them by invoiced revenue, because nothing inside the account separates the firms.`,
-    )
-  for (const e of g.errors) notes.push(e)
-  if (notes.length === 0) return null
-  return (
-    <div className="fin-warn fin-sec">
-      <strong>What these figures cannot see</strong>
-      <ul style={{ margin: '6px 0 0', paddingLeft: 18 }}>
-        {notes.map((n) => <li key={n}>{n}</li>)}
-      </ul>
-    </div>
-  )
-}
-
 /* The earn-out. Deliberately apart from operating profit: it is what a
    contract says is owed, computed from whatever that contract deducts,
    and reading it as the company's margin would be a category error. */

@@ -1,7 +1,7 @@
 import 'server-only'
 import { createClient } from '@supabase/supabase-js'
 import { tokenForAccount } from '@/app/_metrics/ad-accounts'
-import { nextPaymentDate, STANDARD_HOURLY } from '@/lib/pay'
+import { STANDARD_HOURLY, tierCommission } from '@/lib/pay'
 import { campaignCodesFor, codeInCampaign } from '@/lib/finance/campaigns'
 import { financeDay, financeToday } from '@/lib/finance/clock'
 import { basePayByDay, commissionByCase, rateMap, type CaseRow } from '@/lib/finance/worker-cost'
@@ -299,22 +299,42 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
      signs. A case signed today puts its commission in today's intake even
      though payday is a week away. The figure runs ahead of the bank rather
      than behind it, which is the safer direction to be wrong in: it
-     overstates cost slightly and never understates it.
-
-     `accruedCommission` still reports what has been earned and not yet
-     paid, because that gap is worth seeing on its own — it is just no
-     longer the difference between appearing in the report and not. */
-  let accruedCommission = 0
-  let nextPayday: ISODate | null = null
+     overstates cost slightly and never understates it. */
   for (const row of commissionByCase(caseRows)) {
     if (!row.firmId || !firmIds.has(row.firmId) || row.date < COST_START) continue
-    const cents = toCents(row.amount)
-    const paidOn = toISO(nextPaymentDate(new Date(`${row.date}T12:00:00Z`)))
-    if (paidOn > dataAsOf) {
-      accruedCommission += cents
-      if (!nextPayday || paidOn < nextPayday) nextPayday = paidOn
-    }
-    intakeAt(row.date, row.firmId).commissionCents += cents
+    intakeAt(row.date, row.firmId).commissionCents += toCents(row.amount)
+  }
+
+  /* Every signed case costs intake something, including the ones nobody is
+     credited with.
+
+     commissionByCase pays only a case that names a closer, which is right —
+     it is what a rep is owed, and payroll and the commission board read the
+     same function. But 128 of the 656 cases signed to date name no closer at
+     all, and this report was taking every one of them as free: delivered,
+     invoiced, and nothing against them on the cost side. Margin came out
+     best on exactly the cases whose paperwork was worst.
+
+     So a signed case with no closer is still charged here, at the first
+     tier — the least a close can earn. Deliberately the low estimate: the
+     true rate may be a higher tier, never a lower one, so this understates
+     the cost and never the margin.
+
+     Matched on the missing closer rather than on "produced no commission
+     row", because commissionByCase also drops a row it has already counted
+     under the same closer, contact and day. Those are duplicates of a case
+     that HAS been charged, and charging them again here would bill the same
+     close twice.
+
+     Nothing is written back and no rep is paid a penny more for it: this is
+     the company's cost of a case, not somebody's wage. */
+  const unattributedRate = toCents(tierCommission(1).rate)
+  for (const c of caseRows) {
+    if ((c.closer || '').trim()) continue
+    if ((c.caseStatus || '').toLowerCase() === 'replacement') continue
+    const day = financeDay(c.signedAt)
+    if (!day || !c.firmId || !firmIds.has(c.firmId) || day < COST_START) continue
+    intakeAt(day, c.firmId).commissionCents += unattributedRate
   }
 
   // ── Case revenue ────────────────────────────────────────────────────
@@ -451,8 +471,6 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
       sharedAdAccounts,
       unmatchedAdSpend,
       errors,
-      accruedCommission,
-      nextPayday,
     },
   }
 }

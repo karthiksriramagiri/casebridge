@@ -11,7 +11,7 @@ import { ExpenseForm } from '../_components/expense-form'
 import { ReportFilters } from '../_components/report-filters'
 import { SignOutButton } from '../_components/sign-out'
 import {
-  ComparisonTable, CostBreakdown, DataGaps, EarnoutCard, FirmTable, InvoiceTable,
+  ComparisonTable, CostBreakdown, EarnoutCard, FirmTable, InvoiceTable,
   KpiCards, OpexByCategory, OpexTable, PeriodStrip, TargetAttainment, TrendChart,
 } from '../_components/report-ui'
 
@@ -191,7 +191,6 @@ export default async function ReportingCenterPage({
         </div>
       )}
 
-      <DataGaps report={report} />
 
       <p className="fin-note fin-sec">
         Calculation {report.meta.calcVersion} · data from {report.meta.dataStart} to {report.meta.dataAsOf} ·

@@ -68,30 +68,17 @@ export default async function FinanceDashboard(
      they belong to, which is where they can also be changed. */
   const casesHref = `${base}/firms`
 
-  /* What is worth saying out loud. A dashboard that only shows figures
-     makes the reader find the problem; these are the three the figures
-     are usually hiding. */
-  const alerts: { tone: 'neg' | 'flag'; text: string }[] = []
-  const unbilled = ytd.firms.rows.filter((r) => r.metrics.revenue === 0 && r.metrics.totalSpend > 0)
-  if (unbilled.length > 0) {
-    alerts.push({
-      tone: 'neg',
-      text: `${unbilled.map((r) => r.name).join(', ')} ${unbilled.length === 1 ? 'has' : 'have'} ${formatUSD(
-        unbilled.reduce((a, r) => a + r.metrics.totalSpend, 0),
-      )} of cost this year against no invoiced revenue.`,
-    })
-  }
-  const unattributed = ytd.invoices.rows.find((r) => r.kind !== 'invoice')
-  if (unattributed && unattributed.metrics.totalSpend > 0) {
-    alerts.push({
-      tone: 'flag',
-      text: `${formatUSD(unattributed.metrics.totalSpend)} of spend this year falls outside every invoice period, so no invoice carries it.`,
-    })
-  }
-  /* No commission banner. Intake cost is base pay to date plus the
-     commission earned in the window, whenever payday happens to fall —
-     which is the whole answer, so a note qualifying it only invited the
-     reader to adjust a figure that needs no adjusting. */
+  /* No alert banners.
+
+     This page used to top its figures with a stack of coloured bars — a firm
+     with cost and no invoice, spend falling outside every invoice period,
+     commission not yet paid. They were read as alarms about the numbers
+     underneath when the numbers were already right, and the loudest of them
+     was wrong: the commission it said was missing had been in intake cost
+     for weeks.
+
+     The tables below say all of it without a bar. A firm carrying cost
+     against no revenue is a row with a zero in it. */
 
   return (
     <>
@@ -160,16 +147,6 @@ export default async function FinanceDashboard(
         </div>
       </div>
 
-      {alerts.length > 0 && (
-        <div className="fin-sec" style={{ display: 'grid', gap: 8 }}>
-          {alerts.map((a) => (
-            <p key={a.text} className={a.tone === 'neg' ? 'fin-warn' : 'fin-warn'}
-               style={a.tone === 'neg' ? { borderColor: 'var(--neg)', color: 'var(--neg)' } : undefined}>
-              {a.text}
-            </p>
-          ))}
-        </div>
-      )}
 
       <div className="fin-split even fin-sec">
         <section className="fin-card">
