@@ -28,12 +28,17 @@ import { readSessionCookie } from '@/lib/session'
    levels of structure they do not care about. case-bridge.com/reporting is
    the same page, reached directly.
 
-   `adminOnly` is enforced below rather than left to the role allow-list. The
-   list already keeps every non-admin role out of /finance today, but "today"
-   is the problem: a role added later with finance access would silently
-   inherit this page too, and this one was asked for as admin-only.          */
-const APEX_ALIASES: Record<string, { to: string; adminOnly: boolean }> = {
-  '/reporting': { to: '/finance/reporting', adminOnly: true },
+   `roles` is enforced below rather than left to the allow-list alone. The
+   list keeps every other role out of /finance, but a role added later with
+   finance access would silently inherit this page too — so the alias names
+   who may use it outright.
+
+   It is a list rather than an admin flag because this page now has an
+   account of its own: 'reporting' can open the Reporting Center and nothing
+   else, so the report can be handed to someone without handing over the
+   company's books along with it.                                           */
+const APEX_ALIASES: Record<string, { to: string; roles: readonly string[] }> = {
+  '/reporting': { to: '/finance/reporting', roles: ['admin', 'reporting'] },
 }
 
 export async function proxy(request: NextRequest) {
@@ -133,10 +138,10 @@ export async function proxy(request: NextRequest) {
       if (session && !canOpen(session.role, effectivePath)) {
         return NextResponse.rewrite(new URL('/no-access', request.url))
       }
-      /* An admin-only address. A cookie predating roles is treated as
-         admin, the same way canOpen treats it, so one rule governs who an
+      /* A restricted address. A cookie predating roles is treated as admin,
+         the same way canOpen treats it, so one rule governs who an
          unlabelled session is rather than two that can disagree. */
-      if (alias?.adminOnly && (session?.role ?? 'admin') !== 'admin') {
+      if (alias && !alias.roles.includes(session?.role ?? 'admin')) {
         return NextResponse.rewrite(new URL('/no-access', request.url))
       }
     }

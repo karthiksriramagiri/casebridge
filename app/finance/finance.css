@@ -76,6 +76,26 @@
 .fin-h1{font-size:21px; font-weight:600; letter-spacing:-.02em; margin:0}
 .fin-sub{color:var(--ink-3); font-size:13px; margin:3px 0 0}
 .fin-head{display:flex; align-items:flex-start; justify-content:space-between; gap:16px; margin-bottom:22px; flex-wrap:wrap}
+/* The right-hand side of a page header: the as-of line and, on the Reporting
+   Center, the sign-out beside it. Right-aligned and stacked so the figures
+   line stays where the eye already looks for it. */
+.fin-head-r{display:flex; flex-direction:column; align-items:flex-end; gap:8px}
+/* Sign out.
+
+   Quiet on purpose — it is the one control on a page that is otherwise all
+   numbers, and it should not read as something to press. Only the Reporting
+   Center uses it; everywhere else in this center the sidebar carries it. */
+.fin-signout{
+  display:inline-flex; align-items:center; gap:6px;
+  border:1px solid var(--line-2); border-radius:6px; background:var(--card);
+  color:var(--ink-2); font:inherit; font-size:12.5px; line-height:1;
+  padding:7px 11px; cursor:pointer;
+  transition:border-color .12s, color .12s, background .12s;
+}
+.fin-signout svg{width:14px; height:14px; flex:none}
+.fin-signout:hover:not(:disabled){border-color:var(--ink-3); color:var(--ink); background:var(--sunk)}
+.fin-signout:focus-visible{outline:2px solid var(--accent); outline-offset:2px}
+.fin-signout:disabled{opacity:.6; cursor:default}
 
 /* figures */
 .fin-figs{display:grid; grid-template-columns:repeat(auto-fit,minmax(158px,1fr));

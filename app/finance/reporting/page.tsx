@@ -9,6 +9,7 @@ import { formatUSD } from '@/lib/finance/reporting/money'
 import { SANGUINE_PER_CASE } from '@/lib/finance/sanguine'
 import { ExpenseForm } from '../_components/expense-form'
 import { ReportFilters } from '../_components/report-filters'
+import { SignOutButton } from '../_components/sign-out'
 import {
   ComparisonTable, CostBreakdown, DataGaps, EarnoutCard, FirmTable, InvoiceTable,
   KpiCards, OpexByCategory, OpexTable, PeriodStrip, TargetAttainment, TrendChart,
@@ -74,9 +75,14 @@ export default async function ReportingCenterPage({
             {report.meta.window.partial && ' · period in progress'}
           </p>
         </div>
-        <p className="fin-sub">
-          Figures through {report.meta.dataAsOf} · {report.meta.firms.length} law firms
-        </p>
+        {/* The as-of line, and the way out. This page has no sidebar, so
+            the sign-out has nowhere else to live — see SignOutButton. */}
+        <div className="fin-head-r">
+          <p className="fin-sub">
+            Figures through {report.meta.dataAsOf} · {report.meta.firms.length} law firms
+          </p>
+          <SignOutButton />
+        </div>
       </div>
 
       <ReportFilters report={report} basePath={here} />

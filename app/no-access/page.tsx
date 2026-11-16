@@ -13,9 +13,10 @@ export const metadata: Metadata = {
 }
 
 export default async function NoAccessPage() {
+  const role = await currentRole()
   return (
     <div className="mx metrics-page">
-      <NoAccess home={homeFor(await currentRole())} />
+      <NoAccess role={role} home={homeFor(role)} />
     </div>
   )
 }

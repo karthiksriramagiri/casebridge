@@ -1,6 +1,7 @@
 'use client'
 
 import { createContext, useContext } from 'react'
+import type { Role } from '@/lib/roles'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    Which center am I, and what do my links look like?
@@ -25,8 +26,9 @@ export type SiteInfo = {
   /** Prefix to put in front of browser-facing hrefs. '' on the subdomain. */
   base: string
   /** Who is signed in. Client components use it to drop controls a restricted
-      account should not see; the real gate is on the server. */
-  role?: 'admin' | 'creative'
+      account should not see; the real gate is on the server. The auth role,
+      not a per-center one — canOpen reads this same value. */
+  role?: Role
 }
 
 const SiteContext = createContext<SiteInfo | null>(null)
