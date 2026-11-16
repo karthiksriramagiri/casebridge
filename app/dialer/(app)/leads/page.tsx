@@ -5,6 +5,7 @@ import { formatResetIn } from '@/lib/ghl-pipelines'
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useCall } from '../../_context/call'
 import type { Lead as CallLead } from '../../_types'
+import { LeadSearch } from '../../_components/ui/lead-search'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -112,31 +113,31 @@ function fmtTime(iso: string | null) {
 
 function callStatusColor(status: string | null) {
   switch (status) {
-    case 'completed':  return 'text-green-600 dark:text-green-400'
-    case 'no-answer':  return 'text-yellow-600 dark:text-yellow-400'
-    case 'busy':       return 'text-orange-500 dark:text-orange-400'
-    case 'failed':     return 'text-red-600 dark:text-red-400'
-    default:           return 'text-gray-400'
+    case 'completed':  return 'text-success'
+    case 'no-answer':  return 'text-warning'
+    case 'busy':       return 'text-orange-500'
+    case 'failed':     return 'text-destructive'
+    default:           return 'text-muted-foreground'
   }
 }
 
 const FIRM_COLORS: Record<string, string> = {
-  'lhp':    'bg-blue-600',
-  'fears':  'bg-purple-600',
+  'lhp':    'bg-primary',
+  'fears':  'bg-primary',
   'jm': 'bg-emerald-600',
 }
 const FIRM_PILL: Record<string, string> = {
-  'lhp':    'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-400',
-  'lhp_s':  'bg-sky-100 text-sky-700 dark:bg-sky-950 dark:text-sky-400',
-  'fears':  'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400',
-  'jm': 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-400',
+  'lhp':    'bg-accent text-primary',
+  'lhp_s':  'bg-accent text-primary',
+  'fears':  'bg-accent text-primary',
+  'jm': 'bg-emerald-100 text-emerald-700',
 }
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 
 const ChevronDown = ({ open }: { open: boolean }) => (
   <svg viewBox="0 0 20 20" fill="currentColor"
-    className={`h-3.5 w-3.5 text-gray-400 transition-transform ${open ? 'rotate-180' : ''}`}>
+    className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${open ? 'rotate-180' : ''}`}>
     <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
   </svg>
 )
@@ -168,14 +169,14 @@ function TranscriptViewer({ tx }: { tx: TranscriptRecord }) {
 
   if (tx.status === 'pending') {
     return (
-      <div className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-400 dark:border-gray-800 dark:bg-gray-900">
+      <div className="flex items-center gap-1.5 rounded-lg border border-border bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
         <MicIcon /> Processing…
       </div>
     )
   }
   if (tx.status === 'failed' || !tx.full_text) {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-500 dark:border-red-900 dark:bg-red-950/20">
+      <div className="rounded-lg border border-destructive/40 bg-destructive/10 px-3 py-2 text-xs text-destructive">
         Transcript unavailable
       </div>
     )
@@ -184,35 +185,35 @@ function TranscriptViewer({ tx }: { tx: TranscriptRecord }) {
   const utterances = tx.utterances ?? []
 
   return (
-    <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-900">
+    <div className="rounded-lg border border-border bg-card">
       <button onClick={() => setOpen(o => !o)}
-        className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-800/40 rounded-lg">
+        className="flex w-full items-center justify-between px-3 py-2 text-xs font-medium text-foreground hover:bg-muted/50 rounded-lg">
         <span className="flex items-center gap-1.5">
           <MicIcon />
           {utterances.length > 0 ? `${utterances.length} utterances` : 'Transcript'}
-          {tx.completed_at && <span className="font-normal text-gray-400">· {fmtDate(tx.completed_at)}</span>}
+          {tx.completed_at && <span className="font-normal text-muted-foreground">· {fmtDate(tx.completed_at)}</span>}
         </span>
         <ChevronDown open={open} />
       </button>
       {open && (
-        <div className="border-t border-gray-100 px-3 py-3 dark:border-gray-800">
+        <div className="border-t border-border px-3 py-3">
           {utterances.length > 0 ? (
             <div className="space-y-2">
               {utterances.map((u, i) => (
                 <div key={i} className={`flex gap-2 text-xs ${u.speaker !== 'Agent' ? 'flex-row-reverse' : ''}`}>
                   <span className={`shrink-0 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                     u.speaker === 'Agent'
-                      ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400'
-                      : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                      ? 'bg-accent text-primary'
+                      : 'bg-accent text-primary'
                   }`}>{u.speaker}</span>
-                  <p className={`flex-1 leading-relaxed text-gray-700 dark:text-gray-300 ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
+                  <p className={`flex-1 leading-relaxed text-foreground ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
                     {u.transcript}
                   </p>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="whitespace-pre-wrap font-mono text-xs text-gray-500">{tx.full_text}</p>
+            <p className="whitespace-pre-wrap font-mono text-xs text-muted-foreground">{tx.full_text}</p>
           )}
         </div>
       )}
@@ -243,6 +244,38 @@ function LeadDetail({
   const [aiSummary, setAiSummary]   = useState<string | null>(null)
   const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null)
   const [loading, setLoading]       = useState(true)
+
+  /* Redoing the intake for someone else in the vehicle.
+
+     A passenger's case is built from the same call — the driver did the
+     talking — so there is nothing new to collect, only a re-read pointed at
+     a different person. The name is typed rather than picked from a list
+     because nothing in GHL holds the passengers as records; the "Passengers
+     in Vehicle" field is free text and often just a count. */
+  const [subjectName, setSubjectName] = useState('')
+  const [subjectRel, setSubjectRel]   = useState('passenger')
+  const [redoState, setRedoState]     = useState<'idle' | 'running' | 'done' | 'error'>('idle')
+  const [redoMsg, setRedoMsg]         = useState('')
+
+  async function redoIntake(subject?: { name: string; relationship?: string }) {
+    setRedoState('running'); setRedoMsg('')
+    try {
+      const res = await fetch('/api/dialer/intake-fill', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contactId: lead.contactId, fresh: true, subject: subject ?? null }),
+      })
+      const d = await res.json()
+      if (d.error) { setRedoState('error'); setRedoMsg(d.error); return }
+      const n = Object.keys(d.written ?? {}).length
+      setRedoState('done')
+      setRedoMsg(subject
+        ? `Intake rewritten for ${subject.name} — ${n} field${n === 1 ? '' : 's'} filled.`
+        : `Intake redone — ${n} field${n === 1 ? '' : 's'} filled.`)
+    } catch (e: any) {
+      setRedoState('error'); setRedoMsg(e?.message ?? 'Run failed')
+    }
+  }
 
   useEffect(() => {
     setLoading(true)
@@ -277,27 +310,27 @@ function LeadDetail({
   return (
     <div className="flex h-full flex-col">
       {/* Header */}
-      <div className="flex items-start justify-between border-b border-gray-200 px-5 py-4 dark:border-gray-800">
+      <div className="flex items-start justify-between border-b border-border px-5 py-4">
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-base font-bold text-gray-900 dark:text-white truncate">
+            <h2 className="text-base font-bold text-foreground truncate">
               {contact?.name ?? lead.name}
             </h2>
-            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${FIRM_PILL[firmSlug] ?? 'bg-gray-100 text-gray-600'}`}>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ${FIRM_PILL[firmSlug] ?? 'bg-muted text-muted-foreground'}`}>
               {firmSlug === 'lhp' ? 'Larry H. Parker' : firmSlug === 'lhp_s' ? 'LHP (Spanish)' : firmSlug === 'jm' ? 'J&M' : 'Fears Law'}
             </span>
-            <span className="shrink-0 rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+            <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
               {stageName}
             </span>
           </div>
-          <div className="mt-1 flex items-center gap-3 text-xs text-gray-500">
+          <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
             {(contact?.phone ?? lead.phone) && <span className="font-mono">{contact?.phone ?? lead.phone}</span>}
             {(contact?.email ?? lead.email) && <span className="truncate">{contact?.email ?? lead.email}</span>}
           </div>
           {displayTags.length > 0 && (
             <div className="mt-1.5 flex flex-wrap gap-1">
               {displayTags.map(t => (
-                <span key={t} className="rounded-full bg-gray-200 px-2 py-0.5 text-[10px] text-gray-600 dark:bg-gray-700 dark:text-gray-300">{t}</span>
+                <span key={t} className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">{t}</span>
               ))}
             </div>
           )}
@@ -306,12 +339,12 @@ function LeadDetail({
           <button
             onClick={onCall}
             disabled={calling || !lead.phone}
-            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-green-500 disabled:opacity-40 disabled:cursor-not-allowed"
+            className="flex items-center gap-1.5 rounded-lg bg-success px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-success disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <PhoneIcon />
             {calling ? 'Calling…' : 'Call'}
           </button>
-          <button onClick={onClose} className="rounded-md p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-gray-800 dark:hover:text-gray-200">
+          <button onClick={onClose} className="rounded-md p-1 text-muted-foreground hover:bg-muted hover:text-muted-foreground">
             <XIcon />
           </button>
         </div>
@@ -327,28 +360,28 @@ function LeadDetail({
               ['Talk time',   fmtDuration(totalSec)],
               ['Transcripts', txCount],
             ] as [string, string | number][]).map(([label, value]) => (
-              <div key={label} className="rounded-lg border border-gray-200 bg-white px-3 py-2.5 dark:border-gray-700 dark:bg-gray-900">
-                <p className="text-[10px] uppercase tracking-wide text-gray-400">{label}</p>
-                <p className="mt-0.5 text-lg font-bold text-gray-900 dark:text-white">{value}</p>
+              <div key={label} className="rounded-lg border border-border bg-card px-3 py-2.5">
+                <p className="text-[10px] uppercase tracking-wide text-muted-foreground">{label}</p>
+                <p className="mt-0.5 text-lg font-bold text-foreground">{value}</p>
               </div>
             ))}
           </div>
 
           {loading && (
             <div className="space-y-2">
-              {[1, 2, 3].map(i => <div key={i} className="h-10 animate-pulse rounded-lg bg-gray-200 dark:bg-gray-800" />)}
+              {[1, 2, 3].map(i => <div key={i} className="h-10 animate-pulse rounded-lg bg-muted" />)}
             </div>
           )}
 
           {/* AI Case Summary — always visible */}
           {!loading && (
-            <div className="rounded-lg border border-cyan-200 bg-cyan-50/60 dark:border-cyan-900 dark:bg-cyan-950/20">
-              <div className="flex items-center justify-between border-b border-cyan-100 px-4 py-2.5 dark:border-cyan-900">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-cyan-700 dark:text-cyan-400">
+            <div className="rounded-lg border border-primary bg-accent/60">
+              <div className="flex items-center justify-between border-b border-primary/30 px-4 py-2.5">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-primary">
                   Case Summary
                 </p>
                 {aiUpdatedAt && (
-                  <p className="text-[10px] text-cyan-600/60 dark:text-cyan-500/50">
+                  <p className="text-[10px] text-primary/60">
                     Updated {fmtDate(aiUpdatedAt)}
                   </p>
                 )}
@@ -360,17 +393,77 @@ function LeadDetail({
                     .map(line => line.replace(/^•\s*/, '').trim())
                     .filter(Boolean)
                     .map((line, i) => (
-                      <li key={i} className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300">
-                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-500" />
+                      <li key={i} className="flex items-start gap-2 text-sm text-foreground">
+                        <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-primary" />
                         {line}
                       </li>
                     ))}
                 </ul>
               ) : (
-                <p className="px-4 py-4 text-sm italic text-gray-400 dark:text-gray-600">
+                <p className="px-4 py-4 text-sm italic text-muted-foreground">
                   No contact has been made yet — a summary will appear here after the first connected call.
                 </p>
               )}
+
+              {/* Redo the intake — for this person, or for someone else who
+                  was in the vehicle. Sits under the summary because that is
+                  where you read what the call actually said and decide the
+                  form is wrong. */}
+              <div className="border-t border-primary/30 px-4 py-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={() => {
+                      if (window.confirm('Redo the entire intake for this contact?\n\nEvery intake field is cleared and re-filled from the calls and texts.'))
+                        redoIntake()
+                    }}
+                    disabled={redoState === 'running'}
+                    className="rounded-md border border-warning/40 px-3 py-1.5 text-xs font-semibold text-warning disabled:opacity-50"
+                  >
+                    {redoState === 'running' ? 'Running…' : 'Redo intake'}
+                  </button>
+
+                  <span className="text-xs text-muted-foreground">or for someone else in the vehicle:</span>
+
+                  <input
+                    value={subjectName}
+                    onChange={e => setSubjectName(e.target.value)}
+                    placeholder="Passenger name"
+                    className="w-44 rounded-md border border-border px-2 py-1.5 text-xs"
+                  />
+                  <select
+                    value={subjectRel}
+                    onChange={e => setSubjectRel(e.target.value)}
+                    className="rounded-md border border-border px-2 py-1.5 text-xs"
+                  >
+                    <option value="passenger">passenger</option>
+                    <option value="front-seat passenger">front-seat passenger</option>
+                    <option value="rear passenger">rear passenger</option>
+                    <option value="driver">driver</option>
+                    <option value="child passenger">child passenger</option>
+                  </select>
+                  <button
+                    onClick={() => {
+                      const n = subjectName.trim()
+                      if (!n) return
+                      if (window.confirm(`Rewrite this contact's intake for ${n} (${subjectRel})?\n\nThe crash facts stay the same; injuries, treatment and personal details become theirs. The current values are replaced.`))
+                        redoIntake({ name: n, relationship: subjectRel })
+                    }}
+                    disabled={redoState === 'running' || !subjectName.trim()}
+                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
+                  >
+                    Redo for passenger
+                  </button>
+                </div>
+
+                {redoMsg && (
+                  <p className={`mt-2 text-xs ${redoState === 'error' ? 'text-destructive' : 'text-emerald-600'}`}>
+                    {redoMsg}
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-muted-foreground">
+                  Both options overwrite this contact&apos;s fields — they do not create a second contact.
+                </p>
+              </div>
             </div>
           )}
 
@@ -379,19 +472,19 @@ function LeadDetail({
             const callsWithChecklist = calls.filter(c => c.checklist && Object.keys(c.checklist).length > 0)
             if (callsWithChecklist.length === 0) return null
             return (
-              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20">
-                <p className="border-b border-emerald-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700 dark:border-emerald-900 dark:text-emerald-400">
+              <div className="rounded-lg border border-emerald-200 bg-emerald-50/60">
+                <p className="border-b border-emerald-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-emerald-700">
                   Call Checklists ({callsWithChecklist.length})
                 </p>
                 <div className="px-4 py-3 space-y-3">
                   {callsWithChecklist.map(call => (
                     <div key={call.call_sid}>
-                      <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-1">
+                      <p className="text-[10px] font-medium text-muted-foreground mb-1">
                         {fmtTime(call.started_at)}{call.rep_identity ? ` · ${call.rep_identity}` : ''}
                       </p>
                       <div className="flex flex-wrap gap-x-4 gap-y-1">
                         {Object.entries(call.checklist!).map(([key, val]) => (
-                          <span key={key} className={`flex items-center gap-1.5 text-xs ${val ? 'text-green-600 dark:text-green-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                          <span key={key} className={`flex items-center gap-1.5 text-xs ${val ? 'text-success' : 'text-muted-foreground'}`}>
                             {val ? '✓' : '✗'}
                             <span className={val ? '' : 'line-through'}>{CHECKLIST_LABELS[key] ?? key}</span>
                           </span>
@@ -417,14 +510,14 @@ function LeadDetail({
             const allTx = [...callTx, ...orphaned]
             if (allTx.length === 0) return null
             return (
-              <div className="rounded-lg border border-violet-200 bg-violet-50/60 dark:border-violet-900 dark:bg-violet-950/20">
-                <p className="border-b border-violet-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-violet-700 dark:border-violet-900 dark:text-violet-400">
+              <div className="rounded-lg border border-primary bg-accent/60">
+                <p className="border-b border-primary/30 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-primary">
                   Transcripts ({allTx.length})
                 </p>
                 <div className="px-4 py-3 space-y-4 max-h-[500px] overflow-y-auto">
                   {allTx.map(tx => (
-                    <div key={tx.id} className="border-b border-violet-100 pb-3 last:border-0 last:pb-0 dark:border-violet-900/50">
-                      <p className="text-[10px] font-medium text-gray-500 dark:text-gray-400 mb-2">
+                    <div key={tx.id} className="border-b border-primary/30 pb-3 last:border-0 last:pb-0">
+                      <p className="text-[10px] font-medium text-muted-foreground mb-2">
                         {fmtTime(tx.startedAt)}{tx.rep ? ` · ${tx.rep}` : ''}{tx.disposition ? ` · ${tx.disposition}` : ''}
                       </p>
                       {(tx.utterances ?? []).length > 0 ? (
@@ -433,17 +526,17 @@ function LeadDetail({
                             <div key={i} className={`flex gap-2 text-xs ${u.speaker !== 'Agent' ? 'flex-row-reverse' : ''}`}>
                               <span className={`shrink-0 self-start rounded px-1.5 py-0.5 text-[10px] font-semibold ${
                                 u.speaker === 'Agent'
-                                  ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-400'
-                                  : 'bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-400'
+                                  ? 'bg-accent text-primary'
+                                  : 'bg-accent text-primary'
                               }`}>{u.speaker}</span>
-                              <p className={`flex-1 leading-relaxed text-gray-700 dark:text-gray-300 ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
+                              <p className={`flex-1 leading-relaxed text-foreground ${u.speaker !== 'Agent' ? 'text-right' : ''}`}>
                                 {u.transcript}
                               </p>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="whitespace-pre-wrap text-xs text-gray-600 dark:text-gray-400">{tx.full_text}</p>
+                        <p className="whitespace-pre-wrap text-xs text-muted-foreground">{tx.full_text}</p>
                       )}
                     </div>
                   ))}
@@ -454,15 +547,15 @@ function LeadDetail({
 
           {/* Case Info (GHL custom fields) */}
           {!loading && contact && contact.customFields.length > 0 && (
-            <div className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-              <p className="border-b border-gray-100 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500 dark:border-gray-800">
+            <div className="rounded-lg border border-border bg-card">
+              <p className="border-b border-border px-4 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Case Info
               </p>
               <div className="px-4 py-3 pb-4 grid grid-cols-2 gap-x-6 gap-y-3">
                 {contact.customFields.map(({ label, value }) => (
                   <div key={label}>
-                    <p className="text-[10px] font-medium uppercase tracking-wide text-gray-400">{label}</p>
-                    <p className="text-sm text-gray-800 break-words dark:text-gray-200">{value}</p>
+                    <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{label}</p>
+                    <p className="text-sm text-foreground break-words">{value}</p>
                   </div>
                 ))}
               </div>
@@ -472,17 +565,17 @@ function LeadDetail({
           {/* Call history */}
           {!loading && (
             <div>
-              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-gray-500">
+              <p className="mb-2.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                 Call History {totalCalls > 0 && `(${totalCalls})`}
               </p>
               {calls.length === 0 ? (
-                <p className="rounded-lg border border-dashed border-gray-200 py-4 text-center text-xs text-gray-400 dark:border-gray-800">
+                <p className="rounded-lg border border-dashed border-border py-4 text-center text-xs text-muted-foreground">
                   No calls recorded yet
                 </p>
               ) : (
                 <div className="space-y-3">
                   {calls.map(call => (
-                    <div key={call.call_sid} className="rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+                    <div key={call.call_sid} className="rounded-lg border border-border bg-card">
                       <div className="flex items-center justify-between px-4 py-2.5">
                         <div className="flex items-center gap-2">
                           <PhoneIcon />
@@ -490,26 +583,26 @@ function LeadDetail({
                             {call.call_status ?? 'unknown'}
                           </span>
                           {call.disposition && (
-                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-400">
+                            <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">
                               {call.disposition}
                             </span>
                           )}
                         </div>
                         <div className="text-right">
-                          <p className="font-mono text-xs text-gray-600 dark:text-gray-300">{fmtDuration(call.duration)}</p>
-                          <p className="text-[10px] text-gray-400">{fmtTime(call.started_at)}</p>
+                          <p className="font-mono text-xs text-muted-foreground">{fmtDuration(call.duration)}</p>
+                          <p className="text-[10px] text-muted-foreground">{fmtTime(call.started_at)}</p>
                         </div>
                       </div>
                       {call.rep_identity && (
-                        <p className="border-t border-gray-100 px-4 py-1.5 text-[10px] capitalize text-gray-400 dark:border-gray-800">
+                        <p className="border-t border-border px-4 py-1.5 text-[10px] capitalize text-muted-foreground">
                           Rep: {call.rep_identity}
                         </p>
                       )}
                       {call.checklist && Object.keys(call.checklist).length > 0 && (
-                        <div className="border-t border-gray-100 px-4 py-2 dark:border-gray-800">
+                        <div className="border-t border-border px-4 py-2">
                           <div className="flex flex-wrap gap-x-3 gap-y-1">
                             {Object.entries(call.checklist).map(([key, val]) => (
-                              <span key={key} className={`flex items-center gap-1 text-[11px] ${val ? 'text-green-600 dark:text-green-400' : 'text-gray-400'}`}>
+                              <span key={key} className={`flex items-center gap-1 text-[11px] ${val ? 'text-success' : 'text-muted-foreground'}`}>
                                 {val ? '✓' : '✗'} {CHECKLIST_LABELS[key] ?? key}
                               </span>
                             ))}
@@ -517,7 +610,7 @@ function LeadDetail({
                         </div>
                       )}
                       {call.recording_url && (
-                        <div className="border-t border-gray-100 px-4 py-2 dark:border-gray-800">
+                        <div className="border-t border-border px-4 py-2">
                           <audio
                             controls
                             className="w-full h-8"
@@ -526,7 +619,7 @@ function LeadDetail({
                         </div>
                       )}
                       {call.transcripts.length > 0 && (
-                        <div className="border-t border-gray-100 px-4 py-2 space-y-2 dark:border-gray-800">
+                        <div className="border-t border-border px-4 py-2 space-y-2">
                           {call.transcripts.map(tx => <TranscriptViewer key={tx.id} tx={tx} />)}
                         </div>
                       )}
@@ -558,16 +651,16 @@ function StageSection({
       onClick={onSelect}
       className={`w-full flex items-center justify-between rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
         isSelected
-          ? 'bg-gray-200 text-gray-900 font-semibold dark:bg-gray-800 dark:text-white'
-          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-800 dark:text-gray-400 dark:hover:bg-gray-900 dark:hover:text-gray-200'
+          ? 'bg-muted text-foreground font-semibold'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
       }`}
     >
       <span className="truncate">{stage.stageName}</span>
       {stage.leadCount > 0 && (
         <span className={`ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
           isSelected
-            ? 'bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
-            : 'bg-gray-200 text-gray-500 dark:bg-gray-800 dark:text-gray-400'
+            ? 'bg-muted-foreground/30 text-foreground'
+            : 'bg-muted text-muted-foreground'
         }`}>
           {stage.leadCount}
         </span>
@@ -683,19 +776,43 @@ export default function LeadsPage() {
     <div className="flex h-full">
 
       {/* ── Column 1: Firm / stage nav ── */}
-      <div className="w-52 shrink-0 flex-col border-r border-gray-200 bg-gray-50 dark:border-gray-800 dark:bg-gray-950 overflow-y-auto flex">
-        <div className="border-b border-gray-200 px-3 py-3 dark:border-gray-800">
-          <p className="text-[11px] font-semibold uppercase tracking-wider text-gray-500">All Leads</p>
+      <div className="w-56 shrink-0 flex-col border-r border-border bg-muted/50 overflow-y-auto flex">
+        {/* Search the whole book, not the open stage.
+
+            The filter below the stage header searches inside whichever
+            stage is open, which only helps once you already know the
+            stage. This finds anybody. Picking a result opens them in the
+            detail pane with their calls, recordings and transcripts. */}
+        <div className="border-b border-border bg-card p-2.5">
+          <LeadSearch
+            onPick={(hit) => {
+              setSelectedLead({
+                id: hit.contactId,
+                name: hit.name,
+                phone: hit.phone,
+                email: hit.email ?? '',
+                company: '',
+                source: hit.firm ?? '',
+                tags: [],
+                lastActivity: '',
+                contactId: hit.contactId,
+              })
+            }}
+            placeholder="Search any lead…"
+          />
+        </div>
+        <div className="border-b border-border px-3 py-2.5">
+          <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Browse by stage</p>
         </div>
 
         {campsLoading && (
           <div className="p-3 space-y-2">
-            {[1,2,3,4,5].map(i => <div key={i} className="h-6 animate-pulse rounded bg-gray-200 dark:bg-gray-800" />)}
+            {[1,2,3,4,5].map(i => <div key={i} className="h-6 animate-pulse rounded bg-muted" />)}
           </div>
         )}
 
         {campsError && (
-          <div className="m-2 rounded-md border border-red-300 bg-red-50 p-3 text-[11px] leading-relaxed text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300">
+          <div className="m-2 rounded-md border border-destructive/40 bg-destructive/10 p-3 text-[11px] leading-relaxed text-red-800">
             <p className="font-semibold">Can't load stages from GHL</p>
             <p className="mt-1">{campsError}</p>
             <p className="mt-1 opacity-80">Reloading won't help — it spends more quota.</p>
@@ -707,13 +824,13 @@ export default function LeadsPage() {
             const firmCamps = byFirm[slug] ?? []
             const firmName  = firmCamps[0]?.firm ?? slug
             const open      = openFirms.has(slug)
-            const dot       = FIRM_COLORS[slug] ?? 'bg-gray-400'
+            const dot       = FIRM_COLORS[slug] ?? 'bg-muted-foreground/30'
 
             return (
               <div key={slug}>
                 <button
                   onClick={() => toggleFirm(slug)}
-                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-900"
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs font-semibold text-foreground hover:bg-muted"
                 >
                   <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
                   <span className="flex-1 truncate">{firmName}</span>
@@ -739,14 +856,14 @@ export default function LeadsPage() {
       </div>
 
       {/* ── Column 2: Lead list ── */}
-      <div className={`flex flex-col border-r border-gray-200 bg-white dark:border-gray-800 dark:bg-gray-950 transition-all ${selectedLead ? 'w-64 shrink-0' : 'flex-1'}`}>
+      <div className={`flex flex-col border-r border-border bg-card transition-all ${selectedLead ? 'w-64 shrink-0' : 'flex-1'}`}>
         {/* Stage header */}
         {selectedStage ? (
-          <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
+          <div className="border-b border-border px-4 py-3">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-gray-900 dark:text-white">{selectedStage.stageName}</p>
-                <p className="text-[11px] text-gray-400">
+                <p className="text-sm font-semibold text-foreground">{selectedStage.stageName}</p>
+                <p className="text-[11px] text-muted-foreground">
                   {selectedStage.firm} · {selectedStage.leadCount} leads
                   {search && leadsTotal !== selectedStage.leadCount && ` · ${leadsTotal} match`}
                 </p>
@@ -756,20 +873,20 @@ export default function LeadsPage() {
             {/* Search */}
             <div className="relative mt-2">
               <svg viewBox="0 0 20 20" fill="currentColor"
-                className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400">
+                className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground">
                 <path fillRule="evenodd" d="M8 4a4 4 0 100 8 4 4 0 000-8zM2 8a6 6 0 1110.89 3.476l4.817 4.817a1 1 0 01-1.414 1.414l-4.816-4.816A6 6 0 012 8z" clipRule="evenodd" />
               </svg>
               <input
                 value={search}
                 onChange={e => handleSearch(e.target.value)}
                 placeholder="Filter…"
-                className="w-full rounded-lg border border-gray-200 bg-gray-50 py-1.5 pl-7 pr-3 text-xs text-gray-900 placeholder-gray-400 focus:border-cyan-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:placeholder-gray-600"
+                className="w-full rounded-lg border border-border bg-muted/50 py-1.5 pl-7 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus:border-primary focus:outline-none"
               />
             </div>
           </div>
         ) : (
-          <div className="border-b border-gray-200 px-4 py-3 dark:border-gray-800">
-            <p className="text-sm text-gray-400">Select a stage</p>
+          <div className="border-b border-border px-4 py-3">
+            <p className="text-sm text-muted-foreground">Select a stage</p>
           </div>
         )}
 
@@ -778,14 +895,14 @@ export default function LeadsPage() {
           {leadsLoading && (
             <div className="p-3 space-y-2">
               {Array.from({ length: 10 }).map((_, i) => (
-                <div key={i} className="h-14 animate-pulse rounded-lg bg-gray-100 dark:bg-gray-800" />
+                <div key={i} className="h-14 animate-pulse rounded-lg bg-muted" />
               ))}
             </div>
           )}
 
           {!leadsLoading && filteredLeads.length === 0 && (
             <div className="flex h-40 items-center justify-center text-center">
-              <p className="text-xs text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 {search ? `No results for "${search}"` : 'No leads in this stage.'}
               </p>
             </div>
@@ -795,28 +912,28 @@ export default function LeadsPage() {
             <button
               key={lead.id}
               onClick={() => setSelectedLead(lead)}
-              className={`w-full border-b border-gray-100 px-4 py-3 text-left transition-colors hover:bg-gray-50 dark:border-gray-800/40 dark:hover:bg-gray-900/50 ${
+              className={`w-full border-b border-border px-4 py-3 text-left transition-colors hover:bg-muted/50 ${
                 selectedLead?.id === lead.id
-                  ? 'border-l-2 border-l-cyan-500 bg-cyan-50/60 dark:bg-cyan-950/20'
+                  ? 'border-l-2 border-l-cyan-500 bg-accent/60'
                   : ''
               }`}
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-sm font-medium text-gray-800 dark:text-gray-200">{lead.name}</p>
-                  <p className="font-mono text-xs text-gray-500">{lead.phone}</p>
+                  <p className="truncate text-sm font-medium text-foreground">{lead.name}</p>
+                  <p className="font-mono text-xs text-muted-foreground">{lead.phone}</p>
                   {lead.email && !selectedLead && (
-                    <p className="truncate text-xs text-gray-400">{lead.email}</p>
+                    <p className="truncate text-xs text-muted-foreground">{lead.email}</p>
                   )}
                   {lead.tags.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
                       {lead.tags.slice(0, 2).map(t => (
-                        <span key={t} className="rounded bg-gray-100 px-1 py-0.5 text-[10px] text-gray-500 dark:bg-gray-800 dark:text-gray-500">{t}</span>
+                        <span key={t} className="rounded bg-muted px-1 py-0.5 text-[10px] text-muted-foreground">{t}</span>
                       ))}
                     </div>
                   )}
                 </div>
-                <span className="shrink-0 text-[10px] text-gray-400">{i + 1}</span>
+                <span className="shrink-0 text-[10px] text-muted-foreground">{i + 1}</span>
               </div>
             </button>
           ))}
@@ -827,7 +944,7 @@ export default function LeadsPage() {
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-50 dark:border-gray-700 dark:text-gray-400 dark:hover:bg-gray-900"
+                className="rounded-lg border border-border px-4 py-2 text-xs font-medium text-muted-foreground hover:bg-muted/50 disabled:opacity-50"
               >
                 {loadingMore ? 'Loading…' : `Load more (${leadsTotal - leads.length} remaining)`}
               </button>
@@ -838,7 +955,7 @@ export default function LeadsPage() {
 
       {/* ── Column 3: Lead detail ── */}
       {selectedLead && selectedStage && (
-        <div className="flex-1 overflow-hidden bg-gray-50 dark:bg-gray-950">
+        <div className="flex-1 overflow-hidden bg-muted">
           <LeadDetail
             lead={selectedLead}
             firmSlug={selectedStage.firmSlug}
