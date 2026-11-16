@@ -436,30 +436,39 @@ export default function PayPage() {
         )}
 
         {/* Estimated paycheck */}
-        <div className="bg-primary rounded-xl px-6 py-5 mb-6">
-          <div className="flex items-start justify-between gap-4">
+        {/* The figure the page exists for.
+
+            It was a solid blue panel, which made the page open on a block
+            of colour and put every number on it in white-on-blue — the
+            replacement-window note worst of all, amber on blue. The accent
+            tint keeps it first without that. */}
+        <div className="mb-6 rounded-xl border border-primary/25 bg-accent px-6 py-5">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <p className="text-primary-foreground/75 text-xs font-semibold uppercase tracking-wide mb-1">Estimated Next Paycheck</p>
-              <p className="text-4xl font-bold text-primary-foreground">{fmt$(pay.totalEstimated)}</p>
-              <p className="text-primary-foreground/75 text-xs mt-1">{period.nextPayDate}</p>
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-accent-foreground/80">
+                Estimated next paycheck
+              </p>
+              <p className="text-4xl font-bold text-accent-foreground">{fmt$(pay.totalEstimated)}</p>
+              <p className="mt-1 text-xs text-accent-foreground/75">{period.nextPayDate}</p>
             </div>
-            <div className="text-right space-y-1.5 shrink-0">
-              <p className="text-sm text-primary-foreground/85">
-                <span className="text-primary-foreground font-semibold">{totalHours.toFixed(2)}h</span> × ${pay.hourlyRate}/hr
-                <span className="text-primary-foreground font-semibold ml-1">= {fmt$(pay.hourlyEarnings)}</span>
+            <div className="shrink-0 space-y-1.5 text-right text-sm text-accent-foreground/85">
+              <p>
+                <span className="font-semibold text-accent-foreground">{totalHours.toFixed(2)}h</span> × ${pay.hourlyRate}/hr
+                <span className="ml-1 font-semibold text-accent-foreground">= {fmt$(pay.hourlyEarnings)}</span>
               </p>
               {cases.eligibleThisPeriod.length > 0 && (
-                <p className="text-sm text-primary-foreground/85">
-                  <span className="text-primary-foreground font-semibold">{cases.eligibleThisPeriod.length}</span> signed =
-                  <span className="text-primary-foreground font-semibold ml-1">{fmt$(pay.commissionSigned)}</span>
+                <p>
+                  <span className="font-semibold text-accent-foreground">{cases.eligibleThisPeriod.length}</span> signed =
+                  <span className="ml-1 font-semibold text-accent-foreground">{fmt$(pay.commissionSigned)}</span>
                 </p>
               )}
             </div>
           </div>
           {cases.pending.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-white/10">
-              <p className="text-warning/70 text-xs font-semibold">
-                ⏳ {cases.pending.length} case{cases.pending.length !== 1 ? 's' : ''} ({fmt$(pendingTotal)}) still in replacement window — not included yet.
+            <div className="mt-4 border-t border-primary/20 pt-4">
+              <p className="text-xs font-semibold text-foreground/70">
+                ⏳ {cases.pending.length} case{cases.pending.length !== 1 ? 's' : ''} ({fmt$(pendingTotal)}) still in the
+                replacement window — not included yet.
               </p>
             </div>
           )}

@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import {
+  BadgeDollarSign,
   Award, BadgeCheck, BarChart3, BookOpen, CalendarClock, ClipboardCheck, ClipboardList,
   Clock, FileQuestion, Flame, GraduationCap, Home, LayoutGrid, LogOut, Mic, Repeat,
   Timer, Trophy, UserPlus, Users, Wallet, type LucideIcon,
@@ -80,6 +81,7 @@ const ADMIN_GROUPS: Group[] = [
       { href: '/teams/admin/response-times', label: 'Response Times', icon: Timer },
       { href: '/teams/admin/team-metrics', label: 'Team Metrics', icon: Trophy },
       { href: '/teams/admin/cases', label: 'Cases', icon: ClipboardList },
+      { href: '/teams/admin/commissions', label: 'Commissions', icon: BadgeDollarSign },
     ],
   },
   {

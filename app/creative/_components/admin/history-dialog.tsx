@@ -6,7 +6,7 @@ import { Button } from '@/app/creative/_ui/button'
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@/app/creative/_ui/dialog'
 import { downloadCsv, matchesQuery, Pill, SearchBox, Thumb } from '@/app/creative/_components/admin/shared'
 import { formatDate, num, pct, totalsFor, usd } from '@/app/creative/_lib/metrics'
-import { firmName } from '@/app/_metrics/firms'
+import { laneLabel } from '@/app/creative/_lib/types'
 import type { Creative } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
 
@@ -36,6 +36,9 @@ export type HistoryRow = {
   /** The creative's name as it was recorded, even if the ad is long gone. */
   name: string
   adset?: string
+  /* The lane the row belongs to: a firm code, or a firm plus the ad account
+     for a firm that runs in more than one — see laneOf. Rendered through
+     laneLabel, so a plain firm code still reads as the firm's name. */
   firm?: string
   /** The day it happened — killed, or launched. */
   date: string
@@ -71,7 +74,7 @@ export function HistoryDialog({
       : { key, dir: key === 'name' || key === 'firm' ? 1 : -1 }))
 
   const found = useMemo(
-    () => rows.filter((r) => matchesQuery(query, [r.name, r.adset, r.firm, r.firm ? firmName(r.firm) : '', r.tag, r.date, r.c?.adId, r.c?.angle])),
+    () => rows.filter((r) => matchesQuery(query, [r.name, r.adset, r.firm, r.firm ? laneLabel(r.firm) : '', r.tag, r.date, r.c?.adId, r.c?.angle])),
     [rows, query],
   )
 
@@ -81,7 +84,7 @@ export function HistoryDialog({
       switch (sort.key) {
         case 'date': return r.date
         case 'name': return r.name.toLowerCase()
-        case 'firm': return (r.firm ? firmName(r.firm) : '').toLowerCase()
+        case 'firm': return (r.firm ? laneLabel(r.firm) : '').toLowerCase()
         case 'spend': return t ? t.spend : null
         case 'leads': return t ? t.leads : null
         case 'cpl': return t?.cpl ?? null
@@ -134,7 +137,7 @@ export function HistoryDialog({
                 ...ranked.map((r) => {
                   const t = r.c ? totalsFor(r.c, 'max') : null
                   return [
-                    r.date, r.name, r.adset ?? '', r.firm ? firmName(r.firm) : '', r.tag ?? '',
+                    r.date, r.name, r.adset ?? '', r.firm ? laneLabel(r.firm) : '', r.tag ?? '',
                     t ? Math.round(t.spend) : '', t ? t.leads : '',
                     t?.cpl != null ? Math.round(t.cpl) : '',
                     t ? t.rangeAcquisitions : '',
@@ -188,7 +191,7 @@ export function HistoryDialog({
                           </div>
                         </div>
                       </td>
-                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{r.firm ? firmName(r.firm) : '—'}</td>
+                      <td className="whitespace-nowrap px-3 py-2.5 text-muted-foreground">{r.firm ? laneLabel(r.firm) : '—'}</td>
                       {t ? (
                         <>
                           <td className="px-3 py-2.5 text-right tabular-nums">{usd(t.spend, 0)}</td>

@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, use } from 'react'
 import Link from 'next/link'
 import { format } from 'date-fns'
 import ScoreChart from '@/app/teams/ScoreChart'
-import { PageHeader, PageBody } from '@/app/teams/_components/shared'
+import { PageBody, PageHeader, StatCard } from '@/app/teams/_components/shared'
 
 interface ScoreEvent {
   id: string
@@ -148,7 +148,7 @@ export default function RepPerformancePage({ params }: { params: Promise<{ repId
   if (loading) return (
     <div className="space-y-6">
       <Link href="/teams/admin/performance" className="text-sm text-primary hover:underline">← Performance</Link>
-      <div className="text-center py-16 text-muted-foreground text-sm">Loading...</div>
+      <div className="text-center py-16 text-muted-foreground text-sm">Loading…</div>
     </div>
   )
 
@@ -165,44 +165,29 @@ export default function RepPerformancePage({ params }: { params: Promise<{ repId
 
   return (
     <>
-      {/* The score sits in the header rather than in the body: it is what the
-          page is about, and a reader should not have to look past a nav to
-          find it. The back link goes in the header too, so returning to the
-          list is in the same place on every detail page in the center. */}
       <PageHeader
         title={repName}
-        description="Today's score, and every event behind it."
+        description="Today's score, the events behind it, and the run of days before."
         actions={
-          <div className={`shrink-0 rounded-lg border px-5 py-2.5 text-center ${scoreBg(data.todayScore)}`}>
-            <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
-              Today
-            </p>
-            <p className={`text-2xl font-semibold tabular-nums ${scoreColor(data.todayScore)}`}>
-              {Math.round(data.todayScore * 100) / 100}
-            </p>
-          </div>
+          <Link href="/teams/admin/performance" className="text-sm text-primary hover:underline">
+            ← All reps
+          </Link>
         }
       />
       <PageBody>
-        <Link href="/teams/admin/performance" className="text-sm text-primary hover:underline">
-          ← All reps
-        </Link>
-
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-3">
-        <div className="bg-card rounded-xl border border-border px-5 py-4">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Total Closes</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{data.closes}</p>
+        {/* The score first and largest — it is the question this page
+            exists to answer — with what built it on the row beneath. */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <StatCard
+            label="Today's score"
+            value={String(Math.round(data.todayScore * 100) / 100)}
+            tone={data.todayScore >= 4.5 ? 'good' : data.todayScore < 2 ? 'bad' : undefined}
+            hint="base plus events"
+          />
+          <StatCard label="Total closes" value={String(data.closes)} />
+          <StatCard label="Base score" value={String(data.baseScore)} />
+          <StatCard label="Events today" value={String(data.todayEvents.length)} />
         </div>
-        <div className="bg-card rounded-xl border border-border px-5 py-4">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Base Score</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{data.baseScore}</p>
-        </div>
-        <div className="bg-card rounded-xl border border-border px-5 py-4">
-          <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Events Today</p>
-          <p className="text-2xl font-bold text-foreground mt-1">{data.todayEvents.length}</p>
-        </div>
-      </div>
 
       {/* Score chart */}
       <ScoreChart dailyScores={data.dailyScores} />

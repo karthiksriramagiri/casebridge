@@ -74,6 +74,7 @@ export async function GET() {
       notes: r.notes ?? '',
       sourceCreativeId: r.source_ad_id ?? undefined,
       firm: r.firm ?? undefined,
+      account: r.account ?? undefined,
       format: r.format ?? undefined,
       visualCode: r.visual_code ?? undefined,
       verbalCode: r.verbal_code ?? undefined,
@@ -104,6 +105,7 @@ export async function GET() {
       disclaimer: r.disclaimer ?? undefined,
       sourceCreativeId: r.source_ad_id ?? undefined,
       firm: r.firm ?? undefined,
+      account: r.account ?? undefined,
       format: r.format ?? undefined,
       visualCode: r.visual_code ?? undefined,
       verbalCode: r.verbal_code ?? undefined,
@@ -174,6 +176,7 @@ export async function POST(req: NextRequest) {
       disclaimer: body.disclaimer ?? null,
       source_ad_id: body.sourceCreativeId ?? null,
       firm: body.firm ?? null,
+      account: body.account ?? null,
       format: body.format ?? null,
       visual_code: upperCode(body.visualCode),
       verbal_code: upperCode(body.verbalCode),
@@ -210,6 +213,7 @@ export async function POST(req: NextRequest) {
       notes: String(body.notes ?? ''),
       source_ad_id: body.sourceCreativeId ?? null,
       firm: body.firm ?? null,
+      account: body.account ?? null,
       format: body.format ?? null,
       /* Stored upper-case so a code typed as "a3" still joins to the angle
          reports, which only ever speak in capitals. */
@@ -248,7 +252,13 @@ export async function POST(req: NextRequest) {
     ...(dropped.length
       ? {
           dropped,
-          setup: `Saved without ${dropped.join(', ')} — run supabase/migration_creative_names.sql in the Supabase SQL editor.`,
+          /* Which migration adds the column, so the message says what to run
+             rather than naming one file for every missing column. */
+          setup: `Saved without ${dropped.join(', ')} — run ${
+            dropped.includes('account')
+              ? 'supabase/migration_creative_assignment_account.sql'
+              : 'supabase/migration_creative_names.sql'
+          } in the Supabase SQL editor.`,
         }
       : {}),
   })
@@ -274,6 +284,7 @@ export async function PATCH(req: NextRequest) {
   if (task) {
     set('disclaimer', body.disclaimer)
     set('firm', body.firm)
+    set('account', body.account)
     set('format', body.format)
     set('batch', body.batch)
     set('script', body.script)
@@ -293,6 +304,7 @@ export async function PATCH(req: NextRequest) {
   } else {
     set('angle', body.angle)
     set('firm', body.firm)
+    set('account', body.account)
     set('format', body.format)
     set('batch', body.batch)
     if (body.priority !== undefined) patch.priority = clampPriority(body.priority)

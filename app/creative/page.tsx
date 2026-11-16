@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { headers } from 'next/headers'
 import { getSession } from '@/lib/session'
+import { homeFor } from '@/app/_metrics/access'
 import { siteRootForHost } from '@/app/_metrics/site-root'
 import { WORKSPACE_LANDING } from './_lib/workspaces'
 import { CreativeLogin } from './_components/login'
@@ -25,7 +26,13 @@ export default async function CreativeCenterHome() {
 
   if (session.isLoggedIn) {
     const role = session.role ?? 'admin'
-    redirect(base + WORKSPACE_LANDING[role])
+    /* Only the roles that have a workspace here. An account that does not —
+       the Reporting Center's — is sent to its own home rather than bounced
+       into a lock screen by a redirect into a center it cannot open. The
+       proxy already refuses it this URL; this is the same answer given by
+       the page, so the two cannot disagree. */
+    const landing = WORKSPACE_LANDING[role as keyof typeof WORKSPACE_LANDING]
+    redirect(landing ? base + landing : homeFor(role))
   }
 
   return <CreativeLogin base={base} />

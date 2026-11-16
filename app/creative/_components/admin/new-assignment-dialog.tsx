@@ -15,7 +15,8 @@ import { uploadFile } from '@/app/creative/_lib/uploads'
 import { PriorityStars } from './priority-stars'
 import { RequestPicker } from './request-picker'
 import {
-  ASSIGNMENT_FIRMS, CREATIVE_FORMATS, CREATIVE_TYPES,
+  ASSIGNMENT_FIRMS, CREATIVE_FORMATS, CREATIVE_TYPES, LANE_KEYS,
+  laneAccount, laneAssignmentFirm, laneCode,
   type AssignmentFirm, type AssignmentType, type CreativeFormat,
 } from '@/app/creative/_lib/types'
 
@@ -51,6 +52,7 @@ export function NewAssignmentDialog({
     angle: string
     notes: string
     firm?: AssignmentFirm
+    account?: string
     format?: CreativeFormat
     visualCode?: string
     verbalCode?: string
@@ -67,7 +69,16 @@ export function NewAssignmentDialog({
 }) {
   const [title, setTitle] = useState('')
   const [type, setType] = useState<AssignmentType>('New Concept')
-  const [firm, setFirm] = useState<AssignmentFirm>(ASSIGNMENT_FIRMS[0])
+  /* The firm and the ad account are picked together, as one choice.
+
+     Jacoby & Meyers runs in both accounts, so "JM" on its own does not say
+     which board the brief belongs on or which account the person launching
+     it has to be sitting in. The dropdown offers the lanes — JM (ASD) and
+     JM (CSD) — and the two halves are read back off it. The ad name is
+     built from the firm half only: the account is not part of the name. */
+  const [lane, setLane] = useState<string>(LANE_KEYS[0])
+  const firm = laneAssignmentFirm(lane) ?? ASSIGNMENT_FIRMS[0]
+  const account = laneAccount(lane)
   const [format, setFormat] = useState<CreativeFormat>('BR')
   const [visualCode, setVisualCode] = useState(NONE)
   const [verbalCode, setVerbalCode] = useState(NONE)
@@ -222,6 +233,7 @@ export function NewAssignmentDialog({
               angle: derivedAngle,
               notes,
               firm,
+              account,
               format,
               visualCode: visualCode === NONE ? undefined : visualCode,
               verbalCode: verbalCode === NONE ? undefined : verbalCode,
@@ -295,10 +307,14 @@ export function NewAssignmentDialog({
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Firm" htmlFor="a-firm">
-              <Select value={firm} onValueChange={(v) => setFirm(v as AssignmentFirm)}>
-                <SelectTrigger id="a-firm" className="w-full"><SelectValue /></SelectTrigger>
+              <Select value={lane} onValueChange={setLane}>
+                <SelectTrigger id="a-firm" className="w-full">
+                  <SelectValue>{(v: string) => laneCode(v)}</SelectValue>
+                </SelectTrigger>
                 <SelectContent>
-                  {ASSIGNMENT_FIRMS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                  {LANE_KEYS.map((l) => (
+                    <SelectItem key={l} value={l}>{laneCode(l)}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>

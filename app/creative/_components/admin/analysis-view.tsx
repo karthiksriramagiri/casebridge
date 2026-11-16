@@ -213,10 +213,12 @@ export function AnalysisView() {
   const COLUMNS = useMemo(() => columnsFor(hasOutcomes), [hasOutcomes])
   const rangeLabel = RANGES.find((r) => r.key === range)?.label ?? ''
 
-  /* Firms run inside one ad account, so the list narrows with the account
-     above it — otherwise the picker offers a firm that cannot appear under
-     the current selection. Ordered by the canonical FIRMS list rather than
-     alphabetically, so a firm and its Spanish board stay adjacent. */
+  /* The firm list narrows with the account above it, so the picker never
+     offers a firm that cannot appear under the current selection. The two
+     compose rather than overlap: Jacoby & Meyers runs in both accounts, so
+     picking an account and then the firm is how you get to one of its two
+     halves. Ordered by the canonical FIRMS list rather than alphabetically,
+     so a firm and its Spanish board stay adjacent. */
   const firms = useMemo(() => {
     const present = new Set(
       creatives.filter((c) => account === 'all' || c.account === account).map((c) => c.firm),
@@ -375,6 +377,9 @@ export function AnalysisView() {
         type: 'Double Down',
         angle: c.angle,
         sourceCreativeId: c.id,
+        /* Same ad set as the winner, so the same account — which is what
+           decides whether it queues under Jacoby & Meyers (ASD) or (CSD). */
+        account: c.account,
       })
     }
     toast(

@@ -355,6 +355,162 @@ export const FIRM_KEY_LABEL: Record<FirmKey, string> = {
   JM_SP: 'Jacoby & Meyers [SPANISH]',
 }
 
+/* ═══════════════════════════════════════════════════════════════════════════
+   Lanes — a firm inside one ad account
+
+   Jacoby & Meyers now runs in both Meta accounts: Accident Support Desk, the
+   original one, and Collision Support Desk, its own. The boards in this
+   center are worked one account at a time — you sit inside an account in Ads
+   Manager and do its ads — so a single "Jacoby & Meyers" block is no longer a
+   list anybody can work. It mixes two accounts, and the only way to tell
+   which row belongs to which is to read each row's account.
+
+   So the boards group on a lane rather than on a firm: the firm, plus the
+   account when that firm runs in more than one. A lane is written to the
+   screen as the firm with the account in brackets — Jacoby & Meyers (ASD) and
+   Jacoby & Meyers (CSD) — and the two read as two separate lists.
+
+   A lane is a plain string, and a firm that runs in one account IS its firm
+   code unchanged. That is deliberate: every board that already grouped on a
+   firm code keeps working on Larry H. Parker without a special case, and
+   nothing stored has to be migrated.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* The account as it is written in brackets. Short, because it is appended to
+   a firm name that is already long, and these are the initials the team says
+   out loud. Keyed on the account key every creative row carries. */
+export const ACCOUNT_TAG: Record<string, string> = {
+  asd: 'ASD',
+  jm: 'CSD',
+}
+
+/** Accounts in the order the boards read them — the original account first. */
+export const ACCOUNT_ORDER = ['asd', 'jm'] as const
+
+/** The account as a person says it, for a tooltip or a label with room. */
+export const ACCOUNT_NAME: Record<string, string> = {
+  asd: 'Accident Support Desk',
+  jm: 'Collision Support Desk',
+}
+
+/* Which firms are cut per account. Only the firms that actually run in more
+   than one: splitting Larry H. Parker would be two headings with one of them
+   always empty. Add a firm here the day its ads appear in a second account. */
+export const SPLIT_FIRMS: readonly FirmKey[] = ['JM', 'JM_SP']
+
+/* The account a split firm's work belonged to before the split.
+
+   Jacoby & Meyers ran in one account — its own, which the center shows under
+   the brand its ads run as, Collision Support Desk — until its ads started
+   appearing in Accident Support Desk as well. Every brief raised before that
+   has no account recorded on it, and all of them were for that one account.
+
+   Reading a blank as "unknown" would file all of them under a third heading
+   that stands for nothing, so a blank resolves to the firm's own account
+   instead. A firm absent from this map has no home account, and a blank
+   stays blank. */
+export const FIRM_HOME_ACCOUNT: Partial<Record<FirmKey, string>> = {
+  JM: 'jm',
+  JM_SP: 'jm',
+}
+
+/* Separator between the firm and the account inside a lane. Not a character
+   that appears in a firm code or in an account key, so the two halves can
+   always be taken back apart. */
+const LANE_SEP = '@'
+
+/** Whether this firm's boards are cut per ad account. */
+export const isSplitFirm = (code: string | undefined | null) => {
+  const k = firmKey(code)
+  return !!k && SPLIT_FIRMS.includes(k)
+}
+
+/* The grouping key for a board lane.
+
+   Either spelling of the firm goes in and the canonical FirmKey comes out, so
+   a live ad (JM_SP) and the brief that produced it (JM [SPANISH]) land on the
+   same lane instead of in two blocks — the same normalisation firmKey has
+   always done, with the account added.
+
+   A firm that runs in one account is its FirmKey unchanged, and a firm this
+   app has no key for — FL, EBL, BL, or an unattributed '—' — is passed
+   through as it came so it still groups as itself. */
+export function laneOf(firm: string | undefined | null, account?: string | undefined | null): string {
+  const k = firmKey(firm)
+  if (!k) return firm ?? ''
+  if (!SPLIT_FIRMS.includes(k)) return k
+  const acct = account || FIRM_HOME_ACCOUNT[k]
+  return acct ? `${k}${LANE_SEP}${acct}` : k
+}
+
+/** The firm half of a lane — a FirmKey, for every firm that has one. */
+export const laneFirm = (lane: string) => lane.split(LANE_SEP)[0]
+
+/** The account half, or undefined on a lane that is not split. */
+export const laneAccount = (lane: string): string | undefined => lane.split(LANE_SEP)[1]
+
+/** The firm as a person says it, from either spelling. Falls back to the code
+    so FL, EBL and BL — which have no long name — still read as themselves. */
+export function firmText(code: string | undefined | null): string {
+  const k = firmKey(code)
+  return k ? FIRM_KEY_LABEL[k] : (code || '—')
+}
+
+/** The lane as a heading: the firm, with the account in brackets when split. */
+export function laneLabel(lane: string): string {
+  const acct = laneAccount(lane)
+  const tag = acct ? ACCOUNT_TAG[acct] ?? acct.toUpperCase() : ''
+  return tag ? `${firmText(laneFirm(lane))} (${tag})` : firmText(laneFirm(lane))
+}
+
+/* Reading order. Firms in the canonical order so a firm and its Spanish board
+   stay adjacent, and inside a firm the accounts in ACCOUNT_ORDER — so the two
+   Jacoby lists always read ASD then CSD and the eye learns where to look.
+   Anything unattributed sorts last. */
+export function laneRank(lane: string): number {
+  const k = firmKey(laneFirm(lane))
+  const firm = k ? FIRM_KEYS.indexOf(k) : FIRM_KEYS.length
+  const acct = laneAccount(lane)
+  const i = acct ? ACCOUNT_ORDER.indexOf(acct as (typeof ACCOUNT_ORDER)[number]) : -1
+  return firm * 10 + (i === -1 ? 0 : i)
+}
+
+/* Every lane the boards lay out, in reading order — four firms, six lanes.
+   Used by the pages that show a block per lane whether or not it has anything
+   in it, and by the forms that ask which lane a brief is for. */
+export const LANE_KEYS: readonly string[] = FIRM_KEYS.flatMap((f) =>
+  SPLIT_FIRMS.includes(f) ? ACCOUNT_ORDER.map((a) => laneOf(f, a)) : [f],
+)
+
+/* A FirmKey back to the spelling the assignment board stores.
+
+   The board's own fields carry 'LHP [SPANISH]' while an ad name carries
+   LHP_SP, and the two have to meet somewhere or the Spanish lists split in
+   two. A lane normalises to the key; this is the way back out, for the forms
+   that write a brief. */
+export const FIRM_KEY_SPELLING: Record<FirmKey, AssignmentFirm> = {
+  LHP: 'LHP',
+  LHP_SP: 'LHP [SPANISH]',
+  JM: 'JM',
+  JM_SP: 'JM [SPANISH]',
+}
+
+/** The firm half of a lane, spelled the way a brief stores it. */
+export function laneAssignmentFirm(lane: string): AssignmentFirm | undefined {
+  const k = firmKey(laneFirm(lane))
+  return k ? FIRM_KEY_SPELLING[k] : undefined
+}
+
+/* A lane as the firm dropdowns show it: the short code a brief carries, with
+   the account in brackets. Those selects have always shown the code rather
+   than the long name, because the code is what gets typed into Ads Manager. */
+export function laneCode(lane: string): string {
+  const firm = laneAssignmentFirm(lane) ?? laneFirm(lane)
+  const acct = laneAccount(lane)
+  const tag = acct ? ACCOUNT_TAG[acct] ?? acct.toUpperCase() : ''
+  return tag ? `${firm} (${tag})` : firm
+}
+
 /* The production style, and the angle family it draws its hooks from.
 
    These are the same six families the Angles page ranks, named by the segment
@@ -386,6 +542,13 @@ export type Assignment = {
   angle: string
   /** Which firm the cut is for. */
   firm?: AssignmentFirm
+  /* Which Meta ad account it launches into — 'asd' | 'jm'. Only meaningful
+     for a firm that runs in more than one; see SPLIT_FIRMS. It is not part of
+     the ad name, which is why it is its own field rather than something read
+     back out of `firm`: the name carries JM either way, and the account is
+     which of the two JM boards the brief belongs on. Absent on every brief
+     raised before Jacoby & Meyers had a second account. */
+  account?: string
   /** Production style — BR | HYB | BNR | AIUGC | ANM | IMG. */
   format?: CreativeFormat
   /** Visual hook code, e.g. A3. Always from `format`'s family. */

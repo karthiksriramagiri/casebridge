@@ -18,8 +18,8 @@ import { useStore } from '@/app/creative/_lib/store'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { HistoryDialog, type HistoryRow as LaunchHistoryRow } from '@/app/creative/_components/admin/history-dialog'
 import {
-  ASSIGNMENT_FIRMS, firmLabel,
-  type Assignment, type AssignmentFirm, type Creative,
+  laneLabel, laneOf, laneRank,
+  type Assignment, type Creative,
 } from '@/app/creative/_lib/types'
 import { firmOf } from '@/app/_metrics/firms'
 import { cn } from '@/lib/utils'
@@ -36,18 +36,15 @@ import { cn } from '@/lib/utils'
    pool; giving it a date moves it onto that day's list. Nothing is copied,
    which means nothing can drift.
 
-   Grouped by firm throughout, because a launch session is done one ad account
-   at a time — you sit in Larry H. Parker and do its ads, then move on. A list
-   sorted by anything else makes someone hop between accounts all morning.
-   ═══════════════════════════════════════════════════════════════════════════ */
+   Grouped by lane throughout — a firm inside one ad account — because a
+   launch session is done one account at a time: you sit in Larry H. Parker
+   and do its ads, then move on. A list sorted by anything else makes someone
+   hop between accounts all morning.
 
-/* A firm with nothing in it is still shown while scheduling, so the four
-   accounts always read in the same order and the eye learns where to look. */
-const FIRM_ORDER: readonly string[] = [...ASSIGNMENT_FIRMS]
-const firmRank = (f: string | undefined) => {
-  const i = FIRM_ORDER.indexOf(f ?? '')
-  return i === -1 ? FIRM_ORDER.length : i
-}
+   Jacoby & Meyers runs in both accounts now, so it is two lanes rather than
+   one: Jacoby & Meyers (ASD) and Jacoby & Meyers (CSD). The brief carries
+   which, so a card cannot send someone into the wrong account.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 const byPriority = (a: Assignment, b: Assignment) =>
   (b.priority ?? 3) - (a.priority ?? 3) || a.order - b.order
@@ -102,10 +99,13 @@ export default function LaunchListsPage() {
   const groupByFirm = (list: Assignment[]) => {
     const map = new Map<string, Assignment[]>()
     for (const a of list) {
-      const key = a.firm ?? ''
+      /* The lane, not the firm: which of the two Jacoby & Meyers accounts a
+         card is for decides which Ads Manager tab the person launching it
+         has to be in, and that cannot be read off the ad name. */
+      const key = a.firm ? laneOf(a.firm, a.account) : ''
       map.set(key, [...(map.get(key) ?? []), a])
     }
-    return [...map.entries()].sort(([a], [b]) => firmRank(a) - firmRank(b) || a.localeCompare(b))
+    return [...map.entries()].sort(([a], [b]) => laneRank(a) - laneRank(b) || a.localeCompare(b))
   }
 
   /* Cuts that share an ad set, shown as one ad set.
@@ -210,7 +210,7 @@ export default function LaunchListsPage() {
         id: l.id,
         name,
         adset: c?.adset,
-        firm: c?.firm ?? firmOf(name),
+        firm: laneOf(c?.firm ?? firmOf(name), c?.account),
         date: l.doneAt ?? l.date,
         c,
         tag: l.status === 'done' ? kind : `Queued · ${kind}`,
@@ -229,7 +229,7 @@ export default function LaunchListsPage() {
         id: a.id,
         name,
         adset: a.adsetName ?? c?.adset,
-        firm: c?.firm ?? firmOf(name),
+        firm: laneOf(c?.firm ?? firmOf(name), c?.account),
         date: a.launchDate ?? a.createdAt,
         c,
         tag: a.status === 'Winner Ad' ? 'Winner' : 'From brief',
@@ -275,7 +275,7 @@ export default function LaunchListsPage() {
           by: phase === 'ready' ? 'Jason' : 'The K-Team',
           url: typeof window === 'undefined' ? '' : window.location.href,
           groups: groupByFirm(list).map(([firm, items]) => ({
-            firm: firmLabel(firm as AssignmentFirm),
+            firm: laneLabel(firm),
             adsets: items.map((a) => ({
               name: a.adsetName || a.title,
               ads: [a.creativeName || a.title],
@@ -341,7 +341,7 @@ export default function LaunchListsPage() {
                 downloadCsv(`launch-${date}.csv`, [
                   ['Firm', 'Title', 'Batch', 'Format', 'Visual', 'Verbal', 'Priority', 'Status'],
                   ...[...scheduled, ...launched].map((a) => [
-                    firmLabel(a.firm), a.title, a.batch ?? '', a.format ?? '',
+                    laneLabel(laneOf(a.firm, a.account)), a.title, a.batch ?? '', a.format ?? '',
                     a.visualCode ?? '', a.verbalCode ?? '', String(a.priority ?? 3), a.status,
                   ]),
                 ])
@@ -442,7 +442,7 @@ export default function LaunchListsPage() {
                 groupByFirm(pool).map(([firm, items]) => (
                   <FirmGroup
                     key={firm || 'none'}
-                    firm={firm}
+                    lane={firm}
                     items={items}
                     pickedCount={items.filter((i) => picked.has(i.id)).length}
                     onSelectAll={() => {
@@ -498,7 +498,7 @@ export default function LaunchListsPage() {
                 </EmptyState>
               ) : (
                 groupByFirm(scheduled).map(([firm, items]) => (
-                  <FirmGroup key={firm || 'none'} firm={firm} items={items} defaultOpen>
+                  <FirmGroup key={firm || 'none'} lane={firm} items={items} defaultOpen>
                     {byAdset(items).map(([key, group]) => {
                       const rows = group.map((a) => (
                         <Row key={a.id} a={a} onOpen={() => setOpenId(a.id)}>
@@ -534,7 +534,7 @@ export default function LaunchListsPage() {
                     Launched on {formatDate(date)} <span className="font-normal">· {launched.length}</span>
                   </h2>
                   {groupByFirm(launched).map(([firm, items]) => (
-                    <FirmGroup key={firm || 'none'} firm={firm} items={items} muted defaultOpen>
+                    <FirmGroup key={firm || 'none'} lane={firm} items={items} muted defaultOpen>
                       {items.map((a) => (
                         <Row key={a.id} a={a} muted onOpen={() => setOpenId(a.id)}>
                           <div className="flex shrink-0 items-center gap-1">
@@ -597,9 +597,10 @@ export default function LaunchListsPage() {
    Selection and the picked count stay live while a group is closed: closing a
    firm hides its rows, it does not drop what you had chosen inside it. */
 function FirmGroup({
-  firm, items, children, onSelectAll, muted, defaultOpen = false, pickedCount = 0,
+  lane, items, children, onSelectAll, muted, defaultOpen = false, pickedCount = 0,
 }: {
-  firm: string
+  /** Firm code, or firm + account for a firm that runs in more than one. */
+  lane: string
   items: Assignment[]
   children: React.ReactNode
   onSelectAll?: () => void
@@ -620,7 +621,7 @@ function FirmGroup({
           className="flex min-w-0 flex-1 items-center gap-2 text-left"
         >
           <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
-          <span className="truncate text-sm font-medium">{firmLabel(firm)}</span>
+          <span className="truncate text-sm font-medium">{laneLabel(lane)}</span>
           <span className="shrink-0 text-xs text-muted-foreground">{items.length}</span>
           {urgent > 0 && <Pill tone="amber">{urgent} urgent</Pill>}
           {pickedCount > 0 && <Pill tone="blue">{pickedCount} picked</Pill>}

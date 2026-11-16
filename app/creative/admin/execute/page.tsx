@@ -18,8 +18,8 @@ import { useStore } from '@/app/creative/_lib/store'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { NotifyDoneButton, type NotifyDone } from '@/app/creative/_components/admin/notify-done'
 import {
-  FIRM_KEYS, FIRM_KEY_LABEL, firmKey, RELAUNCH_TYPE,
-  type Assignment, type Creative, type FirmKey, type KillItem, type WatchItem,
+  LANE_KEYS, laneLabel, laneOf, RELAUNCH_TYPE,
+  type Assignment, type Creative, type KillItem, type WatchItem,
 } from '@/app/creative/_lib/types'
 import type { StoredWatch } from '@/app/creative/_lib/board-api'
 import { cn } from '@/lib/utils'
@@ -34,13 +34,19 @@ import { cn } from '@/lib/utils'
    because nothing put them side by side.
 
    So this compiles them. Nothing here is a new list: it is the kill list, the
-   watch list, the live account and the launch list, cut by firm and stacked
+   watch list, the live account and the launch list, cut by lane and stacked
    in the order the meeting runs. Ticking something here does the same thing
    as ticking it on its own page, because it is the same record.
+
+   A lane is a firm inside one ad account. The meeting is run one account at a
+   time — whoever is carrying it out has that account open in Ads Manager —
+   and Jacoby & Meyers now runs in both, so it gets a block each: Jacoby &
+   Meyers (ASD) and Jacoby & Meyers (CSD).
    ═══════════════════════════════════════════════════════════════════════════ */
 
 type FirmBlockData = {
-  key: FirmKey
+  /** Firm code, or firm + account for a firm that runs in more than one. */
+  key: string
   toKill: { k: KillItem; c: Creative }[]
   /** The ones still to do — the done ones stay on screen, struck through. */
   killPending: { k: KillItem; c: Creative }[]
@@ -85,12 +91,38 @@ export default function ExecutePage() {
   const [query, setQuery] = useState('')
 
   const firms = useMemo<FirmBlockData[]>(() => {
-    const mine = (code: string | undefined, key: FirmKey) => firmKey(code) === key
+    /* Whether a row belongs in this block. Both halves have to match: a
+       Jacoby & Meyers ad in Accident Support Desk is not part of the
+       Collision Support Desk meeting, even though both ads say JM. The two
+       firm spellings meet inside laneOf, so an ad (JM) and a brief
+       (JM [SPANISH]) land on the same lane as each other. */
+    const mine = (code: string | undefined, account: string | undefined, key: string) =>
+      laneOf(code, account) === key
 
-    return FIRM_KEYS.map((key) => {
+    /* The lanes the meeting actually has, read off the account rather than
+       laid out from a fixed list.
+
+       A fixed list put "Jacoby & Meyers [SPANISH] (ASD)" on the page with
+       nothing in it and nothing behind it — there are no Spanish ads in
+       either account at the moment, so the heading was a claim about an
+       account that does not hold one. A lane earns its block by having ads
+       switched on in it, or something on one of the day's lists.
+
+       Ordered off LANE_KEYS, so the ones that are here still read in the
+       same order and the eye learns where to look. A firm with no FirmKey —
+       FL, EBL, or an unattributed '—' — has no lane and is left out, which
+       is what this page has always done with them. */
+    const present = new Set<string>()
+    const mark = (c: Creative | undefined) => { if (c) present.add(laneOf(c.firm, c.account)) }
+    for (const c of creatives) if (isDelivering(c)) mark(c)
+    for (const k of kill) if (k.addedAt === date || k.doneAt === date) mark(getCreative(k.creativeId))
+    for (const w of watch) if (w.date === date || w.date === addDays(date, -1)) mark(getCreative(w.creativeId))
+    for (const a of assignments) if (a.launchDate === date && a.firm) present.add(laneOf(a.firm, a.account))
+
+    return LANE_KEYS.filter((key) => present.has(key)).map((key) => {
       /* Only what is switched on counts as the current structure — a paused
          ad is not part of the account anyone is about to discuss. */
-      const live = creatives.filter((c) => mine(c.firm, key) && !killedIds.has(c.id) && isDelivering(c))
+      const live = creatives.filter((c) => mine(c.firm, c.account, key) && !killedIds.has(c.id) && isDelivering(c))
 
       /* Left in the order they arrived, done or not. Sorting the ticked
          ones to the bottom meant a row jumped away from the cursor the
@@ -107,7 +139,7 @@ export default function ExecutePage() {
          see its own work and undo a mistake. */
       const toKill = kill
         .filter((k) => k.addedAt === date || k.doneAt === date)
-        .flatMap((k) => { const c = getCreative(k.creativeId); return c && mine(c.firm, key) ? [{ k, c }] : [] })
+        .flatMap((k) => { const c = getCreative(k.creativeId); return c && mine(c.firm, c.account, key) ? [{ k, c }] : [] })
 
       /* The account is built out of ad sets, so the meeting counts ad sets.
          Counting ads double-counted a set holding three cuts and made a
@@ -123,7 +155,7 @@ export default function ExecutePage() {
       /* Switched on at both levels — the ad's own switch and its ad set's.
          An ad paused in Ads Manager is not part of the structure anyone is
          about to discuss, and it holds no budget. */
-      const switchedOn = creatives.filter((c) => mine(c.firm, key) && isDelivering(c))
+      const switchedOn = creatives.filter((c) => mine(c.firm, c.account, key) && isDelivering(c))
       const sets = new Map<string, Creative[]>()
       for (const c of switchedOn) {
         const k = adsetKey(c)
@@ -200,7 +232,7 @@ export default function ExecutePage() {
       const launching = assignments
         .filter((a) =>
           a.launchDate === date
-          && mine(a.firm, key)
+          && mine(a.firm, a.account, key)
           && (a.status === 'Launching' || a.status === 'Ad Launched' || a.status === 'Winner Ad'))
         .sort((a, b) => (b.priority ?? 3) - (a.priority ?? 3))
 
@@ -258,7 +290,7 @@ export default function ExecutePage() {
         watchSets: groupBy(
           watch.filter((w) => w.date === date).flatMap((w) => {
             const c = getCreative(w.creativeId)
-            return c && mine(c.firm, key) ? [{ w, c }] : []
+            return c && mine(c.firm, c.account, key) ? [{ w, c }] : []
           }),
           (r) => r.c,
         ),
@@ -269,10 +301,10 @@ export default function ExecutePage() {
         toKill,
         watchToday: watch
           .filter((w) => w.date === date)
-          .flatMap((w) => { const c = getCreative(w.creativeId); return c && mine(c.firm, key) ? [{ w, c }] : [] }),
+          .flatMap((w) => { const c = getCreative(w.creativeId); return c && mine(c.firm, c.account, key) ? [{ w, c }] : [] }),
         watchYesterday: watch
           .filter((w) => w.date === addDays(date, -1))
-          .flatMap((w) => { const c = getCreative(w.creativeId); return c && mine(c.firm, key) ? [{ w, c }] : [] }),
+          .flatMap((w) => { const c = getCreative(w.creativeId); return c && mine(c.firm, c.account, key) ? [{ w, c }] : [] }),
         killPending: toKill.filter((r) => r.k.status === 'pending'),
         live,
         liveSets,
@@ -327,7 +359,12 @@ export default function ExecutePage() {
   const shownFirms = useMemo(() => {
     const q = query.trim()
     if (!q) return firms
-    const ad = (c: Creative) => [c.convention, c.name, c.adId, c.adset, c.angle, c.accountLabel]
+    const ad = (c: Creative) => [
+      c.convention, c.name, c.adId, c.adset, c.angle,
+      /* The lane as the headings write it, so typing ASD or CSD narrows the
+         meeting to one account — the full account name is matched beside it. */
+      laneLabel(laneOf(c.firm, c.account)), c.accountLabel,
+    ]
     const set = (g: { adset: string; ads?: Creative[]; items?: { c: Creative }[] }) =>
       [g.adset, ...(g.ads ?? []).flatMap(ad), ...(g.items ?? []).flatMap((r) => ad(r.c))]
     const out = firms.map((f) => ({
@@ -361,7 +398,7 @@ export default function ExecutePage() {
     groups: firms
       .filter((f) => f.toKill.some((r) => r.k.status !== 'pending'))
       .map((f) => ({
-        firm: FIRM_KEY_LABEL[f.key],
+        firm: laneLabel(f.key),
         adsets: f.killSets
           .map((g) => ({ name: g.adset, ads: g.items.filter((r) => r.k.status !== 'pending').map((r) => r.c.convention || r.c.name) }))
           .filter((g) => g.ads.length > 0),
@@ -378,7 +415,7 @@ export default function ExecutePage() {
     groups: firms
       .filter((f) => f.launching.some((a) => a.status !== 'Launching'))
       .map((f) => ({
-        firm: FIRM_KEY_LABEL[f.key],
+        firm: laneLabel(f.key),
         adsets: f.launching
           .filter((a) => a.status !== 'Launching')
           .map((a) => ({ name: a.adsetName || a.title, ads: [a.creativeName || a.title] })),
@@ -394,7 +431,7 @@ export default function ExecutePage() {
     <div className="flex flex-col">
       <PageHeader
         title="Execute"
-        description="The ad meeting, by firm — what comes off, what we are watching, what is running, and what goes live."
+        description="The ad meeting, one firm and ad account at a time — what comes off, what we are watching, what is running, and what goes live."
         actions={
           <>
           <NotifyDoneButton label="Kill list completed — notify Jason" payload={killPayload} disabledReason={notToday} />
@@ -405,10 +442,10 @@ export default function ExecutePage() {
               downloadCsv(`ad-meeting-${date}.csv`, [
                 ['Firm', 'Section', 'Ad', 'Budget', 'Note'],
                 ...firms.flatMap((f) => [
-                  ...f.killSets.map((g) => [FIRM_KEY_LABEL[f.key], 'To kill', g.adset, String(g.freed), g.items[0].k.reason]),
-                  ...f.watchSets.map((g) => [FIRM_KEY_LABEL[f.key], 'To watch', g.adset, '', g.items[0].w.reason]),
-                  ...f.liveSets.map((g) => [FIRM_KEY_LABEL[f.key], 'Current structure', g.adset, String(g.budget), `${g.ads.length} ads`]),
-                  ...f.launching.map((a) => [FIRM_KEY_LABEL[f.key], 'Launching', a.title, '', [a.batch, a.format, a.visualCode, a.verbalCode].filter(Boolean).join(' | ')]),
+                  ...f.killSets.map((g) => [laneLabel(f.key), 'To kill', g.adset, String(g.freed), g.items[0].k.reason]),
+                  ...f.watchSets.map((g) => [laneLabel(f.key), 'To watch', g.adset, '', g.items[0].w.reason]),
+                  ...f.liveSets.map((g) => [laneLabel(f.key), 'Current structure', g.adset, String(g.budget), `${g.ads.length} ads`]),
+                  ...f.launching.map((a) => [laneLabel(f.key), 'Launching', a.title, '', [a.batch, a.format, a.visualCode, a.verbalCode].filter(Boolean).join(' | ')]),
                 ]),
               ])
             }
@@ -516,7 +553,7 @@ function FirmOverview({
         className="flex w-full items-center gap-2 border-b bg-muted/50 px-3 py-2.5 text-left"
       >
         <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
-        <span className="truncate font-semibold">{FIRM_KEY_LABEL[f.key]}</span>
+        <span className="truncate font-semibold">{laneLabel(f.key)}</span>
         <span className="ml-auto flex shrink-0 flex-wrap items-center gap-1">
           {f.killPending.length > 0 && <Pill tone="red">{f.killPending.length} to kill</Pill>}
           {f.watchSets.length > 0 && <Pill tone="amber">{f.watchSets.length} watching</Pill>}
@@ -526,7 +563,7 @@ function FirmOverview({
       </button>
 
       {open && (empty ? (
-        <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing for this firm on {formatDate(date)}.</p>
+        <p className="px-4 py-6 text-center text-sm text-muted-foreground">Nothing for {laneLabel(f.key)} on {formatDate(date)}.</p>
       ) : (
         <div className="divide-y">
           {/* Ad set first, cuts behind a chevron — the same shape as the

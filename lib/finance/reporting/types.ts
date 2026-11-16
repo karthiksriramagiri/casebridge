@@ -211,9 +211,5 @@ export interface FinanceDataset {
     unmatchedAdSpend: Cents
     /** Meta or Supabase calls that failed outright. */
     errors: string[]
-    /* Commission earned on cases already signed whose pay date has not
-       arrived. Not in any cost figure — no money has left — but owed. */
-    accruedCommission: Cents
-    nextPayday: ISODate | null
   }
 }

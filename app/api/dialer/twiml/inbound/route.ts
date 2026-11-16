@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
+import { forwardNumber, startForwardLeg } from '@/lib/dialer/forward'
 
 const VoiceResponse = twilio.twiml.VoiceResponse
 
@@ -65,8 +66,18 @@ export async function POST(req: NextRequest) {
     status:          'ringing',
   }, { onConflict: 'call_sid' })
 
-  // Slack notification — fire and forget
-  const INBOUND_SLACK_WEBHOOK = process.env.SLACK_INBOUND_CALL_WEBHOOK ?? ''
+  /* Slack notification — fire and forget.
+
+     Two spellings of this variable exist in the environment and the two
+     routes that post inbound calls each read a different one:
+     SLACK_INBOUND_CALL_WEBHOOK here, SLACK_INBOUND_CALLS_WEBHOOK in the
+     Quo webhook. Production happens to define both, which is the only
+     reason this has been firing; locally it defines only the plural, so
+     the notification was silently dead in development and would have
+     been dead in production the day somebody tidied the unused-looking
+     one away. Either name works now. */
+  const INBOUND_SLACK_WEBHOOK =
+    (process.env.SLACK_INBOUND_CALL_WEBHOOK ?? process.env.SLACK_INBOUND_CALLS_WEBHOOK ?? '').trim()
   if (INBOUND_SLACK_WEBHOOK) fetch(INBOUND_SLACK_WEBHOOK, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -86,6 +97,36 @@ export async function POST(req: NextRequest) {
     call_status:  'ringing',
     started_at:   new Date().toISOString(),
   }, { onConflict: 'call_sid' })
+
+  /* Ring a real phone too.
+
+     The conference below holds the caller on music until somebody with
+     `startConferenceOnEnter` joins. Until now the only thing that could
+     was a rep with the dialer open in a browser, and when nobody was
+     watching the caller heard music for two minutes and was hung up on.
+     The forward leg rings a phone at the same time; whichever answers
+     first starts the conference and the other is cancelled.
+
+     Fired before the TwiML is returned but deliberately not awaited for
+     its result beyond the sid — the caller must not wait on Twilio's API
+     to hear ringing. Disabled unless DIALER_FORWARD_NUMBER is set. */
+  let forwardSid: string | null = null
+  if (forwardNumber()) {
+    forwardSid = await startForwardLeg({
+      confName, callSid, dialedNumber: to, callerName: contactName, base,
+    })
+    if (forwardSid) {
+      /* Best-effort: the column arrives with migration_inbound_forward.sql
+         and the forward still works without it — it just cannot be
+         cancelled when a rep answers first. */
+      await db.from('dialer_inbound_queue')
+        .update({ forward_call_sid: forwardSid })
+        .eq('call_sid', callSid)
+        .then(({ error }) => {
+          if (error) console.warn('[dialer:inbound] forward_call_sid not stored —', error.message)
+        })
+    }
+  }
 
   // TwiML: put caller into a conference with hold music
   // The conference won't truly start until a rep joins with startConferenceOnEnter=true

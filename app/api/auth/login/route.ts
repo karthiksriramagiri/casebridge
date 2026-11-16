@@ -3,10 +3,10 @@ import { getSession, ROLE_ACCESS, type Role } from '@/lib/session'
 
 /* Accounts. The admin pair is unchanged so nobody's existing sign-in breaks.
 
-   The creative account's password comes from the environment rather than the
-   source: a password in the repo is a password in the git history, and this
-   one is for a person outside the company. With the variable unset the account
-   simply cannot sign in, which is the safe direction to fail. */
+   Every other account's password comes from the environment rather than the
+   source: a password in the repo is a password in the git history forever,
+   and these are handed to people outside the company. With the variable unset
+   the account simply cannot sign in, which is the safe direction to fail. */
 function roleFor(username: string, password: string): Role | null {
   if (username === 'Admin' && password === 'Admin123') return 'admin'
 
@@ -15,6 +15,19 @@ function roleFor(username: string, password: string): Role | null {
   if (creativePass && username.toLowerCase() === creativeUser.toLowerCase() && password === creativePass) {
     return 'creative'
   }
+
+  /* The Reporting Center's own account.
+
+     It opens /reporting and nothing else — see ROLE_ACCESS.reporting. The
+     report is the one page here made to be handed to someone, and until this
+     existed handing it over meant handing over the admin login, which carries
+     the firms, the invoices, operating expenses and rep pay with it. */
+  const reportingUser = (process.env.REPORTING_USER || 'ReportingAdmin').trim()
+  const reportingPass = (process.env.REPORTING_USER_PASSWORD || '').trim()
+  if (reportingPass && username.toLowerCase() === reportingUser.toLowerCase() && password === reportingPass) {
+    return 'reporting'
+  }
+
   return null
 }
 

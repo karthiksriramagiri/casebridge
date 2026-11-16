@@ -12,7 +12,8 @@ import { Textarea } from '@/app/creative/_ui/textarea'
 import { useStore } from '@/app/creative/_lib/store'
 import { uploadFile } from '@/app/creative/_lib/uploads'
 import {
-  ASSIGNMENT_FIRMS, CREATIVE_FORMATS, TASK_TYPES,
+  ASSIGNMENT_FIRMS, CREATIVE_FORMATS, LANE_KEYS, TASK_TYPES,
+  laneAccount, laneAssignmentFirm, laneCode,
   type AssignmentFirm, type CreativeFormat, type KTaskType,
 } from '@/app/creative/_lib/types'
 import { PriorityStars } from './priority-stars'
@@ -41,7 +42,11 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
   const { addKTask, today } = useStore()
   const [title, setTitle] = useState('')
   const [type, setType] = useState<KTaskType>(TASK_TYPES[0])
-  const [firm, setFirm] = useState<AssignmentFirm>(ASSIGNMENT_FIRMS[0])
+  /* Firm and ad account as one choice — see the same note in
+     new-assignment-dialog. The name preview below uses the firm half only. */
+  const [lane, setLane] = useState<string>(LANE_KEYS[0])
+  const firm = laneAssignmentFirm(lane) ?? ASSIGNMENT_FIRMS[0]
+  const account = laneAccount(lane)
   const [format, setFormat] = useState<CreativeFormat>('BR')
   const [visualCode, setVisualCode] = useState(NONE)
   const [verbalCode, setVerbalCode] = useState(NONE)
@@ -135,6 +140,7 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
               type,
               notes,
               firm,
+              account,
               format,
               visualCode: visualCode === NONE ? undefined : visualCode,
               verbalCode: verbalCode === NONE ? undefined : verbalCode,
@@ -154,10 +160,14 @@ export function NewTaskDialog({ open, onOpenChange }: { open: boolean; onOpenCha
 
           <div className="grid gap-3 sm:grid-cols-2">
             <Field label="Firm" htmlFor="t-firm">
-              <Select value={firm} onValueChange={(v) => setFirm(v as AssignmentFirm)}>
-                <SelectTrigger id="t-firm" className="w-full"><SelectValue /></SelectTrigger>
+              <Select value={lane} onValueChange={setLane}>
+                <SelectTrigger id="t-firm" className="w-full">
+                  <SelectValue>{(v: string) => laneCode(v)}</SelectValue>
+                </SelectTrigger>
                 <SelectContent>
-                  {ASSIGNMENT_FIRMS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                  {LANE_KEYS.map((l) => (
+                    <SelectItem key={l} value={l}>{laneCode(l)}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </Field>

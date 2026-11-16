@@ -13,7 +13,8 @@ import { uploadFile } from '@/app/creative/_lib/uploads'
 import { cn } from '@/lib/utils'
 import { useStore, type ManualLaunchInput } from '@/app/creative/_lib/store'
 import {
-  AD_SIZES, ASSIGNMENT_FIRMS, CREATIVE_FORMATS, LAUNCH_STATES,
+  AD_SIZES, ASSIGNMENT_FIRMS, CREATIVE_FORMATS, LANE_KEYS, LAUNCH_STATES,
+  laneAccount, laneAssignmentFirm, laneCode, laneOf,
   type AdSize, type AssignmentFirm, type CreativeFormat, type LaunchState,
 } from '@/app/creative/_lib/types'
 
@@ -55,7 +56,12 @@ export function ManualLaunchDialog({
     return () => { live = false }
   }, [open])
 
-  const [firm, setFirm] = useState<AssignmentFirm>(ASSIGNMENT_FIRMS[0])
+  /* Firm and ad account are one choice: Jacoby & Meyers runs in both, so
+     the dropdown offers JM (ASD) and JM (CSD) and the two halves are read
+     back off it. Only the firm goes into the generated names. */
+  const [lane, setLane] = useState<string>(LANE_KEYS[0])
+  const firm = laneAssignmentFirm(lane) ?? ASSIGNMENT_FIRMS[0]
+  const account = laneAccount(lane)
   const [format, setFormat] = useState<CreativeFormat>('BR')
   const [visualCode, setVisualCode] = useState(NONE)
   const [verbalCode, setVerbalCode] = useState(NONE)
@@ -75,6 +81,8 @@ export function ManualLaunchDialog({
      what is its own — its angles, its size, its file. */
   type SecondCut = {
     firm: AssignmentFirm
+    /** Which ad account this cut launches into — see Assignment.account. */
+    account?: string
     format: CreativeFormat
     visualCode: string
     verbalCode: string
@@ -186,8 +194,12 @@ export function ManualLaunchDialog({
       adsetName: set,
       creativeName: buildCreativeName(parts),
       /* Two ad set names means two ad sets, which is not what VAR is for.
-         Said out loud rather than discovered in Ads Manager. */
-      split: set !== adsetName,
+         Said out loud rather than discovered in Ads Manager.
+
+         Two accounts means two ad sets as well, and that one is invisible in
+         the names — the ad name carries JM whichever account it runs in. So
+         a cut pointed at the other Jacoby & Meyers account warns too. */
+      split: set !== adsetName || x.account !== account,
       sameSeries: shared,
       visualOptions: Object.entries(hooks.visual).filter(([c]) => c.startsWith(cfg.visual)) as [string, string][],
       verbalOptions: Object.entries(hooks.verbal).filter(([c]) => c.startsWith(cfg.verbal)) as [string, string][],
@@ -203,7 +215,7 @@ export function ManualLaunchDialog({
     const from = extras[extras.length - 1]
     return from
       ? { ...from, visualCode: NONE, verbalCode: NONE, file: null, notes: '' }
-      : { firm, format, visualCode: NONE, verbalCode: NONE, size, state, offer, batch, launchDate, budget, file: null, notes: '' }
+      : { firm, account, format, visualCode: NONE, verbalCode: NONE, size, state, offer, batch, launchDate, budget, file: null, notes: '' }
   }
 
   async function send(f: File): Promise<{ url: string; name: string } | null> {
@@ -275,6 +287,7 @@ export function ManualLaunchDialog({
                 tags: { resize: false, asIs: false, disclaimer: null },
                 dailyBudget: Number(x.budget) || 0,
                 firm: x.firm,
+                account: x.account,
                 format: x.format,
                 visualCode: x.visualCode === NONE ? undefined : x.visualCode,
                 verbalCode: x.verbalCode === NONE ? undefined : x.verbalCode,
@@ -299,6 +312,7 @@ export function ManualLaunchDialog({
               tags: { resize: false, asIs: false, disclaimer: null },
               dailyBudget: Number(budget) || 0,
               firm,
+              account,
               format,
               visualCode: visualCode === NONE ? undefined : visualCode,
               verbalCode: verbalCode === NONE ? undefined : verbalCode,
@@ -383,10 +397,14 @@ export function ManualLaunchDialog({
                     {LAUNCH_STATES.map((s) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                   </SelectContent>
                 </Select>
-                <Select value={firm} onValueChange={(v) => setFirm(v as AssignmentFirm)}>
-                  <SelectTrigger className="w-full" aria-label="Firm"><SelectValue /></SelectTrigger>
+                <Select value={lane} onValueChange={setLane}>
+                  <SelectTrigger className="w-full" aria-label="Firm">
+                    <SelectValue>{(v: string) => laneCode(v)}</SelectValue>
+                  </SelectTrigger>
                   <SelectContent>
-                    {ASSIGNMENT_FIRMS.map((f) => <SelectItem key={f} value={f}>{f}</SelectItem>)}
+                    {LANE_KEYS.map((f) => (
+                      <SelectItem key={f} value={f}>{laneCode(f)}</SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -570,10 +588,17 @@ export function ManualLaunchDialog({
                               {LAUNCH_STATES.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
                             </SelectContent>
                           </Select>
-                          <Select value={x.firm} onValueChange={(v) => patchExtra(i, { firm: v as AssignmentFirm })}>
-                            <SelectTrigger className="w-full" aria-label="Firm"><SelectValue /></SelectTrigger>
+                          <Select
+                            value={laneOf(x.firm, x.account)}
+                            onValueChange={(v) => patchExtra(i, { firm: laneAssignmentFirm(v), account: laneAccount(v) })}
+                          >
+                            <SelectTrigger className="w-full" aria-label="Firm">
+                              <SelectValue>{(v: string) => laneCode(v)}</SelectValue>
+                            </SelectTrigger>
                             <SelectContent>
-                              {ASSIGNMENT_FIRMS.map((y) => <SelectItem key={y} value={y}>{y}</SelectItem>)}
+                              {LANE_KEYS.map((y) => (
+                                <SelectItem key={y} value={y}>{laneCode(y)}</SelectItem>
+                              ))}
                             </SelectContent>
                           </Select>
                         </div>

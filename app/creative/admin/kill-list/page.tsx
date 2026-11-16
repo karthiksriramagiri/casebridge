@@ -9,7 +9,8 @@ import { EmptyState, PageHeader, Pill, RangeSelect, SearchBox, StatCard, Thumb }
 import { adsetBudget, adsetKey, formatDate, isDelivering, totalsFor, usd } from '@/app/creative/_lib/metrics'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
-import { FIRMS, firmName } from '@/app/_metrics/firms'
+import { firmName } from '@/app/_metrics/firms'
+import { laneLabel, laneOf, laneRank } from '@/app/creative/_lib/types'
 import type { Creative, KillItem, RangeKey } from '@/app/creative/_lib/types'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
 import { HistoryDialog, type HistoryRow } from '@/app/creative/_components/admin/history-dialog'
@@ -20,20 +21,17 @@ import { cn } from '@/lib/utils'
 /* ═══════════════════════════════════════════════════════════════════════════
    Kill List
 
-   Grouped by firm, like the launch list and the archive, because turning ads
-   off is the same kind of session: you are inside one ad account working
-   through its list, not hopping between four of them by whichever ad happened
-   to be added first.
+   Grouped by lane — a firm inside one ad account — like the launch list and
+   the archive, because turning ads off is the same kind of session: you are
+   inside one ad account working through its list, not hopping between them by
+   whichever ad happened to be added first. Jacoby & Meyers runs in both
+   accounts now, so it reads as two blocks, (ASD) and (CSD), and neither sends
+   anyone into the wrong one.
 
    Two outcomes from here, and they are not the same thing. Killed means it
    did not work. Fatigued means it worked and wore out — worth pulling back
    later, so it is archived apart.
    ═══════════════════════════════════════════════════════════════════════════ */
-
-const firmRank = (code: string) => {
-  const i = FIRMS.findIndex((f) => f.code === code)
-  return i === -1 ? FIRMS.length : i
-}
 
 type Row = { k: KillItem; c: Creative }
 
@@ -127,7 +125,10 @@ export default function KillListPage() {
   const matches = useCallback(
     ({ k, c }: Row) =>
       !q ||
-      [c.convention, c.name, c.adId, c.adset, c.angle, firmName(c.firm), c.accountLabel, k.reason]
+      [c.convention, c.name, c.adId, c.adset, c.angle, firmName(c.firm),
+        /* The lane as the headings write it, so typing ASD or CSD narrows to
+           one account — the full account name is matched below it. */
+        laneLabel(laneOf(c.firm, c.account)), c.accountLabel, k.reason]
         .some((field) => (field ?? '').toLowerCase().includes(q)),
     [q],
   )
@@ -192,15 +193,20 @@ export default function KillListPage() {
   const byFirm = (list: Row[]) => {
     const firms = new Map<string, Map<string, SetGroup>>()
     for (const r of list) {
-      const sets = firms.get(r.c.firm) ?? new Map<string, SetGroup>()
+      /* The lane, not the firm: a Jacoby & Meyers ad in Accident Support
+         Desk and one in Collision Support Desk are two different sessions
+         in two different accounts, and a single block mixing them means
+         reading every row's account to know whether it is yours. */
+      const lane = laneOf(r.c.firm, r.c.account)
+      const sets = firms.get(lane) ?? new Map<string, SetGroup>()
       const k = adsetKey(r.c)
       const g = sets.get(k) ?? { key: k, adset: r.c.adset, items: [] }
       g.items.push(r)
       sets.set(k, g)
-      firms.set(r.c.firm, sets)
+      firms.set(lane, sets)
     }
     return [...firms.entries()]
-      .sort(([a], [b]) => firmRank(a) - firmRank(b) || a.localeCompare(b))
+      .sort(([a], [b]) => laneRank(a) - laneRank(b) || a.localeCompare(b))
       .map(([firm, sets]) => {
         const out = [...sets.values()]
         /* What each set actually frees: nothing unless every delivering cut
@@ -239,7 +245,7 @@ export default function KillListPage() {
           id: k.id,
           name: c?.convention || c?.name || k.creativeId,
           adset: c?.adset,
-          firm: c?.firm,
+          firm: laneOf(c?.firm, c?.account),
           date: k.doneAt ?? k.addedAt,
           c,
           tag: fatigue ? 'Fatigued' : 'Killed',
@@ -263,7 +269,7 @@ export default function KillListPage() {
     by: phase === 'ready' ? 'Jason' : 'The K-Team',
     url: typeof window === 'undefined' ? '' : window.location.href,
     groups: byFirm(phase === 'ready' ? pending : done).map(([firm, sets]) => ({
-      firm: firmName(firm),
+      firm: laneLabel(firm),
       adsets: sets.map((g) => ({ name: g.adset, ads: g.items.map((r) => r.c.convention || r.c.name) })),
     })),
   })
@@ -470,7 +476,7 @@ export default function KillListPage() {
             </EmptyState>
           ) : (
             byFirm(shownPending).map(([firm, sets]) => (
-              <FirmBlock key={firm} firm={firm} sets={sets} columns={columns}>
+              <FirmBlock key={firm} lane={firm} sets={sets} columns={columns}>
                 {sets.map((g) => (
                   <AdsetGroup
                     key={g.key}
@@ -501,7 +507,7 @@ export default function KillListPage() {
                 clear rather than the job in front of you; the actions are
                 the same ones, so it can be cleared from here. */}
             {byFirm(shownOpen).map(([firm, sets]) => (
-              <FirmBlock key={firm} firm={firm} sets={sets} columns={columns} defaultOpen={false}>
+              <FirmBlock key={firm} lane={firm} sets={sets} columns={columns} defaultOpen={false}>
                 {sets.map((g) => (
                   <AdsetGroup
                     key={g.key}
@@ -528,7 +534,7 @@ export default function KillListPage() {
               </span>
             </h2>
             {byFirm(shownDone).map(([firm, sets]) => (
-              <FirmBlock key={firm} firm={firm} sets={sets} columns={columns} muted defaultOpen={false}>
+              <FirmBlock key={firm} lane={firm} sets={sets} columns={columns} muted defaultOpen={false}>
                 {sets.map((g) => (
                   <AdsetGroup
                     key={g.key}
@@ -575,7 +581,7 @@ export default function KillListPage() {
   )
 }
 
-/* One firm's ads, as a table.
+/* One lane's ads — a firm inside one ad account — as a table.
 
    The columns are Creative Analysis's, in the same order, so a figure means
    the same thing and sits in the same place wherever you read it. The list
@@ -586,9 +592,10 @@ export default function KillListPage() {
    The header carries what it costs to leave this firm's ads running — the
    number that decides whether this group is today's job. */
 function FirmBlock({
-  firm, sets, columns, children, muted, defaultOpen = true,
+  lane, sets, columns, children, muted, defaultOpen = true,
 }: {
-  firm: string
+  /** Firm code, or firm + account for a firm that runs in more than one. */
+  lane: string
   sets: readonly { items: Row[]; freed?: number }[]
   columns: MetricColumn[]
   children: React.ReactNode
@@ -620,7 +627,7 @@ function FirmBlock({
       >
         <ChevronRight className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')} aria-hidden />
         <Skull className="size-4 shrink-0 text-muted-foreground" aria-hidden />
-        <span className="truncate text-sm font-medium">{firmName(firm)}</span>
+        <span className="truncate text-sm font-medium">{laneLabel(lane)}</span>
         <span className="shrink-0 text-xs text-muted-foreground">
           {sets.length} ad set{sets.length === 1 ? '' : 's'} · {items.length} ad{items.length === 1 ? '' : 's'}
         </span>

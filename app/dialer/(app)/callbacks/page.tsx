@@ -4,7 +4,11 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '../../_context/auth'
 import { useCall } from '../../_context/call'
 import type { Lead } from '../../_types'
-import { PageBody, PageHeader } from '../../_components/ui/shell'
+import { Phone, Plus } from 'lucide-react'
+import { Button } from '@/app/_ui/button'
+import {
+  Card, CardHeader, PageBody, PageHeader, Pill, Table, TableWrap, Td, Th,
+} from '../../_components/ui/shell'
 
 interface Callback {
   id: string
@@ -36,10 +40,10 @@ const FIRM_TZ: Record<string, string> = { lhp: 'America/Los_Angeles', lhp_s: 'Am
 const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', lhp_s: 'PT', fears: 'CT', jm: 'PT' }
 
 const SOURCE_LABEL: Record<string, string> = { ghl: 'GHL', disposition: 'Dialer', manual: 'Manual' }
-const SOURCE_PILL: Record<string, string> = {
-  ghl:         'bg-orange-100 text-orange-700',
-  disposition: 'bg-accent text-primary',
-  manual:      'bg-muted text-muted-foreground',
+/* Where the callback came from. GHL used an orange borrowed from
+   nowhere; it is amber now, the palette's own. */
+const SOURCE_TONE: Record<string, 'amber' | 'blue' | 'muted'> = {
+  ghl: 'amber', disposition: 'blue', manual: 'muted',
 }
 
 function wallClockToUTC(localStr: string, tz: string): string {
@@ -75,6 +79,37 @@ function fmtTime(iso: string, firm?: string | null) {
     timeZone: tz,
     month: 'short', day: 'numeric',
     hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
+/* The Pacific day a callback falls on — the floor's day, the same one the
+   rest of the book keeps. Grouping on the firm's own timezone would put
+   two callbacks an hour apart under different headings. */
+function pacificDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
+/* What to call that day. "Today" and "Tomorrow" are what a rep actually
+   thinks in; anything further out gets its date. Days already gone are
+   named as overdue, because a callback whose time has passed is not a
+   plan, it is a debt. */
+function dayHeading(day: string): { label: string; overdue: boolean } {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  const tomorrow = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  if (day === today) return { label: 'Today', overdue: false }
+  if (day === tomorrow) return { label: 'Tomorrow', overdue: false }
+  const d = new Date(`${day}T12:00:00Z`)
+  const label = d.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC',
+  })
+  return { label, overdue: day < today }
+}
+
+/** Just the clock part — the day is already the heading above it. */
+function fmtClock(iso: string, firm?: string | null) {
+  const tz = firm ? (FIRM_TZ[firm] ?? 'America/New_York') : 'America/New_York'
+  return new Date(iso).toLocaleTimeString('en-US', {
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
   })
 }
 
@@ -199,6 +234,29 @@ export default function CallbacksPage() {
 
   const now = Date.now()
   const pending = callbacks.filter(c => c.status === 'pending')
+
+  /* Grouped by the day they are due, earliest first, and each day's
+     callbacks in time order within it.
+
+     The flat list was the problem: 460 rows with no breaks in them, most
+     of them long past, so "what do I owe today" could not be read off the
+     page at all. A day heading answers it before anything is scrolled. */
+  const byDay = (() => {
+    const map = new Map<string, Callback[]>()
+    for (const cb of pending) {
+      const day = pacificDay(cb.callback_at)
+      const list = map.get(day) ?? []
+      list.push(cb)
+      map.set(day, list)
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, items]) => ({
+        day,
+        ...dayHeading(day),
+        items: items.sort((x, y) => x.callback_at.localeCompare(y.callback_at)),
+      }))
+  })()
   const completed = callbacks.filter(c => c.status === 'completed' || c.status === 'cancelled')
 
   return (
@@ -207,20 +265,17 @@ export default function CallbacksPage() {
         title="Callbacks"
         description={`${pending.length} upcoming · ${completed.length} completed`}
         actions={
-        <button
-          onClick={() => setShowForm(!showForm)}
-          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-white hover:bg-primary"
-        >
-          + Add Callback
-        </button>
+          <Button onClick={() => setShowForm(!showForm)} variant={showForm ? 'outline' : 'default'}>
+            {showForm ? 'Cancel' : <><Plus aria-hidden /> Add callback</>}
+          </Button>
         }
       />
       <PageBody>
 
       {/* Add Callback Form */}
       {showForm && (
-        <div className="rounded-xl border border-border bg-card shadow-sm p-5 space-y-4">
-          <h3 className="text-sm font-semibold text-foreground">Schedule Callback</h3>
+        <Card className="p-5 space-y-4">
+          <h2 className="text-sm font-semibold">Schedule a callback</h2>
 
           {/* Contact search */}
           {!selectedContact ? (
@@ -317,126 +372,121 @@ export default function CallbacksPage() {
               {submitting ? 'Scheduling…' : 'Schedule Callback'}
             </button>
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Upcoming Callbacks */}
-      <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-        <div className="border-b border-border px-5 py-3">
-          <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Upcoming</h3>
-        </div>
-        {loading ? (
-          <div className="divide-y divide-gray-50">
-            {[1,2,3].map(i => <div key={i} className="h-16 animate-pulse bg-muted/50" />)}
+      {/* One card per day. The flat list could not answer "what do I owe
+          today" without scrolling past everything already missed; a day
+          heading answers it before anything is scrolled. */}
+      {loading ? (
+        <Card>
+          <div className="divide-y">
+            {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse bg-muted/50" />)}
           </div>
-        ) : pending.length === 0 ? (
-          <p className="px-5 py-8 text-center text-sm text-muted-foreground">No upcoming callbacks</p>
-        ) : (
-          <table className="w-full text-sm">
+        </Card>
+      ) : pending.length === 0 ? (
+        <Card>
+          <CardHeader title="Upcoming" />
+          <p className="px-5 py-10 text-center text-sm text-muted-foreground">Nothing scheduled.</p>
+        </Card>
+      ) : byDay.map(({ day, label, overdue, items }) => (
+        <Card key={day} className={overdue ? 'border-destructive/30' : undefined}>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              {label}
+              {overdue && <Pill tone="red">overdue</Pill>}
+            </span>
+          }
+          note={`${items.length} callback${items.length === 1 ? '' : 's'}`}
+        />
+          <TableWrap>
+          <Table>
             <thead>
-              <tr className="border-b border-border">
-                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Notes', 'Assigned To', ''].map(h => (
-                  <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+              <tr>
+                {['Time', 'Lead', 'Phone', 'Firm', 'Source', 'Notes', 'Assigned to', ''].map((h) => (
+                  <Th key={h}>{h}</Th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {pending.map(cb => {
+            <tbody>
+              {items.map(cb => {
                 const isPast = new Date(cb.callback_at).getTime() < now
                 return (
-                  <tr key={cb.id} className="hover:bg-muted/50/50">
-                    <td className="px-5 py-3 font-medium text-foreground">{cb.contact_name}</td>
-                    <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{cb.phone}</td>
-                    <td className="px-5 py-3">
-                      <span className="text-[10px] font-semibold uppercase text-muted-foreground">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
-                    </td>
-                    <td className="px-5 py-3">
-                      <div>
-                        <span className={`text-xs font-medium ${isPast ? 'text-destructive' : 'text-primary'}`}>
-                          {fmtRelative(cb.callback_at)}
-                        </span>
-                        <p className="text-[10px] text-muted-foreground">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</p>
-                      </div>
-                    </td>
-                    <td className="px-5 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${SOURCE_PILL[cb.source] ?? SOURCE_PILL.manual}`}>
-                        {SOURCE_LABEL[cb.source] ?? cb.source}
+                  <tr key={cb.id} className="hover:bg-muted/40">
+                    <Td className="whitespace-nowrap">
+                      <span className={`text-sm font-medium tabular-nums ${isPast ? 'text-destructive' : ''}`}>
+                        {fmtClock(cb.callback_at, cb.firm)}
                       </span>
-                    </td>
-                    <td className="px-5 py-3 text-xs text-muted-foreground max-w-[200px] truncate">
+                      <p className="text-[11px] text-muted-foreground">
+                        {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'} · {fmtRelative(cb.callback_at)}
+                      </p>
+                    </Td>
+                    <Td className="font-medium">{cb.contact_name}</Td>
+                    <Td className="font-mono text-xs text-muted-foreground">{cb.phone}</Td>
+                    <Td className="text-xs uppercase text-muted-foreground">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</Td>
+                    <Td><Pill tone={SOURCE_TONE[cb.source] ?? 'muted'}>{SOURCE_LABEL[cb.source] ?? cb.source}</Pill></Td>
+                    <Td className="max-w-[200px] truncate text-xs text-muted-foreground">
                       {cb.callback_context ? stripHtml(cb.callback_context) : '—'}
-                    </td>
-                    <td className="px-5 py-3 text-xs text-muted-foreground">{cb.owner_rep || '—'}</td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-1.5">
-                        <button
+                    </Td>
+                    <Td className="text-xs text-muted-foreground">{cb.owner_rep || '—'}</Td>
+                    <Td>
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          size="sm"
                           onClick={() => handleCall(cb)}
                           disabled={!deviceReady || callState !== 'idle'}
-                          className="flex items-center gap-1 rounded-lg bg-success px-2.5 py-1.5 text-[11px] font-semibold text-white hover:bg-success disabled:opacity-40 disabled:cursor-not-allowed"
+                          title={!deviceReady ? 'Device not ready' : callState !== 'idle' ? 'Already on a call' : `Call ${cb.contact_name}`}
                         >
-                          <svg viewBox="0 0 20 20" fill="currentColor" className="h-3 w-3">
-                            <path d="M2 3a1 1 0 011-1h2.153a1 1 0 01.986.836l.74 4.435a1 1 0 01-.54 1.06l-1.548.773a11.037 11.037 0 006.105 6.105l.774-1.548a1 1 0 011.059-.54l4.435.74a1 1 0 01.836.986V17a1 1 0 01-1 1h-2C7.82 18 2 12.18 2 5V3z" />
-                          </svg>
-                          Call
-                        </button>
-                        <button
-                          onClick={() => cancelCallback(cb.id)}
-                          className="rounded-lg border border-border px-2 py-1.5 text-[11px] text-muted-foreground hover:border-destructive/40 hover:text-destructive"
-                        >
-                          Cancel
-                        </button>
+                          <Phone aria-hidden /> Call
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => cancelCallback(cb.id)}>Cancel</Button>
                       </div>
-                    </td>
+                    </Td>
                   </tr>
                 )
               })}
             </tbody>
-          </table>
-        )}
-      </div>
+          </Table>
+          </TableWrap>
+        </Card>
+      ))}
 
-      {/* Completed Callbacks */}
+      {/* Completed — kept, and dimmed. What was promised and done is the
+          answer to "did anyone call them back". */}
       {completed.length > 0 && (
-        <div className="rounded-xl border border-border bg-card shadow-sm overflow-hidden">
-          <div className="border-b border-border px-5 py-3">
-            <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Completed</h3>
-          </div>
-          <table className="w-full text-sm">
+        <Card>
+          <CardHeader title="Completed" note={`${completed.length}`} />
+          <TableWrap>
+          <Table>
             <thead>
-              <tr className="border-b border-border">
-                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Completed', 'Result', 'Rep'].map(h => (
-                  <th key={h} className="px-5 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
+              <tr>
+                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Completed', 'Result', 'Rep'].map((h) => (
+                  <Th key={h}>{h}</Th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
-              {completed.map(cb => (
-                <tr key={cb.id} className="hover:bg-muted/50/50 opacity-60">
-                  <td className="px-5 py-3 font-medium text-foreground">{cb.contact_name}</td>
-                  <td className="px-5 py-3 text-muted-foreground font-mono text-xs">{cb.phone}</td>
-                  <td className="px-5 py-3">
-                    <span className="text-[10px] font-semibold uppercase text-muted-foreground">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</span>
-                  </td>
-                  <td className="px-5 py-3 text-xs text-muted-foreground">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</td>
-                  <td className="px-5 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${SOURCE_PILL[cb.source] ?? SOURCE_PILL.manual}`}>
-                      {SOURCE_LABEL[cb.source] ?? cb.source}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-xs text-muted-foreground">{cb.completed_at ? fmtTime(cb.completed_at, cb.firm) : '—'}</td>
-                  <td className="px-5 py-3">
-                    <span className={`inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                      cb.status === 'cancelled' ? 'bg-muted text-muted-foreground' : 'bg-success/15 text-success'
-                    }`}>
+            <tbody>
+              {completed.map((cb) => (
+                <tr key={cb.id} className="text-muted-foreground hover:bg-muted/40">
+                  <Td className="font-medium text-foreground/70">{cb.contact_name}</Td>
+                  <Td className="font-mono text-xs">{cb.phone}</Td>
+                  <Td className="text-xs uppercase">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</Td>
+                  <Td className="text-xs">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</Td>
+                  <Td><Pill tone={SOURCE_TONE[cb.source] ?? 'muted'}>{SOURCE_LABEL[cb.source] ?? cb.source}</Pill></Td>
+                  <Td className="text-xs">{cb.completed_at ? fmtTime(cb.completed_at, cb.firm) : '—'}</Td>
+                  <Td>
+                    <Pill tone={cb.status === 'cancelled' ? 'muted' : 'green'}>
                       {cb.status === 'cancelled' ? 'Cancelled' : cb.disposition ?? 'Called'}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 text-xs text-muted-foreground">{cb.completed_by || cb.owner_rep || '—'}</td>
+                    </Pill>
+                  </Td>
+                  <Td className="text-xs">{cb.completed_by || cb.owner_rep || '—'}</Td>
                 </tr>
               ))}
             </tbody>
-          </table>
-        </div>
+          </Table>
+          </TableWrap>
+        </Card>
       )}
       </PageBody>
     </>

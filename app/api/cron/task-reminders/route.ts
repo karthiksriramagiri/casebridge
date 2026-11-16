@@ -157,7 +157,35 @@ export async function GET(request: NextRequest) {
 
   const results: string[] = []
 
+  /* A GHL task with a dialer callback on it is one piece of work, and the
+     callback message below says everything this one does and more — the
+     number to ring, the notes, who it is assigned to. Both post to the
+     same channel, so sending both means the floor reads the same call
+     twice and acts on it twice.
+
+     The task message is the one that gives way. It is still marked
+     notified, so it does not queue up for the next run, and the SMS
+     snippets above are untouched: those go to the customer, not the
+     floor, and have nothing to do with this. */
+  const taskIds = (tasks ?? []).map((t: any) => t.task_id).filter(Boolean)
+  const coveredByCallback = new Set<string>()
+  if (taskIds.length > 0) {
+    const { data: haveCallbacks } = await supabase
+      .from('dialer_callbacks')
+      .select('ghl_task_id')
+      .in('ghl_task_id', taskIds)
+    for (const c of haveCallbacks ?? []) {
+      if (c.ghl_task_id) coveredByCallback.add(c.ghl_task_id)
+    }
+  }
+
   for (const task of tasks ?? []) {
+    if (task.task_id && coveredByCallback.has(task.task_id)) {
+      await supabase.from('ghl_task_reminders').update({ notified: true }).eq('id', task.id)
+      results.push(`– ${task.title} (callback covers it)`)
+      continue
+    }
+
     const dueTime = new Date(task.due_date).toLocaleTimeString('en-US', {
       hour: 'numeric',
       minute: '2-digit',

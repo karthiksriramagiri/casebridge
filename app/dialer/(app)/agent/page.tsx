@@ -6,6 +6,7 @@ import { useCall } from '../../_context/call'
 import { useAuth } from '../../_context/auth'
 import { StatusPill } from '../../_components/StatusPill'
 import { MiniQueue } from '../../_components/MiniQueue'
+import { LeadSearch, type LeadHit } from '../../_components/ui/lead-search'
 import { DISPOSITIONS, type RepStatus, type Disposition, type Lead, type QueueLead } from '../../_types'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -823,6 +824,33 @@ export default function AgentPage() {
     })
   }
 
+  /* Calling someone found by search.
+
+     `handleAdminCall` needs a campaign — the stage the lead was browsed
+     from — and a searched lead has no stage it was browsed from. The
+     firm and stage come off the lead itself instead, which is the same
+     information arriving a different way. */
+  async function handleSearchCall(hit: LeadHit) {
+    if (!deviceReady || status !== 'READY') return
+    currentQueueLead.current = null
+    const lead: Lead = {
+      id:           hit.contactId,
+      name:         hit.name,
+      phone:        hit.phone,
+      email:        hit.email ?? '',
+      company:      '',
+      source:       hit.firm ?? '',
+      tags:         [],
+      lastActivity: '',
+      contactId:    hit.contactId,
+    }
+    await ctxPlaceCall(lead, {
+      firm:       hit.firm ?? '',
+      campaign:   hit.stageName ?? 'Search',
+      campaignId: '',
+    })
+  }
+
   function onDtmfKey(key: string) { sendDtmf(key); setDtmfBuffer(b => b + key) }
 
   async function handleDisposition(d: Disposition, callbackTime: string, stop: boolean, context?: string, nqReason?: string) {
@@ -987,6 +1015,21 @@ export default function AgentPage() {
     <div className="flex h-dvh flex-col overflow-hidden md:flex-row">
       {/* ── Left rail: what to call ── */}
       <div className="flex w-full shrink-0 flex-col border-b border-border bg-muted/50 md:h-full md:w-72 md:border-b-0 md:border-r">
+        {/* Search first. A rep with a name in front of them — a callback
+            note, a text, someone asking for a colleague — should not have
+            to find the right stage before they can dial. */}
+        <div className="border-b border-border bg-card p-2.5">
+          <LeadSearch
+            onPick={handleSearchCall}
+            disabled={callState !== 'idle' || !deviceReady || status !== 'READY'}
+            disabledReason={
+              !deviceReady ? 'Device not ready'
+                : status !== 'READY' ? 'Set yourself Ready to call'
+                : 'Already on a call'
+            }
+            placeholder="Search a lead to call…"
+          />
+        </div>
         {isAdmin ? (
           /* Admin: campaign picker + GHL lead list */
           <AdminLeadPicker

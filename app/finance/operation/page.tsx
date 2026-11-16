@@ -8,7 +8,7 @@ import { loadFinanceData } from '@/lib/finance/reporting/load'
 import { buildReport } from '@/lib/finance/reporting/report'
 import { ReportFilters } from '../_components/report-filters'
 import {
-  ComparisonTable, CostBreakdown, DataGaps, EarnoutCard, FirmTable, InvoiceTable,
+  ComparisonTable, CostBreakdown, EarnoutCard, FirmTable, InvoiceTable,
   KpiCards, PeriodStrip, TargetAttainment, TrendChart,
 } from '../_components/report-ui'
 import { invoicePathSegment } from '../_lib/invoice-routes'
@@ -175,7 +175,6 @@ export default async function OperationCenterPage({
           subtract a figure that has already been left out on purpose.
           It lives on the Reporting Center and on its own page. */}
 
-      <DataGaps report={report} />
 
       <p className="fin-note fin-sec">
         Calculation {report.meta.calcVersion} · data from {report.meta.dataStart} to {report.meta.dataAsOf} ·

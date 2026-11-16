@@ -19,7 +19,8 @@ import {
   watchStreak,
 } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
-import { FIRMS, firmName } from '@/app/_metrics/firms'
+import { firmName } from '@/app/_metrics/firms'
+import { laneLabel, laneOf, laneRank } from '@/app/creative/_lib/types'
 import type { Creative, Decision, RangeKey } from '@/app/creative/_lib/types'
 import type { StoredWatch } from '@/app/creative/_lib/board-api'
 import { BoardStatus } from '@/app/creative/_components/admin/board-status'
@@ -90,11 +91,14 @@ export default function WatchListPage() {
      being watched meant counting the normal state as an outstanding job. */
   const markedToKill = decidedKill.length
 
-  /* Grouped by firm, not by Meta campaign — the campaign name is an
-     ad-account artefact, while the decision being made here is a firm's.
-     Ordered by the canonical FIRMS list so a firm and its Spanish board stay
-     adjacent, with anything unattributed last. */
-  /* Firm, then ad set, then the creatives inside it.
+  /* Grouped by lane — a firm inside one ad account — not by Meta campaign:
+     the campaign name is an ad-account artefact, while the decision being
+     made here is a firm's. Jacoby & Meyers runs in both accounts, so it is
+     two blocks, (ASD) and (CSD), rather than one that spans the two.
+     Ordered by laneRank, so a firm and its Spanish board stay adjacent and a
+     firm's accounts stay adjacent inside that, with anything unattributed
+     last. */
+  /* Lane, then ad set, then the creatives inside it.
 
      The decision being made on this page is an ad set's: Meta spends across
      the cuts in a set as it likes, the watch rules already read the set's
@@ -109,30 +113,29 @@ export default function WatchListPage() {
     .sort((a, b) => (a.c.launchDate < b.c.launchDate ? 1 : -1))
   /* Offered from the day's own rows, so the dropdown never lists a firm
      that would empty the page. */
-  const firmsPresent = [...new Set(allRows.map((r) => r.c.firm))]
-  const byFirmFilter = firmFilter === 'all' ? allRows : allRows.filter((r) => r.c.firm === firmFilter)
+  const firmsPresent = [...new Set(allRows.map((r) => laneOf(r.c.firm, r.c.account)))]
+  const byFirmFilter = firmFilter === 'all' ? allRows : allRows.filter((r) => laneOf(r.c.firm, r.c.account) === firmFilter)
   /* The search sits after the firm filter rather than beside it: the two
      narrow the same list, and a row has to pass both. */
   const rows = byFirmFilter.filter((r) =>
-    matchesQuery(query, [r.c.convention, r.c.name, r.c.adId, r.c.adset, r.c.angle, firmName(r.c.firm), r.c.accountLabel, r.w.reason]))
+    matchesQuery(query, [
+      r.c.convention, r.c.name, r.c.adId, r.c.adset, r.c.angle, firmName(r.c.firm),
+      /* The lane as the headings write it, so typing ASD or CSD narrows to
+         one account — the full account name is matched beside it. */
+      laneLabel(laneOf(r.c.firm, r.c.account)), r.c.accountLabel, r.w.reason,
+    ]))
 
   type SetGroup = { key: string; adset: string; items: { w: StoredWatch; c: Creative }[] }
 
   const byFirm = Object.entries(
     rows.reduce<Record<string, Record<string, SetGroup>>>((acc, r) => {
-      const firm = (acc[r.c.firm] ??= {})
+      const firm = (acc[laneOf(r.c.firm, r.c.account)] ??= {})
       const k = adsetKey(r.c)
       ;(firm[k] ??= { key: k, adset: r.c.adset, items: [] }).items.push(r)
       return acc
     }, {}),
   )
-    .sort(([a], [b]) => {
-      const rank = (code: string) => {
-        const i = FIRMS.findIndex((f) => f.code === code)
-        return i === -1 ? FIRMS.length : i
-      }
-      return rank(a) - rank(b) || a.localeCompare(b)
-    })
+    .sort(([a], [b]) => laneRank(a) - laneRank(b) || a.localeCompare(b))
     .map(([firm, sets]) => [firm, Object.values(sets)] as const)
 
   const { open, toggle: toggleOpen } = useExpanded(`cc:watch-open:${date}`)
@@ -261,14 +264,14 @@ export default function WatchListPage() {
               {byFirm.length === 0 && (
                 <p className="p-6 text-center text-sm text-muted-foreground">
                   {query.trim()
-                    ? `Nothing on this day matches “${query.trim()}”${firmFilter === 'all' ? '' : ` in ${firmName(firmFilter)}`}.`
-                    : `Nothing on the watch list for ${firmName(firmFilter)} on this day.`}
+                    ? `Nothing on this day matches “${query.trim()}”${firmFilter === 'all' ? '' : ` in ${laneLabel(firmFilter)}`}.`
+                    : `Nothing on the watch list for ${laneLabel(firmFilter)} on this day.`}
                 </p>
               )}
               {byFirm.map(([firm, sets]) => (
                 <div key={firm}>
                   <div className="flex items-center justify-between border-b bg-muted/50 px-4 py-1.5 text-xs">
-                    <span className="font-semibold">{firmName(firm)}</span>
+                    <span className="font-semibold">{laneLabel(firm)}</span>
                     <span className="text-muted-foreground">
                       {sets.length} ad set{sets.length === 1 ? '' : 's'} · {sets.reduce((n, g) => n + g.items.length, 0)} ads
                     </span>
@@ -353,7 +356,7 @@ export default function WatchListPage() {
                                         and the detail is on hover. */}
                                     <div className="flex items-center gap-1 overflow-hidden whitespace-nowrap">
                                       <span className="min-w-0 shrink truncate text-[11px] text-muted-foreground">
-                                        {firmName(firm)}
+                                        {laneLabel(firm)}
                                       </span>
                                       <span className="shrink-0">
                                         <Pill>{g.items.length} ad{g.items.length === 1 ? '' : 's'}</Pill>

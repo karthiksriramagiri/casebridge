@@ -192,23 +192,24 @@ export async function POST(request: NextRequest) {
   if (!cbPhone && ghlPhone) cbPhone = ghlPhone
 
   if (cbPhone && contactName) {
-    // Avoid duplicates — check if callback already exists for this task
-    const { data: existingCb } = await supabase.from('dialer_callbacks')
-      .select('id').eq('ghl_task_id', taskId).maybeSingle()
-    if (!existingCb) {
-      const { error: cbErr } = await supabase.from('dialer_callbacks').insert({
-        contact_id:       contactId,
-        contact_name:     contactName,
-        phone:            cbPhone,
-        firm:             cbFirm,
-        callback_at:      dueDate.toISOString(),
-        callback_context: body || title,
-        source:           'ghl',
-        ghl_task_id:      taskId,
-      })
-      if (cbErr) console.error('[task-webhook] callback insert error:', cbErr)
-      else console.log('[task-webhook] created dialer callback', { contactId, dueDate: dueDate!.toISOString() })
-    }
+    /* Upsert on the task id rather than check-then-insert.
+
+       The check was real but could not win: the other webhook for the same
+       task arrives about two seconds later, and both read "no callback
+       exists" before either writes. Letting the database decide is the
+       only version of this that holds. */
+    const { error: cbErr } = await supabase.from('dialer_callbacks').upsert({
+      contact_id:       contactId,
+      contact_name:     contactName,
+      phone:            cbPhone,
+      firm:             cbFirm,
+      callback_at:      dueDate.toISOString(),
+      callback_context: body || title,
+      source:           'ghl',
+      ghl_task_id:      taskId,
+    }, { onConflict: 'ghl_task_id' })
+    if (cbErr) console.error('[task-webhook] callback upsert error:', cbErr)
+    else console.log('[task-webhook] callback recorded', { contactId, taskId, dueDate: dueDate!.toISOString() })
   }
 
   return NextResponse.json({

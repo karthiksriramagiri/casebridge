@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { cancelForwardLeg } from '@/lib/dialer/forward'
 
 function supabaseAdmin() {
   return createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!)
@@ -23,12 +24,25 @@ export async function POST(req: NextRequest) {
     .update({ status: 'answered', answered_by: repIdentity, answered_at: now })
     .eq('call_sid', callSid)
     .eq('status', 'ringing')
-    .select('conference_name, caller_phone, contact_id, contact_name, firm')
+    .select('conference_name, caller_phone, contact_id, contact_name, firm, forward_call_sid')
     .maybeSingle()
 
   if (error || !claimed) {
     return NextResponse.json({ error: 'Call already answered or missed' }, { status: 409 })
   }
+
+  /* The rep got there first, so stop the phone ringing. Not awaited: the
+     rep is already joining the conference and should not wait on Twilio's
+     API to hear the caller. */
+  void cancelForwardLeg((claimed as any).forward_call_sid)
+
+  /* Which way it was answered, for the miss-rate question this whole
+     forward exists to answer. Best-effort — the column arrives with
+     migration_inbound_forward.sql. */
+  void db.from('dialer_inbound_queue')
+    .update({ answered_via: 'browser' })
+    .eq('call_sid', callSid)
+    .then(({ error: e }) => { if (e) console.warn('[answer-inbound] answered_via not stored') })
 
   // Write active session so admin can see/monitor this call
   await db.from('dialer_active_sessions').upsert({

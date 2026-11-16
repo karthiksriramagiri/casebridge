@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import TeamsShell from '../dashboard/TeamsShell'
 import { PageHeader, PageBody } from '@/app/teams/_components/shared'
+import { CommissionBoard } from '@/app/teams/_components/commission-board'
 
 interface CaseEntry {
   id: string
@@ -45,27 +46,45 @@ export default function CommissionsPage() {
   const [timeclockEnabled, setTimeclockEnabled] = useState(false)
   const router = useRouter()
 
+  /* Null until the profile is read. The two views answer different
+     questions and loading the wrong one first makes an intake rep's page
+     flash an error about creative slugs. */
+  const [resolved, setResolved] = useState(false)
+
   useEffect(() => {
     const supabase = createClient()
     supabase.auth.getUser().then(({ data: { user } }) => {
       if (!user) { router.push('/teams/login'); return }
       supabase.from('profiles').select('team_type, timeclock_enabled').eq('id', user.id).single().then(({ data: profile }) => {
-        if (profile) {
-          setTeamType(profile.team_type ?? 'creative')
-          setTimeclockEnabled(!!profile.timeclock_enabled)
-        }
+        const team = profile?.team_type ?? 'creative'
+        setTeamType(team)
+        setTimeclockEnabled(!!profile?.timeclock_enabled)
+        setResolved(true)
+
+        /* Only a creative rep has ad attribution to fetch. An intake rep's
+           commissions come from the cases they closed, which the shared
+           board reads from its own endpoint. */
+        if (team !== 'creative') { setLoading(false); return }
+        fetch('/api/teams/commissions')
+          .then(r => r.json())
+          .then(d => {
+            if (d.error) setError(d.error)
+            else setData(d)
+            setLoading(false)
+          })
+          .catch(() => { setError('Failed to load.'); setLoading(false) })
       })
     })
-
-    fetch('/api/teams/commissions')
-      .then(r => r.json())
-      .then(d => {
-        if (d.error) setError(d.error)
-        else setData(d)
-        setLoading(false)
-      })
-      .catch(() => { setError('Failed to load.'); setLoading(false) })
   }, [router])
+
+  /* An intake rep: the same board their manager reads, scoped to them. */
+  if (resolved && teamType !== 'creative') {
+    return (
+      <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
+        <CommissionBoard scope="mine" />
+      </TeamsShell>
+    )
+  }
 
   return (
     <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>

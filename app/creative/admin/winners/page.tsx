@@ -226,6 +226,10 @@ export default function WinnersPage() {
         angle: c.angle,
         sourceCreativeId: c.id,
         firm: FIRM_FROM_CODE[src.firm ?? ''] ?? undefined,
+        /* A double down runs in the winner's own ad set, so it is always the
+           winner's account. Carried so the brief lands on the right one of
+           the two Jacoby & Meyers boards. */
+        account: c.account,
         format: (src.format as CreativeFormat) ?? undefined,
         batch: src.batch,
         visualCode: src.visualCode,
