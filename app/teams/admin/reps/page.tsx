@@ -3,6 +3,9 @@
 import { useState, useEffect, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { format } from 'date-fns'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
+import { Button } from '@/app/teams/_ui/button'
+import { Plus } from 'lucide-react'
 
 interface Rep {
   id: string
@@ -63,14 +66,15 @@ const LEVEL_LABELS: Record<number, string> = {
 }
 
 const LEVEL_COLORS: Record<number, string> = {
-  1: 'bg-sky-100 text-sky-700',
-  2: 'bg-indigo-100 text-indigo-700',
-  3: 'bg-emerald-100 text-emerald-700',
+  1: 'bg-primary/10 text-primary',
+  2: 'bg-primary/10 text-primary',
+  3: 'bg-success/10 text-success',
 }
 
 const SHIFT_LABELS: Record<string, string> = {
   morning:           'Morning (7AM–12PM PST)',
   afternoon:         'Afternoon (12PM–3PM PST)',
+  early_evening:     'Early Evening (2PM–11PM PST)',
   evening:           'Evening (3PM–9PM PST)',
   morning_afternoon: 'Morning + Afternoon (7AM–3PM PST)',
   afternoon_evening: 'Afternoon + Evening (12PM–9PM PST)',
@@ -392,25 +396,21 @@ export default function RepsPage() {
   }
 
   return (
-    <div>
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">All Reps</h1>
-          <p className="text-sm text-gray-500 mt-0.5">{reps.length} team member{reps.length !== 1 ? 's' : ''}</p>
-        </div>
-        <button
-          onClick={() => setShowAddDialog(true)}
-          className="bg-[#0f1e3c] hover:bg-[#1a3060] text-white text-sm font-semibold px-4 py-2.5 rounded-lg transition-colors flex items-center gap-2"
-        >
-          <span className="text-base leading-none">+</span>
-          Add Rep
-        </button>
-      </div>
+    <>
+      <PageHeader
+        title="All Reps"
+        description={`${reps.length} team member${reps.length !== 1 ? 's' : ''}`}
+        actions={
+          <Button size="sm" onClick={() => setShowAddDialog(true)}>
+            <Plus className="size-4" aria-hidden /> Add rep
+          </Button>
+        }
+      />
+      <PageBody>
 
       {actionMessage && (
         <div className={`mb-4 text-sm font-medium px-4 py-3 rounded-lg ${
-          actionMessage.startsWith('Error') ? 'bg-red-50 text-red-700 border border-red-200' : 'bg-green-50 text-green-700 border border-green-200'
+ actionMessage.startsWith('Error') ? 'bg-destructive/10 text-destructive border border-destructive/30' : 'bg-success/10 text-success border border-success/30'
         }`}>
           {actionMessage}
           <button onClick={() => setActionMessage('')} className="ml-2 opacity-50 hover:opacity-100">×</button>
@@ -418,12 +418,12 @@ export default function RepsPage() {
       )}
 
       {loading ? (
-        <div className="text-center py-16 text-gray-400 text-sm">Loading reps...</div>
+        <div className="text-center py-16 text-muted-foreground text-sm">Loading reps...</div>
       ) : error ? (
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-3">{error}</div>
       ) : reps.length === 0 ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-16 text-center">
-          <p className="text-gray-500 text-sm">No reps yet. Add your first team member!</p>
+        <div className="bg-card rounded-xl border border-border px-6 py-16 text-center">
+          <p className="text-muted-foreground text-sm">No reps yet. Add your first team member!</p>
         </div>
       ) : (
         <div className="space-y-2">
@@ -432,53 +432,53 @@ export default function RepsPage() {
             const tab = activeTab[rep.id] ?? 'callqueue'
 
             return (
-              <div key={rep.id} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+              <div key={rep.id} className="bg-card rounded-xl border border-border overflow-hidden">
                 {/* Rep row */}
                 <div className="px-5 py-4">
                   <div className="flex items-center justify-between gap-4">
                     {/* Left: identity + stats */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-gray-900">{rep.name}</span>
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${LEVEL_COLORS[rep.repPhase ?? 1] ?? 'bg-gray-100 text-gray-600'}`}>
+                        <span className="font-semibold text-foreground">{rep.name}</span>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${LEVEL_COLORS[rep.repPhase ?? 1] ?? 'bg-muted text-muted-foreground'}`}>
                           {LEVEL_LABELS[rep.repPhase ?? 1] ?? `Phase ${rep.repPhase}`}
                         </span>
                         {rep.certified && (
-                          <span className="bg-yellow-100 text-yellow-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+                          <span className="bg-warning/15 text-warning text-xs font-semibold px-2 py-0.5 rounded-full">
                             ✦ Certified
                           </span>
                         )}
-                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rep.ndaSigned ? 'bg-green-100 text-green-700' : 'bg-red-50 text-red-500'}`}>
+                        <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${rep.ndaSigned ? 'bg-success/15 text-success' : 'bg-destructive/10 text-destructive'}`}>
                           {rep.ndaSigned ? '✓ NDA' : '✗ NDA Pending'}
                         </span>
                         {rep.timeclockEnabled && (
-                          <span className="bg-blue-100 text-blue-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                          <span className="bg-accent text-primary text-xs font-medium px-2 py-0.5 rounded-full">
                             Timeclock
                           </span>
                         )}
                         {rep.shift && (
-                          <span className="bg-purple-100 text-purple-700 text-xs font-medium px-2 py-0.5 rounded-full">
+                          <span className="bg-team-creative-soft text-team-creative text-xs font-medium px-2 py-0.5 rounded-full">
                             {SHIFT_LABELS[rep.shift] ?? rep.shift}
                           </span>
                         )}
-                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rep.teamType === 'creative' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
+                        <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${rep.teamType === 'creative' ? 'bg-team-creative-soft text-team-creative' : 'bg-accent text-primary'}`}>
                           {rep.teamType === 'creative' ? 'Creative Team' : 'Intake Team'}
                         </span>
                         {rep.payrollMethod && (
-                          <span className="bg-gray-100 text-gray-600 text-xs font-medium px-2 py-0.5 rounded-full">
+                          <span className="bg-muted text-muted-foreground text-xs font-medium px-2 py-0.5 rounded-full">
                             {rep.payrollMethod}
                             {rep.hourlyRate != null && ` · $${rep.hourlyRate}/hr`}
                             {rep.commissionPerClose != null && ` · $${rep.commissionPerClose}/close`}
                           </span>
                         )}
                       </div>
-                      <p className="text-xs text-gray-400 mt-1">
+                      <p className="text-xs text-muted-foreground mt-1">
                         {rep.email}
-                        <span className="mx-1.5 text-gray-200">·</span>
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
                         {rep.passedRequired}/{rep.totalRequired} modules
-                        <span className="mx-1.5 text-gray-200">·</span>
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
                         {rep.attempts.length} attempt{rep.attempts.length !== 1 ? 's' : ''}
-                        <span className="mx-1.5 text-gray-200">·</span>
+                        <span className="mx-1.5 text-muted-foreground/40">·</span>
                         Joined {format(new Date(rep.created_at), 'M/d/yyyy')}
                       </p>
                     </div>
@@ -487,16 +487,16 @@ export default function RepsPage() {
                     <div className="flex items-center gap-2 shrink-0">
                       <button
                         onClick={() => setHistoryRep(rep)}
-                        className="text-xs border border-gray-200 hover:bg-gray-50 text-gray-600 font-medium px-3 py-1.5 rounded-lg transition-colors"
+                        className="text-xs border border-border hover:bg-muted/50 text-muted-foreground font-medium px-3 py-1.5 rounded-lg transition-colors"
                       >
                         History
                       </button>
                       <button
                         onClick={() => isOpen ? setSettingsOpen(null) : openSettings(rep)}
                         className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
-                          isOpen
-                            ? 'bg-[#0f1e3c] text-white border-[#0f1e3c]'
-                            : 'bg-gray-50 text-gray-700 border-gray-200 hover:bg-gray-100'
+ isOpen
+                            ? 'bg-primary text-primary-foreground border-primary'
+                            : 'bg-muted/40 text-foreground/90 border-border hover:bg-muted'
                         }`}
                       >
                         <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -511,9 +511,9 @@ export default function RepsPage() {
 
                 {/* Settings panel */}
                 {isOpen && (
-                  <div className="border-t border-gray-100">
+                  <div className="border-t border-border">
                     {/* Tab bar */}
-                    <div className="flex border-b border-gray-100 bg-gray-50">
+                    <div className="flex border-b border-border bg-muted/40">
                       {([
                         { key: 'callqueue',    label: 'Call Queue' },
                         { key: 'todos',        label: 'Todos' },
@@ -536,11 +536,11 @@ export default function RepsPage() {
                             }
                           }}
                           className={`px-5 py-2.5 text-xs font-semibold transition-colors border-b-2 -mb-px ${
-                            tab === key
+ tab === key
                               ? key === 'danger'
-                                ? 'border-red-500 text-red-600 bg-white'
-                                : 'border-[#0f1e3c] text-[#0f1e3c] bg-white'
-                              : 'border-transparent text-gray-500 hover:text-gray-700'
+                                ? 'border-destructive text-destructive bg-card'
+                                : 'border-primary text-primary bg-card'
+                              : 'border-transparent text-muted-foreground hover:text-foreground'
                           }`}
                         >
                           {label}
@@ -556,8 +556,8 @@ export default function RepsPage() {
                           {/* Team Type */}
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Team</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Which team this rep belongs to</p>
+                              <p className="text-sm font-medium text-foreground">Team</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Which team this rep belongs to</p>
                             </div>
                             <div className="flex gap-2">
                               {(['intake', 'creative'] as const).map(t => (
@@ -572,9 +572,9 @@ export default function RepsPage() {
                                     setReps(prev => prev.map(r => r.id === rep.id ? { ...r, teamType: t } : r))
                                   }}
                                   className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${
-                                    rep.teamType === t
-                                      ? t === 'creative' ? 'bg-purple-600 text-white border-purple-600' : 'bg-blue-600 text-white border-blue-600'
-                                      : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+ rep.teamType === t
+                                      ? t === 'creative' ? 'bg-team-creative text-primary-foreground border-team-creative' : 'bg-primary text-primary-foreground border-primary'
+                                      : 'bg-card text-muted-foreground border-border hover:bg-muted/50'
                                   }`}
                                 >
                                   {t === 'intake' ? 'Intake' : 'Creative'}
@@ -587,8 +587,8 @@ export default function RepsPage() {
                           {rep.teamType === 'creative' && (
                             <div className="flex items-center justify-between">
                               <div>
-                                <p className="text-sm font-medium text-gray-800">Creative Slug</p>
-                                <p className="text-xs text-gray-500 mt-0.5">Used to attribute cases (e.g. OGF for Faisal)</p>
+                                <p className="text-sm font-medium text-foreground">Creative Slug</p>
+                                <p className="text-xs text-muted-foreground mt-0.5">Used to attribute cases (e.g. OGF for Faisal)</p>
                               </div>
                               <div className="flex items-center gap-2">
                                 <input
@@ -596,7 +596,7 @@ export default function RepsPage() {
                                   value={slugDraft[rep.id] ?? (rep.creativeSlug || '')}
                                   onChange={e => setSlugDraft(d => ({ ...d, [rep.id]: e.target.value.toUpperCase() }))}
                                   placeholder="e.g. OGF"
-                                  className="w-24 border border-gray-200 rounded-lg px-2.5 py-1.5 text-sm text-center font-mono uppercase focus:outline-none focus:ring-2 focus:ring-purple-500"
+                                  className="w-24 border border-border rounded-lg px-2.5 py-1.5 text-sm text-center font-mono uppercase focus:outline-none focus:ring-2 focus:ring-team-creative"
                                 />
                                 <button
                                   onClick={async () => {
@@ -611,7 +611,7 @@ export default function RepsPage() {
                                     setSlugSaving(null)
                                   }}
                                   disabled={slugSaving === rep.id}
-                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-purple-600 text-white hover:bg-purple-700 disabled:opacity-50 transition-colors"
+                                  className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-team-creative text-primary-foreground hover:bg-team-creative disabled:opacity-50 transition-colors"
                                 >
                                   {slugSaving === rep.id ? 'Saving…' : 'Save'}
                                 </button>
@@ -622,8 +622,8 @@ export default function RepsPage() {
                           {/* Phase */}
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Phase</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Controls which pages this rep can access</p>
+                              <p className="text-sm font-medium text-foreground">Phase</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Controls which pages this rep can access</p>
                             </div>
                             <div className="flex gap-1.5">
                               {([
@@ -632,7 +632,7 @@ export default function RepsPage() {
                                 { value: 3, label: 'Active', color: 'emerald' },
                               ] as const).map(({ value, label, color }) => {
                                 const isActive = (rep.repPhase ?? 1) === value
-                                const activeClass = color === 'sky' ? 'bg-sky-600 text-white border-sky-600' : color === 'indigo' ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-emerald-600 text-white border-emerald-600'
+                                const activeClass = color === 'sky' ? 'bg-primary text-primary-foreground border-primary' : color === 'indigo' ? 'bg-primary text-primary-foreground border-primary' : 'bg-success text-primary-foreground border-success'
                                 return (
                                   <button
                                     key={value}
@@ -646,7 +646,7 @@ export default function RepsPage() {
                                       if (!res.ok) { alert(`Failed to update phase: ${json.error ?? res.status}`); return }
                                       setReps(prev => prev.map(r => r.id === rep.id ? { ...r, repPhase: value } : r))
                                     }}
-                                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${isActive ? activeClass : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'}`}
+                                    className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${isActive ? activeClass : 'bg-card text-muted-foreground border-border hover:bg-muted/50'}`}
                                   >
                                     {label}
                                   </button>
@@ -658,59 +658,60 @@ export default function RepsPage() {
                           {/* Timeclock toggle */}
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Timeclock Access</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Allow rep to clock in/out</p>
+                              <p className="text-sm font-medium text-foreground">Timeclock Access</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Allow rep to clock in/out</p>
                             </div>
                             <button
                               onClick={() => handleToggleTimeclock(rep.id, rep.timeclockEnabled)}
                               disabled={actionLoading === rep.id + ':timeclock'}
-                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timeclockEnabled ? 'bg-blue-500' : 'bg-gray-300'}`}
+                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timeclockEnabled ? 'bg-primary' : 'bg-border'}`}
                             >
-                              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                              <span className={`absolute top-0.5 w-5 h-5 bg-card rounded-full shadow transition-transform ${rep.timeclockEnabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
                           </div>
 
                           {/* Level lock override */}
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Unlock All Levels</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Skip level progression requirements</p>
+                              <p className="text-sm font-medium text-foreground">Unlock All Levels</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Skip level progression requirements</p>
                             </div>
                             <button
                               onClick={() => handleToggleLevelsLock(rep.id, rep.levelsUnlocked)}
                               disabled={actionLoading === rep.id + ':levels'}
-                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.levelsUnlocked ? 'bg-green-500' : 'bg-gray-300'}`}
+                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.levelsUnlocked ? 'bg-success' : 'bg-border'}`}
                             >
-                              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.levelsUnlocked ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                              <span className={`absolute top-0.5 w-5 h-5 bg-card rounded-full shadow transition-transform ${rep.levelsUnlocked ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
                           </div>
 
                           {/* Training timer toggle */}
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Disable Training Timer</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Skip expiry lock on dashboard</p>
+                              <p className="text-sm font-medium text-foreground">Disable Training Timer</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Skip expiry lock on dashboard</p>
                             </div>
                             <button
                               onClick={() => handleToggleTimer(rep.id, rep.timerDisabled)}
                               disabled={actionLoading === rep.id + ':timer'}
-                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timerDisabled ? 'bg-orange-500' : 'bg-gray-300'}`}
+                              className={`w-11 h-6 rounded-full relative transition-colors focus:outline-none disabled:opacity-50 ${rep.timerDisabled ? 'bg-warning' : 'bg-border'}`}
                             >
-                              <span className={`absolute top-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${rep.timerDisabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                              <span className={`absolute top-0.5 w-5 h-5 bg-card rounded-full shadow transition-transform ${rep.timerDisabled ? 'translate-x-5' : 'translate-x-0.5'}`} />
                             </button>
                           </div>
 
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Shift</label>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Shift</label>
                               <select
                                 value={shiftDraft[rep.id] ?? ''}
                                 onChange={e => setShiftDraft(d => ({ ...d, [rep.id]: e.target.value }))}
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                               >
                                 <option value="">No shift (not in call queue)</option>
                                 <option value="morning">Morning — 7AM–12PM PST</option>
                                 <option value="afternoon">Afternoon — 12PM–3PM PST</option>
+                                <option value="early_evening">Early Evening — 2PM–11PM PST</option>
                                 <option value="evening">Evening — 3PM–9PM PST</option>
                                 <option value="overnight">Overnight — 9PM–7AM PST</option>
                                 <option value="morning_afternoon">Morning + Afternoon — 7AM–3PM PST</option>
@@ -718,16 +719,16 @@ export default function RepsPage() {
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                                 GHL User IDs
-                                <span className="text-gray-400 font-normal ml-1">(comma-separated)</span>
+                                <span className="text-muted-foreground font-normal ml-1">(comma-separated)</span>
                               </label>
                               <input
                                 type="text"
                                 value={ghlDraft[rep.id] ?? ''}
                                 onChange={e => setGhlDraft(d => ({ ...d, [rep.id]: e.target.value }))}
                                 placeholder="e.g. DNj1g2jJWDn, JyJZdMlw3pu"
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                               />
                             </div>
                           </div>
@@ -735,14 +736,14 @@ export default function RepsPage() {
                           <div className="flex justify-end gap-2 pt-1">
                             <button
                               onClick={() => setSettingsOpen(null)}
-                              className="text-sm border border-gray-200 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                              className="text-sm border border-border text-muted-foreground px-4 py-2 rounded-lg hover:bg-muted/50 transition-colors"
                             >
                               Cancel
                             </button>
                             <button
                               onClick={() => handleSaveCallQueue(rep.id)}
                               disabled={callQueueSaving === rep.id}
-                              className="text-sm bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg transition-colors"
+                              className="text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium px-5 py-2 rounded-lg transition-colors"
                             >
                               {callQueueSaving === rep.id ? 'Saving…' : 'Save'}
                             </button>
@@ -753,7 +754,7 @@ export default function RepsPage() {
                       {/* Todos tab */}
                       {tab === 'todos' && (
                         <div className="space-y-4">
-                          <p className="text-xs text-gray-500">Choose what this rep sees in their Todos page.</p>
+                          <p className="text-xs text-muted-foreground">Choose what this rep sees in their Todos page.</p>
                           <div className="flex flex-col gap-3">
                             {[
                               { value: 'call_queue', label: 'Call Queue', desc: 'Rep sees No Response, Follow Up, and Chase leads for their shift.' },
@@ -762,7 +763,7 @@ export default function RepsPage() {
                               const isActive = (rep.todoMode ?? 'call_queue') === opt.value
                               return (
                                 <label key={opt.value} className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                                  isActive ? 'border-blue-300 bg-blue-50' : 'border-gray-200 bg-white hover:bg-gray-50'
+ isActive ? 'border-primary/30 bg-accent' : 'border-border bg-card hover:bg-muted/50'
                                 }`}>
                                   <input
                                     type="radio"
@@ -777,11 +778,11 @@ export default function RepsPage() {
                                       })
                                       setReps(prev => prev.map(r => r.id === rep.id ? { ...r, todoMode: opt.value } : r))
                                     }}
-                                    className="mt-0.5 text-blue-600"
+                                    className="mt-0.5 text-primary"
                                   />
                                   <div>
-                                    <p className="text-sm font-medium text-gray-800">{opt.label}</p>
-                                    <p className="text-xs text-gray-500 mt-0.5">{opt.desc}</p>
+                                    <p className="text-sm font-medium text-foreground">{opt.label}</p>
+                                    <p className="text-xs text-muted-foreground mt-0.5">{opt.desc}</p>
                                   </div>
                                 </label>
                               )
@@ -794,22 +795,22 @@ export default function RepsPage() {
                       {tab === 'callreviews' && (
                         <div className="space-y-3">
                           {callNotesLoading === rep.id ? (
-                            <p className="text-sm text-gray-400 text-center py-6">Loading…</p>
+                            <p className="text-sm text-muted-foreground text-center py-6">Loading…</p>
                           ) : !callNotes[rep.id] || callNotes[rep.id].length === 0 ? (
-                            <p className="text-sm text-gray-400 text-center py-6">No call notes submitted yet.</p>
+                            <p className="text-sm text-muted-foreground text-center py-6">No call notes submitted yet.</p>
                           ) : (
                             <>
-                              <p className="text-xs text-gray-500">{callNotes[rep.id].length} note{callNotes[rep.id].length !== 1 ? 's' : ''} submitted</p>
+                              <p className="text-xs text-muted-foreground">{callNotes[rep.id].length} note{callNotes[rep.id].length !== 1 ? 's' : ''} submitted</p>
                               <div className="space-y-3 max-h-96 overflow-y-auto pr-1">
                                 {callNotes[rep.id].map(note => (
-                                  <div key={note.id} className="bg-gray-50 rounded-lg border border-gray-100 p-4">
+                                  <div key={note.id} className="bg-muted/40 rounded-lg border border-border p-4">
                                     <div className="flex items-start justify-between gap-3 mb-2">
-                                      <p className="text-sm font-semibold text-gray-900">{note.contactName}</p>
-                                      <p className="text-xs text-gray-400 shrink-0">
+                                      <p className="text-sm font-semibold text-foreground">{note.contactName}</p>
+                                      <p className="text-xs text-muted-foreground shrink-0">
                                         {new Date(note.updatedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
                                       </p>
                                     </div>
-                                    <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{note.notes}</p>
+                                    <p className="text-sm text-foreground/90 whitespace-pre-wrap leading-relaxed">{note.notes}</p>
                                   </div>
                                 ))}
                               </div>
@@ -823,22 +824,22 @@ export default function RepsPage() {
                         <div className="space-y-4">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Payroll Method</label>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Payroll Method</label>
                               <select
                                 value={payrollMethodDraft[rep.id] ?? ''}
                                 onChange={e => setPayrollMethodDraft(d => ({ ...d, [rep.id]: e.target.value }))}
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                               >
                                 <option value="">Select method</option>
                                 {PAYROLL_METHODS.map(m => <option key={m} value={m}>{m}</option>)}
                               </select>
                             </div>
                             <div>
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Payment Structure</label>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Payment Structure</label>
                               <select
                                 value={payStructureDraft[rep.id] ?? ''}
                                 onChange={e => setPayStructureDraft(d => ({ ...d, [rep.id]: e.target.value }))}
-                                className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                               >
                                 <option value="">Not set</option>
                                 <option value="hourly">Hourly</option>
@@ -849,9 +850,9 @@ export default function RepsPage() {
 
                           {payStructureDraft[rep.id] === 'hourly' && (
                             <div className="max-w-xs">
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Hourly Rate (USD)</label>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Hourly Rate (USD)</label>
                               <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -859,7 +860,7 @@ export default function RepsPage() {
                                   value={hourlyRateDraft[rep.id] ?? ''}
                                   onChange={e => setHourlyRateDraft(d => ({ ...d, [rep.id]: e.target.value }))}
                                   placeholder="0.00"
-                                  className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full border border-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
                               </div>
                             </div>
@@ -867,9 +868,9 @@ export default function RepsPage() {
 
                           {payStructureDraft[rep.id] === 'per_close' && (
                             <div className="max-w-xs">
-                              <label className="block text-xs font-medium text-gray-600 mb-1.5">Commission per Close (USD)</label>
+                              <label className="block text-xs font-medium text-muted-foreground mb-1.5">Commission per Close (USD)</label>
                               <div className="relative">
-                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">$</span>
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">$</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -877,37 +878,37 @@ export default function RepsPage() {
                                   value={commissionDraft[rep.id] ?? ''}
                                   onChange={e => setCommissionDraft(d => ({ ...d, [rep.id]: e.target.value }))}
                                   placeholder="0.00"
-                                  className="w-full border border-gray-200 rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                  className="w-full border border-border rounded-lg pl-7 pr-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                                 />
                               </div>
                             </div>
                           )}
 
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1.5">
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">
                               Account / Payment Info
-                              <span className="text-gray-400 font-normal ml-1">(e.g. email, username, or account number)</span>
+                              <span className="text-muted-foreground font-normal ml-1">(e.g. email, username, or account number)</span>
                             </label>
                             <input
                               type="text"
                               value={payrollInfoDraft[rep.id] ?? ''}
                               onChange={e => setPayrollInfoDraft(d => ({ ...d, [rep.id]: e.target.value }))}
                               placeholder="e.g. john@example.com or @johnsmith"
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                             />
                           </div>
 
                           <div className="flex justify-end gap-2 pt-1">
                             <button
                               onClick={() => setSettingsOpen(null)}
-                              className="text-sm border border-gray-200 text-gray-600 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
+                              className="text-sm border border-border text-muted-foreground px-4 py-2 rounded-lg hover:bg-muted/50 transition-colors"
                             >
                               Cancel
                             </button>
                             <button
                               onClick={() => handleSavePayroll(rep.id)}
                               disabled={payrollSaving === rep.id}
-                              className="text-sm bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white font-medium px-5 py-2 rounded-lg transition-colors"
+                              className="text-sm bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground font-medium px-5 py-2 rounded-lg transition-colors"
                             >
                               {payrollSaving === rep.id ? 'Saving…' : 'Save Payroll'}
                             </button>
@@ -918,7 +919,7 @@ export default function RepsPage() {
                       {/* Retakes tab */}
                       {tab === 'retakes' && (
                         <div className="space-y-4">
-                          <p className="text-xs text-gray-500">Select modules to invalidate and send a retake notification to this rep.</p>
+                          <p className="text-xs text-muted-foreground">Select modules to invalidate and send a retake notification to this rep.</p>
                           <div className="space-y-1.5 max-h-64 overflow-y-auto">
                             {modules.map(m => {
                               const isChecked = retakeSelected[rep.id]?.has(m.id) ?? false
@@ -934,28 +935,28 @@ export default function RepsPage() {
                                         return { ...prev, [rep.id]: next }
                                       })
                                     }}
-                                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                                    className="w-4 h-4 rounded border-border text-primary focus:ring-ring"
                                   />
-                                  <span className="text-sm text-gray-700 group-hover:text-gray-900">{m.title}</span>
+                                  <span className="text-sm text-foreground/90 group-hover:text-muted-foreground">{m.title}</span>
                                 </label>
                               )
                             })}
                           </div>
                           <div>
-                            <label className="block text-xs font-medium text-gray-600 mb-1.5">Message to rep <span className="text-gray-400 font-normal">(optional)</span></label>
+                            <label className="block text-xs font-medium text-muted-foreground mb-1.5">Message to rep <span className="text-muted-foreground font-normal">(optional)</span></label>
                             <textarea
                               rows={2}
                               value={retakeMessage[rep.id] ?? ''}
                               onChange={e => setRetakeMessage(prev => ({ ...prev, [rep.id]: e.target.value }))}
                               placeholder="e.g. Please review the updated guidelines before retaking."
-                              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
                             />
                           </div>
                           <div className="flex justify-end">
                             <button
                               onClick={() => handleRequestRetake(rep.id)}
                               disabled={retakeSaving === rep.id || !(retakeSelected[rep.id]?.size)}
-                              className="text-sm bg-orange-500 hover:bg-orange-600 disabled:opacity-40 text-white font-medium px-5 py-2 rounded-lg transition-colors"
+                              className="text-sm bg-warning hover:bg-warning disabled:opacity-40 text-primary-foreground font-medium px-5 py-2 rounded-lg transition-colors"
                             >
                               {retakeSaving === rep.id ? 'Sending…' : `Send Retake Request (${retakeSelected[rep.id]?.size ?? 0} module${(retakeSelected[rep.id]?.size ?? 0) !== 1 ? 's' : ''})`}
                             </button>
@@ -966,41 +967,41 @@ export default function RepsPage() {
                       {/* Danger Zone tab */}
                       {tab === 'danger' && (
                         <div className="space-y-3">
-                          <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                          <div className="flex items-center justify-between py-3 border-b border-border">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Force Retake</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Invalidate all passing attempts — rep must redo training</p>
+                              <p className="text-sm font-medium text-foreground">Force Retake</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Invalidate all passing attempts — rep must redo training</p>
                             </div>
                             <button
                               onClick={() => handleForceRetake(rep.id)}
                               disabled={actionLoading === rep.id + ':retake'}
-                              className="text-xs font-semibold border border-orange-200 bg-orange-50 hover:bg-orange-100 text-orange-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                              className="text-xs font-semibold border border-warning/30 bg-warning/10 hover:bg-warning/10 text-warning px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
                             >
                               {actionLoading === rep.id + ':retake' ? 'Working…' : 'Force Retake'}
                             </button>
                           </div>
-                          <div className="flex items-center justify-between py-3 border-b border-gray-100">
+                          <div className="flex items-center justify-between py-3 border-b border-border">
                             <div>
-                              <p className="text-sm font-medium text-gray-800">Reset Password</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Send a password reset link to their email</p>
+                              <p className="text-sm font-medium text-foreground">Reset Password</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Send a password reset link to their email</p>
                             </div>
                             <button
                               onClick={() => handleResetPassword(rep.id)}
                               disabled={actionLoading === rep.id + ':reset'}
-                              className="text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                              className="text-xs font-semibold border border-border hover:bg-muted/50 text-foreground/90 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
                             >
                               {actionLoading === rep.id + ':reset' ? 'Sending…' : 'Send Reset Email'}
                             </button>
                           </div>
                           <div className="flex items-center justify-between py-3">
                             <div>
-                              <p className="text-sm font-medium text-red-700">Delete Rep</p>
-                              <p className="text-xs text-gray-500 mt-0.5">Permanently remove this rep and all their data</p>
+                              <p className="text-sm font-medium text-destructive">Delete Rep</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">Permanently remove this rep and all their data</p>
                             </div>
                             <button
                               onClick={() => handleDeleteRep(rep.id, rep.name)}
                               disabled={actionLoading === rep.id + ':delete'}
-                              className="text-xs font-semibold border border-red-200 bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
+                              className="text-xs font-semibold border border-destructive/30 bg-destructive/10 hover:bg-destructive/15 text-destructive px-4 py-2 rounded-lg transition-colors disabled:opacity-50 shrink-0"
                             >
                               {actionLoading === rep.id + ':delete' ? 'Deleting…' : 'Delete Rep'}
                             </button>
@@ -1019,17 +1020,17 @@ export default function RepsPage() {
       {/* View History Dialog */}
       {historyRep && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">{historyRep.name}</h2>
-                <p className="text-xs text-gray-500 mt-0.5">{historyRep.email}</p>
+                <h2 className="text-base font-semibold text-foreground">{historyRep.name}</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">{historyRep.email}</p>
               </div>
-              <button onClick={() => setHistoryRep(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+              <button onClick={() => setHistoryRep(null)} className="text-muted-foreground hover:text-foreground text-xl leading-none">×</button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-4">
               {historyRep.attempts.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-8">No attempts yet.</p>
+                <p className="text-muted-foreground text-sm text-center py-8">No attempts yet.</p>
               ) : (
                 <div className="space-y-2">
                   {historyRep.attempts.map((attempt) => {
@@ -1039,35 +1040,35 @@ export default function RepsPage() {
                       ? mins > 0 ? `${mins}m ${secs}s` : `${secs}s`
                       : null
                     return (
-                      <div key={attempt.id} className="bg-gray-50 rounded-lg px-4 py-3">
+                      <div key={attempt.id} className="bg-muted/40 rounded-lg px-4 py-3">
                         <div className="flex items-center justify-between">
                           <div>
-                            <p className="text-sm font-medium text-gray-800">{attempt.moduleTitle}</p>
-                            <p className="text-xs text-gray-500 mt-0.5">
+                            <p className="text-sm font-medium text-foreground">{attempt.moduleTitle}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
                               {format(new Date(attempt.createdAt), 'M/d/yyyy')} · Attempt #{attempt.attemptNumber}
                             </p>
                           </div>
                           <div className="text-right">
-                            <p className="text-sm font-semibold text-gray-700">{attempt.score}%</p>
-                            <p className={`text-xs font-medium ${attempt.passed ? 'text-green-600' : 'text-red-500'}`}>
+                            <p className="text-sm font-semibold text-foreground/90">{attempt.score}%</p>
+                            <p className={`text-xs font-medium ${attempt.passed ? 'text-success' : 'text-destructive'}`}>
                               {attempt.passed ? 'Passed' : 'Failed'}
                             </p>
                           </div>
                         </div>
                         <div className="flex gap-2 mt-2 flex-wrap items-center">
                           {viewTime && (
-                            <span className="text-xs bg-blue-50 text-blue-700 border border-blue-100 rounded px-2 py-0.5">
+                            <span className="text-xs bg-accent text-primary border border-primary/25 rounded px-2 py-0.5">
                               Viewed: {viewTime}
                             </span>
                           )}
                           {attempt.tabLeaveCount > 0 && (
-                            <span className="text-xs bg-red-50 text-red-700 border border-red-100 rounded px-2 py-0.5">
+                            <span className="text-xs bg-destructive/10 text-destructive border border-destructive/25 rounded px-2 py-0.5">
                               Left tab {attempt.tabLeaveCount}×
                             </span>
                           )}
                           <button
                             onClick={() => openBreakdown(attempt.id)}
-                            className="text-xs text-blue-600 hover:text-blue-800 border border-blue-200 rounded px-2 py-0.5 hover:bg-blue-50 transition-colors"
+                            className="text-xs text-primary hover:text-primary border border-primary/30 rounded px-2 py-0.5 hover:bg-accent transition-colors"
                           >
                             View Answers
                           </button>
@@ -1078,10 +1079,10 @@ export default function RepsPage() {
                 </div>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100">
+            <div className="px-5 py-3 border-t border-border">
               <button
                 onClick={() => setHistoryRep(null)}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                className="w-full bg-muted hover:bg-muted text-foreground/90 text-sm font-medium rounded-lg py-2.5 transition-colors"
               >
                 Close
               </button>
@@ -1093,44 +1094,44 @@ export default function RepsPage() {
       {/* Add Rep Dialog */}
       {showAddDialog && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Add New Rep</h2>
-              <button onClick={() => { setShowAddDialog(false); setAddError('') }} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-md">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-foreground">Add New Rep</h2>
+              <button onClick={() => { setShowAddDialog(false); setAddError('') }} className="text-muted-foreground hover:text-foreground text-xl leading-none">×</button>
             </div>
             <form onSubmit={handleAddRep} className="px-5 py-5 space-y-4">
               {addError && (
-                <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2.5">{addError}</div>
+                <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-3 py-2.5">{addError}</div>
               )}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Full Name</label>
+                <label className="block text-sm font-medium text-foreground/90 mb-1.5">Full Name</label>
                 <input
                   type="text"
                   required
                   value={addName}
                   onChange={(e) => setAddName(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="Jane Smith"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Password</label>
+                <label className="block text-sm font-medium text-foreground/90 mb-1.5">Password</label>
                 <input
                   type="password"
                   required
                   value={addPassword}
                   onChange={(e) => setAddPassword(e.target.value)}
-                  className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                   placeholder="Minimum 8 characters"
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Team</label>
+                <label className="block text-sm font-medium text-foreground/90 mb-2">Team</label>
                 <div className="flex gap-3">
                   {(['intake', 'creative'] as const).map(t => (
-                    <label key={t} className={`flex-1 flex items-center gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${addTeamType === t ? (t === 'creative' ? 'border-purple-300 bg-purple-50' : 'border-blue-300 bg-blue-50') : 'border-gray-200'}`}>
-                      <input type="radio" name="addTeamType" value={t} checked={addTeamType === t} onChange={() => setAddTeamType(t)} className="text-blue-600" />
-                      <span className="text-sm font-medium text-gray-800">{t === 'intake' ? 'Intake Team' : 'Creative Team'}</span>
+                    <label key={t} className={`flex-1 flex items-center gap-2.5 p-3 rounded-lg border cursor-pointer transition-colors ${addTeamType === t ? (t === 'creative' ? 'border-team-creative/30 bg-team-creative-soft' : 'border-primary/30 bg-accent') : 'border-border'}`}>
+                      <input type="radio" name="addTeamType" value={t} checked={addTeamType === t} onChange={() => setAddTeamType(t)} className="text-primary" />
+                      <span className="text-sm font-medium text-foreground">{t === 'intake' ? 'Intake Team' : 'Creative Team'}</span>
                     </label>
                   ))}
                 </div>
@@ -1139,14 +1140,14 @@ export default function RepsPage() {
                 <button
                   type="button"
                   onClick={() => { setShowAddDialog(false); setAddError('') }}
-                  className="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                  className="flex-1 border border-border hover:bg-muted/50 text-foreground/90 text-sm font-medium rounded-lg py-2.5 transition-colors"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={addLoading}
-                  className="flex-1 bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 text-white text-sm font-semibold rounded-lg py-2.5 transition-colors"
+                  className="flex-1 bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-semibold rounded-lg py-2.5 transition-colors"
                 >
                   {addLoading ? 'Adding...' : 'Add Rep'}
                 </button>
@@ -1159,32 +1160,32 @@ export default function RepsPage() {
       {/* Attempt Breakdown Modal */}
       {breakdownAttemptId && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-              <h2 className="text-base font-semibold text-gray-900">Attempt Breakdown</h2>
-              <button onClick={() => setBreakdownAttemptId(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+              <h2 className="text-base font-semibold text-foreground">Attempt Breakdown</h2>
+              <button onClick={() => setBreakdownAttemptId(null)} className="text-muted-foreground hover:text-foreground text-xl leading-none">×</button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-4">
               {breakdownLoading ? (
-                <p className="text-gray-400 text-sm text-center py-8">Loading...</p>
+                <p className="text-muted-foreground text-sm text-center py-8">Loading...</p>
               ) : breakdownAnswers.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-8">No answer details available.</p>
+                <p className="text-muted-foreground text-sm text-center py-8">No answer details available.</p>
               ) : (
                 <div className="space-y-3">
                   {breakdownAnswers.map((answer: any, idx: number) => {
                     const isCorrect = answer.options?.is_correct === true
                     return (
-                      <div key={answer.id} className={`rounded-lg border p-3 ${isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}>
+                      <div key={answer.id} className={`rounded-lg border p-3 ${isCorrect ? 'border-success/30 bg-success/10' : 'border-destructive/30 bg-destructive/10'}`}>
                         <div className="flex items-start gap-2">
-                          <span className={`text-sm font-bold mt-0.5 shrink-0 ${isCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                          <span className={`text-sm font-bold mt-0.5 shrink-0 ${isCorrect ? 'text-success' : 'text-destructive'}`}>
                             {isCorrect ? '✓' : '✗'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800">
+                            <p className="text-sm font-medium text-foreground">
                               Q{idx + 1}: {answer.questions?.question_text ?? 'Unknown question'}
                             </p>
-                            <p className="text-sm text-gray-600 mt-1">
-                              Answered: <span className={isCorrect ? 'text-green-700 font-medium' : 'text-red-600 font-medium'}>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Answered: <span className={isCorrect ? 'text-success font-medium' : 'text-destructive font-medium'}>
                                 {answer.options?.option_text ?? 'Unknown'}
                               </span>
                             </p>
@@ -1196,10 +1197,10 @@ export default function RepsPage() {
                 </div>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100">
+            <div className="px-5 py-3 border-t border-border">
               <button
                 onClick={() => setBreakdownAttemptId(null)}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                className="w-full bg-muted hover:bg-muted text-foreground/90 text-sm font-medium rounded-lg py-2.5 transition-colors"
               >
                 Close
               </button>
@@ -1207,6 +1208,7 @@ export default function RepsPage() {
           </div>
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }

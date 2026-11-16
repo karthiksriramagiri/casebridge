@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { format, subDays, startOfWeek } from 'date-fns'
 import TeamsShell from '../dashboard/TeamsShell'
 import ScoreChart from '../ScoreChart'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 interface ScoreEvent {
   id: string
@@ -49,15 +50,15 @@ const EVENT_ICONS: Record<string, string> = {
 type Range = 'week' | '7d' | '30d' | 'all'
 
 function scoreColor(score: number) {
-  if (score > 2) return 'text-green-600'
-  if (score >= 2) return 'text-gray-900'
-  return 'text-red-500'
+  if (score > 2) return 'text-success'
+  if (score >= 2) return 'text-foreground'
+  return 'text-destructive'
 }
 
 function scoreBg(score: number) {
-  if (score > 2) return 'bg-green-50 border-green-200'
-  if (score >= 2) return 'bg-white border-gray-100'
-  return 'bg-red-50 border-red-100'
+  if (score > 2) return 'bg-success/10 border-success/30'
+  if (score >= 2) return 'bg-card border-border'
+  return 'bg-destructive/10 border-destructive/25'
 }
 
 function fmtPts(pts: number) {
@@ -124,24 +125,23 @@ export default function PerformancePage() {
   const todayEvents = dailyScores.find(d => d.date === today)?.events ?? []
 
   return (
-    <div className="min-h-screen bg-gray-50">
       <TeamsShell timeclockEnabled={timeclockEnabled} teamType={teamType}>
-      <main className="max-w-4xl mx-auto px-6 py-8">
+      <PageHeader
+        title="My Performance"
+        description="You start each day on 2 points. Events move it up or down; 5 is the most you can score."
+      />
+      <PageBody>
 
-        <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">My Performance</h1>
-          <p className="text-gray-500 mt-1 text-sm">You start at 2 pts each day. Events adjust it up or down. Max score is 5.</p>
-        </div>
 
         {loading ? (
-          <div className="text-center py-12 text-gray-400">Loading...</div>
+          <div className="text-center py-12 text-muted-foreground">Loading...</div>
         ) : (
           <>
             {/* Today's score */}
-            <div className={`rounded-2xl border shadow-sm px-6 py-6 mb-6 ${scoreBg(todayScore)}`}>
+            <div className={`rounded-2xl border px-6 py-6 mb-6 ${scoreBg(todayScore)}`}>
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">
                     Today's Score · {format(new Date(), 'EEE, MMM d')}
                   </p>
                   <div className="flex items-end gap-3">
@@ -149,9 +149,9 @@ export default function PerformancePage() {
                       {Math.round(todayScore * 100) / 100}
                     </p>
                     <div className="mb-1">
-                      <p className="text-sm text-gray-400">= 2 base</p>
+                      <p className="text-sm text-muted-foreground">= 2 base</p>
                       {todayEventTotal !== 0 && (
-                        <p className={`text-sm font-semibold ${todayEventTotal > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                        <p className={`text-sm font-semibold ${todayEventTotal > 0 ? 'text-success' : 'text-destructive'}`}>
                           {fmtPts(todayEventTotal)} from events
                         </p>
                       )}
@@ -160,10 +160,10 @@ export default function PerformancePage() {
                 </div>
                 <div className="text-right">
                   {rank !== null && (
-                    <div className="bg-white border border-gray-200 rounded-xl px-4 py-3 shadow-sm">
-                      <p className="text-xs text-gray-400 font-medium">This week's rank</p>
-                      <p className="text-2xl font-bold text-gray-900">#{rank}</p>
-                      <p className="text-xs text-gray-400">of {totalReps}</p>
+                    <div className="bg-card border border-border rounded-xl px-4 py-3 ">
+                      <p className="text-xs text-muted-foreground font-medium">This week's rank</p>
+                      <p className="text-2xl font-bold text-foreground">#{rank}</p>
+                      <p className="text-xs text-muted-foreground">of {totalReps}</p>
                     </div>
                   )}
                 </div>
@@ -171,13 +171,13 @@ export default function PerformancePage() {
 
               {/* Today's events */}
               {todayEvents.length > 0 && (
-                <div className="mt-4 pt-4 border-t border-gray-100 space-y-1.5">
+                <div className="mt-4 pt-4 border-t border-border space-y-1.5">
                   {todayEvents.map(e => (
                     <div key={e.id} className="flex items-center gap-2 text-sm">
                       <span>{EVENT_ICONS[e.event_type] || '•'}</span>
-                      <span className="text-gray-700 flex-1">{EVENT_LABELS[e.event_type] || e.event_type}</span>
-                      {e.note && <span className="text-gray-400 text-xs">{e.note}</span>}
-                      <span className={`font-semibold ${Number(e.points) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                      <span className="text-foreground/90 flex-1">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                      {e.note && <span className="text-muted-foreground text-xs">{e.note}</span>}
+                      <span className={`font-semibold ${Number(e.points) > 0 ? 'text-success' : 'text-destructive'}`}>
                         {fmtPts(Number(e.points))}
                       </span>
                     </div>
@@ -194,10 +194,10 @@ export default function PerformancePage() {
             )}
 
             {/* Point rules */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 mb-8">
-              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">How Points Work · Start at 2 each day</p>
+            <div className="bg-card rounded-xl border border-border px-5 py-4 mb-8">
+              <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">How Points Work · Start at 2 each day</p>
               <div className="mb-3">
-                <p className="text-xs font-semibold text-green-700 uppercase tracking-wider mb-1.5">You gain</p>
+                <p className="text-xs font-semibold text-success uppercase tracking-wider mb-1.5">You gain</p>
                 <div className="space-y-1 text-sm">
                   {[
                     ['🤝 Close a lead', '+2'],
@@ -205,14 +205,14 @@ export default function PerformancePage() {
                     ['📞 Good call quality', '+1'],
                   ].map(([label, pts]) => (
                     <div key={label} className="flex justify-between">
-                      <span className="text-gray-600">{label}</span>
-                      <span className="font-semibold text-green-600">{pts} pt</span>
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-semibold text-success">{pts} pt</span>
                     </div>
                   ))}
                 </div>
               </div>
-              <div className="border-t border-gray-100 pt-3">
-                <p className="text-xs font-semibold text-red-600 uppercase tracking-wider mb-1.5">You lose</p>
+              <div className="border-t border-border pt-3">
+                <p className="text-xs font-semibold text-destructive uppercase tracking-wider mb-1.5">You lose</p>
                 <div className="space-y-1 text-sm">
                   {[
                     ['❌ Lead not checkmarked in 60s (7am–9pm PST)', '−1'],
@@ -222,8 +222,8 @@ export default function PerformancePage() {
                     ['🚫 Bad call quality', '−1'],
                   ].map(([label, pts]) => (
                     <div key={label} className="flex justify-between gap-4">
-                      <span className="text-gray-600">{label}</span>
-                      <span className="font-semibold text-red-500 shrink-0">{pts} pt</span>
+                      <span className="text-muted-foreground">{label}</span>
+                      <span className="font-semibold text-destructive shrink-0">{pts} pt</span>
                     </div>
                   ))}
                 </div>
@@ -233,8 +233,8 @@ export default function PerformancePage() {
             {/* Previous days history */}
             <div>
               <div className="flex items-center justify-between mb-3">
-                <h2 className="font-semibold text-gray-900 text-sm">Previous Days</h2>
-                <div className="flex gap-1 bg-gray-100 rounded-lg p-1">
+                <h2 className="font-semibold text-foreground text-sm">Previous Days</h2>
+                <div className="flex gap-1 bg-muted rounded-lg p-1">
                   {([
                     { key: 'week', label: 'This week' },
                     { key: '7d',   label: '7 days' },
@@ -245,7 +245,7 @@ export default function PerformancePage() {
                       key={key}
                       onClick={() => setRange(key)}
                       className={`text-xs px-2.5 py-1 rounded-md font-medium transition-all ${
-                        range === key ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+ range === key ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'
                       }`}
                     >
                       {label}
@@ -255,20 +255,20 @@ export default function PerformancePage() {
               </div>
 
               {filteredDays.length === 0 ? (
-                <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-10 text-center text-gray-400 text-sm">
+                <div className="bg-card rounded-xl border border-border px-5 py-10 text-center text-muted-foreground text-sm">
                   No history for this period.
                 </div>
               ) : (
                 <div className="space-y-2">
                   {filteredDays.map(day => (
-                    <div key={day.date} className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-gray-50">
-                        <p className="text-sm font-semibold text-gray-800">
+                    <div key={day.date} className="bg-card rounded-xl border border-border overflow-hidden">
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-border">
+                        <p className="text-sm font-semibold text-foreground">
                           {format(new Date(day.date + 'T12:00:00'), 'EEEE, MMMM d')}
                         </p>
                         <div className="flex items-center gap-2">
                           {day.eventTotal !== 0 && (
-                            <span className={`text-xs font-medium ${day.eventTotal > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                            <span className={`text-xs font-medium ${day.eventTotal > 0 ? 'text-success' : 'text-destructive'}`}>
                               {fmtPts(day.eventTotal)}
                             </span>
                           )}
@@ -278,20 +278,20 @@ export default function PerformancePage() {
                         </div>
                       </div>
                       {day.events.length > 0 ? (
-                        <div className="divide-y divide-gray-50">
+                        <div className="divide-y divide-border">
                           {day.events.map(e => (
                             <div key={e.id} className="flex items-center gap-2 px-5 py-2.5 text-sm">
                               <span className="shrink-0">{EVENT_ICONS[e.event_type] || '•'}</span>
-                              <span className="text-gray-700 flex-1">{EVENT_LABELS[e.event_type] || e.event_type}</span>
-                              {e.note && <span className="text-gray-400 text-xs truncate max-w-32">{e.note}</span>}
-                              <span className={`font-semibold shrink-0 ${Number(e.points) > 0 ? 'text-green-600' : 'text-red-500'}`}>
+                              <span className="text-foreground/90 flex-1">{EVENT_LABELS[e.event_type] || e.event_type}</span>
+                              {e.note && <span className="text-muted-foreground text-xs truncate max-w-32">{e.note}</span>}
+                              <span className={`font-semibold shrink-0 ${Number(e.points) > 0 ? 'text-success' : 'text-destructive'}`}>
                                 {fmtPts(Number(e.points))}
                               </span>
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <p className="px-5 py-2.5 text-sm text-gray-400">No events — base score 2</p>
+                        <p className="px-5 py-2.5 text-sm text-muted-foreground">No events — base score 2</p>
                       )}
                     </div>
                   ))}
@@ -300,8 +300,7 @@ export default function PerformancePage() {
             </div>
           </>
         )}
-      </main>
+        </PageBody>
       </TeamsShell>
-    </div>
   )
 }

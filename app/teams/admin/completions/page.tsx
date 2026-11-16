@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import CompletionsClient from './CompletionsClient'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 export default async function CompletionsPage() {
   const supabase = await createClient()
@@ -65,12 +66,14 @@ export default async function CompletionsPage() {
   }))
 
   return (
-    <div>
-      <div className="mb-5">
-        <h1 className="text-xl font-bold text-gray-900">All Completions</h1>
-        <p className="text-sm text-gray-500 mt-1">Full history of all quiz attempts across all reps.</p>
-      </div>
-      <CompletionsClient rows={rows} />
-    </div>
+    <>
+      <PageHeader
+        title="All Completions"
+        description="Every quiz attempt, by every rep."
+      />
+      <PageBody>
+        <CompletionsClient rows={rows} />
+      </PageBody>
+    </>
   )
 }

@@ -31,38 +31,38 @@ export default function TeamsSignupPage() {
   /* ── Landing ─────────────────────────────────────────────────────────── */
   if (step === 'landing') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
+      <div className="tc-root min-h-dvh bg-muted/40 flex items-center justify-center px-4">
         <div className="w-full max-w-lg">
           {/* Header */}
-          <div className="bg-[#0f1e3c] rounded-t-xl px-8 py-8 text-center">
-            <h1 className="text-3xl font-bold text-white tracking-tight">CaseBridge Teams</h1>
-            <p className="text-blue-200 text-sm mt-2">Personal Closer Program</p>
+          <div className="bg-primary rounded-t-xl px-8 py-8 text-center">
+            <h1 className="text-3xl font-bold text-primary-foreground tracking-tight">CaseBridge Teams</h1>
+            <p className="text-primary-foreground/85 text-sm mt-2">Personal Closer Program</p>
           </div>
 
           {/* Body */}
-          <div className="bg-white rounded-b-xl shadow-lg px-8 py-10 text-center">
-            <div className="w-16 h-16 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-6">
-              <svg className="w-8 h-8 text-[#0f1e3c]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="bg-card rounded-b-xl shadow-lg px-8 py-10 text-center">
+            <div className="w-16 h-16 bg-accent rounded-full flex items-center justify-center mx-auto mb-6">
+              <svg className="w-8 h-8 text-primary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
                   d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
             </div>
 
-            <h2 className="text-xl font-semibold text-gray-900 mb-3">Join as a Personal Closer</h2>
-            <p className="text-gray-500 text-sm leading-relaxed mb-8">
+            <h2 className="text-xl font-semibold text-foreground mb-3">Join as a Personal Closer</h2>
+            <p className="text-muted-foreground text-sm leading-relaxed mb-8">
               Watch a short overview of the role, then schedule your interview to get started with the CaseBridge team.
             </p>
 
             <button
               onClick={() => setStep('video')}
-              className="w-full bg-[#0f1e3c] hover:bg-[#1a3060] text-white font-semibold py-3.5 px-6 rounded-lg transition-colors text-sm"
+              className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-semibold py-3.5 px-6 rounded-lg transition-colors text-sm"
             >
               Sign Up — Watch Overview
             </button>
 
-            <p className="text-xs text-gray-400 mt-4">
+            <p className="text-xs text-muted-foreground mt-4">
               Already on the team?{' '}
-              <a href="/teams/login" className="text-[#0f1e3c] font-medium hover:underline">Sign in here</a>
+              <a href="/teams/login" className="text-primary font-medium hover:underline">Sign in here</a>
             </p>
           </div>
         </div>
@@ -72,12 +72,12 @@ export default function TeamsSignupPage() {
 
   /* ── Video ───────────────────────────────────────────────────────────── */
   return (
-    <div className="min-h-screen bg-[#0a1628] flex flex-col items-center justify-center px-4 py-8">
+    <div className="tc-root min-h-dvh bg-primary flex flex-col items-center justify-center px-4 py-8">
       {/* Top label */}
       <div className="mb-6 text-center">
-        <p className="text-blue-300 text-xs font-medium uppercase tracking-widest mb-1">Step 1 of 2</p>
-        <h2 className="text-white text-xl font-bold">Watch the Overview</h2>
-        <p className="text-blue-200 text-sm mt-1 opacity-75">
+        <p className="text-primary-foreground/75 text-xs font-medium uppercase tracking-widest mb-1">Step 1 of 2</p>
+        <h2 className="text-primary-foreground text-xl font-bold">Watch the Overview</h2>
+        <p className="text-primary-foreground/85 text-sm mt-1 opacity-75">
           After the video, you'll be taken to schedule your interview.
         </p>
       </div>
@@ -96,14 +96,14 @@ export default function TeamsSignupPage() {
 
       {/* Manual continue */}
       <div className="mt-8 text-center">
-        <p className="text-blue-300 text-sm mb-4 opacity-75">
+        <p className="text-primary-foreground/75 text-sm mb-4 opacity-75">
           Once you've finished watching, click below to schedule your interview.
         </p>
         <a
           href={CALENDLY_URL}
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-flex items-center gap-2 bg-white text-[#0f1e3c] font-semibold py-3 px-8 rounded-lg hover:bg-blue-50 transition-colors text-sm"
+          className="inline-flex items-center gap-2 bg-card text-primary font-semibold py-3 px-8 rounded-lg hover:bg-accent transition-colors text-sm"
         >
           Schedule My Interview
           <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">

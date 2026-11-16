@@ -75,18 +75,18 @@ export default function BookingScheduler({ serverNow }: { serverNow: string }) {
   // Already booked — show confirmation
   if (myBooking) {
     return (
-      <div className="rounded-2xl border border-green-200 bg-gradient-to-r from-green-50 to-emerald-50 px-6 py-5">
+      <div className="rounded-2xl border border-success/30 bg-gradient-to-r from-success/10 to-success/10 px-6 py-5">
         <div className="flex items-start gap-4">
-          <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center shrink-0 text-lg">✅</div>
+          <div className="w-10 h-10 rounded-full bg-success/15 flex items-center justify-center shrink-0 text-lg">✅</div>
           <div>
-            <h3 className="font-bold text-gray-900 text-base">Call Booked!</h3>
-            <p className="text-sm text-gray-600 mt-0.5">
+            <h3 className="font-bold text-foreground text-base">Call Booked!</h3>
+            <p className="text-sm text-muted-foreground mt-0.5">
               Your onboarding call is scheduled for{' '}
               <strong>{format(new Date(myBooking), "EEEE, MMMM d 'at' h:mm a")}</strong>.
             </p>
             <button
               onClick={() => setMyBooking(null)}
-              className="text-xs text-gray-400 underline mt-2 hover:text-gray-600"
+              className="text-xs text-muted-foreground underline mt-2 hover:text-foreground"
             >
               Reschedule
             </button>
@@ -97,12 +97,12 @@ export default function BookingScheduler({ serverNow }: { serverNow: string }) {
   }
 
   return (
-    <div className="rounded-2xl border border-blue-200 bg-gradient-to-r from-blue-50 to-indigo-50 px-6 py-5">
+    <div className="rounded-2xl border border-primary/30 bg-gradient-to-r from-primary/10 to-primary/10 px-6 py-5">
       <div className="flex items-start gap-3 mb-5">
-        <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center shrink-0 text-lg">📅</div>
+        <div className="w-10 h-10 rounded-full bg-accent flex items-center justify-center shrink-0 text-lg">📅</div>
         <div>
-          <h3 className="font-bold text-gray-900 text-base">Book Your Onboarding Call</h3>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h3 className="font-bold text-foreground text-base">Book Your Onboarding Call</h3>
+          <p className="text-sm text-muted-foreground mt-0.5">
             Level 1 complete! Pick a 30-min slot for your intro call. Level 2 will unlock automatically 30 minutes after your call starts.
             Slots available within the next 12 hours, starting 2 hours from now.
           </p>
@@ -110,17 +110,17 @@ export default function BookingScheduler({ serverNow }: { serverNow: string }) {
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 text-sm text-gray-400">
-          <div className="w-4 h-4 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="w-4 h-4 border-2 border-primary/60 border-t-transparent rounded-full animate-spin" />
           Loading available times…
         </div>
       ) : slots.length === 0 ? (
-        <p className="text-sm text-gray-500">No slots available right now. Please check back shortly.</p>
+        <p className="text-sm text-muted-foreground">No slots available right now. Please check back shortly.</p>
       ) : (
         <div className="space-y-4">
           {grouped.map(({ day, slots: daySlots }) => (
             <div key={day.toISOString()}>
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                 {format(day, 'EEEE, MMMM d')}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -134,11 +134,11 @@ export default function BookingScheduler({ serverNow }: { serverNow: string }) {
                       disabled={taken}
                       onClick={() => setSelected(isSelected ? null : slot)}
                       className={`text-sm font-medium px-4 py-2 rounded-lg border-2 transition-all ${
-                        taken
-                          ? 'border-gray-200 bg-gray-100 text-gray-300 cursor-not-allowed line-through'
+ taken
+                          ? 'border-border bg-muted text-muted-foreground/50 cursor-not-allowed line-through'
                           : isSelected
-                          ? 'border-blue-600 bg-blue-600 text-white shadow-sm'
-                          : 'border-blue-200 bg-white text-blue-800 hover:border-blue-400 hover:bg-blue-50'
+                          ? 'border-primary bg-primary text-primary-foreground '
+                          : 'border-primary/30 bg-card text-accent-foreground hover:border-primary hover:bg-accent'
                       }`}
                     >
                       {format(slot, 'h:mm a')}
@@ -150,20 +150,20 @@ export default function BookingScheduler({ serverNow }: { serverNow: string }) {
           ))}
 
           {selected && (
-            <div className="flex items-center gap-3 pt-2 border-t border-blue-200 mt-2">
-              <p className="text-sm text-gray-700 flex-1">
+            <div className="flex items-center gap-3 pt-2 border-t border-primary/30 mt-2">
+              <p className="text-sm text-foreground/90 flex-1">
                 Booking <strong>{format(selected, "h:mm a 'on' EEEE, MMMM d")}</strong>
               </p>
               <button
                 onClick={() => setSelected(null)}
-                className="text-sm text-gray-400 hover:text-gray-600"
+                className="text-sm text-muted-foreground hover:text-foreground"
               >
                 Cancel
               </button>
               <button
                 onClick={handleBook}
                 disabled={confirming}
-                className="bg-[#0f1e3c] text-white text-sm font-semibold px-5 py-2 rounded-lg hover:bg-[#1a3060] disabled:opacity-50 transition-colors"
+                className="bg-primary text-primary-foreground text-sm font-semibold px-5 py-2 rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {confirming ? 'Booking…' : 'Confirm'}
               </button>
@@ -171,7 +171,7 @@ export default function BookingScheduler({ serverNow }: { serverNow: string }) {
           )}
 
           {error && (
-            <p className="text-sm text-red-600 font-medium">{error}</p>
+            <p className="text-sm text-destructive font-medium">{error}</p>
           )}
         </div>
       )}

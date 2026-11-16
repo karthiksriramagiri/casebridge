@@ -64,32 +64,32 @@ export default function UrgentTasksClient({ initialTasks }: { initialTasks: Urge
   return (
     <div className="space-y-6">
       {/* Add form */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-        <h2 className="text-sm font-semibold text-gray-700 mb-4">Add Urgent Task</h2>
+      <div className="bg-card rounded-xl border border-border p-6">
+        <h2 className="text-sm font-semibold text-foreground/90 mb-4">Add Urgent Task</h2>
         <form onSubmit={handleAdd} className="space-y-3">
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Title *</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Title *</label>
             <input
               type="text"
               value={title}
               onChange={e => setTitle(e.target.value)}
               placeholder="e.g. Call back John Smith ASAP"
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               required
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Description (optional)</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Description (optional)</label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
               placeholder="Additional context or instructions..."
               rows={2}
-              className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+              className="w-full border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-600 mb-1">Assign to</label>
+            <label className="block text-xs font-medium text-muted-foreground mb-1">Assign to</label>
             <div className="flex gap-2">
               {(['all', 'pablo', 'ziyad'] as const).map(opt => (
                 <button
@@ -97,9 +97,9 @@ export default function UrgentTasksClient({ initialTasks }: { initialTasks: Urge
                   type="button"
                   onClick={() => setAssignedTo(opt)}
                   className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                    assignedTo === opt
-                      ? 'bg-blue-600 text-white border-blue-600'
-                      : 'bg-white text-gray-600 border-gray-300 hover:border-blue-400'
+ assignedTo === opt
+                      ? 'bg-primary text-primary-foreground border-primary'
+                      : 'bg-card text-muted-foreground border-border hover:border-primary'
                   }`}
                 >
                   {ASSIGN_LABELS[opt]}
@@ -107,11 +107,11 @@ export default function UrgentTasksClient({ initialTasks }: { initialTasks: Urge
               ))}
             </div>
           </div>
-          {error && <p className="text-xs text-red-600">{error}</p>}
+          {error && <p className="text-xs text-destructive">{error}</p>}
           <button
             type="submit"
             disabled={saving || !title.trim()}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium py-2 rounded-lg transition-colors"
+            className="w-full bg-primary hover:bg-primary/90 disabled:opacity-50 text-primary-foreground text-sm font-medium py-2 rounded-lg transition-colors"
           >
             {saving ? 'Adding…' : 'Add Task'}
           </button>
@@ -120,36 +120,36 @@ export default function UrgentTasksClient({ initialTasks }: { initialTasks: Urge
 
       {/* Task list */}
       <div>
-        <h2 className="text-sm font-semibold text-gray-700 mb-3">Active Tasks ({tasks.length})</h2>
+        <h2 className="text-sm font-semibold text-foreground/90 mb-3">Active Tasks ({tasks.length})</h2>
         {tasks.length === 0 ? (
-          <div className="bg-white rounded-xl border border-dashed border-gray-200 px-6 py-10 text-center">
-            <p className="text-gray-400 text-sm">No urgent tasks right now</p>
+          <div className="bg-card rounded-xl border border-dashed border-border px-6 py-10 text-center">
+            <p className="text-muted-foreground text-sm">No urgent tasks right now</p>
           </div>
         ) : (
           <div className="space-y-2">
             {tasks.map(task => (
               <div
                 key={task.id}
-                className="bg-white rounded-xl border border-amber-200 px-5 py-4 flex items-start justify-between gap-4"
+                className="bg-card rounded-xl border border-warning/30 px-5 py-4 flex items-start justify-between gap-4"
               >
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <p className="text-sm font-medium text-gray-900">{task.title}</p>
-                    <span className="text-xs text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-full">
+                    <p className="text-sm font-medium text-foreground">{task.title}</p>
+                    <span className="text-xs text-warning bg-warning/10 border border-warning/30 px-1.5 py-0.5 rounded-full">
                       {ASSIGN_LABELS[task.assigned_to]}
                     </span>
                   </div>
                   {task.description && (
-                    <p className="text-xs text-gray-500 mt-1">{task.description}</p>
+                    <p className="text-xs text-muted-foreground mt-1">{task.description}</p>
                   )}
-                  <p className="text-xs text-gray-400 mt-1">
+                  <p className="text-xs text-muted-foreground mt-1">
                     Added {new Date(task.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })}
                   </p>
                 </div>
                 <button
                   onClick={() => handleDelete(task.id)}
                   disabled={deletingId === task.id}
-                  className="flex-shrink-0 text-xs text-red-500 hover:text-red-700 font-medium disabled:opacity-40 transition-colors"
+                  className="flex-shrink-0 text-xs text-destructive hover:text-destructive font-medium disabled:opacity-40 transition-colors"
                 >
                   {deletingId === task.id ? '…' : 'Remove'}
                 </button>

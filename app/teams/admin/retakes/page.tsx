@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { format } from 'date-fns'
+import { PageHeader, PageBody } from '@/app/teams/_components/shared'
 
 export default async function RetakesPage() {
   const supabase = await createClient()
@@ -44,22 +45,18 @@ export default async function RetakesPage() {
   }
 
   return (
-    <div>
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-          <span>🔁</span>
-          <span className="text-red-600">Retake Alerts</span>
-        </h1>
-        <p className="text-sm text-gray-500 mt-1">
-          Reps who have taken a quiz more than once. Review and follow up as needed.
-        </p>
-      </div>
+    <>
+      <PageHeader
+        title="Retake Alerts"
+        description="Reps who have sat a quiz more than once. Review and follow up."
+      />
+      <PageBody>
 
       {(!retakes || retakes.length === 0) ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-12 text-center">
+        <div className="bg-card rounded-xl border border-border px-6 py-12 text-center">
           <div className="text-4xl mb-3">🎉</div>
-          <p className="text-gray-600 font-medium">No retakes yet!</p>
-          <p className="text-gray-400 text-sm mt-1">All reps have passed on their first attempt.</p>
+          <p className="text-muted-foreground font-medium">No retakes yet!</p>
+          <p className="text-muted-foreground text-sm mt-1">All reps have passed on their first attempt.</p>
         </div>
       ) : (
         <div className="space-y-3">
@@ -72,35 +69,35 @@ export default async function RetakesPage() {
             return (
               <div
                 key={retake.id}
-                className="bg-white rounded-xl border border-gray-100 shadow-sm px-5 py-4 flex items-start justify-between gap-4"
+                className="bg-card rounded-xl border border-border px-5 py-4 flex items-start justify-between gap-4"
               >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-bold text-gray-900">{repName}</span>
-                    <span className="text-gray-400 text-sm">&lt;{retake.user_id.slice(0, 8)}...&gt;</span>
+                    <span className="font-bold text-foreground">{repName}</span>
+                    <span className="text-muted-foreground text-sm">&lt;{retake.user_id.slice(0, 8)}...&gt;</span>
                   </div>
-                  <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm text-gray-600">
-                    <span className="font-medium text-gray-800">{moduleTitle}</span>
-                    <span className="text-gray-300">·</span>
+                  <div className="flex flex-wrap items-center gap-2 mt-1.5 text-sm text-muted-foreground">
+                    <span className="font-medium text-foreground">{moduleTitle}</span>
+                    <span className="text-muted-foreground/50">·</span>
                     <span>Attempt #{retake.attempt_number}</span>
-                    <span className="text-gray-300">·</span>
+                    <span className="text-muted-foreground/50">·</span>
                     <span>{retake.score}%</span>
-                    <span className="text-gray-300">·</span>
-                    <span className={retake.passed ? 'text-green-600 font-medium' : 'text-red-500 font-medium'}>
+                    <span className="text-muted-foreground/50">·</span>
+                    <span className={retake.passed ? 'text-success font-medium' : 'text-destructive font-medium'}>
                       {retake.passed ? 'Passed' : 'Failed'}
                     </span>
                     {firstScore !== null && (
                       <>
-                        <span className="text-gray-300">·</span>
-                        <span className="text-gray-500">1st attempt: {firstScore}%</span>
+                        <span className="text-muted-foreground/50">·</span>
+                        <span className="text-muted-foreground">1st attempt: {firstScore}%</span>
                       </>
                     )}
                   </div>
-                  <p className="text-xs text-gray-400 mt-1.5">{dateStr}</p>
+                  <p className="text-xs text-muted-foreground mt-1.5">{dateStr}</p>
                 </div>
 
                 <div className="shrink-0">
-                  <span className="bg-red-100 text-red-700 text-xs font-bold px-2.5 py-1.5 rounded-lg uppercase tracking-wide">
+                  <span className="bg-destructive/10 text-destructive text-xs font-bold px-2.5 py-1.5 rounded-lg uppercase tracking-wide">
                     Retake #{retake.attempt_number}
                   </span>
                 </div>
@@ -109,6 +106,7 @@ export default async function RetakesPage() {
           })}
         </div>
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }

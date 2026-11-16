@@ -23,19 +23,19 @@ export default function CertificationPopup() {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/70 backdrop-blur-sm" />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
+      <div className="relative bg-card rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col max-h-[90vh]">
 
         {/* ── Header ── */}
-        <div className="bg-[#0f1e3c] rounded-t-2xl px-7 pt-6 pb-5 shrink-0">
+        <div className="bg-primary rounded-t-2xl px-7 pt-6 pb-5 shrink-0">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-blue-300 text-xs font-bold uppercase tracking-widest mb-1">Required for Live Leads</p>
-              <h2 className="text-white text-xl font-bold leading-tight">Case Bridge Operator Certification</h2>
-              <p className="text-blue-200 text-sm mt-2 leading-snug max-w-md">
-                Every caller must pass the <span className="text-white font-semibold">Case Bridge Nuance Certification</span> and <span className="text-white font-semibold">Jason's Final Mock Call</span> before being assigned live leads.
+              <p className="text-primary-foreground/75 text-xs font-bold uppercase tracking-widest mb-1">Required for Live Leads</p>
+              <h2 className="text-primary-foreground text-xl font-bold leading-tight">Case Bridge Operator Certification</h2>
+              <p className="text-primary-foreground/85 text-sm mt-2 leading-snug max-w-md">
+                Every caller must pass the <span className="text-primary-foreground font-semibold">Case Bridge Nuance Certification</span> and <span className="text-primary-foreground font-semibold">Jason's Final Mock Call</span> before being assigned live leads.
               </p>
             </div>
-            <button onClick={dismiss} className="text-blue-400 hover:text-white mt-0.5 shrink-0 transition-colors" aria-label="Close">
+            <button onClick={dismiss} className="text-primary-foreground/70 hover:text-white mt-0.5 shrink-0 transition-colors" aria-label="Close">
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
               </svg>
@@ -49,7 +49,7 @@ export default function CertificationPopup() {
                 key={t}
                 onClick={() => setTab(t)}
                 className={`px-4 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wide transition-colors ${
-                  tab === t ? 'bg-white text-[#0f1e3c]' : 'text-blue-300 hover:text-white'
+ tab === t ? 'bg-card text-primary' : 'text-primary-foreground/75 hover:text-white'
                 }`}
               >
                 {t === 'schedule' ? '📆 Schedule' : '🏆 Cert Levels'}
@@ -78,84 +78,84 @@ export default function CertificationPopup() {
               />
 
               {/* Day 2 */}
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gray-50 px-5 py-3 flex items-center justify-between border-b border-gray-200">
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-muted/40 px-5 py-3 flex items-center justify-between border-b border-border">
                   <div className="flex items-center gap-3">
-                    <span className="bg-[#0f1e3c] text-white text-xs font-bold px-2.5 py-1 rounded-lg">Day 2</span>
-                    <span className="font-bold text-gray-900 text-sm">Nuance Certification Group Exam</span>
+                    <span className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-lg">Day 2</span>
+                    <span className="font-bold text-foreground text-sm">Nuance Certification Group Exam</span>
                   </div>
-                  <span className="text-xs font-bold text-green-700 bg-green-100 px-2.5 py-1 rounded-full">PAID*</span>
+                  <span className="text-xs font-bold text-success bg-success/15 px-2.5 py-1 rounded-full">PAID*</span>
                 </div>
                 <div className="px-5 py-4 space-y-3">
-                  <p className="text-sm text-gray-600">Live group exam via <span className="font-semibold text-gray-800">Google Meet</span>. Screen share is <span className="font-semibold text-red-600">required</span>.</p>
+                  <p className="text-sm text-muted-foreground">Live group exam via <span className="font-semibold text-foreground">Google Meet</span>. Screen share is <span className="font-semibold text-destructive">required</span>.</p>
 
                   {/* Pass path */}
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-3 space-y-2">
-                    <p className="text-sm font-bold text-green-800 flex items-center gap-2">
-                      <span className="bg-green-600 text-white text-xs px-2 py-0.5 rounded font-bold">PASS</span> Written Exam
+                  <div className="bg-success/10 border border-success/30 rounded-lg px-4 py-3 space-y-2">
+                    <p className="text-sm font-bold text-success flex items-center gap-2">
+                      <span className="bg-success text-primary-foreground text-xs px-2 py-0.5 rounded font-bold">PASS</span> Written Exam
                     </p>
-                    <div className="pl-3 border-l-2 border-green-300 space-y-1.5">
-                      <p className="text-xs text-gray-700">→ Move immediately to <span className="font-semibold">Jason's Final Mock Call</span></p>
-                      <div className="bg-white border border-green-200 rounded-md px-3 py-2 space-y-1">
-                        <p className="text-xs font-bold text-green-700 flex items-center gap-1.5">
-                          <span className="bg-green-500 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">PASS</span> Mock Call → Active Representative ✓
+                    <div className="pl-3 border-l-2 border-success/30 space-y-1.5">
+                      <p className="text-xs text-foreground/90">→ Move immediately to <span className="font-semibold">Jason's Final Mock Call</span></p>
+                      <div className="bg-card border border-success/30 rounded-md px-3 py-2 space-y-1">
+                        <p className="text-xs font-bold text-success flex items-center gap-1.5">
+                          <span className="bg-success text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-bold">PASS</span> Mock Call → Active Representative ✓
                         </p>
-                        <p className="text-xs font-bold text-red-700 flex items-center gap-1.5 mt-1">
-                          <span className="bg-red-500 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">FAIL</span> Mock Call → Clock out immediately → Unpaid retraining
+                        <p className="text-xs font-bold text-destructive flex items-center gap-1.5 mt-1">
+                          <span className="bg-destructive text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-bold">FAIL</span> Mock Call → Clock out immediately → Unpaid retraining
                         </p>
                       </div>
                     </div>
                   </div>
 
                   {/* Fail path */}
-                  <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-3">
-                    <p className="text-sm font-bold text-red-800 flex items-center gap-2">
-                      <span className="bg-red-600 text-white text-xs px-2 py-0.5 rounded font-bold">FAIL</span> Written Exam
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3">
+                    <p className="text-sm font-bold text-destructive flex items-center gap-2">
+                      <span className="bg-destructive text-primary-foreground text-xs px-2 py-0.5 rounded font-bold">FAIL</span> Written Exam
                     </p>
-                    <p className="text-xs text-gray-700 mt-1.5 pl-3 border-l-2 border-red-300">Clock out immediately → Unpaid study status → Re-exam on Day 3</p>
+                    <p className="text-xs text-foreground/90 mt-1.5 pl-3 border-l-2 border-destructive/40">Clock out immediately → Unpaid study status → Re-exam on Day 3</p>
                   </div>
 
                   {/* Mock call attempts */}
-                  <div className="bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
-                    <p className="text-xs font-bold text-gray-700 uppercase tracking-wide mb-2">Mock Call Attempt Rules</p>
+                  <div className="bg-muted/40 border border-border rounded-lg px-4 py-3">
+                    <p className="text-xs font-bold text-foreground/90 uppercase tracking-wide mb-2">Mock Call Attempt Rules</p>
                     <div className="space-y-1.5">
                       {[
                         { attempt: 'Attempt 1', when: 'Day 2 — after passing written exam' },
                         { attempt: 'Attempt 2', when: 'After unpaid restudy / retraining' },
                         { attempt: 'Attempt 3', when: 'Final chance — additional unpaid retraining' },
                       ].map(({ attempt, when }) => (
-                        <div key={attempt} className="flex items-start gap-2 text-xs text-gray-700">
-                          <span className="bg-[#0f1e3c] text-white font-bold px-2 py-0.5 rounded shrink-0">{attempt}</span>
+                        <div key={attempt} className="flex items-start gap-2 text-xs text-foreground/90">
+                          <span className="bg-primary text-primary-foreground font-bold px-2 py-0.5 rounded shrink-0">{attempt}</span>
                           <span>{when}</span>
                         </div>
                       ))}
-                      <p className="text-xs text-red-700 font-semibold mt-2 pt-2 border-t border-gray-200">Fail the 3rd mock call → Immediate termination</p>
+                      <p className="text-xs text-destructive font-semibold mt-2 pt-2 border-t border-border">Fail the 3rd mock call → Immediate termination</p>
                     </div>
                   </div>
 
-                  <p className="text-xs text-gray-500 italic">* Paid until exam/mock result is determined.</p>
+                  <p className="text-xs text-muted-foreground italic">* Paid until exam/mock result is determined.</p>
                 </div>
               </div>
 
               {/* Day 3 */}
-              <div className="border border-gray-200 rounded-xl overflow-hidden">
-                <div className="bg-gray-50 px-5 py-3 flex items-center justify-between border-b border-gray-200">
+              <div className="border border-border rounded-xl overflow-hidden">
+                <div className="bg-muted/40 px-5 py-3 flex items-center justify-between border-b border-border">
                   <div className="flex items-center gap-3">
-                    <span className="bg-[#0f1e3c] text-white text-xs font-bold px-2.5 py-1 rounded-lg">Day 3</span>
-                    <span className="font-bold text-gray-900 text-sm">Group Re-Exam Day</span>
+                    <span className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-lg">Day 3</span>
+                    <span className="font-bold text-foreground text-sm">Group Re-Exam Day</span>
                   </div>
-                  <span className="text-xs font-bold text-red-700 bg-red-100 px-2.5 py-1 rounded-full">UNPAID</span>
+                  <span className="text-xs font-bold text-destructive bg-destructive/10 px-2.5 py-1 rounded-full">UNPAID</span>
                 </div>
                 <div className="px-5 py-4 space-y-3">
-                  <p className="text-sm text-gray-600">Only for reps who <span className="font-semibold text-red-700">failed Day 2's written exam</span>. You must go back to the Nuances Book, study, then take the re-exam.</p>
-                  <div className="bg-green-50 border border-green-200 rounded-lg px-4 py-2.5">
-                    <p className="text-xs font-bold text-green-800 flex items-center gap-1.5">
-                      <span className="bg-green-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">PASS</span> Re-exam → Move to Jason's Final Mock Call (same rules apply)
+                  <p className="text-sm text-muted-foreground">Only for reps who <span className="font-semibold text-destructive">failed Day 2's written exam</span>. You must go back to the Nuances Book, study, then take the re-exam.</p>
+                  <div className="bg-success/10 border border-success/30 rounded-lg px-4 py-2.5">
+                    <p className="text-xs font-bold text-success flex items-center gap-1.5">
+                      <span className="bg-success text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-bold">PASS</span> Re-exam → Move to Jason's Final Mock Call (same rules apply)
                     </p>
                   </div>
-                  <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5">
-                    <p className="text-xs font-bold text-red-800 flex items-center gap-1.5">
-                      <span className="bg-red-600 text-white text-[10px] px-1.5 py-0.5 rounded font-bold">FAIL</span> Re-exam → <span className="text-red-700">Immediate termination</span>
+                  <div className="bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-2.5">
+                    <p className="text-xs font-bold text-destructive flex items-center gap-1.5">
+                      <span className="bg-destructive text-primary-foreground text-[10px] px-1.5 py-0.5 rounded font-bold">FAIL</span> Re-exam → <span className="text-destructive">Immediate termination</span>
                     </p>
                   </div>
                 </div>
@@ -165,7 +165,7 @@ export default function CertificationPopup() {
 
           {tab === 'levels' && (
             <div className="space-y-4">
-              <p className="text-xs text-gray-500">Your certification level is determined by your written exam score and mock call performance.</p>
+              <p className="text-xs text-muted-foreground">Your certification level is determined by your written exam score and mock call performance.</p>
 
               <LevelCard
                 level="A"
@@ -233,11 +233,11 @@ export default function CertificationPopup() {
         </div>
 
         {/* ── Footer ── */}
-        <div className="px-7 py-4 border-t border-gray-100 shrink-0 flex gap-3">
+        <div className="px-7 py-4 border-t border-border shrink-0 flex gap-3">
           {tab === 'schedule' ? (
             <button
               onClick={() => setTab('levels')}
-              className="flex-1 bg-[#0f1e3c] hover:bg-[#1a3060] text-white font-bold text-sm py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
+              className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm py-3 rounded-xl transition-colors flex items-center justify-center gap-2"
             >
               Next: Cert Levels
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -248,7 +248,7 @@ export default function CertificationPopup() {
             <>
               <button
                 onClick={() => setTab('schedule')}
-                className="px-5 py-3 border border-gray-200 text-gray-600 hover:bg-gray-50 font-bold text-sm rounded-xl transition-colors flex items-center gap-2"
+                className="px-5 py-3 border border-border text-muted-foreground hover:bg-muted/50 font-bold text-sm rounded-xl transition-colors flex items-center gap-2"
               >
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -257,7 +257,7 @@ export default function CertificationPopup() {
               </button>
               <button
                 onClick={dismiss}
-                className="flex-1 bg-[#0f1e3c] hover:bg-[#1a3060] text-white font-bold text-sm py-3 rounded-xl transition-colors"
+                className="flex-1 bg-primary hover:bg-primary/90 text-primary-foreground font-bold text-sm py-3 rounded-xl transition-colors"
               >
                 I understand — close
               </button>
@@ -276,21 +276,21 @@ function DayCard({ day, title, badge, badgeColor, items }: {
   items: string[]
 }) {
   const badgeCls = badgeColor === 'green'
-    ? 'text-green-700 bg-green-100'
-    : 'text-red-700 bg-red-100'
+    ? 'text-success bg-success/15'
+    : 'text-destructive bg-destructive/10'
   return (
-    <div className="border border-gray-200 rounded-xl overflow-hidden">
-      <div className="bg-gray-50 px-5 py-3 flex items-center justify-between border-b border-gray-200">
+    <div className="border border-border rounded-xl overflow-hidden">
+      <div className="bg-muted/40 px-5 py-3 flex items-center justify-between border-b border-border">
         <div className="flex items-center gap-3">
-          <span className="bg-[#0f1e3c] text-white text-xs font-bold px-2.5 py-1 rounded-lg">{day}</span>
-          <span className="font-bold text-gray-900 text-sm">{title}</span>
+          <span className="bg-primary text-primary-foreground text-xs font-bold px-2.5 py-1 rounded-lg">{day}</span>
+          <span className="font-bold text-foreground text-sm">{title}</span>
         </div>
         <span className={`text-xs font-bold px-2.5 py-1 rounded-full ${badgeCls}`}>{badge}</span>
       </div>
       <ul className="px-5 py-4 space-y-2">
         {items.map(item => (
-          <li key={item} className="flex items-start gap-2.5 text-sm text-gray-700">
-            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-[#0f1e3c] shrink-0" />
+          <li key={item} className="flex items-start gap-2.5 text-sm text-foreground/90">
+            <span className="mt-1.5 w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
             {item}
           </li>
         ))}
@@ -302,10 +302,10 @@ function DayCard({ day, title, badge, badgeColor, items }: {
 type LevelColor = 'amber' | 'blue' | 'orange' | 'red'
 
 const levelStyles: Record<LevelColor, { badge: string; header: string; border: string }> = {
-  amber: { badge: 'bg-amber-400 text-amber-900', header: 'bg-amber-50 border-amber-200', border: 'border-amber-200' },
-  blue:  { badge: 'bg-blue-600 text-white',       header: 'bg-blue-50 border-blue-200',   border: 'border-blue-200' },
-  orange:{ badge: 'bg-orange-400 text-white',     header: 'bg-orange-50 border-orange-200', border: 'border-orange-200' },
-  red:   { badge: 'bg-red-600 text-white',        header: 'bg-red-50 border-red-200',     border: 'border-red-200' },
+  amber: { badge: 'bg-warning text-warning', header: 'bg-warning/10 border-warning/30', border: 'border-warning/30' },
+  blue:  { badge: 'bg-primary text-primary-foreground',       header: 'bg-accent border-primary/30',   border: 'border-primary/30' },
+  orange:{ badge: 'bg-warning text-primary-foreground',     header: 'bg-warning/10 border-warning/30', border: 'border-warning/30' },
+  red:   { badge: 'bg-destructive text-primary-foreground',        header: 'bg-destructive/10 border-destructive/30',     border: 'border-destructive/30' },
 }
 
 function LevelCard({ level, title, color, requirements, benefits, benefitsLabel = 'Benefits' }: {
@@ -319,26 +319,26 @@ function LevelCard({ level, title, color, requirements, benefits, benefitsLabel 
         <span className={`${s.badge} text-sm font-black w-8 h-8 rounded-lg flex items-center justify-center shrink-0`}>
           {level}
         </span>
-        <span className="font-bold text-gray-900 text-sm">{title}</span>
+        <span className="font-bold text-foreground text-sm">{title}</span>
       </div>
       <div className="px-5 py-4 grid grid-cols-2 gap-4">
         <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">Requirements</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">Requirements</p>
           <ul className="space-y-1.5">
             {requirements.map(r => (
-              <li key={r} className="flex items-start gap-2 text-xs text-gray-700">
-                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+              <li key={r} className="flex items-start gap-2 text-xs text-foreground/90">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
                 {r}
               </li>
             ))}
           </ul>
         </div>
         <div>
-          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mb-2">{benefitsLabel}</p>
+          <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-2">{benefitsLabel}</p>
           <ul className="space-y-1.5">
             {benefits.map(b => (
-              <li key={b} className="flex items-start gap-2 text-xs text-gray-700">
-                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-gray-400 shrink-0" />
+              <li key={b} className="flex items-start gap-2 text-xs text-foreground/90">
+                <span className="mt-1 w-1.5 h-1.5 rounded-full bg-muted-foreground/50 shrink-0" />
                 {b}
               </li>
             ))}

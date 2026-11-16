@@ -48,17 +48,17 @@ export default function RetakeNotificationPopup() {
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
 
-      <div className="relative bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
+      <div className="relative bg-card rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden">
         {/* Header */}
-        <div className="bg-orange-500 px-7 py-6">
+        <div className="bg-warning px-7 py-6">
           <div className="flex items-center gap-3">
             <span className="text-2xl">🔄</span>
             <div>
-              <p className="text-orange-100 text-xs font-semibold uppercase tracking-wider">Action Required</p>
-              <h2 className="text-white text-xl font-bold">Module Retake Required</h2>
+              <p className="text-warning/70 text-xs font-semibold uppercase tracking-wider">Action Required</p>
+              <h2 className="text-primary-foreground text-xl font-bold">Module Retake Required</h2>
             </div>
           </div>
-          <p className="text-orange-100 text-sm mt-2 ml-11">
+          <p className="text-warning/70 text-sm mt-2 ml-11">
             Your manager has asked you to redo {notifications.length === 1 ? 'a module' : `${notifications.length} modules`}.
           </p>
         </div>
@@ -66,30 +66,30 @@ export default function RetakeNotificationPopup() {
         {/* Body */}
         <div className="px-7 py-6">
           {message && (
-            <div className="bg-orange-50 border border-orange-100 rounded-xl px-4 py-3 mb-5 text-sm text-orange-800">
-              <p className="font-semibold text-xs uppercase tracking-wide text-orange-500 mb-1">Message from your manager</p>
+            <div className="bg-warning/10 border border-warning/30 rounded-xl px-4 py-3 mb-5 text-sm text-warning">
+              <p className="font-semibold text-xs uppercase tracking-wide text-warning mb-1">Message from your manager</p>
               <p>{message}</p>
             </div>
           )}
 
-          <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-3">Modules to retake</p>
+          <p className="text-xs font-bold text-muted-foreground uppercase tracking-wider mb-3">Modules to retake</p>
           <div className="space-y-2 mb-6">
             {notifications.map(n => (
-              <div key={n.id} className="flex items-center gap-2.5 bg-gray-50 rounded-lg px-4 py-2.5">
-                <span className="text-orange-400 text-base">📋</span>
-                <span className="text-sm font-medium text-gray-800">{n.module_title}</span>
+              <div key={n.id} className="flex items-center gap-2.5 bg-muted/40 rounded-lg px-4 py-2.5">
+                <span className="text-warning text-base">📋</span>
+                <span className="text-sm font-medium text-foreground">{n.module_title}</span>
               </div>
             ))}
           </div>
 
-          <p className="text-xs text-gray-500 mb-4">
+          <p className="text-xs text-muted-foreground mb-4">
             Your previous completion{notifications.length !== 1 ? 's have' : ' has'} been reset. Head to the Training page to redo {notifications.length !== 1 ? 'them' : 'it'}.
           </p>
 
           <button
             onClick={acknowledge}
             disabled={acking}
-            className="w-full bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white font-bold text-sm py-3 rounded-xl transition-colors"
+            className="w-full bg-warning hover:bg-warning disabled:opacity-50 text-primary-foreground font-bold text-sm py-3 rounded-xl transition-colors"
           >
             {acking ? 'Confirming…' : 'Got it — I\'ll retake them'}
           </button>

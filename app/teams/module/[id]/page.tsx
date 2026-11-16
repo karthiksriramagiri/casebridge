@@ -415,10 +415,10 @@ export default function ModulePage() {
   // ── Loading ──────────────────────────────────────────────────────────
   if (state === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="tc-root min-h-dvh bg-muted/40 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Loading module...</p>
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-muted-foreground text-sm">Loading module...</p>
         </div>
       </div>
     )
@@ -427,12 +427,12 @@ export default function ModulePage() {
   // ── Error ────────────────────────────────────────────────────────────
   if (state === 'error') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center px-4">
-        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8 max-w-md w-full text-center">
+      <div className="tc-root min-h-dvh bg-muted/40 flex items-center justify-center px-4">
+        <div className="bg-card rounded-xl border border-border p-8 max-w-md w-full text-center">
           <div className="text-4xl mb-4">⚠️</div>
-          <h2 className="text-lg font-semibold text-gray-900 mb-2">Unable to Load Module</h2>
-          <p className="text-gray-500 text-sm mb-6">{errorMsg}</p>
-          <Link href="/teams/dashboard" className="inline-block bg-[#0f1e3c] text-white font-semibold text-sm px-6 py-2.5 rounded-lg hover:bg-[#1a3060] transition-colors">
+          <h2 className="text-lg font-semibold text-foreground mb-2">Unable to Load Module</h2>
+          <p className="text-muted-foreground text-sm mb-6">{errorMsg}</p>
+          <Link href="/teams/dashboard" className="inline-block bg-primary text-primary-foreground font-semibold text-sm px-6 py-2.5 rounded-lg hover:bg-primary/90 transition-colors">
             Return to Dashboard
           </Link>
         </div>
@@ -443,10 +443,10 @@ export default function ModulePage() {
   // ── Submitting ───────────────────────────────────────────────────────
   if (state === 'submitting') {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="tc-root min-h-dvh bg-muted/40 flex items-center justify-center">
         <div className="text-center">
-          <div className="w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-gray-500 text-sm">Submitting your answers...</p>
+          <div className="w-10 h-10 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-muted-foreground text-sm">Submitting your answers...</p>
         </div>
       </div>
     )
@@ -457,25 +457,25 @@ export default function ModulePage() {
     const embedUrl = moduleData.content_type === 'video' ? getEmbedUrl(moduleData.video_url) : null
 
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="tc-root min-h-dvh bg-muted/40 py-8 px-4">
         <div className="max-w-3xl mx-auto">
           <div className="mb-5">
-            <Link href="/teams/dashboard" className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+            <Link href="/teams/dashboard" className="text-primary hover:text-primary text-sm font-medium">
               ← Back to Dashboard
             </Link>
-            <h1 className="text-xl font-bold text-gray-900 mt-3">{moduleData.title}</h1>
-            {moduleData.description && <p className="text-gray-500 text-sm mt-1">{moduleData.description}</p>}
+            <h1 className="text-xl font-bold text-foreground mt-3">{moduleData.title}</h1>
+            {moduleData.description && <p className="text-muted-foreground text-sm mt-1">{moduleData.description}</p>}
           </div>
 
           {/* Step indicator */}
           <div className="flex items-center gap-3 mb-5">
-            <div className="flex items-center gap-2 bg-blue-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full">
+            <div className="flex items-center gap-2 bg-primary text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-full">
               Step 1 · {moduleData.content_type === 'video' ? '🎬 Watch' : moduleData.content_type === 'file' ? '📎 Review' : '📄 Read'}
             </div>
             {questions.length > 0 && (
               <>
-                <div className="h-px flex-1 bg-gray-200" />
-                <div className="flex items-center gap-2 bg-gray-200 text-gray-500 text-xs font-semibold px-3 py-1.5 rounded-full">
+                <div className="h-px flex-1 bg-muted" />
+                <div className="flex items-center gap-2 bg-muted text-muted-foreground text-xs font-semibold px-3 py-1.5 rounded-full">
                   Step 2 · 📝 Quiz
                 </div>
               </>
@@ -484,10 +484,10 @@ export default function ModulePage() {
 
           {/* Video */}
           {moduleData.content_type === 'video' && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="text-sm font-semibold text-gray-800">🎬 Training Video</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Watch the full video before proceeding to the quiz.</p>
+            <div className="bg-card rounded-xl border border-border overflow-hidden mb-5">
+              <div className="px-5 py-4 border-b border-border">
+                <h2 className="text-sm font-semibold text-foreground">🎬 Training Video</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Watch the full video before proceeding to the quiz.</p>
               </div>
               {embedUrl ? (
                 <div className="relative w-full" style={{ paddingBottom: '56.25%' }}>
@@ -496,9 +496,9 @@ export default function ModulePage() {
                 </div>
               ) : (
                 <div className="px-5 py-6">
-                  <p className="text-sm text-gray-600 mb-2">Open directly:</p>
+                  <p className="text-sm text-muted-foreground mb-2">Open directly:</p>
                   <a href={moduleData.video_url} target="_blank" rel="noopener noreferrer"
-                    className="text-blue-600 hover:text-blue-800 text-sm underline break-all">
+                    className="text-primary hover:text-primary text-sm underline break-all">
                     {moduleData.video_url}
                   </a>
                 </div>
@@ -508,13 +508,13 @@ export default function ModulePage() {
 
           {/* Reading */}
           {moduleData.content_type === 'text' && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="text-sm font-semibold text-gray-800">📄 Training Material</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Read carefully before proceeding to the quiz.</p>
+            <div className="bg-card rounded-xl border border-border overflow-hidden mb-5">
+              <div className="px-5 py-4 border-b border-border">
+                <h2 className="text-sm font-semibold text-foreground">📄 Training Material</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Read carefully before proceeding to the quiz.</p>
               </div>
               <div className="px-6 py-6">
-                <div className="text-gray-700 whitespace-pre-wrap leading-relaxed text-sm">
+                <div className="text-foreground/90 whitespace-pre-wrap leading-relaxed text-sm">
                   {moduleData.content_body}
                 </div>
               </div>
@@ -523,19 +523,19 @@ export default function ModulePage() {
 
           {/* File */}
           {moduleData.content_type === 'file' && (
-            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-5">
-              <div className="px-5 py-4 border-b border-gray-100">
-                <h2 className="text-sm font-semibold text-gray-800">📎 Training Document</h2>
-                <p className="text-xs text-gray-400 mt-0.5">Review this document before taking the quiz.</p>
+            <div className="bg-card rounded-xl border border-border overflow-hidden mb-5">
+              <div className="px-5 py-4 border-b border-border">
+                <h2 className="text-sm font-semibold text-foreground">📎 Training Document</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Review this document before taking the quiz.</p>
               </div>
               <div className="px-6 py-8 text-center">
                 <div className="text-5xl mb-4">📎</div>
-                <p className="text-sm font-medium text-gray-800 mb-1">{moduleData.file_name || 'Training Document'}</p>
+                <p className="text-sm font-medium text-foreground mb-1">{moduleData.file_name || 'Training Document'}</p>
                 <a
                   href={moduleData.file_url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 mt-3 bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
+                  className="inline-flex items-center gap-2 mt-3 bg-primary hover:bg-primary/90 text-primary-foreground text-sm font-semibold px-5 py-2.5 rounded-lg transition-colors"
                 >
                   Open Document ↗
                 </a>
@@ -544,15 +544,15 @@ export default function ModulePage() {
           )}
 
           {/* Confirmation */}
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div className="bg-card rounded-xl border border-border px-6 py-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <label className="flex items-center gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={contentConfirmed}
                 onChange={(e) => setContentConfirmed(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                className="w-4 h-4 rounded border-border text-primary focus:ring-ring"
               />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-foreground/90">
                 {moduleData.content_type === 'video'
                   ? questions.length > 0
                     ? 'I have watched the full video and am ready for the quiz.'
@@ -576,7 +576,7 @@ export default function ModulePage() {
                 }
               }}
               disabled={!contentConfirmed}
-              className="shrink-0 bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
+              className="shrink-0 bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
             >
               {questions.length === 0 ? 'Complete Lesson →' : 'Start Quiz →'}
             </button>
@@ -592,54 +592,54 @@ export default function ModulePage() {
     const wrongCount = result.breakdown.filter((i) => !i.isCorrect).length
 
     return (
-      <div className="min-h-screen bg-gray-50 py-8 px-4">
+      <div className="tc-root min-h-dvh bg-muted/40 py-8 px-4">
         <div className="max-w-2xl mx-auto">
-          <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden mb-6">
+          <div className="bg-card rounded-xl border border-border overflow-hidden mb-6">
             {/* Score header */}
-            <div className={`px-6 py-8 text-center ${result.passed ? 'bg-green-50' : 'bg-red-50'}`}>
+            <div className={`px-6 py-8 text-center ${result.passed ? 'bg-success/10' : 'bg-destructive/10'}`}>
               <div className="text-6xl font-bold mb-2">
-                <span className={result.passed ? 'text-green-600' : 'text-red-500'}>{result.score}%</span>
+                <span className={result.passed ? 'text-success' : 'text-destructive'}>{result.score}%</span>
               </div>
-              <div className={`text-xl font-bold ${result.passed ? 'text-green-700' : 'text-red-600'}`}>
+              <div className={`text-xl font-bold ${result.passed ? 'text-success' : 'text-destructive'}`}>
                 {result.passed ? '🎉 Passed!' : '😔 Failed'}
               </div>
-              <p className="text-sm text-gray-500 mt-2">
+              <p className="text-sm text-muted-foreground mt-2">
                 You need {passThreshold}% to pass · Attempt #{result.attemptNumber}
               </p>
               {!result.passed && (
-                <p className="text-sm text-gray-600 mt-3">
+                <p className="text-sm text-muted-foreground mt-3">
                   {wrongCount} question{wrongCount !== 1 ? 's' : ''} incorrect. Review the explanations below, then retake from your dashboard.
                 </p>
               )}
             </div>
 
             {/* Breakdown */}
-            {result.breakdown.length > 0 && <div className="px-5 py-4 border-t border-gray-100">
-              <h3 className="text-sm font-semibold text-gray-700 mb-4">Question Breakdown</h3>
+            {result.breakdown.length > 0 && <div className="px-5 py-4 border-t border-border">
+              <h3 className="text-sm font-semibold text-foreground/90 mb-4">Question Breakdown</h3>
               <div className="space-y-3">
                 {result.breakdown.map((item, idx) => (
                   <div
                     key={item.questionId}
-                    className={`rounded-lg border p-4 ${item.isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}
+                    className={`rounded-lg border p-4 ${item.isCorrect ? 'border-success/30 bg-success/10' : 'border-destructive/30 bg-destructive/10'}`}
                   >
                     <div className="flex items-start gap-2">
-                      <span className={`font-bold text-sm mt-0.5 shrink-0 ${item.isCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                      <span className={`font-bold text-sm mt-0.5 shrink-0 ${item.isCorrect ? 'text-success' : 'text-destructive'}`}>
                         {item.isCorrect ? '✓' : '✗'}
                       </span>
                       <div className="flex-1 min-w-0">
-                        <p className="text-sm font-medium text-gray-800">
+                        <p className="text-sm font-medium text-foreground">
                           Q{idx + 1}: {item.questionText}
                         </p>
                         {item.isCorrect ? (
-                          <p className="text-xs text-green-700 mt-1">{item.selectedOptionText}</p>
+                          <p className="text-xs text-success mt-1">{item.selectedOptionText}</p>
                         ) : (
                           <>
-                            <p className="text-xs text-red-600 mt-1">Your answer: {item.selectedOptionText}</p>
-                            <p className="text-xs text-green-700 font-medium mt-0.5">Correct: {item.correctOptionText}</p>
+                            <p className="text-xs text-destructive mt-1">Your answer: {item.selectedOptionText}</p>
+                            <p className="text-xs text-success font-medium mt-0.5">Correct: {item.correctOptionText}</p>
                             {item.explanation && (
-                              <div className="mt-2 flex items-start gap-1.5 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                                <span className="text-amber-500 text-sm shrink-0">💡</span>
-                                <p className="text-xs text-amber-800 leading-relaxed">{item.explanation}</p>
+                              <div className="mt-2 flex items-start gap-1.5 bg-warning/10 border border-warning/30 rounded-lg px-3 py-2">
+                                <span className="text-warning text-sm shrink-0">💡</span>
+                                <p className="text-xs text-warning leading-relaxed">{item.explanation}</p>
                               </div>
                             )}
                           </>
@@ -654,7 +654,7 @@ export default function ModulePage() {
 
           <Link
             href="/teams/dashboard"
-            className="w-full block text-center bg-[#0f1e3c] hover:bg-[#1a3060] text-white font-semibold text-sm px-6 py-3 rounded-lg transition-colors"
+            className="w-full block text-center bg-primary hover:bg-primary/90 text-primary-foreground font-semibold text-sm px-6 py-3 rounded-lg transition-colors"
           >
             Return to Dashboard
           </Link>
@@ -670,16 +670,16 @@ export default function ModulePage() {
   const progress = Math.round(((currentIndex + 1) / questions.length) * 100)
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4">
+    <div className="tc-root min-h-dvh bg-muted/40 py-8 px-4">
       <div className="max-w-2xl mx-auto">
         {tabWarning && (
-          <div className="mb-4 bg-red-50 border border-red-200 rounded-lg px-4 py-3 flex items-start gap-2">
-            <span className="text-red-500 text-sm shrink-0 mt-0.5">⚠️</span>
+          <div className="mb-4 bg-destructive/10 border border-destructive/30 rounded-lg px-4 py-3 flex items-start gap-2">
+            <span className="text-destructive text-sm shrink-0 mt-0.5">⚠️</span>
             <div>
-              <p className="text-sm text-red-700 font-medium">
+              <p className="text-sm text-destructive font-medium">
                 You left the tab — your quiz has been reset from the beginning.
               </p>
-              <p className="text-xs text-red-600 mt-0.5">
+              <p className="text-xs text-destructive mt-0.5">
                 You have left the tab {tabLeaveCount} time{tabLeaveCount !== 1 ? 's' : ''} during this attempt. This has been recorded.
               </p>
             </div>
@@ -687,13 +687,13 @@ export default function ModulePage() {
         )}
 
         <div className="mb-6">
-          <Link href="/teams/dashboard" className="text-blue-600 hover:text-blue-800 text-sm font-medium">
+          <Link href="/teams/dashboard" className="text-primary hover:text-primary text-sm font-medium">
             ← Back to Dashboard
           </Link>
           <div className="flex items-start justify-between mt-3">
-            <h1 className="text-xl font-bold text-gray-900">{moduleData?.title}</h1>
+            <h1 className="text-xl font-bold text-foreground">{moduleData?.title}</h1>
             {isRetake && (
-              <span className="shrink-0 ml-3 text-xs font-semibold bg-orange-100 text-orange-600 px-2.5 py-1 rounded-full">
+              <span className="shrink-0 ml-3 text-xs font-semibold bg-warning/15 text-warning px-2.5 py-1 rounded-full">
                 Retake
               </span>
             )}
@@ -701,7 +701,7 @@ export default function ModulePage() {
         </div>
 
         <div
-          className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden"
+          className="bg-card rounded-xl border border-border overflow-hidden"
           style={{
             opacity: animating ? 0 : 1,
             transform: animating ? 'translateY(8px)' : 'translateY(0)',
@@ -709,22 +709,22 @@ export default function ModulePage() {
           }}
         >
           {/* Progress bar */}
-          <div className="px-5 py-3 border-b border-gray-100 flex items-center justify-between">
-            <span className="text-sm font-medium text-gray-600">
+          <div className="px-5 py-3 border-b border-border flex items-center justify-between">
+            <span className="text-sm font-medium text-muted-foreground">
               Question {currentIndex + 1} of {questions.length}
             </span>
-            <span className="text-sm text-gray-400">{progress}%</span>
+            <span className="text-sm text-muted-foreground">{progress}%</span>
           </div>
-          <div className="bg-gray-100 h-1.5">
+          <div className="bg-muted h-1.5">
             <div
-              className="bg-blue-600 h-1.5 transition-all duration-500"
+              className="bg-primary h-1.5 transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
 
           {/* Question */}
           <div className="px-6 py-6">
-            <h2 className="text-base font-semibold text-gray-900 mb-5 leading-relaxed">
+            <h2 className="text-base font-semibold text-foreground mb-5 leading-relaxed">
               {currentQuestion?.question_text}
             </h2>
 
@@ -736,16 +736,16 @@ export default function ModulePage() {
                     key={option.id}
                     onClick={() => selectOption(currentQuestion.id, option.id)}
                     className={`w-full text-left rounded-lg border-2 px-4 py-3.5 text-sm transition-all ${
-                      isSelected
-                        ? 'border-blue-600 bg-blue-50 text-blue-900 font-medium'
-                        : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50 text-gray-700'
+ isSelected
+                        ? 'border-primary bg-accent text-accent-foreground font-medium'
+                        : 'border-border hover:border-border hover:bg-muted/50 text-foreground/90'
                     }`}
                   >
                     <div className="flex items-center gap-3">
                       <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 ${
-                        isSelected ? 'border-blue-600 bg-blue-600' : 'border-gray-300'
+ isSelected ? 'border-primary bg-primary' : 'border-border'
                       }`}>
-                        {isSelected && <span className="w-2 h-2 bg-white rounded-full" />}
+                        {isSelected && <span className="w-2 h-2 bg-card rounded-full" />}
                       </span>
                       {option.option_text}
                     </div>
@@ -758,7 +758,7 @@ export default function ModulePage() {
               <button
                 onClick={handleNext}
                 disabled={!selectedOption || animating}
-                className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 disabled:cursor-not-allowed text-white font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
+                className="bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground font-semibold text-sm px-6 py-2.5 rounded-lg transition-colors"
               >
                 {isLast ? 'Submit Quiz' : 'Next →'}
               </button>

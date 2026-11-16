@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import ModuleList from './ModuleList'
+import { PageHeader, PageBody, TeamToggle } from '@/app/teams/_components/shared'
 
 export default function ModulesPage() {
   const searchParams = useSearchParams()
@@ -64,41 +65,22 @@ export default function ModulesPage() {
   }, [team])
 
   return (
-    <div>
-      <div className="mb-5 flex items-center justify-between gap-4 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900">Modules</h1>
-          <p className="text-sm text-gray-500 mt-1">Click a module to expand, edit details, or manage its questions.</p>
-        </div>
-
-        {/* Team toggle */}
-        <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
-          <button
-            onClick={() => setTeam('intake')}
-            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-              team === 'intake' ? 'bg-white text-blue-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Intake
-          </button>
-          <button
-            onClick={() => setTeam('creative')}
-            className={`px-4 py-1.5 rounded-md text-sm font-semibold transition-colors ${
-              team === 'creative' ? 'bg-white text-purple-700 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-            }`}
-          >
-            Creative
-          </button>
-        </div>
-      </div>
+    <>
+      <PageHeader
+        title="Modules"
+        description="Open a module to edit its details or manage its questions."
+        actions={<TeamToggle value={team} onChange={setTeam} />}
+      />
+      <PageBody>
 
       {loading ? (
-        <div className="bg-white rounded-xl border border-gray-100 shadow-sm px-6 py-12 text-center">
-          <p className="text-gray-400">Loading...</p>
+        <div className="bg-card rounded-xl border border-border px-6 py-12 text-center">
+          <p className="text-muted-foreground">Loading...</p>
         </div>
       ) : (
         <ModuleList modules={modules} />
       )}
-    </div>
+      </PageBody>
+    </>
   )
 }

@@ -77,8 +77,14 @@ export function Section({
 
 /* A white surface with a border. The default container for anything that is
    not a bare table. */
-export function Card({ children, className }: { children: ReactNode; className?: string }) {
-  return <div className={cn('rounded-lg border bg-card', className)}>{children}</div>
+export function Card({
+  children, className, ...rest
+}: { children: ReactNode; className?: string } & React.HTMLAttributes<HTMLDivElement>) {
+  return (
+    <div className={cn('rounded-lg border bg-card', className)} {...rest}>
+      {children}
+    </div>
+  )
 }
 
 /* One figure, labelled. `tone` is for a number that is good or bad in itself

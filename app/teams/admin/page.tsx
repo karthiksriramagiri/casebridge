@@ -1,48 +1,35 @@
-import { createClient } from '@/lib/supabase/server'
 import { format } from 'date-fns'
+import { createClient } from '@/lib/supabase/server'
+import { PageHeader, PageBody, Section, StatCard, Pill, TableCard, EmptyState } from '@/app/teams/_components/shared'
 import AnnouncementForm from './AnnouncementForm'
 
-interface Attempt {
-  id: string
-  score: number
-  passed: boolean
-  attempt_number: number
-  is_invalidated: boolean
-  created_at: string
-  user_id: string
-  module_id: string
-}
+/* The admin overview.
 
-interface AttemptWithDetails extends Attempt {
-  profiles: { name: string; id: string } | null
-  modules: { title: string } | null
-  user_email?: string
-}
+   Six figures and the last twenty attempts. The figures were six centred
+   cards each in a different colour — blue, green, blue, green, orange, red —
+   which gave a page of neutral counts the look of a page of alarms. They are
+   plain now; only the two that mean something good or bad keep a tone. */
 
 export default async function AdminOverviewPage() {
   const supabase = await createClient()
 
-  // Total reps
   const { count: totalReps } = await supabase
     .from('profiles')
     .select('*', { count: 'exact', head: true })
     .eq('role', 'rep')
 
-  // All attempts
-  const { data: allAttempts } = await supabase
-    .from('attempts')
-    .select('*')
+  const { data: allAttempts } = await supabase.from('attempts').select('*')
 
-  const validAttempts = allAttempts ?? []
-  const totalAttempts = validAttempts.length
-  const totalPassed = validAttempts.filter((a) => a.passed && !a.is_invalidated).length
-  const retakesCount = validAttempts.filter((a) => a.attempt_number > 1 && !a.is_invalidated).length
+  const attempts = allAttempts ?? []
+  const totalAttempts = attempts.length
+  const totalPassed = attempts.filter((a) => a.passed && !a.is_invalidated).length
+  const retakesCount = attempts.filter((a) => a.attempt_number > 1 && !a.is_invalidated).length
   const avgScore =
-    validAttempts.length > 0
-      ? (validAttempts.reduce((sum, a) => sum + a.score, 0) / validAttempts.length).toFixed(1)
+    attempts.length > 0
+      ? (attempts.reduce((sum, a) => sum + a.score, 0) / attempts.length).toFixed(1)
       : '0.0'
 
-  // Certified count: reps who passed all active required modules
+  // Certified: reps who have passed every active required module.
   const { data: requiredModules } = await supabase
     .from('modules')
     .select('id')
@@ -62,21 +49,17 @@ export default async function AdminOverviewPage() {
       .eq('passed', true)
       .eq('is_invalidated', false)
 
-    const passingSet = new Set(
-      (passingAttempts ?? []).map((a) => `${a.user_id}:${a.module_id}`)
-    )
+    const passingSet = new Set((passingAttempts ?? []).map((a) => `${a.user_id}:${a.module_id}`))
 
     for (const rep of repProfiles) {
-      const allPassed = requiredModules.every((mod) =>
-        passingSet.has(`${rep.id}:${mod.id}`)
-      )
-      if (allPassed) certifiedCount++
+      if (requiredModules.every((mod) => passingSet.has(`${rep.id}:${mod.id}`))) certifiedCount++
     }
   } else if (requiredModules && requiredModules.length === 0 && repProfiles) {
+    // Nothing is required, so everyone qualifies. Stated rather than left to
+    // fall through as zero, which would read as "nobody is certified".
     certifiedCount = repProfiles.length
   }
 
-  // Active announcement
   const { data: announcement } = await supabase
     .from('announcements')
     .select('*')
@@ -85,7 +68,6 @@ export default async function AdminOverviewPage() {
     .limit(1)
     .maybeSingle()
 
-  // Recent activity — last 20 attempts with user profile and module
   const { data: recentActivity } = await supabase
     .from('attempts')
     .select(`
@@ -102,113 +84,96 @@ export default async function AdminOverviewPage() {
     .order('created_at', { ascending: false })
     .limit(20)
 
-  // Fetch emails for the users in recent activity
-  const userIds = [...new Set((recentActivity ?? []).map((a: any) => a.user_id))]
-  let userEmailMap: Record<string, string> = {}
-  if (userIds.length > 0) {
-    const { data: profilesWithEmail } = await supabase
-      .from('profiles')
-      .select('id, name')
-      .in('id', userIds)
-    // We can't get emails directly from profiles; we'll use auth if needed
-    // For now we'll show user IDs truncated as fallback
-    userEmailMap = {}
-  }
-
-  const stats = [
-    { label: 'Total Reps', value: totalReps ?? 0, color: 'text-blue-600' },
-    { label: 'Certified', value: certifiedCount, color: 'text-green-600' },
-    { label: 'Attempts', value: totalAttempts, color: 'text-blue-500' },
-    { label: 'Passed', value: totalPassed, color: 'text-green-500' },
-    { label: 'Avg Score', value: `${avgScore}%`, color: 'text-orange-500' },
-    { label: 'Retakes', value: retakesCount, color: 'text-red-500' },
-  ]
+  const rows = recentActivity ?? []
+  const passRate = totalAttempts > 0 ? Math.round((totalPassed / totalAttempts) * 100) : null
 
   return (
-    <div className="space-y-6">
-      {/* Stats Row */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 text-center">
-            <div className={`text-3xl font-bold ${stat.color}`}>{stat.value}</div>
-            <div className="text-xs text-gray-500 mt-1 font-medium">{stat.label}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Announcement + Recent Activity row */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        {/* Announcement */}
-        <div className="lg:col-span-2">
-          <AnnouncementForm currentContent={announcement?.content ?? ''} />
+    <>
+      <PageHeader
+        title="Overview"
+        description="Where the team stands on training, and what was attempted most recently."
+      />
+      <PageBody>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-6">
+          <StatCard label="Reps" value={String(totalReps ?? 0)} />
+          <StatCard
+            label="Certified"
+            value={String(certifiedCount)}
+            hint="passed every required module"
+            tone={certifiedCount > 0 ? 'good' : undefined}
+          />
+          <StatCard label="Attempts" value={String(totalAttempts)} />
+          <StatCard
+            label="Passed"
+            value={String(totalPassed)}
+            hint={passRate === null ? undefined : `${passRate}% of attempts`}
+          />
+          <StatCard label="Avg score" value={`${avgScore}%`} />
+          <StatCard
+            label="Retakes"
+            value={String(retakesCount)}
+            tone={retakesCount > 0 ? 'warn' : undefined}
+          />
         </div>
 
-        {/* Recent Activity */}
-        <div className="lg:col-span-3 bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-5 py-4 border-b border-gray-100">
-            <h2 className="text-base font-semibold text-gray-800">Recent Activity</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Last 20 quiz attempts</p>
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
+          <div className="lg:col-span-2">
+            <AnnouncementForm currentContent={announcement?.content ?? ''} />
           </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rep</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Module</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Score</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Result</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Attempt</th>
-                  <th className="text-left px-4 py-2.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {(recentActivity ?? []).length === 0 ? (
+
+          <Section
+            title="Recent activity"
+            description="The last 20 quiz attempts"
+            className="lg:col-span-3"
+          >
+            {rows.length === 0 ? (
+              <EmptyState title="No attempts yet">
+                Scores appear here as soon as a rep finishes a quiz.
+              </EmptyState>
+            ) : (
+              <TableCard>
+                <thead>
                   <tr>
-                    <td colSpan={6} className="px-4 py-8 text-center text-gray-400 text-sm">
-                      No attempts yet.
-                    </td>
+                    <th>Rep</th>
+                    <th>Module</th>
+                    <th className="num">Score</th>
+                    <th>Result</th>
+                    <th>Attempt</th>
+                    <th>Date</th>
                   </tr>
-                ) : (
-                  (recentActivity ?? []).map((attempt: any) => {
-                    const repName = attempt.profiles?.name || 'Unknown'
-                    const moduleTitle = attempt.modules?.title || 'Unknown Module'
-                    const dateStr = format(new Date(attempt.created_at), 'M/d/yyyy')
-                    const isRetake = attempt.attempt_number > 1
-
-                    return (
-                      <tr key={attempt.id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 font-medium text-gray-800">{repName}</td>
-                        <td className="px-4 py-3 text-gray-600 max-w-[150px] truncate">{moduleTitle}</td>
-                        <td className="px-4 py-3 text-gray-700">{attempt.score}%</td>
-                        <td className="px-4 py-3">
-                          {attempt.passed ? (
-                            <span className="text-green-600 font-medium">Passed</span>
-                          ) : (
-                            <span className="text-red-500 font-medium">Failed</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          {isRetake ? (
-                            <span className="inline-flex items-center gap-1">
-                              <span className="text-gray-600">#{attempt.attempt_number}</span>
-                              <span className="bg-orange-100 text-orange-700 text-xs font-bold px-1.5 py-0.5 rounded uppercase">
-                                Retake
-                              </span>
-                            </span>
-                          ) : (
-                            <span className="text-gray-600">#1</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-gray-500 whitespace-nowrap">{dateStr}</td>
-                      </tr>
-                    )
-                  })
-                )}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {rows.map((attempt: any) => (
+                    <tr key={attempt.id}>
+                      <td className="font-medium">{attempt.profiles?.name || 'Unknown'}</td>
+                      <td className="max-w-[180px] truncate text-muted-foreground">
+                        {attempt.modules?.title || 'Unknown module'}
+                      </td>
+                      <td className="num">{attempt.score}%</td>
+                      <td>
+                        <Pill tone={attempt.passed ? 'green' : 'red'}>
+                          {attempt.passed ? 'Passed' : 'Failed'}
+                        </Pill>
+                      </td>
+                      <td>
+                        <span className="flex items-center gap-1.5 whitespace-nowrap">
+                          <span className="text-muted-foreground tabular-nums">
+                            #{attempt.attempt_number}
+                          </span>
+                          {attempt.attempt_number > 1 && <Pill tone="amber">Retake</Pill>}
+                        </span>
+                      </td>
+                      <td className="whitespace-nowrap text-muted-foreground">
+                        {format(new Date(attempt.created_at), 'M/d/yyyy')}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </TableCard>
+            )}
+          </Section>
         </div>
-      </div>
-    </div>
+      </PageBody>
+    </>
   )
 }

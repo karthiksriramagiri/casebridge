@@ -1,54 +1,37 @@
 'use client'
 
 import { useState } from 'react'
+import { Megaphone, X } from 'lucide-react'
+import { Button } from '@/app/teams/_ui/button'
+import { Textarea } from '@/app/teams/_ui/textarea'
+import { Card } from '@/app/teams/_components/shared'
 
-interface AnnouncementFormProps {
-  currentContent: string
-}
+/* The announcement box.
 
-export default function AnnouncementForm({ currentContent }: AnnouncementFormProps) {
+   One message, shown at the top of every rep's training dashboard. Posting
+   and clearing are the same endpoint, which is why clearing is a button here
+   rather than a page of its own. */
+
+export default function AnnouncementForm({ currentContent }: { currentContent: string }) {
   const [content, setContent] = useState(currentContent)
   const [loading, setLoading] = useState(false)
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
 
-  async function handlePost() {
-    if (!content.trim()) return
+  async function send(body: Record<string, unknown>, done: string, after?: () => void) {
     setLoading(true)
     setMessage('')
     setError('')
-
     try {
       const res = await fetch('/api/teams/admin/announcement', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ content: content.trim() }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to post announcement')
-      setMessage('Announcement posted successfully!')
-    } catch (err: any) {
-      setError(err.message)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  async function handleClear() {
-    setLoading(true)
-    setMessage('')
-    setError('')
-
-    try {
-      const res = await fetch('/api/teams/admin/announcement', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ clear: true }),
-      })
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error || 'Failed to clear announcement')
-      setContent('')
-      setMessage('Announcement cleared.')
+      if (!res.ok) throw new Error(data.error || 'Failed to save the announcement')
+      after?.()
+      setMessage(done)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -57,51 +40,45 @@ export default function AnnouncementForm({ currentContent }: AnnouncementFormPro
   }
 
   return (
-    <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 h-full">
-      <div className="flex items-start gap-2 mb-1">
-        <span className="text-lg">📢</span>
-        <div>
-          <h2 className="text-base font-semibold text-gray-800">Team Announcement</h2>
-          <p className="text-xs text-gray-500 mt-0.5">
-            Post a message your reps will see at the top of their training dashboard.
+    <Card className="flex h-full flex-col gap-4 p-5">
+      <div className="flex items-start gap-2.5">
+        <Megaphone className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden />
+        <div className="flex flex-col gap-0.5">
+          <h2 className="text-sm font-semibold tracking-tight">Team announcement</h2>
+          <p className="text-xs text-muted-foreground">
+            Shown at the top of every rep&rsquo;s training dashboard until you clear it.
           </p>
         </div>
       </div>
 
-      <div className="mt-4">
-        <textarea
-          value={content}
-          onChange={(e) => setContent(e.target.value)}
-          rows={5}
-          placeholder="Write your announcement here..."
-          className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none transition"
-        />
-      </div>
+      <Textarea
+        value={content}
+        onChange={(e) => setContent(e.target.value)}
+        rows={5}
+        placeholder="Write your announcement here…"
+        aria-label="Announcement text"
+        className="resize-none"
+      />
 
-      {message && (
-        <p className="text-sm text-green-600 font-medium mt-2">{message}</p>
-      )}
-      {error && (
-        <p className="text-sm text-red-600 font-medium mt-2">{error}</p>
-      )}
+      {message && <p className="text-sm font-medium text-success">{message}</p>}
+      {error && <p className="text-sm font-medium text-destructive">{error}</p>}
 
-      <div className="flex gap-3 mt-4">
-        <button
-          onClick={handlePost}
+      <div className="mt-auto flex gap-2">
+        <Button
+          className="flex-1"
           disabled={loading || !content.trim()}
-          className="flex-1 bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-lg py-2.5 transition-colors flex items-center justify-center gap-1.5"
+          onClick={() => send({ content: content.trim() }, 'Announcement posted.')}
         >
-          <span>📣</span>
-          {loading ? 'Posting...' : 'Post Announcement'}
-        </button>
-        <button
-          onClick={handleClear}
+          {loading ? 'Posting…' : 'Post announcement'}
+        </Button>
+        <Button
+          variant="outline"
           disabled={loading}
-          className="px-4 border border-gray-300 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+          onClick={() => send({ clear: true }, 'Announcement cleared.', () => setContent(''))}
         >
-          ✕ Clear Current
-        </button>
+          <X className="size-4" aria-hidden /> Clear
+        </Button>
       </div>
-    </div>
+    </Card>
   )
 }

@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { PageHeader, PageBody, Pill } from '@/app/teams/_components/shared'
 
 interface OptionForm {
   id: string
@@ -284,7 +285,7 @@ export default function EditModulePage() {
   if (pageLoading) {
     return (
       <div className="flex items-center justify-center py-20">
-        <div className="w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full animate-spin" />
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
@@ -292,70 +293,68 @@ export default function EditModulePage() {
   if (pageError) {
     return (
       <div className="max-w-2xl">
-        <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{pageError}</div>
+        <div className="bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-3">{pageError}</div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-gray-900">Edit Module</h1>
-        <p className="text-sm text-gray-500 mt-1">Changes apply to all future attempts.</p>
-      </div>
+    <>
+      <PageHeader title="Edit Module" description="Changes apply to every future attempt." />
+      <PageBody className="max-w-2xl">
 
       {error && (
-        <div className="mb-5 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-4 py-3">{error}</div>
+        <div className="mb-5 bg-destructive/10 border border-destructive/30 text-destructive text-sm rounded-lg px-4 py-3">{error}</div>
       )}
 
       {/* Module Details */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5 mb-6">
-        <h2 className="text-base font-semibold text-gray-800 border-b border-gray-100 pb-3">Module Details</h2>
+      <div className="bg-card rounded-xl border border-border p-6 space-y-5 mb-6">
+        <h2 className="text-base font-semibold text-foreground border-b border-border pb-3">Module Details</h2>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Module Title *</label>
+          <label className="block text-sm font-medium text-foreground/90 mb-1.5">Module Title *</label>
           <input type="text" value={title} onChange={(e) => setTitle(e.target.value)}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="e.g. Firm Intake Criteria & Guidelines" />
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1.5">Description (optional)</label>
+          <label className="block text-sm font-medium text-foreground/90 mb-1.5">Description (optional)</label>
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={2}
-            className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="w-full border border-border rounded-lg px-3 py-2.5 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
             placeholder="Brief description of what this module covers..." />
         </div>
 
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Pass Threshold (%)</label>
+            <label className="block text-sm font-medium text-foreground/90 mb-1.5">Pass Threshold (%)</label>
             <input type="number" min={1} max={100} value={passThreshold}
               onChange={(e) => setPassThreshold(parseInt(e.target.value) || 80)}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" />
+              className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
           <div className="flex items-end pb-2.5">
             <label className="flex items-center gap-2.5 cursor-pointer">
               <input type="checkbox" checked={isRequired} onChange={(e) => setIsRequired(e.target.checked)}
-                className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
-              <span className="text-sm font-medium text-gray-700">Required for certification</span>
+                className="w-4 h-4 rounded border-border text-primary focus:ring-ring" />
+              <span className="text-sm font-medium text-foreground/90">Required for certification</span>
             </label>
           </div>
         </div>
 
-        <div className="bg-blue-50 border border-blue-100 rounded-xl p-4">
+        <div className="bg-accent border border-primary/25 rounded-xl p-4">
           <div className="flex items-start gap-3">
             <span className="text-xl">🎲</span>
             <div className="flex-1">
-              <p className="text-sm font-semibold text-blue-800">Question Bank</p>
-              <p className="text-xs text-blue-600 mt-0.5">Reps get a random selection each attempt.</p>
+              <p className="text-sm font-semibold text-accent-foreground">Question Bank</p>
+              <p className="text-xs text-primary mt-0.5">Reps get a random selection each attempt.</p>
               <div className="flex items-center gap-2 mt-3">
-                <label className="text-sm text-blue-800 font-medium whitespace-nowrap">Questions per attempt:</label>
+                <label className="text-sm text-accent-foreground font-medium whitespace-nowrap">Questions per attempt:</label>
                 <input type="number" min={0} max={999}
                   value={quizQuestionCount === 0 ? '' : quizQuestionCount}
                   onChange={(e) => setQuizQuestionCount(parseInt(e.target.value) || 0)}
                   placeholder="all"
-                  className="w-20 border border-blue-200 rounded-lg px-2.5 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white" />
-                <span className="text-xs text-blue-500">
+                  className="w-20 border border-primary/30 rounded-lg px-2.5 py-1.5 text-sm text-center focus:outline-none focus:ring-2 focus:ring-ring bg-card" />
+                <span className="text-xs text-primary">
                   {quizQuestionCount > 0 ? `of ${totalQ || '?'} in bank` : `show all ${totalQ || '?'} questions`}
                 </span>
               </div>
@@ -365,10 +364,10 @@ export default function EditModulePage() {
       </div>
 
       {/* Training Content */}
-      <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-6 space-y-5 mb-6">
-        <h2 className="text-base font-semibold text-gray-800 border-b border-gray-100 pb-3">
+      <div className="bg-card rounded-xl border border-border p-6 space-y-5 mb-6">
+        <h2 className="text-base font-semibold text-foreground border-b border-border pb-3">
           Training Content
-          <span className="ml-2 text-xs font-normal text-gray-400">Reps complete this before the quiz</span>
+          <span className="ml-2 text-xs font-normal text-muted-foreground">Reps complete this before the quiz</span>
         </h2>
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -380,11 +379,11 @@ export default function EditModulePage() {
           ].map((opt) => (
             <button key={opt.value} type="button" onClick={() => setContentType(opt.value as ContentType)}
               className={`rounded-xl border-2 p-3.5 text-left transition-all ${
-                contentType === opt.value ? 'border-blue-600 bg-blue-50' : 'border-gray-200 hover:border-gray-300'
+ contentType === opt.value ? 'border-primary bg-accent' : 'border-border hover:border-border'
               }`}>
               <div className="text-2xl mb-1">{opt.icon}</div>
-              <div className={`text-sm font-semibold ${contentType === opt.value ? 'text-blue-700' : 'text-gray-800'}`}>{opt.label}</div>
-              <div className="text-xs text-gray-400 mt-0.5">{opt.desc}</div>
+              <div className={`text-sm font-semibold ${contentType === opt.value ? 'text-primary' : 'text-foreground'}`}>{opt.label}</div>
+              <div className="text-xs text-muted-foreground mt-0.5">{opt.desc}</div>
             </button>
           ))}
         </div>
@@ -392,18 +391,18 @@ export default function EditModulePage() {
         {contentType === 'video' && (
           <div className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">Video URL *</label>
+              <label className="block text-sm font-medium text-foreground/90 mb-1.5">Video URL *</label>
               <input type="url" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="https://www.youtube.com/watch?v=... or Loom / Vimeo" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1.5">
+              <label className="block text-sm font-medium text-foreground/90 mb-1.5">
                 Video Transcript
-                <span className="ml-2 text-xs font-normal text-gray-400">optional but recommended for AI generation</span>
+                <span className="ml-2 text-xs font-normal text-muted-foreground">optional but recommended for AI generation</span>
               </label>
               <textarea value={videoTranscript} onChange={(e) => setVideoTranscript(e.target.value)} rows={8}
-                className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full border border-border rounded-lg px-3 py-2.5 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
                 placeholder="Paste the video transcript here..." />
             </div>
           </div>
@@ -411,46 +410,46 @@ export default function EditModulePage() {
 
         {contentType === 'text' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Reading Content *</label>
+            <label className="block text-sm font-medium text-foreground/90 mb-1.5">Reading Content *</label>
             <textarea value={contentBody} onChange={(e) => setContentBody(e.target.value)} rows={14}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-lg px-3 py-2.5 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Paste your training content here..." />
           </div>
         )}
 
         {contentType === 'file' && (
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1.5">Upload File</label>
+            <label className="block text-sm font-medium text-foreground/90 mb-1.5">Upload File</label>
             {existingFileUrl && !selectedFile && (
-              <div className="flex items-center gap-3 mb-3 bg-gray-50 border border-gray-200 rounded-lg px-4 py-3">
+              <div className="flex items-center gap-3 mb-3 bg-muted/40 border border-border rounded-lg px-4 py-3">
                 <span className="text-2xl">📎</span>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-800 truncate">{existingFileName || 'Current file'}</p>
-                  <p className="text-xs text-gray-400">Upload a new file below to replace it</p>
+                  <p className="text-sm font-medium text-foreground truncate">{existingFileName || 'Current file'}</p>
+                  <p className="text-xs text-muted-foreground">Upload a new file below to replace it</p>
                 </div>
                 <a href={existingFileUrl} target="_blank" rel="noopener noreferrer"
-                  className="text-xs text-blue-600 hover:text-blue-800 font-medium shrink-0">View ↗</a>
+                  className="text-xs text-primary hover:text-primary font-medium shrink-0">View ↗</a>
               </div>
             )}
             <div onClick={() => fileInputRef.current?.click()}
               onDragOver={(e) => e.preventDefault()}
               onDrop={(e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) setSelectedFile(f) }}
-              className="border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 rounded-xl p-8 text-center cursor-pointer transition-all">
+              className="border-2 border-dashed border-border hover:border-primary hover:bg-accent rounded-xl p-8 text-center cursor-pointer transition-all">
               {selectedFile ? (
                 <div className="flex items-center justify-center gap-3">
                   <span className="text-3xl">📎</span>
                   <div className="text-left">
-                    <p className="text-sm font-medium text-gray-800">{selectedFile.name}</p>
-                    <p className="text-xs text-gray-400">{(selectedFile.size / 1024).toFixed(1)} KB</p>
+                    <p className="text-sm font-medium text-foreground">{selectedFile.name}</p>
+                    <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024).toFixed(1)} KB</p>
                   </div>
                   <button type="button" onClick={(e) => { e.stopPropagation(); setSelectedFile(null) }}
-                    className="ml-2 text-red-400 hover:text-red-600 text-lg">×</button>
+                    className="ml-2 text-destructive/70 hover:text-destructive text-lg">×</button>
                 </div>
               ) : (
                 <>
                   <div className="text-4xl mb-2">📎</div>
-                  <p className="text-sm font-medium text-gray-700">Drop a file here or click to browse</p>
-                  <p className="text-xs text-gray-400 mt-1">PDF, Word, Excel, PowerPoint, or any document</p>
+                  <p className="text-sm font-medium text-foreground/90">Drop a file here or click to browse</p>
+                  <p className="text-xs text-muted-foreground mt-1">PDF, Word, Excel, PowerPoint, or any document</p>
                 </>
               )}
             </div>
@@ -464,24 +463,24 @@ export default function EditModulePage() {
       <div className="mb-6">
         <div className="flex items-start justify-between gap-3 mb-4">
           <div>
-            <h2 className="text-base font-semibold text-gray-800">
+            <h2 className="text-base font-semibold text-foreground">
               Question Bank
               {totalQ > 0 && (
-                <span className="ml-2 text-xs font-normal bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
+                <span className="ml-2 text-xs font-normal bg-accent text-primary px-2 py-0.5 rounded-full">
                   {totalQ} question{totalQ !== 1 ? 's' : ''}
                   {quizQuestionCount > 0 && ` · ${quizQuestionCount} shown per attempt`}
                 </span>
               )}
             </h2>
-            <p className="text-xs text-gray-400 mt-0.5">Build as many questions as you want — each attempt pulls a random set.</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Build as many questions as you want — each attempt pulls a random set.</p>
           </div>
           <div className="shrink-0 flex items-center gap-2">
             <select value={generateCount} onChange={(e) => setGenerateCount(Number(e.target.value))}
-              className="text-xs border border-gray-200 rounded-lg px-2 py-1.5 text-gray-600 focus:outline-none focus:ring-2 focus:ring-purple-400">
+              className="text-xs border border-border rounded-lg px-2 py-1.5 text-muted-foreground focus:outline-none focus:ring-2 focus:ring-team-creative">
               {[3, 5, 8, 10, 15, 20, 25, 30, 40, 50].map((n) => <option key={n} value={n}>{n} Qs</option>)}
             </select>
             <button type="button" onClick={handleGenerate} disabled={generating}
-              className="flex items-center gap-1.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
+              className="flex items-center gap-1.5 bg-team-creative hover:bg-team-creative disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors">
               {generating ? (
                 <><svg className="animate-spin h-3.5 w-3.5" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -492,17 +491,17 @@ export default function EditModulePage() {
           </div>
         </div>
 
-        <div className="flex gap-1 bg-gray-100 rounded-lg p-1 mb-4">
+        <div className="flex gap-1 bg-muted rounded-lg p-1 mb-4">
           <button onClick={() => setQuestionTab('builder')}
             className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${
-              questionTab === 'builder' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+ questionTab === 'builder' ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'
             }`}>
             📋 Question Builder
-            {totalQ > 0 && <span className="ml-1.5 text-xs bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">{totalQ}</span>}
+            {totalQ > 0 && <span className="ml-1.5 text-xs bg-accent text-primary px-1.5 py-0.5 rounded-full">{totalQ}</span>}
           </button>
           <button onClick={() => setQuestionTab('bulk')}
             className={`flex-1 text-sm font-medium py-1.5 rounded-md transition-all ${
-              questionTab === 'bulk' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+ questionTab === 'bulk' ? 'bg-card text-foreground ' : 'text-muted-foreground hover:text-foreground'
             }`}>
             📥 Bulk Add
           </button>
@@ -511,52 +510,52 @@ export default function EditModulePage() {
         {questionTab === 'builder' && (
           <div className="space-y-4">
             {questions.map((question, qi) => (
-              <div key={question.id} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
+              <div key={question.id} className="bg-card rounded-xl border border-border p-5">
                 <div className="flex items-start gap-3 mb-4">
-                  <span className="bg-blue-100 text-blue-700 text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">
+                  <span className="bg-accent text-primary text-xs font-bold rounded-full w-6 h-6 flex items-center justify-center shrink-0 mt-0.5">
                     {qi + 1}
                   </span>
                   <div className="flex-1 space-y-2">
                     <input type="text" value={question.question_text}
                       onChange={(e) => updateQuestion(question.id, 'question_text', e.target.value)}
-                      className="w-full border border-gray-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full border border-border rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                       placeholder="Enter question text..." />
                     <input type="text" value={question.explanation}
                       onChange={(e) => updateQuestion(question.id, 'explanation', e.target.value)}
-                      className="w-full border border-amber-200 bg-amber-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 placeholder-amber-400"
+                      className="w-full border border-warning/30 bg-warning/10 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-warning placeholder-warning"
                       placeholder="💡 Explanation shown if rep gets this wrong (optional)..." />
                   </div>
                   {questions.length > 1 && (
                     <button onClick={() => removeQuestion(question.id)}
-                      className="text-red-400 hover:text-red-600 text-sm p-1 shrink-0">×</button>
+                      className="text-destructive/70 hover:text-destructive text-sm p-1 shrink-0">×</button>
                   )}
                 </div>
                 <div className="ml-9 space-y-2">
-                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Answer Options (select the correct one)</p>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">Answer Options (select the correct one)</p>
                   {question.options.map((option, oi) => (
                     <div key={option.id} className="flex items-center gap-2">
                       <input type="radio" name={`correct-${question.id}`} checked={option.is_correct}
                         onChange={() => updateOption(question.id, option.id, 'is_correct', true)}
-                        className="w-4 h-4 text-green-600 border-gray-300 focus:ring-green-500 shrink-0" />
+                        className="w-4 h-4 text-success border-border focus:ring-success shrink-0" />
                       <input type="text" value={option.option_text}
                         onChange={(e) => updateOption(question.id, option.id, 'option_text', e.target.value)}
-                        className="flex-1 border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        className="flex-1 border border-border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                         placeholder={`Option ${oi + 1}...`} />
                       {question.options.length > 2 && (
                         <button onClick={() => removeOption(question.id, option.id)}
-                          className="text-red-400 hover:text-red-600 text-sm p-1 shrink-0">×</button>
+                          className="text-destructive/70 hover:text-destructive text-sm p-1 shrink-0">×</button>
                       )}
                     </div>
                   ))}
                   <button onClick={() => addOption(question.id)}
-                    className="text-blue-600 hover:text-blue-800 text-sm font-medium flex items-center gap-1 mt-2">
+                    className="text-primary hover:text-primary text-sm font-medium flex items-center gap-1 mt-2">
                     + Add option
                   </button>
                 </div>
               </div>
             ))}
             <button onClick={addQuestion}
-              className="w-full border-2 border-dashed border-gray-300 hover:border-blue-400 hover:bg-blue-50 text-gray-500 hover:text-blue-600 rounded-xl py-4 text-sm font-medium transition-all flex items-center justify-center gap-2">
+              className="w-full border-2 border-dashed border-border hover:border-primary hover:bg-accent text-muted-foreground hover:text-primary rounded-xl py-4 text-sm font-medium transition-all flex items-center justify-center gap-2">
               <span className="text-lg">+</span> Add Question
             </button>
           </div>
@@ -564,9 +563,9 @@ export default function EditModulePage() {
 
         {questionTab === 'bulk' && (
           <div className="space-y-4">
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <p className="text-xs font-semibold text-gray-600 mb-2 uppercase tracking-wider">Format Guide</p>
-              <pre className="text-xs text-gray-600 leading-relaxed font-mono whitespace-pre-wrap">{`Q: What is the first step when receiving a new lead?
+            <div className="bg-muted/40 border border-border rounded-xl p-4">
+              <p className="text-xs font-semibold text-muted-foreground mb-2 uppercase tracking-wider">Format Guide</p>
+              <pre className="text-xs text-muted-foreground leading-relaxed font-mono whitespace-pre-wrap">{`Q: What is the first step when receiving a new lead?
 A) Check the CRM for duplicates
 *B) Verify the case type meets firm criteria
 C) Call the potential client immediately
@@ -574,28 +573,28 @@ D) Send intake paperwork
 Explanation: Always verify the case type first.`}</pre>
             </div>
             {bulkErrors.length > 0 && (
-              <div className="bg-red-50 border border-red-200 rounded-xl p-4">
-                <p className="text-sm font-semibold text-red-700 mb-1">Fix these errors:</p>
+              <div className="bg-destructive/10 border border-destructive/30 rounded-xl p-4">
+                <p className="text-sm font-semibold text-destructive mb-1">Fix these errors:</p>
                 <ul className="list-disc list-inside space-y-0.5">
-                  {bulkErrors.map((e, i) => <li key={i} className="text-xs text-red-600">{e}</li>)}
+                  {bulkErrors.map((e, i) => <li key={i} className="text-xs text-destructive">{e}</li>)}
                 </ul>
               </div>
             )}
             <textarea value={bulkText} onChange={(e) => { setBulkText(e.target.value); setBulkErrors([]) }} rows={18}
-              className="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full border border-border rounded-xl px-4 py-3 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-ring"
               placeholder="Paste your questions here in the format shown above..." />
             <div className="flex items-center justify-between gap-3">
               <div className="flex gap-3">
                 {(['replace', 'append'] as const).map((m) => (
-                  <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm text-gray-600">
+                  <label key={m} className="flex items-center gap-1.5 cursor-pointer text-sm text-muted-foreground">
                     <input type="radio" name="bulkMode" checked={bulkMode === m} onChange={() => setBulkMode(m)}
-                      className="w-3.5 h-3.5 text-blue-600 border-gray-300" />
+                      className="w-3.5 h-3.5 text-primary border-border" />
                     {m === 'replace' ? 'Replace all questions' : `Append to existing (${totalQ})`}
                   </label>
                 ))}
               </div>
               <button onClick={handleBulkImport} disabled={!bulkText.trim()}
-                className="bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
+                className="bg-primary hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed text-primary-foreground text-sm font-semibold px-5 py-2 rounded-lg transition-colors">
                 Import Questions
               </button>
             </div>
@@ -606,11 +605,11 @@ Explanation: Always verify the case type first.`}</pre>
       {/* Save */}
       <div className="flex gap-3">
         <button onClick={() => router.push('/teams/admin/modules')}
-          className="flex-1 sm:flex-none border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-6 py-3 rounded-lg transition-colors">
+          className="flex-1 sm:flex-none border border-border hover:bg-muted/50 text-foreground/90 text-sm font-medium px-6 py-3 rounded-lg transition-colors">
           Cancel
         </button>
         <button onClick={handleSave} disabled={loading}
-          className="flex-1 sm:flex-none bg-[#0f1e3c] hover:bg-[#1a3060] disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-semibold px-8 py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
+          className="flex-1 sm:flex-none bg-primary hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed text-primary-foreground text-sm font-semibold px-8 py-3 rounded-lg transition-colors flex items-center justify-center gap-2">
           {loading ? (
             <><svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -619,6 +618,7 @@ Explanation: Always verify the case type first.`}</pre>
           ) : `Save Changes (${totalQ} question${totalQ !== 1 ? 's' : ''} in bank)`}
         </button>
       </div>
-    </div>
+      </PageBody>
+    </>
   )
 }

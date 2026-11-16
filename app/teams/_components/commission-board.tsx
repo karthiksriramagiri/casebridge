@@ -311,7 +311,7 @@ export function CommissionBoard({ scope = 'all' }: { scope?: 'all' | 'mine' }) {
                           /* The connect: straight to the card on the MIA
                              board, where the chase actually happens. */
                           <Link
-                            href="/mia"
+                            href="/teams/mia"
                             title={
                               r.mia.reconnected
                                 ? `${MIA_LABEL[r.mia.status] ?? r.mia.status}${r.mia.owner ? ` · ${r.mia.owner}` : ''} — open the MIA board`

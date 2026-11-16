@@ -67,19 +67,19 @@ export default function CompletionsClient({ rows }: Props) {
 
   return (
     <>
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
         {/* Table controls */}
-        <div className="px-5 py-4 border-b border-gray-100 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+        <div className="px-5 py-4 border-b border-border flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
           <input
             type="text"
             placeholder="Search by rep name or module..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="border border-gray-200 rounded-lg px-3 py-2 text-sm w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="border border-border rounded-lg px-3 py-2 text-sm w-full sm:w-72 focus:outline-none focus:ring-2 focus:ring-ring"
           />
           <button
             onClick={exportCSV}
-            className="flex items-center gap-1.5 bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
+            className="flex items-center gap-1.5 bg-card border border-border hover:bg-muted/50 text-foreground/90 text-sm font-medium px-4 py-2 rounded-lg transition-colors whitespace-nowrap"
           >
             <span>⬇</span> Export CSV
           </button>
@@ -88,22 +88,22 @@ export default function CompletionsClient({ rows }: Props) {
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="bg-gray-50 border-b border-gray-100">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Rep</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Module</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Score</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Result</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Attempt</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Content Time</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Tab Leaves</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Breakdown</th>
+              <tr className="bg-muted/40 border-b border-border">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Rep</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Module</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Score</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Result</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Attempt</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Content Time</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Tab Leaves</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider">Breakdown</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-50">
+            <tbody className="divide-y divide-border">
               {filtered.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
+                  <td colSpan={9} className="px-4 py-10 text-center text-muted-foreground">
                     No completions found.
                   </td>
                 </tr>
@@ -111,33 +111,33 @@ export default function CompletionsClient({ rows }: Props) {
                 filtered.map((row) => {
                   const isRetake = row.attemptNumber > 1
                   return (
-                    <tr key={row.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-4 py-3 font-medium text-gray-800">{row.repName}</td>
-                      <td className="px-4 py-3 text-gray-600 max-w-[180px] truncate">{row.moduleTitle}</td>
-                      <td className="px-4 py-3 text-gray-700">{row.score}%</td>
+                    <tr key={row.id} className="hover:bg-muted/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-foreground">{row.repName}</td>
+                      <td className="px-4 py-3 text-muted-foreground max-w-[180px] truncate">{row.moduleTitle}</td>
+                      <td className="px-4 py-3 text-foreground/90">{row.score}%</td>
                       <td className="px-4 py-3">
                         {row.passed ? (
-                          <span className="text-green-600 font-medium">Passed</span>
+                          <span className="text-success font-medium">Passed</span>
                         ) : (
-                          <span className="text-red-500 font-medium">Failed</span>
+                          <span className="text-destructive font-medium">Failed</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         {isRetake ? (
                           <span className="inline-flex items-center gap-1">
-                            <span className="text-gray-600">#{row.attemptNumber}</span>
-                            <span className="bg-orange-100 text-orange-700 text-xs font-bold px-1.5 py-0.5 rounded uppercase">
+                            <span className="text-muted-foreground">#{row.attemptNumber}</span>
+                            <span className="bg-warning/15 text-warning text-xs font-bold px-1.5 py-0.5 rounded uppercase">
                               Retake
                             </span>
                           </span>
                         ) : (
-                          <span className="text-gray-600">#1</span>
+                          <span className="text-muted-foreground">#1</span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {format(new Date(row.createdAt), 'M/d/yyyy')}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 whitespace-nowrap">
+                      <td className="px-4 py-3 text-muted-foreground whitespace-nowrap">
                         {row.contentViewSeconds > 0 ? (
                           (() => {
                             const m = Math.floor(row.contentViewSeconds / 60)
@@ -148,15 +148,15 @@ export default function CompletionsClient({ rows }: Props) {
                       </td>
                       <td className="px-4 py-3">
                         {row.tabLeaveCount > 0 ? (
-                          <span className="text-red-600 font-semibold">{row.tabLeaveCount}×</span>
+                          <span className="text-destructive font-semibold">{row.tabLeaveCount}×</span>
                         ) : (
-                          <span className="text-gray-400">0</span>
+                          <span className="text-muted-foreground">0</span>
                         )}
                       </td>
                       <td className="px-4 py-3">
                         <button
                           onClick={() => setBreakdownAttempt(row)}
-                          className="text-blue-600 hover:text-blue-800 text-xs font-medium border border-blue-200 rounded px-2 py-1 hover:bg-blue-50 transition-colors"
+                          className="text-primary hover:text-primary text-xs font-medium border border-primary/30 rounded px-2 py-1 hover:bg-accent transition-colors"
                         >
                           Breakdown
                         </button>
@@ -173,24 +173,24 @@ export default function CompletionsClient({ rows }: Props) {
       {/* Breakdown Modal */}
       {breakdownAttempt && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+          <div className="bg-card rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-border">
               <div>
-                <h2 className="text-base font-semibold text-gray-900">Attempt Breakdown</h2>
-                <p className="text-xs text-gray-500 mt-0.5">
+                <h2 className="text-base font-semibold text-foreground">Attempt Breakdown</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">
                   {breakdownAttempt.repName} · {breakdownAttempt.moduleTitle} · {breakdownAttempt.score}%
                 </p>
               </div>
               <button
                 onClick={() => setBreakdownAttempt(null)}
-                className="text-gray-400 hover:text-gray-600 text-xl leading-none"
+                className="text-muted-foreground hover:text-foreground text-xl leading-none"
               >
                 ×
               </button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-4">
               {breakdownAttempt.answers.length === 0 ? (
-                <p className="text-gray-500 text-sm text-center py-8">No answer details available for this attempt.</p>
+                <p className="text-muted-foreground text-sm text-center py-8">No answer details available for this attempt.</p>
               ) : (
                 <div className="space-y-3">
                   {breakdownAttempt.answers.map((answer, idx) => {
@@ -198,18 +198,18 @@ export default function CompletionsClient({ rows }: Props) {
                     return (
                       <div
                         key={answer.id}
-                        className={`rounded-lg border p-3 ${isCorrect ? 'border-green-200 bg-green-50' : 'border-red-200 bg-red-50'}`}
+                        className={`rounded-lg border p-3 ${isCorrect ? 'border-success/30 bg-success/10' : 'border-destructive/30 bg-destructive/10'}`}
                       >
                         <div className="flex items-start gap-2">
-                          <span className={`text-sm font-bold mt-0.5 ${isCorrect ? 'text-green-600' : 'text-red-500'}`}>
+                          <span className={`text-sm font-bold mt-0.5 ${isCorrect ? 'text-success' : 'text-destructive'}`}>
                             {isCorrect ? '✓' : '✗'}
                           </span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-medium text-gray-800">
+                            <p className="text-sm font-medium text-foreground">
                               Q{idx + 1}: {answer.questions?.question_text ?? 'Unknown question'}
                             </p>
-                            <p className="text-sm text-gray-600 mt-1">
-                              Answered: <span className={isCorrect ? 'text-green-700 font-medium' : 'text-red-600 font-medium'}>
+                            <p className="text-sm text-muted-foreground mt-1">
+                              Answered: <span className={isCorrect ? 'text-success font-medium' : 'text-destructive font-medium'}>
                                 {answer.options?.option_text ?? 'Unknown answer'}
                               </span>
                             </p>
@@ -221,10 +221,10 @@ export default function CompletionsClient({ rows }: Props) {
                 </div>
               )}
             </div>
-            <div className="px-5 py-3 border-t border-gray-100">
+            <div className="px-5 py-3 border-t border-border">
               <button
                 onClick={() => setBreakdownAttempt(null)}
-                className="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 text-sm font-medium rounded-lg py-2.5 transition-colors"
+                className="w-full bg-muted hover:bg-muted text-foreground/90 text-sm font-medium rounded-lg py-2.5 transition-colors"
               >
                 Close
               </button>
