@@ -1,34 +1,51 @@
-// CaseBridge Dialer — Attempt-Based Queue Engine
-// Replaces the old dialer_queue approach with dialer_attempts (one row per
-// planned call attempt, N per lead per day based on cadence rules).
+/* ═══════════════════════════════════════════════════════════════════════════
+   The dialer queue.
 
-import { createClient }                               from '@supabase/supabase-js'
-import { resolveTimezone, stateForPhone }             from './area-codes'
-import type { BlockName } from './blocks'
+   Four jobs, in the order a lead meets them:
+
+     PLAN     read GHL, work out which leads are callable today and at what
+              times, and write one row per planned call.
+     SELECT   decide which planned call each rep should make next.
+     SERVE    hand it to them, exclusively, and hold it while they are on it.
+     SETTLE   take the outcome and rewrite the rest of that lead's day.
+
+   Everything about priority and timing lives in queue-rules.ts. This file is
+   the database and GHL half: it asks the rules what the answer is and then
+   makes it true. The rebuild exists because the old engine answered those
+   questions in several places that had drifted apart — the admin screen and
+   the floor used different comparators, the window was a filter in one path
+   and a sort key in another, and leasing was written but never reached.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+import { createClient } from '@supabase/supabase-js'
+import { resolveTimezone } from './area-codes'
+import { getNumberPool, assignRandomCallerId } from './number-pool'
+import { getPipelines, ghlFetch } from '@/lib/ghl-pipelines'
 import {
-  BLOCKS_BY_COUNT, blockWindows, stagePriority,
-  TODAY_RANK, MAX_LEAD_AGE_DAYS, TODAY_ATTEMPTS, todayWindows,
-  APPOINTMENT_MISSED_RANK, inWindow,
-} from './blocks'
-import { getNumberPool, assignRandomCallerId }         from './number-pool'
-import { getPipelines, ghlFetch }                     from '@/lib/ghl-pipelines'
+  CALLABLE_STAGES, isCallableStage, DEFAULT_CADENCE, MAX_LEAD_AGE_DAYS,
+  slotsForDay, orderQueue, compare, dialedTooRecently, rankOf, rankLabel,
+  queueToday, isFresh, inWindow, MIN_REDIAL_GAP_MS,
+  type BlockName,
+} from './queue-rules'
+
+export {
+  rankOf, rankLabel, inWindow, isFresh, orderQueue,
+  CALLABLE_STAGES, MAX_LEAD_AGE_DAYS,
+} from './queue-rules'
 
 const LOCATION_ID = 'AGAoUCwWTwc4Bqslwt9r'
+
 const PIPELINES = [
   { id: 'yMqNixSnChC5lcGQXA1g', firm: 'lhp',   lang: 'en', defaultTz: 'America/Los_Angeles' },
   { id: 'r1AsAtC7lzwO9ybtkQlA', firm: 'lhp',   lang: 'es', defaultTz: 'America/Los_Angeles' },
   { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears', lang: 'en', defaultTz: 'America/Chicago'     },
   { id: '0tBzhg0eGSNKL870y3yV', firm: 'jm',    lang: 'en', defaultTz: 'America/Los_Angeles' },
 ]
-// Stages synced into the queue (lower-cased for lookup)
-const INCLUDED_STAGES = new Set([
-  // Appointment Scheduled tops the ladder but was never queued — it was
-  // missing from this set, so those leads reached no rep at all.
-  'appointment scheduled',
-  'contract sent', 'chase', 'follow up required', 'no response', 'mia',
-])
 
-function supabaseAdmin() {
+/** How many leads a rep holds at once. */
+export const BUFFER_SIZE = 5
+
+function db() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.SUPABASE_SERVICE_ROLE_KEY!,
@@ -43,7 +60,12 @@ function ghlHeaders() {
   }
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+/** The Eastern calendar date every plan is keyed to. */
+export function todayEastern(): string {
+  return queueToday()
+}
+
+// ─── Types ───────────────────────────────────────────────────────────────────
 
 export interface Attempt {
   id:                 string
@@ -77,138 +99,132 @@ export interface Attempt {
   call_sid:           string | null
   is_callback:        boolean
   callback_at:        string | null
+  callback_context:   string | null
+  callback_id:        string | null
   owner_rep:          string | null
   lang:               string
   stage_changed_at:   string | null
+  lead_created_at:    string | null
   created_at:         string
   updated_at:         string
 }
 
-// ─── Date helper — always use Eastern midnight as the day boundary ────────────
-// The reset cron runs at 5 AM UTC (= midnight EST), so plan_date must always
-// reflect the current Eastern date, not UTC.
-export function todayEastern(): string {
-  return new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
+/* Columns added by migration_queue_rebuild.sql. Until it is run the engine
+   has to keep working, so every write that touches them is gated on this and
+   every read tolerates their absence. */
+let COLUMNS_CHECKED = false
+let HAS_NEW_COLUMNS = false
+async function hasNewColumns(): Promise<boolean> {
+  if (COLUMNS_CHECKED) return HAS_NEW_COLUMNS
+  const { error } = await db().from('dialer_attempts').select('lead_created_at, callback_context, callback_id').limit(0)
+  HAS_NEW_COLUMNS = !error
+  COLUMNS_CHECKED = true
+  if (!HAS_NEW_COLUMNS) {
+    console.warn('[queue] migration_queue_rebuild.sql has not been run — freshness falls back to stage_changed_at')
+  }
+  return HAS_NEW_COLUMNS
 }
 
-// ─── Sync: GHL → dialer_attempts ─────────────────────────────────────────────
+/** PostgREST stops at 1000 rows however wide the range. Page, always. */
+async function fetchAll<T = any>(build: () => any, maxRows = 20000): Promise<T[]> {
+  const out: T[] = []
+  for (let from = 0; from < maxRows; from += 1000) {
+    const { data, error } = await build().range(from, from + 999)
+    if (error) { console.error('[queue] paged fetch', error.message); break }
+    if (!data?.length) break
+    out.push(...data)
+    if (data.length < 1000) break
+  }
+  return out
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   PLAN — GHL becomes today's call slots
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export async function syncGHLToQueue(): Promise<{
   created: number; updated: number; cancelled: number; skipped: number
 }> {
-  const db      = supabaseAdmin()
+  const sb      = db()
   const headers = ghlHeaders()
-  const today   = todayEastern()  // YYYY-MM-DD
+  const today   = todayEastern()
+  const newCols = await hasNewColumns()
 
-  // ── Check if stage_changed_at column exists (safe migration gate) ────────
-  const { error: colCheck } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
-  const hasStageChangedAt = !colCheck
-
-  // ── Batch-load reference data upfront (no per-lead queries) ──────────────
-  const [rulesRes, stateRes, existingAttemptsRes] = await Promise.all([
-    db.from('dialer_cadence_rules').select('stage_name, calls_per_day, enabled'),
-    db.from('dialer_lead_state').select('contact_id, suppressed, exhausted, owner_rep'),
-    db.from('dialer_attempts')
-      .select('id, contact_id, attempt_number, status, stage_name, priority, is_callback, stage_changed_at')
+  const [rulesRes, stateRes, existingRes] = await Promise.all([
+    sb.from('dialer_cadence_rules').select('stage_name, calls_per_day, enabled'),
+    sb.from('dialer_lead_state').select('contact_id, suppressed, exhausted'),
+    (async () => ({ data: await fetchAll(() => sb.from('dialer_attempts')
+      .select('id, contact_id, attempt_number, status, stage_name, priority')
       .eq('plan_date', today)
-      .eq('is_callback', false),
+      .eq('is_callback', false)) }))(),
   ])
 
-  const cadence: Record<string, number> = {}
+  const cadence: Record<string, number> = { ...DEFAULT_CADENCE }
   for (const r of rulesRes.data ?? []) {
-    if (r.enabled) cadence[r.stage_name.toLowerCase()] = r.calls_per_day
+    if (r.enabled) cadence[String(r.stage_name).toLowerCase()] = r.calls_per_day
   }
 
-  const skip      = new Set<string>()
-  const ownerMap  = new Map<string, string | null>()
+  const skip = new Set<string>()
   for (const row of stateRes.data ?? []) {
     if (row.suppressed || row.exhausted) skip.add(row.contact_id)
-    ownerMap.set(row.contact_id, row.owner_rep ?? null)
   }
 
-  // Map: `${contactId}:${attemptNumber}` → existing row
-  type ExistingAttempt = { id: string; status: string; stage_name: string; priority: number }
-  const existingMap = new Map<string, ExistingAttempt>()
-  for (const a of existingAttemptsRes.data ?? []) {
-    existingMap.set(`${a.contact_id}:${a.attempt_number}`, a)
-  }
+  const existing = new Map<string, { id: string; status: string; stage_name: string; priority: number }>()
+  for (const a of existingRes.data ?? []) existing.set(`${a.contact_id}:${a.attempt_number}`, a as any)
 
-  let created = 0, updated = 0, cancelled = 0, skipped = 0
-  const seenContactIds = new Set<string>()
+  // ── Which (pipeline, stage) pairs to sweep ───────────────────────────────
+  const schemas = await Promise.all(PIPELINES.map(async pipeline => {
+    const res = await ghlFetch(
+      `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${LOCATION_ID}`,
+      { headers },
+    )
+    if (!res.ok) return null
+    const pl = ((await res.json()).pipelines ?? []).find((p: any) => p.id === pipeline.id)
+    return pl ? { pipeline, stages: pl.stages ?? [] } : null
+  }))
 
-  // Batch accumulators — flushed at the end
-  const queuedKeys = new Set<string>()
-  const toInsert:     Record<string, any>[] = []
-  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number; stage_changed_at: string | null }[] = []
-  const toReactivate: { id: string; fields: Record<string, any> }[] = []
-
-  // Fetch both pipeline schemas in parallel
-  const pipelineSchemas = await Promise.all(
-    PIPELINES.map(async pipeline => {
-      const pRes = await fetch(
-        `https://services.leadconnectorhq.com/opportunities/pipelines?locationId=${LOCATION_ID}`,
-        { headers }
-      )
-      if (!pRes.ok) return null
-      const pData = await pRes.json()
-      const pl    = (pData.pipelines ?? []).find((p: any) => p.id === pipeline.id)
-      return pl ? { pipeline, stages: pl.stages ?? [] } : null
-    })
-  )
-
-  // Collect all (pipeline, stage) combos with included stages
-  type StageJob = {
-    pipeline: typeof PIPELINES[0]
-    stage: { id: string; name: string }
-    callsPerDay: number
-    blocks: BlockName[]
-    priority: number
-  }
-  const stageJobs: StageJob[] = []
-  for (const schema of pipelineSchemas) {
+  type StageJob = { pipeline: typeof PIPELINES[0]; stage: { id: string; name: string }; callsPerDay: number }
+  const jobs: StageJob[] = []
+  for (const schema of schemas) {
     if (!schema) continue
     for (const stage of schema.stages) {
-      const stageKey = stage.name.toLowerCase()
-      if (!INCLUDED_STAGES.has(stageKey)) continue
-      const callsPerDay = cadence[stageKey] ?? 2
-      stageJobs.push({
-        pipeline:   schema.pipeline,
+      if (!isCallableStage(stage.name)) continue
+      jobs.push({
+        pipeline:    schema.pipeline,
         stage,
-        callsPerDay,
-        blocks:     (BLOCKS_BY_COUNT[callsPerDay] ?? BLOCKS_BY_COUNT[2]) as BlockName[],
-        priority:   stagePriority(stageKey),
+        callsPerDay: cadence[String(stage.name).toLowerCase()] ?? 2,
       })
     }
   }
 
-  // Fetch all stages in parallel — pagination within each stage stays sequential
-  /* Set if any stage fetch ends early. The cancellation sweep below keys off
-     "contacts GHL did not return", so a sweep that stopped halfway makes
-     every unseen lead look deleted. */
+  /* Set if any stage fetch ends early. The cancellation sweep infers deletion
+     from absence, so a sweep that stopped halfway makes every lead it never
+     reached look deleted. */
   let sweepIncomplete = false
+  if (jobs.length === 0) sweepIncomplete = true
 
-  await Promise.all(stageJobs.map(async ({ pipeline, stage, blocks, priority }) => {
-    let cursor: string | null   = null
-    let cursorId: string | null = null
+  const seen       = new Set<string>()
+  const queuedKeys = new Set<string>()
+  const toInsert:     Record<string, any>[] = []
+  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number }[] = []
+  const toReactivate: { id: string; fields: Record<string, any> }[] = []
+  let skipped = 0
+
+  await Promise.all(jobs.map(async ({ pipeline, stage, callsPerDay }) => {
+    let cursor: string | null = null, cursorId: string | null = null
 
     while (true) {
       const url = new URL('https://services.leadconnectorhq.com/opportunities/search')
       url.searchParams.set('location_id', LOCATION_ID)
-      url.searchParams.set('pipeline_id',  pipeline.id)
+      url.searchParams.set('pipeline_id', pipeline.id)
       url.searchParams.set('pipeline_stage_id', stage.id)
       url.searchParams.set('limit', '100')
       if (cursor)   url.searchParams.set('startAfter',   cursor)
       if (cursorId) url.searchParams.set('startAfterId', cursorId)
 
-      /* ghlFetch, not fetch: this sweep walks every pipeline and stage, and
-         it now runs every ten minutes instead of once a day. Overlapping runs
-         cross GHL's 100-requests-per-10-seconds burst window easily, and a
-         bare fetch would take the 429 and `break` — silently truncating the
-         queue to whatever had loaded so far. */
-      const res  = await ghlFetch(url.toString(), { headers })
+      const res = await ghlFetch(url.toString(), { headers })
       if (!res.ok) {
-        console.error('[queue:sync] GHL %d on %s / %s — stage truncated',
-          res.status, pipeline.firm, stage.name)
+        console.error('[queue:plan] GHL %d on %s/%s — stage truncated', res.status, pipeline.firm, stage.name)
         sweepIncomplete = true
         break
       }
@@ -218,141 +234,91 @@ export async function syncGHLToQueue(): Promise<{
 
       for (const opp of opps) {
         const contact = opp.contact ?? {}
-        const phone   =
+        const phone =
           contact.phone ??
-          (contact.phones?.find((p: any) => p.type === 'mobile') ?? contact.phones?.[0])?.number ??
-          ''
-        if (!phone || !opp.contactId) { skipped++; continue }
-        if (skip.has(opp.contactId))  { skipped++; continue }
+          (contact.phones?.find((p: any) => p.type === 'mobile') ?? contact.phones?.[0])?.number ?? ''
+        if (!phone || !opp.contactId)   { skipped++; continue }
+        if (skip.has(opp.contactId))    { skipped++; continue }
 
-        /* A lead that has sat in its stage for three weeks is not worth a dial
-           against one from this morning. This used to apply only to No
-           Response, which left Contract Sent unbounded — a median age of 30
-           days, with more than half the stage past the limit. Dropped at sync
-           so a stale lead never reaches the queue, rather than filtered at
-           serve time where it would still be counted and shown.
+        const stageChangedAt = opp.lastStageChangeAt ?? opp.updatedAt ?? null
+        /* When the lead first arrived — not when it last moved stage. This is
+           what decides freshness, and it has to be stable: anchoring to the
+           stage change would make a lead fresh all over again every time it
+           bounced between No Response and Follow Up, and it would never stop
+           being called every two hours. */
+        const leadCreatedAt = opp.createdAt ?? opp.contact?.dateAdded ?? stageChangedAt
 
-           A lead dropped here is absent from seenContactIds, so its pending
-           attempts are cancelled by the sweep below. Callbacks are exempt from
-           that sweep: a promised time is kept whatever the lead's age. */
-        const stageEnteredAt = opp.lastStageChangeAt ?? opp.updatedAt ?? null
-        const stageAgeDays = stageEnteredAt
-          ? (Date.now() - Date.parse(stageEnteredAt)) / 86_400_000
-          : null
-        if (stageAgeDays !== null && stageAgeDays > MAX_LEAD_AGE_DAYS) { skipped++; continue }
+        /* A lead untouched in its stage for three weeks is not worth a dial
+           against one from this morning. A fresh lead is never stale, so the
+           check cannot strand a lead that only just arrived. */
+        const ageDays = stageChangedAt ? (Date.now() - Date.parse(stageChangedAt)) / 86_400_000 : null
+        if (ageDays !== null && ageDays > MAX_LEAD_AGE_DAYS && !isFresh(leadCreatedAt)) { skipped++; continue }
 
-        seenContactIds.add(opp.contactId)
+        seen.add(opp.contactId)
 
-        const timezone = resolveTimezone(
-          contact.timezone ?? opp.timezone,
-          phone,
-          pipeline.defaultTz
-        )
-        /* Ownership is no longer carried on regular leads: any rep takes the
-           next lead off one shared ladder. Callbacks are the exception and
-           set their own owner when they are booked — a callback is a promise
-           a named rep made for a stated time, and handing it to someone else
-           means a lead is rung by a stranger. */
-        const ownerRep = null
+        const timezone = resolveTimezone(contact.timezone ?? opp.timezone, phone, pipeline.defaultTz)
 
-        /* A lead that arrived today is chased on its own clock: six attempts
-           ninety minutes apart, counted from when it landed, so one that
-           comes in at 2pm is called at 2pm rather than waiting for the next
-           fixed block to open. Everything older keeps the block schedule,
-           which spreads an aged list across the day instead of firing it all
-           at once. */
-        const changedAt = opp.lastStageChangeAt ?? opp.updatedAt ?? null
-        /* Not for appointments. An appointment is a booked event — it is
-           called at its time, once, and the cadence rule says 1/day. Giving
-           it the six-attempt treatment put one lead in six consecutive slots
-           at the very top of the list. */
-        const isTodayLead = !!changedAt
-          && stage.name.toLowerCase() !== 'appointment scheduled'
-          && new Date(changedAt).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === today
+        /* An appointment is a booked event, called once at its time — never
+           on the fresh cadence, which would otherwise put one lead in seven
+           consecutive slots at the top of the floor's list. */
+        const freshAnchor = String(stage.name).toLowerCase() === 'appointment scheduled'
+          ? null
+          : (leadCreatedAt ? new Date(leadCreatedAt) : null)
 
-        const blockWins = blockWindows(today, blocks, timezone)
-        const dayEndsAt = blockWins[0]?.dayEndsAt ?? new Date()
-        const windows: { block: BlockName; dueFrom: Date; dueUntil: Date; dayEndsAt: Date }[] =
-          isTodayLead
-            ? todayWindows(new Date(changedAt!), dayEndsAt).map((w, i) => ({
-                // The block label still drives the UI grouping, so each
-                // relative window is tagged with the block it falls inside.
-                block: blockFor(w.dueFrom, blockWins),
-                dueFrom: w.dueFrom,
-                dueUntil: w.dueUntil,
-                dayEndsAt,
-              }))
-            : blockWins
+        const slots = slotsForDay({
+          planDate:      today,
+          timezone,
+          callsPerDay,
+          leadCreatedAt: freshAnchor,
+        })
+        if (slots.length === 0) { skipped++; continue }
 
-        for (let i = 0; i < windows.length; i++) {
-          const win           = windows[i]
-          const attemptNumber = i + 1
-          const key           = `${opp.contactId}:${attemptNumber}`
-          const existing      = existingMap.get(key)
+        const priority = rankOf({
+          stage_name: stage.name, is_callback: false,
+          lead_created_at: leadCreatedAt, due_from: null, due_until: null,
+        })
 
-          if (existing) {
-            if (existing.status === 'cancelled') {
-              // Re-activate with ALL correct fields (timezone, windows, stage, priority)
-              toReactivate.push({ id: existing.id, fields: {
-                status:        'pending',
-                stage_name:    stage.name,
-                stage_id:      stage.id,
-                priority,
+        for (let i = 0; i < slots.length; i++) {
+          const slot = slots[i]
+          const key  = `${opp.contactId}:${i + 1}`
+          const prev = existing.get(key)
+
+          if (prev) {
+            if (prev.status === 'cancelled') {
+              toReactivate.push({ id: prev.id, fields: {
+                status: 'pending', stage_name: stage.name, stage_id: stage.id, priority,
                 lead_timezone: timezone,
-                due_from:      win.dueFrom.toISOString(),
-                due_until:     win.dueUntil.toISOString(),
-                day_ends_at:   win.dayEndsAt.toISOString(),
-                attempts_total: windows.length,
-                owner_rep:     ownerRep,
-                buffered_for:  null, buffered_at: null,
-                leased_by:     null, leased_at: null, lease_expires_at: null,
-                completed_by:  null, completed_at: null, disposition: null,
+                due_from: slot.dueFrom.toISOString(),
+                due_until: slot.dueUntil.toISOString(),
+                day_ends_at: slot.dayEndsAt.toISOString(),
+                attempts_total: slots.length, block: slot.block,
+                buffered_for: null, buffered_at: null,
+                leased_by: null, leased_at: null, lease_expires_at: null,
+                completed_by: null, completed_at: null, disposition: null,
+                ...(newCols ? { lead_created_at: leadCreatedAt } : {}),
               }})
-              updated++
-            } else if (existing.status === 'pending' || existing.status === 'buffered') {
-              /* Buffered rows are refreshed too. They are sitting in a rep's
-                 list unanswered, so a stage move or a new priority still
-                 applies — and when the ladder changed, the seven Contract
-                 Sent rows already buffered kept the old rank and sorted below
-                 where they belonged. `leased` is deliberately excluded: a rep
-                 is mid-call on those. */
-              /* stage_changed_at is what the queue orders on, and it was only
-                 ever written on INSERT. Every row that existed before the
-                 column did — which was almost the whole queue — kept a null
-                 and could never rank by recency, so the ordering was inert
-                 for 3,132 of 3,180 leads. Refresh it here too, and not only
-                 when the stage name changes: a lead can re-enter No Response
-                 with the same name and a new timestamp. */
-              const freshStage = hasStageChangedAt
-                ? (opp.lastStageChangeAt ?? opp.updatedAt ?? null)
-                : null
-              const stageMoved = existing.stage_name !== stage.name || existing.priority !== priority
-              const tsMoved = hasStageChangedAt
-                && freshStage
-                && (existing as any).stage_changed_at !== freshStage
-              if (stageMoved || tsMoved) {
-                toUpdate.push({
-                  id: existing.id, stage_name: stage.name, stage_id: stage.id, priority,
-                  stage_changed_at: freshStage,
-                })
-                updated++
+            } else if (prev.status === 'pending' || prev.status === 'buffered') {
+              /* Buffered rows are refreshed too — they sit in a rep's list
+                 unanswered, so a stage move still applies to them. `leased`
+                 is excluded on purpose: a rep is on that call right now. */
+              if (prev.stage_name !== stage.name || prev.priority !== priority) {
+                toUpdate.push({ id: prev.id, stage_name: stage.name, stage_id: stage.id, priority })
               }
             }
             continue
           }
 
-          /* The same contact can sit in two in-scope stages at once — 60 of
-             them do today, mostly a lead present in both the English and the
-             Spanish LHP pipeline. Each stage sweep would queue its own row
-             with the same (contact, day, attempt) key, which the unique index
-             rejects. existingMap only knows what is already in the database,
-             so the run has to remember what it has queued for itself. */
+          /* The same contact can sit in two callable stages at once, usually
+             a lead present in both the English and Spanish pipeline. Each
+             sweep would queue its own row under the same key, which the
+             unique index rejects — and `existing` only knows what was in the
+             database before this run started. */
           if (queuedKeys.has(key)) continue
           queuedKeys.add(key)
 
           const row: Record<string, any> = {
-            contact_id:         opp.contactId,
-            contact_name:       opp.name ?? contact.name ?? 'Unknown',
+            contact_id:   opp.contactId,
+            contact_name: opp.name ?? contact.name ?? 'Unknown',
             phone,
             firm:               pipeline.firm,
             pipeline_id:        pipeline.id,
@@ -360,22 +326,24 @@ export async function syncGHLToQueue(): Promise<{
             stage_name:         stage.name,
             ghl_opportunity_id: opp.id ?? null,
             plan_date:          today,
-            attempt_number:     attemptNumber,
-            attempts_total:     windows.length,
-            block:              win.block,
+            attempt_number:     i + 1,
+            attempts_total:     slots.length,
+            block:              slot.block,
             lead_timezone:      timezone,
-            due_from:           win.dueFrom.toISOString(),
-            due_until:          win.dueUntil.toISOString(),
-            day_ends_at:        win.dayEndsAt.toISOString(),
+            due_from:           slot.dueFrom.toISOString(),
+            due_until:          slot.dueUntil.toISOString(),
+            day_ends_at:        slot.dayEndsAt.toISOString(),
             priority,
-            owner_rep:          ownerRep,
             lang:               pipeline.lang,
+            stage_changed_at:   stageChangedAt,
+            /* Carryover is not a privilege. Each morning the day is planned
+               fresh at whatever stage the lead is in now — being left over
+               yesterday earns a lead nothing today. */
+            is_carryover:       false,
+            owner_rep:          null,
           }
-          if (hasStageChangedAt) {
-            row.stage_changed_at = opp.lastStageChangeAt ?? opp.updatedAt ?? null
-          }
+          if (newCols) row.lead_created_at = leadCreatedAt
           toInsert.push(row)
-          created++
         }
       }
 
@@ -385,277 +353,224 @@ export async function syncGHLToQueue(): Promise<{
     }
   }))
 
-  // ── Flush batches ─────────────────────────────────────────────────────────
+  // ── Write ────────────────────────────────────────────────────────────────
   const now = new Date().toISOString()
 
-  /* Insert in chunks, and check the result.
-
-     A multi-row insert is one statement: a single unique violation rolls back
-     the whole chunk. That silently cost most of the queue — 3,100 attempts
-     were built and 775 landed, with the sync still reporting success. The
-     error is now surfaced, and a failed chunk is retried row by row so one bad
-     row costs one lead instead of five hundred. */
-  let inserted = 0
+  /* A multi-row insert is one statement: one unique violation rolls back the
+     whole chunk. That silently cost most of a day's queue once — 3,100 rows
+     built, 775 landed, the sync still reporting success. A failed chunk is
+     retried row by row so one bad row costs one lead, not five hundred. */
+  let created = 0
   for (let i = 0; i < toInsert.length; i += 500) {
     const chunk = toInsert.slice(i, i + 500)
-    const { error } = await db.from('dialer_attempts').insert(chunk)
-    if (!error) { inserted += chunk.length; continue }
-
-    console.error(`[sync] chunk of ${chunk.length} failed (${error.code}: ${error.message}) — retrying individually`)
+    const { error } = await sb.from('dialer_attempts').insert(chunk)
+    if (!error) { created += chunk.length; continue }
+    console.error('[queue:plan] chunk of %d failed (%s) — retrying individually', chunk.length, error.code)
     for (const row of chunk) {
-      const { error: rowErr } = await db.from('dialer_attempts').insert(row)
-      if (rowErr) {
-        // A duplicate here is expected and harmless; anything else is not.
-        if (rowErr.code !== '23505') console.error('[sync] row insert failed', rowErr.code, rowErr.message, row.contact_id)
-      } else inserted++
+      const { error: rowErr } = await sb.from('dialer_attempts').insert(row)
+      if (!rowErr) created++
+      else if (rowErr.code !== '23505') console.error('[queue:plan] row failed', rowErr.code, row.contact_id)
     }
   }
-  if (inserted !== toInsert.length) {
-    console.warn(`[sync] ${toInsert.length - inserted} of ${toInsert.length} attempts did not insert`)
-  }
-  created = inserted
 
-  // Batch stage/priority updates for pending rows
-  /* Grouped by the whole payload, timestamp included, so rows sharing a value
-     still go in one statement. Leads that changed stage in the same sync tend
-     to share a timestamp, so this stays a handful of requests rather than one
-     per row. */
-  type UpdateGroup = { stage_name: string; stage_id: string; priority: number; stage_changed_at: string | null; ids: string[] }
-  const updateGroups = new Map<string, UpdateGroup>()
+  const groups = new Map<string, { stage_name: string; stage_id: string; priority: number; ids: string[] }>()
   for (const u of toUpdate) {
-    const k = `${u.stage_name}:${u.stage_id}:${u.priority}:${u.stage_changed_at ?? ''}`
-    if (!updateGroups.has(k)) updateGroups.set(k, {
-      stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority,
-      stage_changed_at: u.stage_changed_at, ids: [],
-    })
-    updateGroups.get(k)!.ids.push(u.id)
+    const k = `${u.stage_name}:${u.priority}`
+    if (!groups.has(k)) groups.set(k, { stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority, ids: [] })
+    groups.get(k)!.ids.push(u.id)
   }
-  for (const g of updateGroups.values()) {
-    await db.from('dialer_attempts')
-      .update({
-        stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now,
-        ...(g.stage_changed_at ? { stage_changed_at: g.stage_changed_at } : {}),
-      })
-      .in('id', g.ids)
+  for (const g of groups.values()) {
+    for (let i = 0; i < g.ids.length; i += 500) {
+      await sb.from('dialer_attempts')
+        .update({ stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now })
+        .in('id', g.ids.slice(i, i + 500))
+    }
   }
 
-  // Reactivate cancelled attempts with fully corrected fields (timezone, windows, stage)
-  // Process in chunks of 50 to avoid hitting query limits
   for (let i = 0; i < toReactivate.length; i += 50) {
-    await Promise.all(
-      toReactivate.slice(i, i + 50).map(r =>
-        db.from('dialer_attempts').update({ ...r.fields, updated_at: now }).eq('id', r.id)
-      )
-    )
+    await Promise.all(toReactivate.slice(i, i + 50).map(r =>
+      sb.from('dialer_attempts').update({ ...r.fields, updated_at: now }).eq('id', r.id)))
   }
 
-  /* Cancel pending attempts for leads no longer in any included stage.
+  /* Cancel planned calls for leads that have left the callable set.
 
-     This is the most destructive thing the sync does and it infers deletion
-     from absence, so it only runs when the sweep is known to be whole. A
-     partial sweep means "GHL did not answer", not "these leads are gone" —
-     and with the sync moved from daily to every ten minutes, one truncated
-     run emptied an entire day's queue: 3,206 of 3,328 attempts cancelled,
-     leaving the floor with nothing to call.
-
-     The read is paged for the same reason the admin list had to be: a plain
-     select stops at 1000 rows, so this silently saw a fraction of the day. */
+     The most destructive thing the plan does, and it infers deletion from
+     absence — so it only runs when the sweep is known to be whole. A partial
+     sweep means "GHL did not answer", not "these leads are gone"; one
+     truncated run once cancelled 3,206 of 3,328 attempts and left the floor
+     with nothing to call. */
+  let cancelled = 0
   if (sweepIncomplete) {
-    console.warn('[queue:sync] sweep incomplete — skipping cancellation entirely')
+    console.warn('[queue:plan] sweep incomplete — skipping cancellation')
   } else {
-    const pendingAttempts: { id: string; contact_id: string }[] = []
-    for (let from = 0; from < 20000; from += 1000) {
-      const { data } = await db.from('dialer_attempts')
-        .select('id, contact_id')
-        .eq('plan_date', today)
-        .eq('status', 'pending')
-        .eq('is_callback', false)
-        .range(from, from + 999)
-      if (!data?.length) break
-      pendingAttempts.push(...data)
-      if (data.length < 1000) break
-    }
-    const toCancel = pendingAttempts.filter(a => !seenContactIds.has(a.contact_id))
+    const pending = await fetchAll<{ id: string; contact_id: string }>(() => sb.from('dialer_attempts')
+      .select('id, contact_id')
+      .eq('plan_date', today)
+      .eq('status', 'pending')
+      .eq('is_callback', false))
+    const gone = pending.filter(a => !seen.has(a.contact_id))
+    const share = pending.length > 0 ? gone.length / pending.length : 0
 
-    /* A sweep that returned nothing, or that would cancel nearly everything,
-       is far more likely to be broken than to mean the pipeline emptied. */
-    const share = pendingAttempts.length > 0 ? toCancel.length / pendingAttempts.length : 0
-    if (seenContactIds.size === 0 || (share > 0.5 && pendingAttempts.length > 50)) {
-      console.error('[queue:sync] refusing to cancel %d of %d pending (%d%%) — seen=%d; this looks like a failed sweep',
-        toCancel.length, pendingAttempts.length, Math.round(share * 100), seenContactIds.size)
-    } else if (toCancel.length > 0) {
-      for (let i = 0; i < toCancel.length; i += 500) {
-        await db.from('dialer_attempts')
+    if (seen.size === 0 || (share > 0.5 && pending.length > 50)) {
+      console.error('[queue:plan] refusing to cancel %d of %d (%d%%) — seen=%d, this looks like a failed sweep',
+        gone.length, pending.length, Math.round(share * 100), seen.size)
+    } else {
+      for (let i = 0; i < gone.length; i += 500) {
+        await sb.from('dialer_attempts')
           .update({ status: 'cancelled', updated_at: now })
-          .in('id', toCancel.slice(i, i + 500).map(a => a.id))
+          .in('id', gone.slice(i, i + 500).map(a => a.id))
       }
-      cancelled += toCancel.length
+      cancelled = gone.length
     }
   }
 
-  // Re-fill all READY reps so new leads are assigned contiguously
-  await fillAllReadyReps(5).catch(console.error)
+  await syncCallbacksIntoQueue().catch(err => console.error('[queue:callbacks]', err))
+  await fillAllReadyReps().catch(err => console.error('[queue:fill-all]', err))
 
-  return { created, updated, cancelled, skipped }
+  return { created, updated: toUpdate.length + toReactivate.length, cancelled, skipped }
 }
 
-// ─── State filter ─────────────────────────────────────────────────────────────
-// Admins can restrict the floor to a set of states (dialer_queue_settings).
-// Enforced at serve time, so a change takes effect on the next buffer fill —
-// no re-sync needed. Callbacks bypass it: the rep already promised that call.
+/* ═══════════════════════════════════════════════════════════════════════════
+   Callbacks — promises, mirrored into the queue
 
-export interface StateFilter {
-  mode:   'off' | 'include' | 'exclude'
-  states: string[]
+   A callback is the one thing in the system with a time somebody committed
+   to out loud. It used to live only in dialer_callbacks, which meant the
+   queue's whole callback apparatus — top priority, owner exclusivity, the
+   push into a rep's buffer at the promised minute — never fired, because no
+   callback was ever a queue row. The rep had to remember to go and look.
+
+   So every pending callback due today is mirrored into dialer_attempts as a
+   row that outranks everything. dialer_callbacks stays the record of the
+   promise; the queue row is how it reaches a rep. Completing either settles
+   both.
+   ═══════════════════════════════════════════════════════════════════════════ */
+export async function syncCallbacksIntoQueue(): Promise<number> {
+  const sb      = db()
+  const today   = todayEastern()
+  const newCols = await hasNewColumns()
+  if (!newCols) return 0   // callback_id is how the two stay in step
+
+  const dayEnd = new Date(`${today}T23:59:59-05:00`)
+
+  const [{ data: due }, existingRows] = await Promise.all([
+    sb.from('dialer_callbacks')
+      .select('id, contact_id, contact_name, phone, firm, stage_name, callback_at, callback_context, owner_rep')
+      .eq('status', 'pending')
+      .lte('callback_at', dayEnd.toISOString()),
+    fetchAll<{ callback_id: string | null }>(() => sb.from('dialer_attempts')
+      .select('callback_id')
+      .eq('plan_date', today)
+      .eq('is_callback', true)),
+  ])
+
+  const mirrored = new Set((existingRows ?? []).map(r => r.callback_id).filter(Boolean) as string[])
+  const rows = (due ?? []).filter(c => !mirrored.has(c.id)).map(c => {
+    const at = new Date(c.callback_at)
+    return {
+      contact_id:   c.contact_id,
+      contact_name: c.contact_name ?? 'Unknown',
+      phone:        c.phone,
+      firm:         c.firm ?? '',
+      pipeline_id:  '',
+      stage_id:     '',
+      stage_name:   c.stage_name ?? 'Callback',
+      plan_date:    today,
+      attempt_number: 1,
+      attempts_total: 1,
+      block:        'morning',
+      lead_timezone: 'America/Los_Angeles',
+      due_from:     at.toISOString(),
+      /* A promise does not expire at the end of an hour. The window stays
+         open to the end of the calling day so a callback the floor could not
+         reach at 4pm is still the top of the list at 5. */
+      due_until:    dayEnd.toISOString(),
+      day_ends_at:  dayEnd.toISOString(),
+      priority:     rankOf({ stage_name: null, is_callback: true, lead_created_at: null, due_from: null, due_until: null }),
+      status:       'pending',
+      is_callback:  true,
+      callback_at:  at.toISOString(),
+      callback_context: c.callback_context ?? null,
+      callback_id:  c.id,
+      /* Exclusive to whoever made the promise. A lead rung by a stranger who
+         says "you asked me to call" is worse than not calling at all. */
+      owner_rep:    c.owner_rep ?? null,
+      lang:         'en',
+      is_carryover: false,
+    }
+  })
+
+  if (!rows.length) return 0
+  const { error } = await sb.from('dialer_attempts').insert(rows)
+  if (error) {
+    console.error('[queue:callbacks] insert failed', error.message)
+    return 0
+  }
+  return rows.length
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Filters — which clients and which states the floor is working
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+export interface StateFilter { mode: 'off' | 'include' | 'exclude'; states: string[] }
+export interface FirmFilter  { mode: 'off' | 'include' | 'exclude'; firms:  string[] }
 
 export const NO_STATE_FILTER: StateFilter = { mode: 'off', states: [] }
+export const NO_FIRM_FILTER:  FirmFilter  = { mode: 'off', firms:  [] }
 
 export async function getStateFilter(): Promise<StateFilter> {
-  const db = supabaseAdmin()
-  const { data, error } = await db.from('dialer_queue_settings')
-    .select('state_filter_mode, state_filter_list')
-    .eq('id', 1)
-    .maybeSingle()
-  // Table missing (migration not run) or no row → no filtering.
+  const { data, error } = await db().from('dialer_queue_settings')
+    .select('state_filter_mode, state_filter_list').eq('id', 1).maybeSingle()
   if (error || !data) return NO_STATE_FILTER
   const states = (data.state_filter_list ?? []).map((s: string) => s.toUpperCase())
-  const mode   = (data.state_filter_mode ?? 'off') as StateFilter['mode']
-  if (mode === 'off' || states.length === 0) return NO_STATE_FILTER
-  return { mode, states }
+  const mode = (data.state_filter_mode ?? 'off') as StateFilter['mode']
+  return mode === 'off' || states.length === 0 ? NO_STATE_FILTER : { mode, states }
 }
 
-// Does this lead's phone pass the filter?
-// Unknown state (unmapped area code) is kept on exclude, dropped on include —
-// "only call CA" shouldn't leak leads we can't place.
-/* A lead's state is the firm's state, not the phone's.
+export async function getFirmFilter(): Promise<FirmFilter> {
+  const { data, error } = await db().from('dialer_queue_settings')
+    .select('firm_filter_mode, firm_filter_list').eq('id', 1).maybeSingle()
+  if (error || !data) return NO_FIRM_FILTER
+  const firms = (data.firm_filter_list ?? []).map((f: string) => f.toLowerCase())
+  const mode = (data.firm_filter_mode ?? 'off') as FirmFilter['mode']
+  return mode === 'off' || firms.length === 0 ? NO_FIRM_FILTER : { mode, firms }
+}
 
-   This used to read the area code, which answers a different question: where
-   the number was issued, not where the client is. Of today's queue it
-   disagreed with the firm on 101 leads and could not classify 19 more — a
-   Fears client in Texas carrying a New York mobile was filtered out as a New
-   Yorker. Every firm we dial for operates in exactly one state, and that is
-   the fact worth filtering on. */
+/* A lead's state is the firm's state, not the phone's. Reading the area code
+   answers a different question — where the number was issued, not where the
+   client is — and disagreed with the firm on 101 leads in a single day. */
 export const FIRM_STATE: Record<string, string> = {
-  lhp:         'CA',
-  lhp_spanish: 'CA',
-  jm:          'CA',
-  fears:       'TX',
-  fl:          'TX',
+  lhp: 'CA', lhp_spanish: 'CA', jm: 'CA', fears: 'TX', fl: 'TX',
 }
 
 export function stateForLead(lead: { firm?: string | null }): string | null {
   return FIRM_STATE[String(lead.firm ?? '').toLowerCase()] ?? null
 }
 
-export function passesStateFilter(lead: { firm?: string | null }, filter: StateFilter): boolean {
-  if (filter.mode === 'off' || filter.states.length === 0) return true
+export function passesStateFilter(lead: { firm?: string | null }, f: StateFilter): boolean {
+  if (f.mode === 'off' || f.states.length === 0) return true
   const state = stateForLead(lead)
-  // A firm we have no state for is kept on exclude and dropped on include —
-  // "only call CA" must not leak a client we cannot place.
-  if (!state) return filter.mode === 'exclude'
-  return filter.mode === 'include'
-    ?  filter.states.includes(state)
-    : !filter.states.includes(state)
+  // A firm with no state is kept on exclude and dropped on include — "only
+  // call CA" must not leak a client we cannot place.
+  if (!state) return f.mode === 'exclude'
+  return f.mode === 'include' ? f.states.includes(state) : !f.states.includes(state)
 }
 
-/* ── Firm filter ────────────────────────────────────────────────────────────
-   The same mechanism on a different axis: which clients the floor is dialling
-   at all. A firm is not a state — Fears is Texas, but LHP and J&M both run
-   Texas numbers too — so excluding a state cannot stand in for pausing a
-   client, and pausing a client cannot stand in for excluding a state. Both
-   filters apply, and a lead has to pass both.
-
-   Enforced at serve time like the state filter, so pausing a firm takes
-   effect on the next buffer fill and un-pausing restores its leads with no
-   re-sync. Callbacks are exempt: a rep already promised that call, and the
-   client relationship is not the lead's problem. */
-
-export interface FirmFilter {
-  mode:  'off' | 'include' | 'exclude'
-  firms: string[]
+export function passesFirmFilter(firm: string | null | undefined, f: FirmFilter): boolean {
+  if (f.mode === 'off' || f.firms.length === 0) return true
+  const v = (firm ?? '').toLowerCase()
+  return f.mode === 'include' ? f.firms.includes(v) : !f.firms.includes(v)
 }
 
-export const NO_FIRM_FILTER: FirmFilter = { mode: 'off', firms: [] }
+/* ═══════════════════════════════════════════════════════════════════════════
+   SELECT — one pool, one order, one set of gates
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-export async function getFirmFilter(): Promise<FirmFilter> {
-  const db = supabaseAdmin()
-  const { data, error } = await db.from('dialer_queue_settings')
-    .select('firm_filter_mode, firm_filter_list')
-    .eq('id', 1)
-    .maybeSingle()
-  // Table or columns missing (migration not run) → no filtering.
-  if (error || !data) return NO_FIRM_FILTER
-  const firms = (data.firm_filter_list ?? []).map((f: string) => f.toLowerCase())
-  const mode  = (data.firm_filter_mode ?? 'off') as FirmFilter['mode']
-  if (mode === 'off' || firms.length === 0) return NO_FIRM_FILTER
-  return { mode, firms }
-}
-
-/** Firm comes off the attempt row, so there is no unknown case to resolve. */
-export function passesFirmFilter(firm: string | null | undefined, filter: FirmFilter): boolean {
-  if (filter.mode === 'off' || filter.firms.length === 0) return true
-  const f = (firm ?? '').toLowerCase()
-  return filter.mode === 'include'
-    ?  filter.firms.includes(f)
-    : !filter.firms.includes(f)
-}
-
-// ─── Buffer management ────────────────────────────────────────────────────────
-
-// Fill rep's buffer to `count`.
-// Replaces the Postgres RPC — does selection in TS so we can call it
-// at any time (the RPC had a due_from <= now() gate that blocked pre-loading).
-// Concurrency guard: UPDATE ... WHERE status='pending' ensures only one rep
-// wins if two requests race for the same lead.
-/* ── Candidate selection ──────────────────────────────────────────────────
-   Shared by the single-rep and all-reps fills so the two can never order the
-   queue differently.
-
-   The ordering used to be fully static — priority, then attempt number, then
-   created_at — with nothing in it that changed when a lead was called. So the
-   same contacts surfaced at the top of every fill, in the same sequence, and
-   a lead dialed five minutes ago outranked one nobody had touched in a week.
-   Reps worked the same list over and over while the tail was never reached.
-
-   Recency is now part of the sort: within a priority tier, leads nobody has
-   called come first, then the ones dialed longest ago. A contact dialed within
-   the last MIN_REDIAL_GAP is held back entirely, which also stops the
-   due-gate fallback from serving attempt 2 minutes after attempt 1.         */
-
-/** A contact is never dialed twice inside this window, whatever the blocks
- *  say. Blocks are three hours wide, so this only bites when the due gate has
- *  been bypassed because no block is currently open. */
-const MIN_REDIAL_GAP_MS = 90 * 60 * 1000
-
-/** PostgREST caps a response at 1000 rows. The candidate pool has to be the
- *  whole pending set — truncating it silently pins the queue to the same head. */
-async function fetchAllPending(buildQuery: () => any, maxRows = 6000): Promise<Attempt[]> {
-  const out: Attempt[] = []
-  for (let from = 0; from < maxRows; from += 1000) {
-    const { data, error } = await buildQuery().range(from, from + 999)
-    if (error) {
-      console.error('[queue] pending fetch error', error)
-      break
-    }
-    if (!data?.length) break
-    out.push(...(data as Attempt[]))
-    if (data.length < 1000) break
-  }
-  return out
-}
-
-/** Which named block a relative window falls inside, for display only. */
-function blockFor(at: Date, wins: { block: BlockName; dueFrom: Date; dueUntil: Date }[]): BlockName {
-  for (const w of wins) if (at >= w.dueFrom && at < w.dueUntil) return w.block
-  return at < (wins[0]?.dueFrom ?? at) ? (wins[0]?.block ?? 'morning') : (wins[wins.length - 1]?.block ?? 'night')
-}
-
-/** contact_id → epoch ms of the last dial, for the contacts in play. */
-export async function loadLastDialed(db: any, contactIds: string[]): Promise<Map<string, number>> {
+/** contact_id → when it was last dialled, for the contacts in play. */
+export async function loadLastDialed(sb: any, contactIds: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>()
   for (let i = 0; i < contactIds.length; i += 300) {
-    const { data } = await db.from('dialer_lead_state')
+    const { data } = await sb.from('dialer_lead_state')
       .select('contact_id, last_dialed_at')
       .in('contact_id', contactIds.slice(i, i + 300))
     for (const row of data ?? []) {
@@ -665,779 +580,378 @@ export async function loadLastDialed(db: any, contactIds: string[]): Promise<Map
   return map
 }
 
-/** When a lead reached its current stage — the only honest recency signal we
- *  have. `created_at` is when the sync wrote the row, which for a lead still
- *  sitting pending from July says nothing about how fresh the lead is. */
-function stageChangedMs(a: Attempt): number {
-  const raw = (a as any).stage_changed_at
-  const t = raw ? Date.parse(raw) : NaN
-  return Number.isFinite(t) ? t : 0
-}
-
-/** Did this lead arrive today, in Eastern? Speed to lead is the whole game:
- *  a lead that came in this morning is worth more than anything from last
- *  week, whatever stage it sits in. */
-function arrivedToday(a: Attempt, todayEt: string): boolean {
-  const ms = stageChangedMs(a)
-  if (!ms) return false
-  return new Date(ms).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === todayEt
-}
-
-/* The rank a row is worked at. First match wins, which is what makes the
-   ladder behave: a chase lead that arrived today ranks as chase, because
-   chase sits above the today tier; a no-response that arrived today ranks as
-   today, because today sits above no-response.
-
-     appointment scheduled   600
-     mia                     550
-     contract sent           500
-     chase                   400
-     arrived today           300   <- any stage
-     follow up required      200
-     no response             100
-*/
-function rankOf(a: Attempt, todayEt: string): number {
-  const stage = String(a.stage_name ?? '').toLowerCase()
-
-  /* "Appointment scheduled (at that time)" — the qualifier is the point. It
-     tops the ladder inside its slot; outside it, the slot was missed and it
-     is worked like a follow-up. Without this every appointment in the
-     pipeline sat above every contract sent for the whole day. */
-  if (stage === 'appointment scheduled') {
-    return inWindow(a.due_from ?? null, (a as any).due_until ?? null)
-      ? stagePriority(stage)
-      : APPOINTMENT_MISSED_RANK
-  }
-
-  const byStage = stagePriority(stage)
-  // Anything ranked above the today tier keeps its stage rank outright.
-  if (byStage > TODAY_RANK) return byStage
-  return arrivedToday(a, todayEt) ? TODAY_RANK : byStage
-}
-
-/* Ordering, most significant first:
-
-     1. callbacks        — a promise made to a lead at a stated time
-     2. carryover        — owed from yesterday
-     3. the ladder above
-     4. newest first     — within a rank, latest to oldest
-
-   Never-dialed-before-dialed sits underneath recency rather than above it,
-   and MIN_REDIAL_GAP_MS still stops the same contact coming round twice in
-   quick succession, so recency-first cannot turn into redial spam. */
-function compareAttempts(
-  a: Attempt, b: Attempt, lastDialed: Map<string, number>, todayEt: string,
-): number {
-  const bool = (v: unknown) => (v ? 1 : 0)
-  const aDialed = lastDialed.get(a.contact_id)
-  const bDialed = lastDialed.get(b.contact_id)
-
-  /* Callable before not-yet-callable.
-
-     The window is deliberately a hint rather than a gate, so the floor is
-     never idle in front of a full queue. But nothing PREFERRED a lead whose
-     window was open, so fills handed out expired rows while 175 callable
-     ones sat in pending — and an expired buffered row cannot be dialled, so
-     the rep had nothing to do and nothing new arrived. Ordering open windows
-     first keeps the gate off while still serving work that can be done now. */
-  const nowMs = Date.now()
-  const callable = (x: Attempt) => {
-    const u = (x as any).due_until
-    return u ? Date.parse(u) > nowMs : true
-  }
-
-  return (
-    bool(b.is_callback) - bool(a.is_callback) ||
-    bool((b as any).is_carryover) - bool((a as any).is_carryover) ||
-    bool(callable(b)) - bool(callable(a)) ||
-    rankOf(b, todayEt) - rankOf(a, todayEt) ||
-    // Latest to oldest — the floor works the freshest lead in the stage next
-    stageChangedMs(b) - stageChangedMs(a) ||
-    // Only then: anyone never called outranks someone already tried
-    (aDialed === undefined ? 0 : 1) - (bDialed === undefined ? 0 : 1) ||
-    (aDialed ?? 0) - (bDialed ?? 0) ||
-    (a.attempt_number ?? 0) - (b.attempt_number ?? 0) ||
-    String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')) ||
-    // Newest row first as the final tiebreak, matching the rule above
-    String((b as any).created_at ?? '').localeCompare(String((a as any).created_at ?? '')) ||
-    String(a.id).localeCompare(String(b.id))
-  )
-}
-
-export function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
-  const todayEt = todayEastern()
-  return [...rows].sort((a, b) => compareAttempts(a, b, lastDialed, todayEt))
-}
-
-/* Rank a LEAD by the attempt that can actually be dialed.
-
-   A lead carries three to six attempt rows and every one of them used to be
-   ranked on its own. Only the lowest pending attempt is ever servable — the
-   rest are blocked by the sequential rule — so a lead whose att2 said "Chase"
-   sat at position 5 while its att1, demoted to a missed appointment, sat at
-   93. The floor skipped straight over the row on screen, because the row on
-   screen was not the row it could call. Position 5 meant nothing.
-
-   So the lead moves as one: the servable attempt decides where the lead
-   ranks, and its siblings follow it. The top of the list is now the next
-   call, and counting down it is counting down real leads. */
-export function orderQueue(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
-  const todayEt = todayEastern()
-
-  const groups = new Map<string, Attempt[]>()
-  for (const r of rows) {
-    const key = r.is_callback ? `cb:${r.id}` : `c:${r.contact_id}`
-    const g = groups.get(key) ?? []
-    g.push(r)
-    groups.set(key, g)
-  }
-
-  const ranked = [...groups.values()].map(g => {
-    const byAttempt = [...g].sort((x, y) => (x.attempt_number ?? 0) - (y.attempt_number ?? 0))
-    /* The servable one: the earliest attempt still waiting. If none is
-       pending the lead is already in someone's hands, so lead on whatever
-       row it has. */
-    const head = byAttempt.find(r => r.status === 'pending') ?? byAttempt[0]
-    const rest = byAttempt.filter(r => r !== head)
-    return { head, rows: [head, ...rest] }
-  })
-
-  ranked.sort((x, y) => compareAttempts(x.head, y.head, lastDialed, todayEt))
-  return ranked.flatMap(r => r.rows)
-}
-
-/* The one queue order.
-
-   The admin queue used to be ordered by SQL (due_from first, created_at
-   ascending) while the floor was served from orderByRecency — so the list on
-   the screen and the order leads actually went out in were unrelated, and
-   "start from the top" was not a thing that could be true. Both now call
-   this, so the row at the top of the page is the row the next rep is handed. */
+/** The one queue order. Admin list and rep buffer both come through here. */
 export async function sortQueueCanonical(rows: Attempt[]): Promise<Attempt[]> {
   if (rows.length < 2) return rows
-  const db = supabaseAdmin()
-  const lastDialed = await loadLastDialed(db, [...new Set(rows.map(r => r.contact_id))])
-  return orderQueue(rows, lastDialed)
+  const lastDialed = await loadLastDialed(db(), [...new Set(rows.map(r => r.contact_id))])
+  return orderQueue(rows as any, lastDialed) as Attempt[]
 }
 
-/** Called too recently to call again — callbacks excepted, they are promises. */
-function dialedTooRecently(a: Attempt, lastDialed: Map<string, number>, now: number): boolean {
-  if (a.is_callback) return false
-  const last = lastDialed.get(a.contact_id)
-  return last !== undefined && now - last < MIN_REDIAL_GAP_MS
+/** @deprecated the row-level sort. orderQueue ranks whole leads — use that. */
+export function orderByRecency(rows: Attempt[], lastDialed: Map<string, number>): Attempt[] {
+  return [...rows].sort((a, b) => compare(a as any, b as any, lastDialed))
 }
 
-export async function fillBuffer(repIdentity: string, count = 5): Promise<Attempt[]> {
-  // Same cap as the all-reps path — this one can overfill too when it races.
-  await enforceBufferCap(count).catch(err => console.error('[queue:cap]', err))
+interface Candidate extends Attempt {}
 
-  const db    = supabaseAdmin()
-  const today = todayEastern()
-  const now   = new Date()
+/* Everything that could be dialled right now, in the order it should go out.
 
-  // Whitelist: only active REP users can receive leads
-  const { data: user } = await db.from('dialer_users')
-    .select('role, active, spanish')
-    .eq('twilio_identity', repIdentity)
-    .maybeSingle()
-  if (!user || user.role !== 'REP' || !user.active) return []
-  const repSpeaksSpanish = user.spanish === true
-
-  const stateFilter = await getStateFilter()
-  const firmFilter  = await getFirmFilter()
-
-  // ── Force-buffer due callbacks owned by this rep (bypass buffer limit) ──
-  const { data: dueCallbacks } = await db.from('dialer_attempts')
-    .select('id')
-    .eq('status', 'pending')
-    .eq('plan_date', today)
-    .eq('is_callback', true)
-    .eq('owner_rep', repIdentity)
-    .lte('due_from', now.toISOString())
-
-  if (dueCallbacks?.length) {
-    const nowIso = now.toISOString()
-    await db.from('dialer_attempts')
-      .update({ status: 'buffered', buffered_for: repIdentity, buffered_at: nowIso, updated_at: nowIso })
-      .in('id', dueCallbacks.map(a => a.id))
-      .eq('status', 'pending')
-    console.log(`[fillBuffer] force-buffered ${dueCallbacks.length} due callback(s) for ${repIdentity}`)
-  }
-
-  // How many already buffered/leased for this rep?
-  // Must check BOTH buffered_for and leased_by — leased leads have buffered_for=null
-  const { data: existing } = await db.from('dialer_attempts')
-    .select('id')
-    .eq('plan_date', today)
-    .in('status', ['buffered', 'leased'])
-    .or(`buffered_for.eq.${repIdentity},leased_by.eq.${repIdentity}`)
-
-  /* A buffered row whose window has closed is dead weight: the rep cannot
-     call it, but it still counts toward their five, so no replacement is
-     ever fetched. That is the loop reps were reporting — the same handful of
-     expired leads sitting there while 960 callable ones waited in pending.
-     Release them, then size the top-up from what is actually workable.
-
-     Leased rows are left alone whatever their window says: the rep is on
-     that call right now. */
-  const nowMs = now.getTime()
-  const expired = (existing ?? []).filter((a: any) =>
-    a.status === 'buffered' && a.due_until && Date.parse(a.due_until) <= nowMs)
-
-  if (expired.length) {
-    await db.from('dialer_attempts')
-      .update({ status: 'pending', buffered_for: null, buffered_at: null })
-      .in('id', expired.map((a: any) => a.id))
-    console.warn('[queue:fill] released %d expired buffered leads for %s', expired.length, repIdentity)
-  }
-
-  const current = (existing?.length ?? 0) - expired.length
-  const needed  = count - current
-  if (needed <= 0) return []
-
-  // Only filter: contacts already in buffer/on call (can't assign same lead to two reps)
-  const { data: activeRes } = await db.from('dialer_attempts')
-    .select('contact_id')
-    .eq('plan_date', today)
-    .in('status', ['buffered', 'leased'])
-  const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
-
-  // Query pending leads — prefer those whose time block is open (due_from <= now)
-  // to prevent cycling the same lead through all 3 attempts back-to-back.
-  // Fallback: if NO leads are due (current block exhausted), serve next block.
-  const { error: colErr } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
-  const hasStageCol = !colErr
-
-  /* The block/window is a scheduling hint, not a gate. It used to filter what
-     could be served, which left the floor idle in front of a full queue
-     whenever the next block had not opened yet. The ladder decides order; the
-     window no longer decides eligibility. */
-  function buildPendingQuery(_useDueGate: boolean) {
-    let q2 = db.from('dialer_attempts')
+   Shared by both fill paths. They used to have a candidate query and a sort
+   each — fillBuffer ranked whole leads, fillAllReadyReps ranked loose rows —
+   so the rep's own poll and the background top-up handed out leads in
+   different orders and neither matched the admin screen. */
+async function candidatePool(sb: any, today: string): Promise<{
+  rows: Candidate[]
+  lastDialed: Map<string, number>
+  activeContacts: Set<string>
+}> {
+  const [pending, active] = await Promise.all([
+    fetchAll<Candidate>(() => sb.from('dialer_attempts')
       .select('*')
       .eq('status', 'pending')
       .eq('plan_date', today)
-    q2 = q2.order('is_callback',  { ascending: false })
-      .order('is_carryover',      { ascending: false })
-      .order('priority',          { ascending: false })
-    if (hasStageCol) q2 = q2.order('stage_changed_at', { ascending: false, nullsFirst: false })
-    return q2.order('attempt_number', { ascending: true })
-      .order('due_from',          { ascending: true })
-      /* Newest first, matching orderByRecency. The JS sort is authoritative,
-         but this order decides WHICH rows survive the 6000-row fetch cap —
-         ascending here would hand the sorter the oldest leads and throw away
-         exactly the fresh ones it is supposed to put on top. */
-      .order('created_at',        { ascending: false })
-      .order('id',                { ascending: true })
-  }
-
-  let pending = await fetchAllPending(() => buildPendingQuery(true))
-  if (!pending.length) {
-    // Current block exhausted — fall back to all pending (next block)
-    pending = await fetchAllPending(() => buildPendingQuery(false))
-  }
-
-  if (!pending.length) return []
-
-  // Order by how long each lead has waited since its last dial, not by the
-  // static keys alone — otherwise every fill hands back the same head.
-  const lastDialed = await loadLastDialed(db, [...new Set(pending.map(a => a.contact_id))])
-  pending = orderQueue(pending, lastDialed)
-
-  // Sequential constraint: only serve attempt N if all earlier attempts are done
-  const pendingByContact = new Map<string, number[]>()
-  for (const a of pending as Attempt[]) {
-    if (!a.is_callback) {
-      const arr = pendingByContact.get(a.contact_id) ?? []
-      arr.push(a.attempt_number)
-      pendingByContact.set(a.contact_id, arr)
-    }
-  }
-
-  // Filter: active contacts + sequential constraint + callback ownership + language (preserving DB order)
-  const eligible = (pending as Attempt[]).filter(a => {
-    if (activeConts.has(a.contact_id)) return false
-    /* A lead just dialled is not served again for MIN_REDIAL_GAP_MS.
-
-       This check existed and was dropped from the filter at some point —
-       dialedTooRecently was still defined but nothing called it, so the
-       90-minute guard had no effect whatever. getNextAttempt calls fillBuffer
-       on every serve, which refills the slot the rep just vacated, and since
-       the contact is no longer buffered or leased nothing excluded them: the
-       lead's next attempt came straight back. One contact burned all six
-       attempts in 75 seconds. */
-    if (dialedTooRecently(a, lastDialed, now.getTime())) return false
-    // Callbacks are exclusive to their owner rep — don't assign to anyone else
-    if (a.is_callback && a.owner_rep && a.owner_rep !== repIdentity) return false
-    // Spanish leads only go to Spanish-capable reps
-    if (a.lang === 'es' && !repSpeaksSpanish) return false
-    // State filter — callbacks are exempt (already promised to the lead)
-    if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
-    // Firm filter — callbacks exempt for the same reason
-    if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
-    if (!a.is_callback) {
-      const nums = pendingByContact.get(a.contact_id) ?? []
-      if (a.attempt_number !== Math.min(...nums)) return false
-    }
-    return true
-  })
-
-  /* One attempt per contact per fill.
-
-     A lead carries three to six attempts for the day. Nothing stopped a
-     single fill handing a rep several of the same contact's attempts at once,
-     and the 90-minute redial guard is evaluated when the buffer is built —
-     not between the calls inside it — so once they were in the buffer the rep
-     worked straight through them. One lead was rung six times in 31 minutes:
-     #2 at 02:02, #3 at 02:05, #4 at 02:17, #5 at 02:31, #6 at 02:33.
-
-     Recency ordering made it certain rather than occasional: a contact's
-     attempts share a stage_changed_at, so they now sort adjacently and were
-     always picked together. */
-  const seenContacts = new Set<string>()
-  const toBuffer: Attempt[] = []
-  for (const a of eligible) {
-    if (toBuffer.length >= needed) break
-    if (seenContacts.has(a.contact_id)) continue
-    seenContacts.add(a.contact_id)
-    toBuffer.push(a)
-  }
-  if (!toBuffer.length) return []
-
-  const nowIso = now.toISOString()
-  const { data: buffered, error } = await db.from('dialer_attempts')
-    .update({ status: 'buffered', buffered_for: repIdentity, buffered_at: nowIso, updated_at: nowIso })
-    .in('id', toBuffer.map(a => a.id))
-    .eq('status', 'pending')   // concurrency guard: only wins if still pending
-    .select()
-
-  if (error) {
-    console.error('[fillBuffer] update error', error)
-    return []
-  }
-  return (buffered ?? []) as Attempt[]
-}
-
-// Fill buffer for ALL READY reps in one pass — contiguous blocks, no gaps.
-// Releases existing buffers first, then reassigns from scratch to guarantee
-// contiguity even after new leads are added by sync.
-export async function fillAllReadyReps(count = 5): Promise<Record<string, number>> {
-  // An appointment that just came due outranks anything sitting in a buffer.
-  await preemptForDueAppointments().catch(err => console.error('[queue:preempt]', err))
-
-  const db    = supabaseAdmin()
-  const today = todayEastern()
-  const now   = new Date()
-
-  // Get READY reps — whitelist: ONLY users in dialer_users with role=REP
-  // This excludes ADMIN users AND phantom identities like "agent" that aren't real users
-  const [{ data: repStatuses }, { data: users }] = await Promise.all([
-    db.from('dialer_rep_status').select('rep_identity, status').eq('status', 'READY'),
-    db.from('dialer_users').select('twilio_identity, role, active, spanish'),
+      .order('priority',   { ascending: false })
+      .order('due_from',   { ascending: true })
+      .order('id',         { ascending: true })),
+    fetchAll<{ contact_id: string }>(() => sb.from('dialer_attempts')
+      .select('contact_id')
+      .eq('plan_date', today)
+      .in('status', ['buffered', 'leased'])),
   ])
-  const validRepIds = new Set(
-    (users ?? []).filter(u => u.role === 'REP' && u.active).map(u => u.twilio_identity)
-  )
-  const spanishReps = new Set(
-    (users ?? []).filter(u => u.role === 'REP' && u.active && u.spanish).map(u => u.twilio_identity)
-  )
-  const readyReps = (repStatuses ?? [])
-    .map(r => r.rep_identity)
-    .filter(id => validRepIds.has(id))
-  if (readyReps.length === 0) return {}
 
-  const stateFilter = await getStateFilter()
-  const firmFilter  = await getFirmFilter()
-
-  /* Release buffers held by anyone who should not be holding them.
-
-     Two cases, and the second is the one that bit: an identity that is not a
-     real rep (admin, agent), and a rep who is no longer READY. releaseBuffer
-     runs when a rep changes status, but if that call is missed — a dropped
-     request, a crashed tab, a status written straight to the table — the
-     leads stay locked to someone who is offline. They are then invisible to
-     everyone else, because a contact already buffered is excluded from every
-     other rep's fill. One rep went offline still holding seven leads and the
-     top of the queue could not be served to anybody.
-
-     Reconciling here means the floor recovers on the next fill no matter how
-     the status changed. */
-  const readySet = new Set(readyReps)
-  const { data: allBuffered } = await db.from('dialer_attempts')
-    .select('id, buffered_for')
-    .eq('plan_date', today)
-    .eq('status', 'buffered')
-  const invalidIds = (allBuffered ?? [])
-    .filter(a => a.buffered_for && (!validRepIds.has(a.buffered_for) || !readySet.has(a.buffered_for)))
-    .map(a => a.id)
-  if (invalidIds.length > 0) {
-    await db.from('dialer_attempts')
-      .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: now.toISOString() })
-      .in('id', invalidIds)
+  const lastDialed = await loadLastDialed(sb, [...new Set(pending.map(a => a.contact_id))])
+  return {
+    rows: orderQueue(pending as any, lastDialed) as Candidate[],
+    lastDialed,
+    activeContacts: new Set(active.map(r => r.contact_id)),
   }
-
-  // Count existing buffered + leased leads per rep (no release-and-reassign —
-  // that pattern races with concurrent fillBuffer calls and causes double-buffering)
-  const { data: assignedRes } = await db.from('dialer_attempts')
-    .select('id, buffered_for, leased_by, status, due_until')
-    .eq('plan_date', today)
-    .in('status', ['buffered', 'leased'])
-    .or(readyReps.map(r => `buffered_for.eq.${r},leased_by.eq.${r}`).join(','))
-
-  /* Same release as fillBuffer: an expired buffered row cannot be called but
-     still counts against the rep's five, so the top-up never happens and the
-     rep stares at the same dead leads. Leased rows are untouched — that call
-     is in progress. */
-  const nowMs2 = now.getTime()
-  const expiredAll = (assignedRes ?? []).filter((r: any) =>
-    r.status === 'buffered' && r.due_until && Date.parse(r.due_until) <= nowMs2)
-  if (expiredAll.length) {
-    for (let i = 0; i < expiredAll.length; i += 500) {
-      await db.from('dialer_attempts')
-        .update({ status: 'pending', buffered_for: null, buffered_at: null })
-        .in('id', expiredAll.slice(i, i + 500).map((r: any) => r.id))
-    }
-    console.warn('[queue:fill-all] released %d expired buffered leads', expiredAll.length)
-  }
-  const expiredIds = new Set(expiredAll.map((r: any) => r.id))
-
-  const assignedCounts: Record<string, number> = {}
-  for (const r of assignedRes ?? []) {
-    if (expiredIds.has((r as any).id)) continue
-    const rep = r.status === 'leased' ? r.leased_by : r.buffered_for
-    if (rep) assignedCounts[rep] = (assignedCounts[rep] ?? 0) + 1
-  }
-
-  // Each rep needs (count - already assigned)
-  const repsNeedingLeads = readyReps
-    .map(rep => ({ rep, needed: count - (assignedCounts[rep] ?? 0) }))
-    .filter(r => r.needed > 0)
-  if (repsNeedingLeads.length === 0) return {}
-
-  // Contacts already buffered or leased by OTHER reps (non-ready reps still have leads)
-  const { data: activeRes } = await db.from('dialer_attempts')
-    .select('contact_id')
-    .eq('plan_date', today)
-    .in('status', ['buffered', 'leased'])
-  const activeConts = new Set((activeRes ?? []).map((r: any) => r.contact_id))
-
-  // Prefer leads whose time block is open (due_from <= now).
-  // Fallback: if current block is exhausted, serve next block.
-  const { error: colErr2 } = await db.from('dialer_attempts').select('stage_changed_at').limit(0)
-  const hasStageCol2 = !colErr2
-
-  /* Window is a scheduling hint, not a gate — see buildPendingQuery. */
-  function buildPendingQ2(_useDueGate: boolean) {
-    let q2 = db.from('dialer_attempts')
-      .select('*')
-      .eq('status', 'pending')
-      .eq('plan_date', today)
-    q2 = q2.order('is_callback',  { ascending: false })
-      .order('is_carryover',      { ascending: false })
-      .order('priority',          { ascending: false })
-    if (hasStageCol2) q2 = q2.order('stage_changed_at', { ascending: false, nullsFirst: false })
-    return q2.order('attempt_number', { ascending: true })
-      .order('due_from',          { ascending: true })
-      .order('created_at',        { ascending: true })
-      .order('id',                { ascending: true })
-  }
-
-  let pending = await fetchAllPending(() => buildPendingQ2(true))
-  if (!pending.length) {
-    pending = await fetchAllPending(() => buildPendingQ2(false))
-  }
-
-  if (!pending.length) return {}
-
-  const lastDialed2 = await loadLastDialed(db, [...new Set(pending.map(a => a.contact_id))])
-  pending = orderByRecency(pending, lastDialed2)
-
-  // Sequential constraint
-  const pendingByContact = new Map<string, number[]>()
-  for (const a of pending as Attempt[]) {
-    if (!a.is_callback) {
-      const arr = pendingByContact.get(a.contact_id) ?? []
-      arr.push(a.attempt_number)
-      pendingByContact.set(a.contact_id, arr)
-    }
-  }
-
-  // Filter: active contacts + sequential constraint + callback ownership (preserving DB order)
-  const eligible = (pending as Attempt[]).filter(a => {
-    if (activeConts.has(a.contact_id)) return false
-    /* A lead just dialled is not served again for MIN_REDIAL_GAP_MS.
-
-       This check existed and was dropped from the filter at some point —
-       dialedTooRecently was still defined but nothing called it, so the
-       90-minute guard had no effect whatever. getNextAttempt calls fillBuffer
-       on every serve, which refills the slot the rep just vacated, and since
-       the contact is no longer buffered or leased nothing excluded them: the
-       lead's next attempt came straight back. One contact burned all six
-       attempts in 75 seconds. */
-    if (dialedTooRecently(a, lastDialed2, now.getTime())) return false
-    // State filter — callbacks are exempt (already promised to the lead)
-    if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
-    // Firm filter — callbacks exempt for the same reason
-    if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
-    if (!a.is_callback) {
-      const nums = pendingByContact.get(a.contact_id) ?? []
-      if (a.attempt_number !== Math.min(...nums)) return false
-    }
-    return true
-  })
-
-  // Assign contiguous blocks: rep A gets 1-5, rep B gets 6-10, etc.
-  // BUT callbacks go to their owner rep first, not round-robin
-  const toUpdate: { id: string; rep: string }[] = []
-  const repNeeds = new Map(repsNeedingLeads.map(r => [r.rep, r.needed]))
-
-  // Pass 1: route callbacks to their owner rep
-  const remainingEligible: typeof eligible = []
-  for (const a of eligible) {
-    if (a.is_callback && a.owner_rep && repNeeds.has(a.owner_rep)) {
-      const left = repNeeds.get(a.owner_rep)!
-      if (left > 0) {
-        toUpdate.push({ id: a.id, rep: a.owner_rep })
-        repNeeds.set(a.owner_rep, left - 1)
-        continue
-      }
-    }
-    remainingEligible.push(a)
-  }
-
-  // Pass 2: language-aware round-robin for non-callback leads
-  // Spanish leads only go to Spanish-capable reps
-  const assigned = new Set<number>()
-  /* Shared across every rep, not per rep: one contact must not be handed to
-     two people at once any more than to one person twice. */
-  const assignedContacts = new Set<string>()
-  for (const { rep } of repsNeedingLeads) {
-    let left = repNeeds.get(rep) ?? 0
-    const canSpanish = spanishReps.has(rep)
-    for (let i = 0; i < remainingEligible.length && left > 0; i++) {
-      if (assigned.has(i)) continue
-      const a = remainingEligible[i]
-      if (a.lang === 'es' && !canSpanish) continue
-      if (assignedContacts.has(a.contact_id)) continue
-      toUpdate.push({ id: a.id, rep })
-      assigned.add(i)
-      assignedContacts.add(a.contact_id)
-      left--
-    }
-  }
-  if (toUpdate.length === 0) return {}
-
-  // Batch update — one UPDATE per rep
-  const nowIso = now.toISOString()
-  const result: Record<string, number> = {}
-  const byRep = new Map<string, string[]>()
-  for (const { id, rep } of toUpdate) {
-    const arr = byRep.get(rep) ?? []
-    arr.push(id)
-    byRep.set(rep, arr)
-  }
-  await Promise.all(Array.from(byRep.entries()).map(async ([rep, ids]) => {
-    const { data } = await db.from('dialer_attempts')
-      .update({ status: 'buffered', buffered_for: rep, buffered_at: nowIso, updated_at: nowIso })
-      .in('id', ids)
-      .eq('status', 'pending')
-      .select('id')
-    result[rep] = data?.length ?? 0
-  }))
-
-  /* Trim anything over the cap.
-
-     The count of what a rep already holds is read at the top of this function
-     and acted on at the bottom, and several things trigger a fill — the GHL
-     sync, a rep changing status, a filter edit, a rep asking for their next
-     lead. Two overlapping runs each saw an empty buffer and each handed out
-     five, which is how one rep ended up holding nine. Rather than trying to
-     make the read-then-write atomic across all those callers, the excess is
-     released here: the newest buffered rows go back to pending, where they
-     are picked up again on the next fill. */
-  await enforceBufferCap(count)
-
-  return result
 }
 
-/** Release anything a rep holds beyond `count`, newest first. */
-export async function enforceBufferCap(count = 5): Promise<number> {
-  const db    = supabaseAdmin()
-  const today = todayEastern()
+/** Every gate between a planned call and a rep, in one place. */
+function eligibleFor(opts: {
+  rep:            string
+  repSpeaksSpanish: boolean
+  pool:           Candidate[]
+  lastDialed:     Map<string, number>
+  activeContacts: Set<string>
+  stateFilter:    StateFilter
+  firmFilter:     FirmFilter
+  now:            number
+}): Candidate[] {
+  const { rep, repSpeaksSpanish, pool, lastDialed, activeContacts, stateFilter, firmFilter, now } = opts
 
-  /* Every buffered row, not just today's.
-
-     Scoping this to plan_date = today meant yesterday's buffer was never
-     capped: a rep who finished a shift holding leads kept them forever, and
-     the queue could not serve them to anyone. 885 of 900 buffered rows were
-     from past days, with reps sitting on 150-260 each against a target of 5.
-
-     Paged, because a plain select stops at 1000 rows — at this volume the cap
-     would have been reading a fraction of what it was meant to trim. */
-  const held: { id: string; buffered_for: string | null; buffered_at: string | null }[] = []
-  for (let from = 0; from < 50000; from += 1000) {
-    const { data } = await db.from('dialer_attempts')
-      .select('id, buffered_for, buffered_at, plan_date')
-      .eq('status', 'buffered')
-      .order('buffered_at', { ascending: true })
-      .range(from, from + 999)
-    if (!data?.length) break
-    held.push(...data)
-    if (data.length < 1000) break
-  }
-  if (!held.length) return 0
-
-  /* A buffered row from an earlier day is stale whatever the cap says — the
-     plan it belonged to is over. Released outright rather than counted
-     against the rep's allowance. */
-  const stale = held.filter(r => (r as any).plan_date && (r as any).plan_date !== today).map(r => r.id)
-  for (let i = 0; i < stale.length; i += 500) {
-    await db.from('dialer_attempts')
-      .update({ status: 'pending', buffered_for: null, buffered_at: null })
-      .in('id', stale.slice(i, i + 500))
-  }
-  if (stale.length) console.warn('[queue:cap] released %d buffered rows from earlier days', stale.length)
-
-  const { data: leased } = await db.from('dialer_attempts')
-    .select('leased_by')
-    .eq('plan_date', today)
-    .eq('status', 'leased')
-  const onCall: Record<string, number> = {}
-  for (const r of leased ?? []) if (r.leased_by) onCall[r.leased_by] = (onCall[r.leased_by] ?? 0) + 1
-
-  const byRep = new Map<string, string[]>()
-  for (const r of held) {
-    if (!r.buffered_for) continue
-    if ((r as any).plan_date !== today) continue   // already released above
-    const arr = byRep.get(r.buffered_for) ?? []
-    arr.push(r.id)
-    byRep.set(r.buffered_for, arr)
+  /* Only the earliest unfinished attempt of a lead can be served. Calling
+     someone's third slot before their second happened is not a schedule. */
+  const lowest = new Map<string, number>()
+  for (const a of pool) {
+    if (a.is_callback) continue
+    const cur = lowest.get(a.contact_id)
+    if (cur === undefined || a.attempt_number < cur) lowest.set(a.contact_id, a.attempt_number)
   }
 
-  const excess: string[] = []
-  for (const [rep, ids] of byRep) {
-    const room = count - (onCall[rep] ?? 0)
-    if (ids.length > room) excess.push(...ids.slice(Math.max(0, room)))
-  }
-  if (!excess.length) return 0
-
-  const nowIso = new Date().toISOString()
-  for (let i = 0; i < excess.length; i += 500) {
-    await db.from('dialer_attempts')
-      .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: nowIso })
-      .in('id', excess.slice(i, i + 500))
-      .eq('status', 'buffered')
-  }
-  console.warn('[queue:fill] released %d lead(s) over the %d cap', excess.length, count)
-  return excess.length
+  return pool.filter(a => {
+    if (activeContacts.has(a.contact_id)) return false
+    if (dialedTooRecently(a as any, lastDialed, now)) return false
+    // A callback belongs to the rep who promised it, and to nobody else.
+    if (a.is_callback && a.owner_rep && a.owner_rep !== rep) return false
+    // A callback is not callable before the minute it was promised for.
+    if (a.is_callback && a.callback_at && Date.parse(a.callback_at) > now) return false
+    if (a.lang === 'es' && !repSpeaksSpanish) return false
+    // Both filters are exempt for callbacks: the promise was already made.
+    if (!a.is_callback && !passesStateFilter(a, stateFilter)) return false
+    if (!a.is_callback && !passesFirmFilter(a.firm, firmFilter)) return false
+    if (!a.is_callback && a.attempt_number !== lowest.get(a.contact_id)) return false
+    return true
+  })
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Preemption — an appointment that reaches its time jumps the buffer.
-
-   Ranking alone was not enough. rankOf already puts an appointment at the top
-   of the ladder for exactly as long as its window is open, but the ladder is
-   only consulted when a buffer is refilled. A rep holding five leads at 2:00
-   would not see a 2:15 appointment until they had worked through all five,
-   and by then the window had closed and the appointment was demoted to
-   APPOINTMENT_MISSED_RANK — top of the queue, never served.
-
-   So when a time-bound lead enters its window it is pushed into a rep's
-   buffer, displacing that rep's lowest-ranked lead back to pending. The
-   displaced lead loses nothing: it returns to the pool at its own rank and is
-   picked up again on the next fill.
+   SERVE — a rep holds five, exclusively
    ═══════════════════════════════════════════════════════════════════════════ */
-export async function preemptForDueAppointments(): Promise<number> {
-  const db    = supabaseAdmin()
+
+/* Who may be handed leads at all. A rep who is not READY is not released
+   mid-call — ON_CALL and WRAPUP keep what they hold — but nothing new is
+   added, and going OFFLINE hands everything back.
+
+   The old engine disagreed with itself here: fillBuffer ignored status
+   entirely while fillAllReadyReps released anything held by a non-READY rep,
+   so a paused rep's own poll kept refilling a buffer the background job kept
+   emptying. */
+const HOLDS_LEADS   = new Set(['READY', 'ON_CALL', 'WRAPUP'])
+const RECEIVES_LEADS = new Set(['READY'])
+
+async function repInfo(sb: any, rep: string): Promise<{ ok: boolean; spanish: boolean; status: string }> {
+  const [{ data: user }, { data: st }] = await Promise.all([
+    sb.from('dialer_users').select('role, active, spanish').eq('twilio_identity', rep).maybeSingle(),
+    sb.from('dialer_rep_status').select('status').eq('rep_identity', rep).maybeSingle(),
+  ])
+  return {
+    ok:      !!user && user.role === 'REP' && user.active === true,
+    spanish: user?.spanish === true,
+    status:  st?.status ?? 'OFFLINE',
+  }
+}
+
+export async function fillBuffer(rep: string, count = BUFFER_SIZE): Promise<Attempt[]> {
+  const sb    = db()
   const today = todayEastern()
   const now   = new Date()
-  const todayEt = todayEastern()
 
-  const [{ data: pendingRows }, { data: heldRows }, { data: users }] = await Promise.all([
-    db.from('dialer_attempts').select('*').eq('plan_date', today).eq('status', 'pending'),
-    db.from('dialer_attempts').select('*').eq('plan_date', today).eq('status', 'buffered'),
-    db.from('dialer_users').select('twilio_identity, role, active'),
+  const who = await repInfo(sb, rep)
+  if (!who.ok) return []
+  if (!RECEIVES_LEADS.has(who.status)) return []
+
+  const held = await fetchAll<Attempt>(() => sb.from('dialer_attempts')
+    .select('*')
+    .eq('plan_date', today)
+    .in('status', ['buffered', 'leased'])
+    .or(`buffered_for.eq.${rep},leased_by.eq.${rep}`))
+
+  /* A buffered row whose day has ended is dead weight: it cannot be called
+     but still counts toward the rep's five, so no replacement is ever
+     fetched. That is the loop reps reported — the same handful of dead leads
+     while a thousand callable ones waited. A missed slot is NOT dead: the
+     schedule slipped, the lead is still worth calling. Only the end of the
+     calling day retires a row. Leased rows are never touched; that call is
+     in progress. */
+  const stale = held.filter(a =>
+    a.status === 'buffered' && a.day_ends_at && Date.parse(a.day_ends_at) <= now.getTime())
+  if (stale.length) {
+    await sb.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null })
+      .in('id', stale.map(a => a.id))
+  }
+
+  const needed = count - (held.length - stale.length)
+  if (needed <= 0) return []
+
+  const [{ rows, lastDialed, activeContacts }, stateFilter, firmFilter] = await Promise.all([
+    candidatePool(sb, today), getStateFilter(), getFirmFilter(),
   ])
-  const validRepIds = new Set(
-    (users ?? []).filter(u => u.role === 'REP' && u.active).map(u => u.twilio_identity)
-  )
+  for (const a of stale) activeContacts.delete(a.contact_id)
 
-  /* Time-bound and live right now: an appointment inside its slot, or a
-     callback whose promised time has come. Nothing else preempts — a
-     contract sent is urgent in rank, not in clock time. */
-  const isLive = (a: any) => {
-    const stage = String(a.stage_name ?? '').toLowerCase()
-    if (a.is_callback) return inWindow(a.due_from ?? null, a.due_until ?? null, now.getTime())
-    if (stage !== 'appointment scheduled') return false
-    return inWindow(a.due_from ?? null, a.due_until ?? null, now.getTime())
+  const eligible = eligibleFor({
+    rep, repSpeaksSpanish: who.spanish, pool: rows, lastDialed, activeContacts,
+    stateFilter, firmFilter, now: now.getTime(),
+  })
+
+  /* One slot per person per fill.
+
+     A lead carries several attempts for the day, and nothing stopped a single
+     fill handing a rep two or three of the same contact's slots at once — the
+     redial gap is evaluated when the buffer is built, not between the calls
+     inside it, so the rep then worked straight through them. One lead was
+     rung six times in 31 minutes. */
+  const seen = new Set<string>()
+  const take: Candidate[] = []
+  for (const a of eligible) {
+    if (take.length >= needed) break
+    if (seen.has(a.contact_id)) continue
+    seen.add(a.contact_id)
+    take.push(a)
+  }
+  if (!take.length) return []
+
+  const nowIso = now.toISOString()
+  const { data, error } = await sb.from('dialer_attempts')
+    .update({ status: 'buffered', buffered_for: rep, buffered_at: nowIso, updated_at: nowIso })
+    .in('id', take.map(a => a.id))
+    .eq('status', 'pending')   // the race guard: only one rep can win a row
+    .select()
+
+  if (error) { console.error('[queue:fill]', error.message); return [] }
+  return (data ?? []) as Attempt[]
+}
+
+/** Top every rep who can receive leads back up to `count`. */
+export async function fillAllReadyReps(count = BUFFER_SIZE): Promise<Record<string, number>> {
+  const sb    = db()
+  const today = todayEastern()
+  const now   = new Date()
+
+  const [{ data: statuses }, { data: users }] = await Promise.all([
+    sb.from('dialer_rep_status').select('rep_identity, status'),
+    sb.from('dialer_users').select('twilio_identity, role, active, spanish'),
+  ])
+
+  const reps = new Map<string, { spanish: boolean; status: string }>()
+  for (const u of users ?? []) {
+    if (u.role !== 'REP' || !u.active) continue
+    const status = (statuses ?? []).find(s => s.rep_identity === u.twilio_identity)?.status ?? 'OFFLINE'
+    reps.set(u.twilio_identity, { spanish: u.spanish === true, status })
   }
 
-  const held = (heldRows ?? []).filter(a => a.buffered_for && validRepIds.has(a.buffered_for))
-  const activeContacts = new Set(held.map(a => a.contact_id))
-  // Anything leased (on a call) is untouchable.
-  const { data: leasedRows } = await db.from('dialer_attempts')
-    .select('contact_id, leased_by').eq('plan_date', today).eq('status', 'leased')
-  for (const r of leasedRows ?? []) activeContacts.add(r.contact_id)
-  const leasedCount: Record<string, number> = {}
-  for (const r of leasedRows ?? []) if (r.leased_by) leasedCount[r.leased_by] = (leasedCount[r.leased_by] ?? 0) + 1
-
-  const due = (pendingRows ?? [])
-    .filter(isLive)
-    .filter(a => !activeContacts.has(a.contact_id))
-    .sort((a, b) => String(a.due_from ?? '').localeCompare(String(b.due_from ?? '')))
-  if (!due.length) return 0
-
-  // A rep's buffer, worst-ranked first — that is who gets displaced.
-  const byRep = new Map<string, any[]>()
-  for (const a of held) {
-    const arr = byRep.get(a.buffered_for) ?? []
-    arr.push(a)
-    byRep.set(a.buffered_for, arr)
+  /* Reclaim anything held by somebody who should not be holding it: an
+     identity that is not a rep at all, or a rep who has gone offline. The
+     status write can be missed — a dropped request, a closed tab — and a
+     lead locked to an absent rep is invisible to everyone else, because a
+     buffered contact is excluded from every other fill. Reconciling here
+     means the floor recovers whatever happened. */
+  const buffered = await fetchAll<{ id: string; buffered_for: string | null }>(() =>
+    sb.from('dialer_attempts').select('id, buffered_for').eq('plan_date', today).eq('status', 'buffered'))
+  const orphaned = buffered
+    .filter(a => !a.buffered_for || !HOLDS_LEADS.has(reps.get(a.buffered_for)?.status ?? 'OFFLINE'))
+    .map(a => a.id)
+  for (let i = 0; i < orphaned.length; i += 500) {
+    await sb.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: now.toISOString() })
+      .in('id', orphaned.slice(i, i + 500))
   }
-  for (const [rep, arr] of byRep) {
-    arr.sort((x, y) => rankOf(x, todayEt) - rankOf(y, todayEt) ||
-                       String(x.due_from ?? '').localeCompare(String(y.due_from ?? '')))
-    byRep.set(rep, arr)
+  if (orphaned.length) console.warn('[queue:fill-all] reclaimed %d orphaned lead(s)', orphaned.length)
+
+  const receiving = [...reps.entries()].filter(([, r]) => RECEIVES_LEADS.has(r.status))
+  if (!receiving.length) return {}
+
+  const assigned = await fetchAll<{ buffered_for: string | null; leased_by: string | null; status: string }>(() =>
+    sb.from('dialer_attempts')
+      .select('buffered_for, leased_by, status')
+      .eq('plan_date', today)
+      .in('status', ['buffered', 'leased']))
+  const heldBy: Record<string, number> = {}
+  for (const r of assigned) {
+    const who = r.status === 'leased' ? r.leased_by : r.buffered_for
+    if (who) heldBy[who] = (heldBy[who] ?? 0) + 1
   }
 
-  const reps = [...byRep.keys()]
-  if (!reps.length) return 0
+  const needs = receiving
+    .map(([rep, r]) => ({ rep, spanish: r.spanish, needed: count - (heldBy[rep] ?? 0) }))
+    .filter(r => r.needed > 0)
+  if (!needs.length) return {}
+
+  const [{ rows, lastDialed, activeContacts }, stateFilter, firmFilter] = await Promise.all([
+    candidatePool(sb, today), getStateFilter(), getFirmFilter(),
+  ])
+
+  /* Round-robin, so a short pool is shared rather than given entirely to
+     whoever is asked for first. `claimed` is global: one contact must not go
+     to two reps any more than twice to one. */
+  const claimed = new Set<string>()
+  const plan: { id: string; rep: string }[] = []
+  let placed = true
+  while (placed) {
+    placed = false
+    for (const n of needs) {
+      if (n.needed <= 0) continue
+      const eligible = eligibleFor({
+        rep: n.rep, repSpeaksSpanish: n.spanish, pool: rows, lastDialed,
+        activeContacts, stateFilter, firmFilter, now: now.getTime(),
+      })
+      const pick = eligible.find(a => !claimed.has(a.contact_id))
+      if (!pick) continue
+      claimed.add(pick.contact_id)
+      activeContacts.add(pick.contact_id)
+      plan.push({ id: pick.id, rep: n.rep })
+      n.needed--
+      placed = true
+    }
+  }
+  if (!plan.length) return {}
+
+  const nowIso = now.toISOString()
+  const byRep = new Map<string, string[]>()
+  for (const p of plan) {
+    const arr = byRep.get(p.rep) ?? []
+    arr.push(p.id)
+    byRep.set(p.rep, arr)
+  }
+
+  const result: Record<string, number> = {}
+  await Promise.all([...byRep.entries()].map(async ([rep, ids]) => {
+    const { data } = await sb.from('dialer_attempts')
+      .update({ status: 'buffered', buffered_for: rep, buffered_at: nowIso, updated_at: nowIso })
+      .in('id', ids).eq('status', 'pending').select('id')
+    result[rep] = data?.length ?? 0
+  }))
+
+  await preemptForDueCallbacks().catch(err => console.error('[queue:preempt]', err))
+  return result
+}
+
+/* A promise that comes due jumps the buffer.
+
+   Ranking alone is not enough: the ladder is only consulted when a buffer
+   refills, so a rep holding five leads at 3:58 would not see a 4:00 callback
+   until they had worked through all five. By then the promise is an hour
+   old. The same applies to an appointment reaching its slot — once the slot
+   passes it is a missed appointment, top of nothing.
+
+   So a time-bound lead entering its window is pushed into a rep's buffer,
+   displacing their weakest-ranked lead back to the pool, where it is picked
+   up again on the next fill having lost nothing. */
+export async function preemptForDueCallbacks(): Promise<number> {
+  const sb    = db()
+  const today = todayEastern()
+  const now   = new Date()
+  const nowMs = now.getTime()
+
+  const [pending, held, { data: users }, { data: statuses }] = await Promise.all([
+    fetchAll<Attempt>(() => sb.from('dialer_attempts').select('*').eq('plan_date', today).eq('status', 'pending')),
+    fetchAll<Attempt>(() => sb.from('dialer_attempts').select('*').eq('plan_date', today).eq('status', 'buffered')),
+    sb.from('dialer_users').select('twilio_identity, role, active'),
+    sb.from('dialer_rep_status').select('rep_identity, status'),
+  ])
+
+  const canHold = new Set((users ?? [])
+    .filter(u => u.role === 'REP' && u.active)
+    .map(u => u.twilio_identity)
+    .filter(id => HOLDS_LEADS.has((statuses ?? []).find(s => s.rep_identity === id)?.status ?? 'OFFLINE')))
+  if (!canHold.size) return 0
+
+  const live = pending.filter(a => {
+    if (a.is_callback) return a.callback_at ? Date.parse(a.callback_at) <= nowMs : false
+    return String(a.stage_name).toLowerCase() === 'appointment scheduled'
+      && inWindow(a.due_from, a.due_until, nowMs)
+  })
+  if (!live.length) return 0
+
+  const busy = new Set(held.map(a => a.contact_id))
+  const leased = await fetchAll<{ contact_id: string; leased_by: string }>(() =>
+    sb.from('dialer_attempts').select('contact_id, leased_by').eq('plan_date', today).eq('status', 'leased'))
+  for (const r of leased) busy.add(r.contact_id)
+
+  const buffers = new Map<string, Attempt[]>()
+  for (const rep of canHold) buffers.set(rep, [])
+  for (const a of held) if (a.buffered_for && buffers.has(a.buffered_for)) buffers.get(a.buffered_for)!.push(a)
+  const onCall: Record<string, number> = {}
+  for (const r of leased) if (r.leased_by) onCall[r.leased_by] = (onCall[r.leased_by] ?? 0) + 1
 
   let moved = 0
-  for (const appt of due) {
-    /* Spread across reps: the one holding the weakest lead takes it, so two
-       appointments landing together do not both displace the same rep. */
+  for (const due of live.sort((a, b) => String(a.due_from).localeCompare(String(b.due_from)))) {
+    if (busy.has(due.contact_id)) continue
+
+    /* A callback goes to the rep who promised it and nowhere else. Anything
+       else goes to whoever is holding the weakest lead, so two appointments
+       landing together do not both displace the same person. */
+    const candidates = due.is_callback && due.owner_rep
+      ? (buffers.has(due.owner_rep) ? [due.owner_rep] : [])
+      : [...buffers.keys()]
+    if (!candidates.length) continue
+
     let target: string | null = null
-    let victim: any = null
-    for (const rep of reps) {
-      const buf = byRep.get(rep) ?? []
-      const capacity = 5 - (buf.length + (leasedCount[rep] ?? 0))
-      if (capacity > 0) { target = rep; victim = null; break }
-      const worst = buf[0]
-      if (!worst) continue
-      if (rankOf(worst, todayEt) >= rankOf(appt, todayEt)) continue  // nothing weaker to displace
-      if (!victim || rankOf(worst, todayEt) < rankOf(victim, todayEt)) { target = rep; victim = worst }
+    let victim: Attempt | null = null
+    for (const rep of candidates) {
+      const buf = buffers.get(rep)!
+      if (buf.length + (onCall[rep] ?? 0) < BUFFER_SIZE) { target = rep; victim = null; break }
+      const worst = [...buf].sort((x, y) => rankOf(x as any, nowMs) - rankOf(y as any, nowMs))[0]
+      if (!worst || rankOf(worst as any, nowMs) >= rankOf(due as any, nowMs)) continue
+      if (!victim || rankOf(worst as any, nowMs) < rankOf(victim as any, nowMs)) { target = rep; victim = worst }
     }
     if (!target) continue
 
     const nowIso = now.toISOString()
-    const { data: claimed } = await db.from('dialer_attempts')
+    const { data: won } = await sb.from('dialer_attempts')
       .update({ status: 'buffered', buffered_for: target, buffered_at: nowIso, updated_at: nowIso })
-      .eq('id', appt.id).eq('status', 'pending').select('id')
-    if (!claimed?.length) continue
+      .eq('id', due.id).eq('status', 'pending').select('id')
+    if (!won?.length) continue
 
     if (victim) {
-      await db.from('dialer_attempts')
+      await sb.from('dialer_attempts')
         .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: nowIso })
         .eq('id', victim.id).eq('status', 'buffered')
-      const buf = (byRep.get(target) ?? []).filter(x => x.id !== victim.id)
-      byRep.set(target, buf)
+      buffers.set(target, buffers.get(target)!.filter(x => x.id !== victim!.id))
     }
-    const buf = byRep.get(target) ?? []
-    buf.push(appt)
-    buf.sort((x, y) => rankOf(x, todayEt) - rankOf(y, todayEt))
-    byRep.set(target, buf)
-    activeContacts.add(appt.contact_id)
+    buffers.get(target)!.push(due)
+    busy.add(due.contact_id)
     moved++
   }
 
@@ -1445,297 +959,250 @@ export async function preemptForDueAppointments(): Promise<number> {
   return moved
 }
 
-// Release all buffered attempts back to pending (rep went PAUSED/OFFLINE)
-export async function releaseBuffer(repIdentity: string): Promise<void> {
-  const db    = supabaseAdmin()
-  const today = todayEastern()
-  await db.from('dialer_attempts')
-    .update({
-      status:       'pending',
-      buffered_for: null,
-      buffered_at:  null,
-      updated_at:   new Date().toISOString(),
-    })
-    .eq('buffered_for', repIdentity)
+/** Hand everything a rep holds back to the pool. */
+export async function releaseBuffer(rep: string): Promise<void> {
+  await db().from('dialer_attempts')
+    .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: new Date().toISOString() })
+    .eq('buffered_for', rep)
     .eq('status', 'buffered')
-    .eq('plan_date', today)
+    .eq('plan_date', todayEastern())
 }
 
-// ─── Get next attempt (lease it) ─────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   The lease — a call in flight
 
-// Pull the rep's first buffered attempt, set it to leased, return it.
-// If buffer is empty, fills it first (synchronous).
-export async function getNextAttempt(repIdentity: string): Promise<Attempt | null> {
-  const db    = supabaseAdmin()
-  const today = todayEastern()
-  const now   = new Date()
+   A row moves buffered → leased the moment it is dialled, and back again if
+   the call never produces an outcome. This was written in the old engine and
+   never reached: nothing called it, so every in-flight call still read as
+   "buffered" and a rep who dialled and closed their tab held the lead until
+   somebody noticed. The dial path now goes through claimForCall, and
+   reapExpiredLeases returns anything abandoned.
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-  // Ensure there's something in the buffer
-  await fillBuffer(repIdentity, 5)
+const LEASE_MS         = 5 * 60 * 1000
+const LEASE_EXTEND_MS  = 15 * 60 * 1000
 
-  // Callbacks for this rep that are due right now take absolute precedence
-  const { data: callbackFirst } = await db.from('dialer_attempts')
-    .select('*')
-    .eq('status', 'buffered')
-    .eq('buffered_for', repIdentity)
-    .eq('plan_date', today)
-    .eq('is_callback', true)
-    .lte('callback_at', now.toISOString())
-    .order('callback_at', { ascending: true })
-    .limit(1)
-    .maybeSingle()
-
-  const { data: nextRow } = callbackFirst
-    ? { data: callbackFirst }
-    : await db.from('dialer_attempts')
-        .select('*')
-        .eq('status', 'buffered')
-        .eq('buffered_for', repIdentity)
-        .eq('plan_date', today)
-        .order('buffered_at',    { ascending: true })
-        .order('priority',       { ascending: false })
-        .order('is_carryover',   { ascending: false })
-        .order('attempt_number', { ascending: true })
-        .limit(1)
-        .maybeSingle()
-
-  if (!nextRow) return null
-
-  const leaseExpiry = new Date(now.getTime() + 5 * 60 * 1000) // 5 min lease
-
-  const { data: leased } = await db.from('dialer_attempts')
+/** Mark an attempt as being called right now. Returns false if it was taken. */
+export async function claimForCall(attemptId: string, rep: string): Promise<boolean> {
+  const now = new Date()
+  const { data } = await db().from('dialer_attempts')
     .update({
-      status:          'leased',
-      leased_by:       repIdentity,
-      leased_at:       now.toISOString(),
-      lease_expires_at: leaseExpiry.toISOString(),
-      buffered_for:    null,   // no longer in buffer
-      buffered_at:     null,
-      updated_at:      now.toISOString(),
+      status: 'leased', leased_by: rep, leased_at: now.toISOString(),
+      lease_expires_at: new Date(now.getTime() + LEASE_MS).toISOString(),
+      buffered_for: null, buffered_at: null, updated_at: now.toISOString(),
     })
-    .eq('id', nextRow.id)
-    .eq('status', 'buffered') // guard: must still be buffered
-    .select('*')
-    .single()
-
-  if (!leased) return null // race-condition guard: someone else took it
-
-  // Do NOT backfill here — top-up happens after disposition (completed call).
-  // Backfilling on dial caused over-assignment (rep had 4 buffered + 1 leased
-  // but fillBuffer only counted buffered_for, so it added extras).
-
-  return leased as Attempt
+    .eq('id', attemptId)
+    .in('status', ['buffered', 'pending'])
+    .select('id')
+  return (data?.length ?? 0) > 0
 }
 
-// Extend the lease while a call is live
 export async function extendLease(attemptId: string): Promise<void> {
-  const db = supabaseAdmin()
-  await db.from('dialer_attempts')
-    .update({ lease_expires_at: new Date(Date.now() + 10 * 60 * 1000).toISOString() })
-    .eq('id', attemptId)
-    .eq('status', 'leased')
+  await db().from('dialer_attempts')
+    .update({ lease_expires_at: new Date(Date.now() + LEASE_EXTEND_MS).toISOString() })
+    .eq('id', attemptId).eq('status', 'leased')
 }
 
-// Release lease (call dropped, no disposition submitted)
 export async function releaseLease(attemptId: string): Promise<void> {
-  const db = supabaseAdmin()
-  await db.from('dialer_attempts')
+  await db().from('dialer_attempts')
     .update({
-      status:          'pending',
-      leased_by:       null,
-      leased_at:       null,
-      lease_expires_at: null,
-      updated_at:      new Date().toISOString(),
+      status: 'pending', leased_by: null, leased_at: null,
+      lease_expires_at: null, updated_at: new Date().toISOString(),
     })
-    .eq('id', attemptId)
-    .eq('status', 'leased')
+    .eq('id', attemptId).eq('status', 'leased')
 }
 
-// ─── Disposition ──────────────────────────────────────────────────────────────
+/** Return leads from calls that never finished. */
+export async function reapExpiredLeases(): Promise<number> {
+  const sb = db()
+  const { data } = await sb.from('dialer_attempts')
+    .update({
+      status: 'pending', leased_by: null, leased_at: null,
+      lease_expires_at: null, updated_at: new Date().toISOString(),
+    })
+    .eq('status', 'leased')
+    .lt('lease_expires_at', new Date().toISOString())
+    .select('id')
+  if (data?.length) console.warn('[queue:lease] reclaimed %d abandoned call(s)', data.length)
+  return data?.length ?? 0
+}
+
+/** The rep's next lead, leased and ready to dial. */
+export async function getNextAttempt(rep: string): Promise<Attempt | null> {
+  const sb    = db()
+  const today = todayEastern()
+
+  await fillBuffer(rep, BUFFER_SIZE)
+
+  const buffered = await fetchAll<Attempt>(() => sb.from('dialer_attempts')
+    .select('*')
+    .eq('plan_date', today)
+    .eq('status', 'buffered')
+    .eq('buffered_for', rep))
+  if (!buffered.length) return null
+
+  const ordered = await sortQueueCanonical(buffered)
+  for (const next of ordered) {
+    if (await claimForCall(next.id, rep)) {
+      const { data } = await sb.from('dialer_attempts').select('*').eq('id', next.id).single()
+      return (data ?? next) as Attempt
+    }
+  }
+  return null
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   SETTLE — the outcome rewrites the lead's day
+   ═══════════════════════════════════════════════════════════════════════════ */
 
 export interface DispositionOptions {
-  repIdentity:     string
-  callDuration:    number
-  callbackAt?:     string  // ISO, in lead's local time (frontend converts)
+  repIdentity:      string
+  callDuration:     number
+  callbackAt?:      string
   callbackContext?: string
-  callSid?:        string
-  firm?:           string  // 'lhp' | 'fears'
-  nqReason?:       string  // reason for Not Qualified
+  callSid?:         string
+  firm?:            string
+  nqReason?:        string
 }
 
+/** Outcomes that end a lead's day. No Answer is absent on purpose — the
+ *  whole point of a cadence is that not answering leaves the plan standing. */
+const TERMINAL = new Set(['Callback', 'Qualified', 'Signed', 'MIA Reconnected', 'Not Qualified'])
+
 export async function applyDisposition(
-  attemptId:   string,
+  attemptId: string,
   disposition: string,
-  opts:        DispositionOptions,
+  opts: DispositionOptions,
 ): Promise<void> {
-  const db  = supabaseAdmin()
+  const sb  = db()
   const now = new Date()
 
-  const { data: attempt } = await db.from('dialer_attempts')
-    .select('*').eq('id', attemptId).single()
+  const { data: attempt } = await sb.from('dialer_attempts').select('*').eq('id', attemptId).single()
   if (!attempt) return
 
-  // A "real conversation" establishes ownership
-  const isRealConversation =
-    opts.callDuration > 60 ||
+  const today = attempt.plan_date ?? todayEastern()
+  const firm  = opts.firm || attempt.firm || ''
+  const realConversation = opts.callDuration > 60 ||
     ['Callback', 'Qualified', 'Signed'].includes(disposition)
 
-  // ── Mark attempt completed ───────────────────────────────────────────────
-  await db.from('dialer_attempts').update({
-    status:       'completed',
-    completed_by: opts.repIdentity,
-    completed_at: now.toISOString(),
-    disposition,
-    call_sid:     opts.callSid ?? null,
-    leased_by:    null,
-    leased_at:    null,
-    lease_expires_at: null,
-    updated_at:   now.toISOString(),
+  await sb.from('dialer_attempts').update({
+    status: 'completed', completed_by: opts.repIdentity, completed_at: now.toISOString(),
+    disposition, call_sid: opts.callSid ?? null,
+    leased_by: null, leased_at: null, lease_expires_at: null,
+    buffered_for: null, buffered_at: null,
+    updated_at: now.toISOString(),
   }).eq('id', attemptId)
 
-  // ── Stamp disposition on dialer_calls for the most recent call ─────────
+  /* A callback row settles the promise it mirrors. Without this the queue row
+     completes and dialer_callbacks still says pending, so the next plan
+     mirrors it straight back in and the rep is told to make the call again. */
+  if (attempt.is_callback && attempt.callback_id) {
+    await sb.from('dialer_callbacks').update({
+      status: 'completed', completed_at: now.toISOString(),
+      completed_by: opts.repIdentity, disposition,
+    }).eq('id', attempt.callback_id)
+  }
+
   if (attempt.contact_id) {
-    const { data: recentCall } = await db.from('dialer_calls')
+    const { data: recent } = await sb.from('dialer_calls')
       .select('call_sid')
       .eq('contact_id', attempt.contact_id)
       .eq('rep_identity', opts.repIdentity)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    if (recentCall) {
-      await db.from('dialer_calls').update({
-        disposition,
-        nq_reason: opts.nqReason?.trim() || null,
-      }).eq('call_sid', recentCall.call_sid)
+      .order('started_at', { ascending: false }).limit(1).maybeSingle()
+    if (recent) {
+      await sb.from('dialer_calls')
+        .update({ disposition, nq_reason: opts.nqReason?.trim() || null })
+        .eq('call_sid', recent.call_sid)
     }
   }
 
-  // ── Update lead state ────────────────────────────────────────────────────
   const stateUpdate: Record<string, unknown> = {
-    last_dialed_at:   now.toISOString(),
-    last_disposition: disposition,
-    updated_at:       now.toISOString(),
+    last_dialed_at: now.toISOString(), last_disposition: disposition, updated_at: now.toISOString(),
   }
-
-  if (isRealConversation) {
-    // Set ownership if not already set
-    const { data: currentState } = await db.from('dialer_lead_state')
+  if (realConversation) {
+    const { data: cur } = await sb.from('dialer_lead_state')
       .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
-    if (!currentState?.owner_rep) {
-      stateUpdate.owner_rep     = opts.repIdentity
-      stateUpdate.owner_set_at  = now.toISOString()
+    if (!cur?.owner_rep) {
+      stateUpdate.owner_rep = opts.repIdentity
+      stateUpdate.owner_set_at = now.toISOString()
     }
   }
+  await sb.from('dialer_lead_state')
+    .upsert({ contact_id: attempt.contact_id, ...stateUpdate }, { onConflict: 'contact_id' })
 
-  await db.from('dialer_lead_state').upsert(
-    { contact_id: attempt.contact_id, ...stateUpdate },
-    { onConflict: 'contact_id' }
-  )
-
-  // ── Disposition-specific effects ─────────────────────────────────────────
-  const today = now.toISOString().split('T')[0]
-  const firm  = opts.firm || attempt.firm || ''
+  // ── What happens to the rest of today ────────────────────────────────────
+  if (TERMINAL.has(disposition)) {
+    await cancelRemaining(sb, attempt.contact_id, today, attemptId)
+  }
 
   switch (disposition) {
-    // No Answer — later attempts today stand unchanged
     case 'No Answer': {
-      // Assign a persistent random caller ID for NR leads (used on all retries)
-      const { data: ls } = await db.from('dialer_lead_state')
+      const { data: ls } = await sb.from('dialer_lead_state')
         .select('assigned_caller_id, sms_drip_active')
-        .eq('contact_id', attempt.contact_id)
-        .maybeSingle()
+        .eq('contact_id', attempt.contact_id).maybeSingle()
 
       if (!ls?.assigned_caller_id) {
-        const pool = await getNumberPool()
-        const assignedId = assignRandomCallerId(pool)
-        if (assignedId) {
-          await db.from('dialer_lead_state')
-            .update({ assigned_caller_id: assignedId, updated_at: now.toISOString() })
-            .eq('contact_id', attempt.contact_id)
-        }
+        const id = assignRandomCallerId(await getNumberPool())
+        if (id) await sb.from('dialer_lead_state')
+          .update({ assigned_caller_id: id, updated_at: now.toISOString() })
+          .eq('contact_id', attempt.contact_id)
       }
-
-      // Start SMS drip on first No Answer (only if never had drip before)
       if (!ls?.sms_drip_active) {
         const { hasDripHistory, scheduleDrip } = await import('./sms-drip')
-        const hadDrip = await hasDripHistory(attempt.contact_id)
-        if (!hadDrip) {
+        if (!(await hasDripHistory(attempt.contact_id))) {
           scheduleDrip({
-            contactId:   attempt.contact_id,
-            contactName: attempt.contact_name,
-            phone:       attempt.phone,
-            firm:        attempt.firm ?? null,
-          }).catch(err => console.error('[sms-drip] schedule error', err))
+            contactId: attempt.contact_id, contactName: attempt.contact_name,
+            phone: attempt.phone, firm: attempt.firm ?? null,
+          }).catch(err => console.error('[sms-drip]', err))
         }
       }
       break
     }
 
     case 'Callback': {
-      // Cancel remaining attempts today
-      await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
-
-      const cbAt = opts.callbackAt ? new Date(opts.callbackAt) : new Date(now.getTime() + 4 * 3600 * 1000)
-
-      // Determine owner (the owner who scheduled it, or this rep)
-      const { data: ls } = await db.from('dialer_lead_state')
+      const at = opts.callbackAt ? new Date(opts.callbackAt) : new Date(now.getTime() + 4 * 3600_000)
+      const { data: ls } = await sb.from('dialer_lead_state')
         .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
-      const callbackOwner = ls?.owner_rep ?? opts.repIdentity
 
-      // Add to dialer_callbacks (rep manually calls from Callbacks page)
-      await db.from('dialer_callbacks').insert({
-        contact_id:       attempt.contact_id,
-        contact_name:     attempt.contact_name,
-        phone:            attempt.phone,
-        firm:             attempt.firm,
-        stage_name:       attempt.stage_name,
-        callback_at:      cbAt.toISOString(),
-        callback_context: opts.callbackContext ?? null,
-        source:           'disposition',
-        owner_rep:        callbackOwner,
-      })
+      const { data: cb } = await sb.from('dialer_callbacks').insert({
+        contact_id: attempt.contact_id, contact_name: attempt.contact_name,
+        phone: attempt.phone, firm: attempt.firm, stage_name: attempt.stage_name,
+        callback_at: at.toISOString(), callback_context: opts.callbackContext ?? null,
+        source: 'disposition', owner_rep: ls?.owner_rep ?? opts.repIdentity,
+      }).select('id').maybeSingle()
+
+      /* Mirror it straight into the queue when it falls on today, so the rep
+         does not have to remember it — it arrives at the promised minute. */
+      if (cb?.id && at.toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) === todayEastern()) {
+        await syncCallbacksIntoQueue().catch(err => console.error('[queue:callbacks]', err))
+      }
       break
     }
 
-    // Terminal: remove from calling pool
-    case 'Qualified':
-    case 'Signed':
-    case 'MIA Reconnected':
-      await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
-      break
-
-    // Exhausted: lead won't appear in future syncs
     case 'Not Qualified':
-      await cancelRemainingAttempts(attempt.contact_id, today, attemptId, db)
-      await db.from('dialer_lead_state').upsert(
+      await sb.from('dialer_lead_state').upsert(
         { contact_id: attempt.contact_id, exhausted: true, updated_at: now.toISOString() },
-        { onConflict: 'contact_id' }
-      )
+        { onConflict: 'contact_id' })
       break
   }
 
-  // ── Persist caller ID when the lead actually answered ──────────────────────
   if (disposition !== 'No Answer' && attempt.contact_id) {
-    const { data: call } = await db.from('dialer_calls')
+    const { data: call } = await sb.from('dialer_calls')
       .select('caller_id_used')
-      .eq('contact_id', attempt.contact_id)
-      .eq('rep_identity', opts.repIdentity)
-      .order('started_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
+      .eq('contact_id', attempt.contact_id).eq('rep_identity', opts.repIdentity)
+      .order('started_at', { ascending: false }).limit(1).maybeSingle()
     if (call?.caller_id_used) {
-      await db.from('dialer_lead_state')
+      await sb.from('dialer_lead_state')
         .update({ assigned_caller_id: call.caller_id_used, updated_at: now.toISOString() })
         .eq('contact_id', attempt.contact_id)
     }
   }
 
-  // ── Update ownership on remaining attempts if ownership was just set ──────
-  if (isRealConversation) {
-    const { data: ls } = await db.from('dialer_lead_state')
+  if (realConversation) {
+    const { data: ls } = await sb.from('dialer_lead_state')
       .select('owner_rep').eq('contact_id', attempt.contact_id).maybeSingle()
     if (ls?.owner_rep) {
-      await db.from('dialer_attempts')
+      await sb.from('dialer_attempts')
         .update({ owner_rep: ls.owner_rep, updated_at: now.toISOString() })
         .eq('contact_id', attempt.contact_id)
         .in('status', ['pending', 'buffered'])
@@ -1743,270 +1210,215 @@ export async function applyDisposition(
     }
   }
 
-  // ── GHL stage move ────────────────────────────────────────────────────────
-  const GHL_STAGE_MAP: Record<string, string> = {
-    'Not Qualified':    'Not Qualified',
-    'Qualified':        'Chase',
-    'Callback':         'Follow Up Required',
-    'Signed':           'Signed/Sent',
-    'No Answer':        'No Response',
-    'MIA Reconnected':  'Signed/Sent',
-  }
-  const targetStage = GHL_STAGE_MAP[disposition]
+  await pushToGHL(sb, attempt, disposition, firm, opts).catch(err =>
+    console.error('[queue:settle] GHL side-effects failed', err))
 
-  // No Answer: only move to "No Response" on first NR (skip if already NR)
-  let skipStageMove = false
-  if (disposition === 'No Answer') {
-    const { data: prevState } = await db.from('dialer_lead_state')
-      .select('last_disposition')
-      .eq('contact_id', attempt.contact_id)
-      .maybeSingle()
-    if (prevState?.last_disposition === 'No Answer') {
-      skipStageMove = true
-      console.log('[disposition] Skipping NR stage move — lead already in No Response', { contactId: attempt.contact_id })
-    }
-  }
-
-  if (targetStage && attempt.ghl_opportunity_id && !skipStageMove) {
-    console.log('[disposition] Moving GHL stage', { opportunityId: attempt.ghl_opportunity_id, targetStage })
-    await moveGHLStage(attempt.ghl_opportunity_id, attempt.pipeline_id, targetStage).catch(err =>
-      console.error('[disposition] GHL stage move failed', err)
-    )
-  } else if (targetStage && !attempt.ghl_opportunity_id) {
-    console.log('[disposition] Skipping GHL stage move — no opportunity ID', { contactId: attempt.contact_id, disposition })
-  }
-
-  // ── Firm-specific GHL tags ─────────────────────────────────────────────────
-  const TAG_MAP: Record<string, Record<string, string>> = {
-    lhp: {
-      'Qualified':        'lhp - c',
-      'Not Qualified':    'lhp - nq',
-      'Callback':         'lhp - ap',
-      'No Answer':        'lhp - nr',
-      'Signed':           'lhp - ps',
-      'MIA Reconnected':  'lhp - ps',
-    },
-    fears: {
-      'Qualified':        'fl - c',
-      'Not Qualified':    'fl - nq',
-      'Callback':         'fl - ap',
-      'No Answer':        'fl - nr',
-      'Signed':           'fl - ps',
-      'MIA Reconnected':  'fl - ps',
-    },
-    jm: {
-      'Qualified':        'jm - c',
-      'Not Qualified':    'jm - nq',
-      'Callback':         'jm - ap',
-      'No Answer':        'jm - nr',
-      'Signed':           'jm - ps',
-      'MIA Reconnected':  'jm - ps',
-    },
-  }
-
-  const tag = TAG_MAP[firm]?.[disposition]
-  if (tag && attempt.contact_id) {
-    await tagGHLContact(attempt.contact_id, [tag]).catch(err =>
-      console.error('[disposition] GHL tag failed', err)
-    )
-  } else if (!tag) {
-    console.log('[disposition] No tag mapping for', { firm, disposition })
-  }
-
-  // ── Turn off SMS bot on any real disposition ────────────────────────────
-  if (['Callback', 'Qualified', 'Not Qualified', 'Signed', 'MIA Reconnected'].includes(disposition) && attempt.contact_id) {
-    await db.from('dialer_lead_state')
-      .update({ sms_drip_active: false, updated_at: now.toISOString() })
-      .eq('contact_id', attempt.contact_id)
-    // Cancel any pending drip messages
-    await db.from('dialer_drip_queue')
-      .update({ status: 'cancelled', updated_at: now.toISOString() })
-      .eq('contact_id', attempt.contact_id)
-      .eq('status', 'pending')
-    console.log('[disposition] SMS bot turned off', { contactId: attempt.contact_id, disposition })
-  }
-
-  // Store NQ reason as a tag + send Slack notification
-  if (disposition === 'Not Qualified' && attempt.contact_id) {
-    if (opts.nqReason) {
-      const prefix = firm === 'lhp' ? 'lhp' : firm === 'jm' ? 'jm' : 'fl'
-      const reasonTag = `${prefix} - nq - ${opts.nqReason}`
-      await tagGHLContact(attempt.contact_id, [reasonTag]).catch(console.error)
-    }
-
-    // Slack notification for NQ disposition
-    const nqWebhook = (process.env.SLACK_NQ_WEBHOOK || '').trim().replace(/\\n$/, '')
-    if (nqWebhook) {
-      const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
-      await fetch(nqWebhook, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: `Not Qualified — ${attempt.contact_name} (${firmLabel})${opts.nqReason ? ` — Reason: ${opts.nqReason}` : ''}`,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: [
-                  `*Not Qualified* — ${attempt.contact_name}`,
-                  `*Firm:* ${firmLabel}`,
-                  `*Phone:* ${attempt.phone}`,
-                  `*Rep:* ${opts.repIdentity}`,
-                  opts.nqReason ? `*Reason:* ${opts.nqReason}` : null,
-                  `*Stage:* ${attempt.stage_name || '—'}`,
-                ].filter(Boolean).join('\n'),
-              },
-            },
-          ],
-        }),
-      }).catch(err => console.error('[disposition] Slack NQ notification failed', err))
-    }
-  }
-
-  // Slack notification for Qualified/Signed
-  if (['Qualified', 'Signed'].includes(disposition) && attempt.contact_id) {
-    const slackWebhook = (process.env.SLACK_WEBHOOK_URL || '').trim().replace(/\\n$/, '')
-    if (slackWebhook) {
-      const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
-      const emoji = disposition === 'Signed' ? ':tada:' : ':white_check_mark:'
-      await fetch(slackWebhook, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          text: `${disposition} — ${attempt.contact_name} (${firmLabel})`,
-          blocks: [
-            {
-              type: 'section',
-              text: {
-                type: 'mrkdwn',
-                text: [
-                  `${emoji} *${disposition}* — ${attempt.contact_name}`,
-                  `*Firm:* ${firmLabel}`,
-                  `*Phone:* ${attempt.phone}`,
-                  `*Rep:* ${opts.repIdentity}`,
-                  `*Stage:* ${attempt.stage_name || '—'}`,
-                ].filter(Boolean).join('\n'),
-              },
-            },
-          ],
-        }),
-      }).catch(err => console.error('[disposition] Slack notification failed', err))
-    }
-  }
-
-  // ── Schedule auto intake-fill 1 hour after Signed/MIA Reconnected ────────
-  if (['Signed', 'MIA Reconnected'].includes(disposition) && attempt.contact_id) {
-    const scheduledAt = new Date(Date.now() + 60 * 60 * 1000).toISOString() // 1 hour from now
-    try {
-      await db.from('intake_fill_jobs').upsert({
-        contact_id:   attempt.contact_id,
-        contact_name: attempt.contact_name,
-        firm:         firm || null,
-        status:       'pending',
-        scheduled_at: scheduledAt,
-        created_at:   now.toISOString(),
-      }, { onConflict: 'contact_id' })
-    } catch (err) {
-      console.error('[disposition] Failed to schedule intake fill', err)
-    }
-    console.log('[disposition] Scheduled intake fill for', {
-      contactId: attempt.contact_id,
-      scheduledAt,
-    })
-  }
+  // The slot this call vacated refills immediately.
+  fillBuffer(opts.repIdentity, BUFFER_SIZE).catch(err => console.error('[queue:refill]', err))
 }
 
-async function cancelRemainingAttempts(
-  contactId:       string,
-  planDate:        string,
-  excludeAttemptId: string,
-  db: ReturnType<typeof supabaseAdmin>,
-) {
-  await db.from('dialer_attempts')
+async function cancelRemaining(sb: any, contactId: string, planDate: string, exceptId: string) {
+  await sb.from('dialer_attempts')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('contact_id', contactId)
     .eq('plan_date', planDate)
     .in('status', ['pending', 'buffered'])
     .eq('is_callback', false)
-    .neq('id', excludeAttemptId)
+    .neq('id', exceptId)
 }
 
-// ─── Reset day ────────────────────────────────────────────────────────────────
+/* Everything the outcome means outside the dialer: the GHL stage, the firm's
+   tag, the drip, Slack, and the intake fill a signed case triggers. */
+async function pushToGHL(
+  sb: any, attempt: any, disposition: string, firm: string, opts: DispositionOptions,
+) {
+  const now = new Date()
 
+  const STAGE: Record<string, string> = {
+    'Not Qualified': 'Not Qualified', 'Qualified': 'Chase', 'Callback': 'Follow Up Required',
+    'Signed': 'Signed/Sent', 'No Answer': 'No Response', 'MIA Reconnected': 'Signed/Sent',
+  }
+  const target = STAGE[disposition]
+
+  // Only move to No Response on the first no-answer — after that it is
+  // already there and the move is a write for nothing.
+  let skip = false
+  if (disposition === 'No Answer') {
+    const { data: prev } = await sb.from('dialer_lead_state')
+      .select('last_disposition').eq('contact_id', attempt.contact_id).maybeSingle()
+    skip = prev?.last_disposition === 'No Answer'
+  }
+
+  if (target && attempt.ghl_opportunity_id && !skip) {
+    await moveGHLStage(attempt.ghl_opportunity_id, attempt.pipeline_id, target)
+      .catch(err => console.error('[queue:settle] stage move failed', err))
+  }
+
+  const TAGS: Record<string, Record<string, string>> = {
+    lhp:   { Qualified: 'lhp - c', 'Not Qualified': 'lhp - nq', Callback: 'lhp - ap', 'No Answer': 'lhp - nr', Signed: 'lhp - ps', 'MIA Reconnected': 'lhp - ps' },
+    fears: { Qualified: 'fl - c',  'Not Qualified': 'fl - nq',  Callback: 'fl - ap',  'No Answer': 'fl - nr',  Signed: 'fl - ps',  'MIA Reconnected': 'fl - ps'  },
+    jm:    { Qualified: 'jm - c',  'Not Qualified': 'jm - nq',  Callback: 'jm - ap',  'No Answer': 'jm - nr',  Signed: 'jm - ps',  'MIA Reconnected': 'jm - ps'  },
+  }
+  const tag = TAGS[firm]?.[disposition]
+  if (tag && attempt.contact_id) {
+    await tagGHLContact(attempt.contact_id, [tag]).catch(err => console.error('[queue:settle] tag failed', err))
+  }
+
+  if (TERMINAL.has(disposition) && attempt.contact_id) {
+    await sb.from('dialer_lead_state')
+      .update({ sms_drip_active: false, updated_at: now.toISOString() })
+      .eq('contact_id', attempt.contact_id)
+    await sb.from('dialer_drip_queue')
+      .update({ status: 'cancelled', updated_at: now.toISOString() })
+      .eq('contact_id', attempt.contact_id).eq('status', 'pending')
+  }
+
+  const firmLabel = firm === 'lhp' ? 'LHP' : firm === 'fears' ? 'Fears' : firm.toUpperCase()
+  const post = (url: string, lines: (string | null)[]) =>
+    fetch(url, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        text: lines.filter(Boolean).join(' — '),
+        blocks: [{ type: 'section', text: { type: 'mrkdwn', text: lines.filter(Boolean).join('\n') } }],
+      }),
+    }).catch(err => console.error('[queue:settle] slack failed', err))
+
+  if (disposition === 'Not Qualified' && attempt.contact_id) {
+    if (opts.nqReason) {
+      const prefix = firm === 'lhp' ? 'lhp' : firm === 'jm' ? 'jm' : 'fl'
+      await tagGHLContact(attempt.contact_id, [`${prefix} - nq - ${opts.nqReason}`]).catch(console.error)
+    }
+    const hook = (process.env.SLACK_NQ_WEBHOOK || '').trim().replace(/\\n$/, '')
+    if (hook) await post(hook, [
+      `*Not Qualified* — ${attempt.contact_name}`, `*Firm:* ${firmLabel}`,
+      `*Phone:* ${attempt.phone}`, `*Rep:* ${opts.repIdentity}`,
+      opts.nqReason ? `*Reason:* ${opts.nqReason}` : null,
+      `*Stage:* ${attempt.stage_name || '—'}`,
+    ])
+  }
+
+  if (['Qualified', 'Signed'].includes(disposition) && attempt.contact_id) {
+    const hook = (process.env.SLACK_WEBHOOK_URL || '').trim().replace(/\\n$/, '')
+    if (hook) await post(hook, [
+      `${disposition === 'Signed' ? ':tada:' : ':white_check_mark:'} *${disposition}* — ${attempt.contact_name}`,
+      `*Firm:* ${firmLabel}`, `*Phone:* ${attempt.phone}`,
+      `*Rep:* ${opts.repIdentity}`, `*Stage:* ${attempt.stage_name || '—'}`,
+    ])
+  }
+
+  if (['Signed', 'MIA Reconnected'].includes(disposition) && attempt.contact_id) {
+    await sb.from('intake_fill_jobs').upsert({
+      contact_id: attempt.contact_id, contact_name: attempt.contact_name,
+      firm: firm || null, status: 'pending',
+      scheduled_at: new Date(Date.now() + 3600_000).toISOString(),
+      created_at: now.toISOString(),
+    }, { onConflict: 'contact_id' }).catch((err: any) =>
+      console.error('[queue:settle] intake fill schedule failed', err))
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Reset — a new day
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Nothing is carried. Yesterday's plan is closed out and today's is built
+   from scratch at whatever stage each lead is in now, which is the whole
+   reason carryover no longer jumps the ladder: a lead that went uncalled
+   yesterday is simply planned again today on its own merits. */
 export async function resetDay(): Promise<void> {
-  const db    = supabaseAdmin()
+  const sb = db()
   const today = todayEastern()
-  await db.from('dialer_attempts')
+  await sb.from('dialer_attempts')
+    .update({ status: 'expired', updated_at: new Date().toISOString() })
+    .lt('plan_date', today)
+    .in('status', ['pending', 'buffered', 'leased'])
+  await sb.from('dialer_attempts')
     .update({ status: 'cancelled', updated_at: new Date().toISOString() })
     .eq('plan_date', today)
-    .in('status', ['pending', 'buffered', 'leased', 'expired'])
+    .in('status', ['pending', 'buffered', 'leased'])
     .eq('is_callback', false)
 }
 
-// ─── GHL helpers ─────────────────────────────────────────────────────────────
+/* ═══════════════════════════════════════════════════════════════════════════
+   GHL helpers
+   ═══════════════════════════════════════════════════════════════════════════ */
 
-async function moveGHLStage(opportunityId: string, pipelineId: string, targetStageName: string) {
-  const headers = ghlHeaders()
-  // Cached schema read. This used to pull the entire location-wide pipeline
-  // list on EVERY disposition — two GHL calls per rep action, one of which
-  // belongs in cache.
-  let allPipelines
-  try {
-    allPipelines = await getPipelines()
-  } catch (err) {
-    console.error('[moveGHLStage] Failed to fetch pipelines', err)
-    return
-  }
-  const pipeline = allPipelines.find((p) => p.id === pipelineId)
-  if (!pipeline) {
-    console.error('[moveGHLStage] Pipeline not found', { pipelineId })
-    return
-  }
-  const stage = (pipeline.stages ?? []).find(
-    (s: any) => s.name.toLowerCase() === targetStageName.toLowerCase()
-  )
-  if (!stage) {
-    console.error('[moveGHLStage] Stage not found', {
-      targetStageName,
-      availableStages: (pipeline.stages ?? []).map((s: any) => s.name),
-    })
-    return
-  }
-  const moveRes = await fetch(`https://services.leadconnectorhq.com/opportunities/${opportunityId}`, {
-    method:  'PUT',
-    headers,
-    body:    JSON.stringify({ pipelineStageId: stage.id }),
+async function moveGHLStage(opportunityId: string, pipelineId: string, stageName: string) {
+  let pipelines
+  try { pipelines = await getPipelines() }
+  catch (err) { console.error('[ghl] pipelines failed', err); return }
+
+  const pipeline = pipelines.find(p => p.id === pipelineId)
+  if (!pipeline) return console.error('[ghl] pipeline not found', pipelineId)
+
+  const stage = (pipeline.stages ?? []).find((s: any) => s.name.toLowerCase() === stageName.toLowerCase())
+  if (!stage) return console.error('[ghl] stage not found', stageName)
+
+  const res = await fetch(`https://services.leadconnectorhq.com/opportunities/${opportunityId}`, {
+    method: 'PUT', headers: ghlHeaders(), body: JSON.stringify({ pipelineStageId: stage.id }),
   })
-  if (!moveRes.ok) {
-    console.error('[moveGHLStage] Move failed', moveRes.status, await moveRes.text().catch(() => ''))
-  } else {
-    console.log('[moveGHLStage] Moved opportunity', { opportunityId, stage: stage.name })
-  }
+  if (!res.ok) console.error('[ghl] move failed', res.status)
 }
 
-async function tagGHLContact(contactId: string, newTags: string[]) {
+async function tagGHLContact(contactId: string, tags: string[]) {
   const headers = ghlHeaders()
-  const cRes = await fetch(
-    `https://services.leadconnectorhq.com/contacts/${contactId}`,
-    { headers }
-  )
-  if (!cRes.ok) return
-  const cData   = await cRes.json()
-  const existing = cData.contact?.tags ?? []
-  const merged   = Array.from(new Set([...existing, ...newTags]))
+  const res = await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, { headers })
+  if (!res.ok) return
+  const existing = (await res.json()).contact?.tags ?? []
   await fetch(`https://services.leadconnectorhq.com/contacts/${contactId}`, {
-    method:  'PUT',
-    headers,
-    body:    JSON.stringify({ tags: merged }),
+    method: 'PUT', headers,
+    body: JSON.stringify({ tags: [...new Set([...existing, ...tags])] }),
   })
 }
 
-// ─── DNC check ───────────────────────────────────────────────────────────────
-// Used by call-start endpoint to block suppressed leads
+/** Used by the call-start endpoint to block a suppressed lead. */
 export async function isLeadSuppressed(contactId: string): Promise<boolean> {
-  const db = supabaseAdmin()
-  const { data } = await db.from('dialer_lead_state')
+  const { data } = await db().from('dialer_lead_state')
     .select('suppressed').eq('contact_id', contactId).maybeSingle()
   return data?.suppressed === true
+}
+
+/** @deprecated the cap is enforced by fills counting what a rep holds. */
+export async function enforceBufferCap(count = BUFFER_SIZE): Promise<number> {
+  const sb    = db()
+  const today = todayEastern()
+
+  const held = await fetchAll<{ id: string; buffered_for: string | null; plan_date: string }>(() =>
+    sb.from('dialer_attempts')
+      .select('id, buffered_for, buffered_at, plan_date')
+      .eq('status', 'buffered')
+      .order('buffered_at', { ascending: true }))
+
+  /* A buffered row from an earlier day belongs to a plan that is over. */
+  const stale = held.filter(r => r.plan_date && r.plan_date !== today).map(r => r.id)
+  for (let i = 0; i < stale.length; i += 500) {
+    await sb.from('dialer_attempts')
+      .update({ status: 'expired', buffered_for: null, buffered_at: null })
+      .in('id', stale.slice(i, i + 500))
+  }
+
+  const byRep = new Map<string, string[]>()
+  for (const r of held) {
+    if (!r.buffered_for || r.plan_date !== today) continue
+    const arr = byRep.get(r.buffered_for) ?? []
+    arr.push(r.id)
+    byRep.set(r.buffered_for, arr)
+  }
+
+  const { data: leased } = await sb.from('dialer_attempts')
+    .select('leased_by').eq('plan_date', today).eq('status', 'leased')
+  const onCall: Record<string, number> = {}
+  for (const r of leased ?? []) if (r.leased_by) onCall[r.leased_by] = (onCall[r.leased_by] ?? 0) + 1
+
+  const excess: string[] = []
+  for (const [rep, ids] of byRep) {
+    const room = Math.max(0, count - (onCall[rep] ?? 0))
+    if (ids.length > room) excess.push(...ids.slice(room))
+  }
+  for (let i = 0; i < excess.length; i += 500) {
+    await sb.from('dialer_attempts')
+      .update({ status: 'pending', buffered_for: null, buffered_at: null, updated_at: new Date().toISOString() })
+      .in('id', excess.slice(i, i + 500)).eq('status', 'buffered')
+  }
+  return excess.length + stale.length
 }

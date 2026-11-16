@@ -30,12 +30,30 @@ export interface IntakeFillResult {
 
 // ── Build the Claude system prompt ──────────────────────────────────────────
 
-function buildSystemPrompt(constraints = ''): string {
+function buildSystemPrompt(
+  constraints = '',
+  subject: IntakeFillOptions['subject'] = null,
+): string {
   const fieldLines = Object.entries(INTAKE_FIELDS).map(([id, { label, hint }]) =>
     `- "${id}" (${label}): ${hint}`
   ).join('\n')
 
+  /* A passenger case is built from the SAME call — the driver did the
+     talking. The crash facts are shared, but the injuries, treatment and
+     personal details must be the passenger's, and the model will default to
+     the caller's unless told plainly whose form this is. */
+  const subjectBlock = subject ? `
+
+WHOSE FORM THIS IS — READ THIS FIRST:
+This form is for ${subject.name}${subject.relationship ? `, the ${subject.relationship}` : ''}, who was in the vehicle. It is NOT for the person doing the talking on the call.
+
+- Crash facts are shared by everyone in the vehicle — date, time, location, how it happened, the other driver, insurance, police report. Extract these normally.
+- Anything personal to an individual must be ${subject.name}'s: their injuries, their symptoms, their treatment and providers, their date of birth, their contact details, whether THEY went to hospital.
+- The caller may describe their own injuries at length and mention ${subject.name}'s only in passing. Take only what is said about ${subject.name}. Do not copy the caller's injuries across.
+- If something personal to ${subject.name} is never stated, return null for it. A passenger case with honest gaps is worth more than one filled with the driver's facts.` : ''
+
   return `You are an intake assistant for a personal injury law firm. You will be given call transcripts, SMS messages, and any photos the client texted in, from conversations with a potential client who has signed a retainer agreement.
+${subjectBlock}
 
 Your job is to extract intake information to fill out the case form. Follow these rules strictly:
 
@@ -283,7 +301,27 @@ function buildContext(
 
 // ── Main entry point ────────────────────────────────────────────────────────
 
-export async function runIntakeFill(contactId: string): Promise<IntakeFillResult> {
+/* How a run differs from the ordinary nightly fill.
+
+   `fresh`    — treat every intake field as blank before extracting, so a
+                value typed early and never corrected cannot survive. The
+                ordinary run is conservative by design; a redo is asked for
+                precisely because what is there is wrong.
+
+   `subject`  — whose intake this is. By default the contact themselves; name
+                a passenger and the extraction is re-pointed at that person,
+                answering "what are THEIR injuries, THEIR treatment" from the
+                same call. The crash facts — date, location, police report,
+                other driver — are shared and come out the same either way. */
+export interface IntakeFillOptions {
+  fresh?: boolean
+  subject?: { name: string; relationship?: string } | null
+}
+
+export async function runIntakeFill(
+  contactId: string,
+  opts: IntakeFillOptions = {},
+): Promise<IntakeFillResult> {
   const db = supabaseAdmin()
   const result: IntakeFillResult = {
     contactId,
@@ -301,6 +339,10 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
 
   if (contact) {
     result.contactName = contact.name ?? `${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trim()
+  }
+
+  if (opts.subject) {
+    result.flags.push(`Intake re-run for ${opts.subject.name}${opts.subject.relationship ? ` (${opts.subject.relationship})` : ''} — fields now describe them, not the caller`)
   }
 
   // Resolve firm from tags (e.g. "lhp - ps" → "lhp")
@@ -323,8 +365,15 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
   }
 
   // 2. Build existing values + context
-  const { custom: existing, dob: existingDob } = getExistingValues(contact)
-  const OVERWRITE_MODE = process.env.INTAKE_FILL_OVERWRITE !== '0'
+  const { custom: existingRaw, dob: existingDobRaw } = getExistingValues(contact)
+
+  /* A fresh run must not see the current values at all. They are fed to the
+     model as "already known" context, so leaving them in place invites it to
+     restate a wrong date rather than re-read the call. */
+  const existing = opts.fresh ? {} : existingRaw
+  const existingDob = opts.fresh ? null : existingDobRaw
+
+  const OVERWRITE_MODE = opts.fresh || process.env.INTAKE_FILL_OVERWRITE !== '0'
   // GHL silently drops values that don't fit a field's type, so we need the
   // definitions both to instruct the model and to validate before writing.
   const fieldDefs = await getFieldDefs()
@@ -367,7 +416,10 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
     const msg = await client.messages.create({
       model:      'claude-opus-5',
       max_tokens: 8000,
-      system:     buildSystemPrompt(describeConstraints(fieldDefs, Object.keys(INTAKE_FIELDS))),
+      system:     buildSystemPrompt(
+                    describeConstraints(fieldDefs, Object.keys(INTAKE_FIELDS)),
+                    opts.subject ?? null,
+                  ),
       messages: [{
         role: 'user',
         content: [...imageBlocks, { type: 'text', text: context }],
@@ -415,7 +467,7 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
   // FILL_EVERY_FIELD writes an explicit marker where the evidence genuinely
   // said nothing, so a blank field means "not yet processed" rather than
   // "nobody knows". It never invents a fact — the marker IS the absence.
-  const OVERWRITE = process.env.INTAKE_FILL_OVERWRITE !== '0'
+  const OVERWRITE = opts.fresh || process.env.INTAKE_FILL_OVERWRITE !== '0'
   const FILL_EVERY_FIELD = process.env.INTAKE_FILL_EVERY !== '0'
   const NOT_FOUND = process.env.INTAKE_FILL_PLACEHOLDER ?? 'Not discussed — needs follow-up'
 
@@ -485,6 +537,35 @@ export async function runIntakeFill(contactId: string): Promise<IntakeFillResult
       result.written[label] = value
       if (existing[fieldId] && existing[fieldId] !== value) {
         result.flags.push(`${label} overwritten: "${existing[fieldId].slice(0, 40)}" -> "${value.slice(0, 40)}"`)
+      }
+    }
+  }
+
+  /* A fresh run clears every intake field before writing.
+
+     Overwriting alone is not enough: a field the new extraction found no
+     evidence for is simply left out of the PUT, so a wrong value from an
+     earlier run survives a "redo" untouched. Blanking first makes the redo
+     mean what it says — what you see afterwards came from this run or is
+     genuinely absent.
+
+     Only the intake fields are cleared. Name, phone and email are not ours
+     to wipe. */
+  if (opts.fresh) {
+    const written = new Set(toWrite.map(w => w.id))
+    const blanks = Object.keys(INTAKE_FIELDS)
+      .filter(id => !written.has(id))
+      .map(id => ({ id, field_value: '' }))
+    if (blanks.length) {
+      try {
+        await fetch(`${GHL_BASE}/contacts/${contactId}`, {
+          method: 'PUT',
+          headers: ghlHeaders('sendcase'),
+          body: JSON.stringify({ customFields: blanks }),
+        })
+        result.flags.push(`Fresh run: cleared ${blanks.length} field(s) the re-read found no evidence for`)
+      } catch (err: any) {
+        result.flags.push(`Fresh run: could not clear old values — ${err.message}`)
       }
     }
   }

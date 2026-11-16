@@ -3,10 +3,8 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/app/dialer/_lib/supabase'
-import { formatBlockWindow } from '@/app/dialer/_lib/blocks'
+import { rankOf, rankLabel, formatSlot, type BlockName } from '@/app/dialer/_lib/queue-rules'
 import { stateForPhone } from '@/app/dialer/_lib/area-codes'
-import { stagePriority, TODAY_RANK, APPOINTMENT_MISSED_RANK, inWindow } from '@/app/dialer/_lib/blocks'
-import type { BlockName } from '@/app/dialer/_lib/blocks'
 
 interface Attempt {
   id:             string
@@ -447,23 +445,14 @@ export default function QueueAdminPage() {
     })
   }, [collapsed])
 
-  /* Same ladder the queue engine serves by: first match wins, with today's
-     leads slotted between chase and follow-up whatever stage they sit in. */
-  function ladderRank(a: any): number {
-    // Appointments top the ladder inside their slot only — see queue-engine.
-    if (String(a.stage_name ?? '').toLowerCase() === 'appointment scheduled') {
-      return inWindow(a.due_from ?? null, a.due_until ?? null)
-        ? stagePriority('appointment scheduled')
-        : APPOINTMENT_MISSED_RANK
-    }
-    const byStage = stagePriority(String(a.stage_name ?? ''))
-    if (byStage > TODAY_RANK) return byStage
-    const sc = a.stage_changed_at ? Date.parse(a.stage_changed_at) : NaN
-    const isToday = Number.isFinite(sc) &&
-      new Date(sc).toLocaleDateString('en-CA', { timeZone: 'America/New_York' }) ===
-      new Date().toLocaleDateString('en-CA', { timeZone: 'America/New_York' })
-    return isToday ? TODAY_RANK : byStage
-  }
+  /* The ladder itself, not a copy of it.
+
+     This page used to carry its own reimplementation of the ranking rules.
+     It drifted from the engine's — they disagreed about where a fresh lead
+     sat — so the order on this screen was not the order leads went out in,
+     and "work from the top" was not a thing anyone could do. One function,
+     imported, in queue-rules.ts. */
+  const ladderRank = (a: any): number => rankOf(a)
 
   /* One row per lead. A lead carries three to six attempts for the day, and
      once recency groups them they land in consecutive slots — the top twelve
@@ -992,7 +981,7 @@ export default function QueueAdminPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <p className="text-xs text-muted-foreground">
-                        {formatBlockWindow(item.block as BlockName, item.due_from, item.due_until, item.lead_timezone)}
+                        {formatSlot(item.due_from, item.due_until, item.lead_timezone)}
                       </p>
                     </td>
                     <td className="px-4 py-2.5 text-xs">

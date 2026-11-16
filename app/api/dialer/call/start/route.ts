@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import twilio from 'twilio'
 import { createClient } from '@supabase/supabase-js'
-import { extendLease, isLeadSuppressed } from '@/app/dialer/_lib/queue-engine'
+import { claimForCall, isLeadSuppressed } from '@/app/dialer/_lib/queue-engine'
 import { getNumberPool, selectCallerId } from '@/app/dialer/_lib/number-pool'
 
 function supabaseAdmin() {
@@ -134,8 +134,36 @@ export async function POST(req: NextRequest) {
     started_at:      now,
   }, { onConflict: 'call_sid' })
 
-  // Extend the lease while the call is live (queueId = attemptId in new system)
-  if (queueId) await extendLease(queueId).catch(console.error)
+  /* Take the lead out of the buffer and hold it for the duration of the call.
+
+     This is the moment the queue has to know a call is in flight. It used to
+     call extendLease, which only matches a row already in `leased` — and
+     since nothing ever put a row INTO `leased`, it matched nothing: every
+     in-flight call still read as "buffered", a rep who dialled and closed
+     their tab held the lead until someone noticed, and the lease timeout
+     that exists to recover exactly that could never fire.
+
+     The claim is best-effort. Losing it means another rep got there first,
+     which is worth knowing about but is not a reason to drop a call that is
+     already connecting. */
+  if (queueId) {
+    const claimed = await claimForCall(queueId, identity).catch(() => false)
+    if (!claimed) console.warn('[call:start] could not claim attempt %s for %s', queueId, identity)
+  }
+
+  /* Record the dial itself, not just its outcome.
+
+     The redial gap reads last_dialed_at, which was only ever written when a
+     rep submitted a disposition. A call placed and abandoned left no trace,
+     so the guard that stops a lead being rung twice in two hours did not see
+     it and the lead came straight back round. */
+  if (contactId) {
+    const { error: dialErr } = await db.from('dialer_lead_state').upsert(
+      { contact_id: contactId, last_dialed_at: now, updated_at: now },
+      { onConflict: 'contact_id' },
+    )
+    if (dialErr) console.warn('[call:start] could not stamp last_dialed_at', dialErr.message)
+  }
 
   return NextResponse.json({ confName, customerCallSid: participant.callSid, callerIdUsed })
 }

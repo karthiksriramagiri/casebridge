@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '../_lib/supabase'
 import type { QueueLead } from '../_types'
+import { rankLabel } from '../_lib/queue-rules'
 
 interface Props {
   repIdentity:    string
@@ -32,17 +33,29 @@ function ordinal(n: number) {
   return n + (s[(v - 20) % 10] || s[v] || s[0])
 }
 
+/* Why this lead, and not another one.
+
+   It used to read the stage and the block name, which told a rep what the
+   database called the row rather than why it was in front of them. The tier
+   is the answer to that question — "New lead" and "Appointment now" are
+   worth saying out loud, and they are exactly the ones the stage name hid. */
 function reasonLine(lead: any): string {
   if (lead.isCallback && lead.callbackAt) {
-    return `Callback ${fmtTime(lead.callbackAt, lead.timezone)}`
+    return `Callback · promised ${fmtTime(lead.callbackAt, lead.timezone)}`
   }
-  const blockLabel  = (lead.block ?? '').charAt(0).toUpperCase() + (lead.block ?? '').slice(1)
-  const attemptText = lead.attempt_number && lead.attempts_total
-    ? `${ordinal(lead.attempt_number)} call of ${lead.attempts_total}`
+  const tier = rankLabel({
+    stage_name:      lead.stageName ?? lead.stage_name ?? null,
+    is_callback:     lead.is_callback ?? false,
+    lead_created_at: lead.lead_created_at ?? null,
+    due_from:        lead.due_from ?? null,
+    due_until:       lead.due_until ?? null,
+  })
+  const attempt = lead.attempt_number && lead.attempts_total
+    ? `${ordinal(lead.attempt_number)} of ${lead.attempts_total}`
     : ''
-  const carryText = lead.is_carryover ? ' · carried over' : ''
-  const parts = [lead.stageName, attemptText ? `— ${attemptText}` : '', blockLabel ? `(${blockLabel})` : '', carryText].filter(Boolean)
-  return parts.join(' ')
+  // Only name the stage when the tier is not already saying it.
+  const stage = tier === lead.stageName ? '' : lead.stageName
+  return [tier, stage, attempt].filter(Boolean).join(' · ')
 }
 
 function LeadRow({ lead, position, repIdentity, selected, onClick }: {

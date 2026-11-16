@@ -106,6 +106,11 @@ function attemptToLead(a: Attempt) {
     priority:         a.priority,
     // New fields
     block:            a.block,
+    /* The client ranks what it is shown, so it needs what the ladder reads.
+       Without lead_created_at every lead renders as its stage and a rep
+       cannot tell a twenty-minute-old lead from a three-week-old one. */
+    lead_created_at:  (a as any).lead_created_at ?? a.stage_changed_at ?? null,
+    stage_changed_at: a.stage_changed_at ?? null,
     attempt_number:   a.attempt_number,
     attempts_total:   a.attempts_total,
     is_carryover:     a.is_carryover,
