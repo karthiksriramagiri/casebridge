@@ -19,7 +19,8 @@ import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
 import { BenchmarkField } from './admin/benchmark-field'
 import {
-  ASSIGNMENT_FIRMS, ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, RELAUNCH_TYPE, ROLE_LABEL,
+  ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, LANE_KEYS, RELAUNCH_TYPE, ROLE_LABEL,
+  laneAccount, laneAssignmentFirm, laneCode, laneOf,
   parseRequests,
   type AssignmentFirm, type AssignmentStatus, type AssignmentType, type CreativeFormat,
 } from '@/app/creative/_lib/types'
@@ -175,13 +176,24 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
               />
             </PropertyRow>
 
+            {/* Firm and ad account in one row, because they are one choice:
+                Jacoby & Meyers runs in both accounts, so the firm alone does
+                not say which board the brief is on. */}
             <PropertyRow icon={Building2} label="Firm">
               <Choice
-                value={a.firm ?? ''}
+                value={a.firm ? laneOf(a.firm, a.account) : ''}
                 editable={isAdmin}
-                options={ASSIGNMENT_FIRMS as readonly string[]}
-                onChange={(v) => set({ firm: v as AssignmentFirm })}
-                render={(v) => (v ? <Pill>{v}</Pill> : <Empty />)}
+                options={LANE_KEYS}
+                label={(v) => (v ? laneCode(v) : 'Empty')}
+                /* Cleared as empty strings rather than as undefined: an
+                   undefined field means "not changing this" over the wire,
+                   so clearing the firm would never reach the database. */
+                onChange={(v) =>
+                  set(v
+                    ? { firm: laneAssignmentFirm(v), account: laneAccount(v) ?? '' }
+                    : { firm: '' as AssignmentFirm, account: '' })
+                }
+                render={(v) => (v ? <Pill>{laneCode(v)}</Pill> : <Empty />)}
               />
             </PropertyRow>
 

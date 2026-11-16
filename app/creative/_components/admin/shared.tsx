@@ -4,17 +4,21 @@ import { useState, type ReactNode } from 'react'
 import { Search, X } from 'lucide-react'
 import { Input } from '@/app/creative/_ui/input'
 import { RANGES } from '@/app/creative/_lib/metrics'
-import type { RangeKey } from '@/app/creative/_lib/types'
+import { laneLabel, laneRank, type RangeKey } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
-import { FIRMS, firmName } from '@/app/_metrics/firms'
-
 /* The firm filter, one definition for every page that has one.
 
    `firms` is the list actually present in the data rather than the full
    roster, so a firm with nothing running today is not offered as a filter
-   that would empty the page. Ordered by the canonical FIRMS list, which
-   keeps a firm and its Spanish board next to each other. */
+   that would empty the page. Ordered by laneRank, which keeps a firm and its
+   Spanish board next to each other, and a firm's two ad accounts next to
+   each other inside that.
+
+   It takes lanes rather than firms — a firm code on its own still works and
+   still reads as the firm's name, and a page that has the ad account to hand
+   passes `laneOf(firm, account)` so Jacoby & Meyers (ASD) and (CSD) are two
+   choices rather than one that spans both. */
 export function FirmSelect({
   value, onChange, firms,
 }: {
@@ -22,21 +26,17 @@ export function FirmSelect({
   onChange: (v: string) => void
   firms: readonly string[]
 }) {
-  const order = (code: string) => {
-    const i = FIRMS.findIndex((f) => f.code === code)
-    return i === -1 ? FIRMS.length : i
-  }
-  const sorted = [...new Set(firms)].sort((a, b) => order(a) - order(b) || a.localeCompare(b))
+  const sorted = [...new Set(firms)].sort((a, b) => laneRank(a) - laneRank(b) || a.localeCompare(b))
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-56 bg-card" aria-label="Firm">
-        <SelectValue>{(v: string) => (v === 'all' ? 'All firms' : firmName(v))}</SelectValue>
+        <SelectValue>{(v: string) => (v === 'all' ? 'All firms' : laneLabel(v))}</SelectValue>
       </SelectTrigger>
       <SelectContent>
         <SelectItem value="all">All firms</SelectItem>
         {sorted.map((f) => (
           <SelectItem key={f} value={f}>
-            {firmName(f)}
+            {laneLabel(f)}
           </SelectItem>
         ))}
       </SelectContent>

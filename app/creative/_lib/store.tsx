@@ -169,6 +169,8 @@ type AddAssignmentInput = {
   notes?: string
   sourceCreativeId?: string
   firm?: AssignmentFirm
+  /** Which ad account it launches into — see Assignment.account. */
+  account?: string
   format?: CreativeFormat
   visualCode?: string
   verbalCode?: string
@@ -198,6 +200,8 @@ export type ManualLaunchInput = {
      this is the only place these are captured — they have to come through
      or the cut lands on the list with no idea what it is. */
   firm?: AssignmentFirm
+  /** Which ad account it launches into — see Assignment.account. */
+  account?: string
   format?: CreativeFormat
   visualCode?: string
   verbalCode?: string
@@ -302,6 +306,7 @@ type Store = {
     sourceCreativeId?: string
     disclaimer?: Disclaimer
     firm?: AssignmentFirm
+    account?: string
     format?: CreativeFormat
     visualCode?: string
     verbalCode?: string
@@ -846,6 +851,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           notes: a.notes ?? '',
           sourceCreativeId: a.sourceCreativeId,
           firm: a.firm,
+          account: a.account,
           format: a.format,
           visualCode: a.visualCode,
           verbalCode: a.verbalCode,
@@ -871,7 +877,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           .createAssignment({
             title: a.title, type: a.type, angle: a.angle, notes: a.notes ?? '',
             sourceCreativeId: a.sourceCreativeId,
-            firm: a.firm, format: a.format,
+            firm: a.firm, account: a.account, format: a.format,
             visualCode: a.visualCode, verbalCode: a.verbalCode, batch: a.batch,
             adsetName: a.adsetName, creativeName: a.creativeName,
             offer: a.offer, campaignType: a.campaignType,
@@ -1410,6 +1416,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           createdAt: today,
           comments: [],
           firm: t.firm,
+          account: t.account,
           format: t.format,
           visualCode: t.visualCode,
           verbalCode: t.verbalCode,
@@ -1426,7 +1433,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
           .createTask({
             title: t.title, type: t.type, notes: t.notes ?? '', disclaimer: t.disclaimer,
             sourceCreativeId: t.sourceCreativeId, status: 'To Do', order, createdBy: 'admin',
-            firm: t.firm, format: t.format,
+            firm: t.firm, account: t.account, format: t.format,
             visualCode: t.visualCode, verbalCode: t.verbalCode, batch: t.batch,
             priority: t.priority ?? 3, script: t.script,
             benchmarkUrl: t.benchmarkUrl, benchmarkName: t.benchmarkName,
@@ -1507,6 +1514,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         angle: input.angle,
         sourceCreativeId: input.sourceCreativeId,
         firm: input.firm,
+        account: input.account,
         format: input.format,
         visualCode: input.visualCode,
         verbalCode: input.verbalCode,
@@ -1593,6 +1601,11 @@ export function StoreProvider({ children }: { children: ReactNode }) {
         angle: c.angle,
         sourceCreativeId: c.id,
         firm: SPELLING[c.firm],
+        /* The account it came out of. A relaunch goes back into the ad set
+           it was pulled from, so it can only ever be the same account — and
+           with Jacoby & Meyers running in two, the board it lands on depends
+           on which. Left off, every relaunch of a JM ad queued under ASD. */
+        account: c.account,
         status: 'Launching',
         launchDate: today,
         adsetName,
