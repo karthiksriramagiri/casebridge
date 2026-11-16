@@ -245,38 +245,6 @@ function LeadDetail({
   const [aiUpdatedAt, setAiUpdatedAt] = useState<string | null>(null)
   const [loading, setLoading]       = useState(true)
 
-  /* Redoing the intake for someone else in the vehicle.
-
-     A passenger's case is built from the same call — the driver did the
-     talking — so there is nothing new to collect, only a re-read pointed at
-     a different person. The name is typed rather than picked from a list
-     because nothing in GHL holds the passengers as records; the "Passengers
-     in Vehicle" field is free text and often just a count. */
-  const [subjectName, setSubjectName] = useState('')
-  const [subjectRel, setSubjectRel]   = useState('passenger')
-  const [redoState, setRedoState]     = useState<'idle' | 'running' | 'done' | 'error'>('idle')
-  const [redoMsg, setRedoMsg]         = useState('')
-
-  async function redoIntake(subject?: { name: string; relationship?: string }) {
-    setRedoState('running'); setRedoMsg('')
-    try {
-      const res = await fetch('/api/dialer/intake-fill', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactId: lead.contactId, fresh: true, subject: subject ?? null }),
-      })
-      const d = await res.json()
-      if (d.error) { setRedoState('error'); setRedoMsg(d.error); return }
-      const n = Object.keys(d.written ?? {}).length
-      setRedoState('done')
-      setRedoMsg(subject
-        ? `Intake rewritten for ${subject.name} — ${n} field${n === 1 ? '' : 's'} filled.`
-        : `Intake redone — ${n} field${n === 1 ? '' : 's'} filled.`)
-    } catch (e: any) {
-      setRedoState('error'); setRedoMsg(e?.message ?? 'Run failed')
-    }
-  }
-
   useEffect(() => {
     setLoading(true)
     setAiSummary(null)
@@ -405,65 +373,6 @@ function LeadDetail({
                 </p>
               )}
 
-              {/* Redo the intake — for this person, or for someone else who
-                  was in the vehicle. Sits under the summary because that is
-                  where you read what the call actually said and decide the
-                  form is wrong. */}
-              <div className="border-t border-primary/30 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-2">
-                  <button
-                    onClick={() => {
-                      if (window.confirm('Redo the entire intake for this contact?\n\nEvery intake field is cleared and re-filled from the calls and texts.'))
-                        redoIntake()
-                    }}
-                    disabled={redoState === 'running'}
-                    className="rounded-md border border-warning/40 px-3 py-1.5 text-xs font-semibold text-warning disabled:opacity-50"
-                  >
-                    {redoState === 'running' ? 'Running…' : 'Redo intake'}
-                  </button>
-
-                  <span className="text-xs text-muted-foreground">or for someone else in the vehicle:</span>
-
-                  <input
-                    value={subjectName}
-                    onChange={e => setSubjectName(e.target.value)}
-                    placeholder="Passenger name"
-                    className="w-44 rounded-md border border-border px-2 py-1.5 text-xs"
-                  />
-                  <select
-                    value={subjectRel}
-                    onChange={e => setSubjectRel(e.target.value)}
-                    className="rounded-md border border-border px-2 py-1.5 text-xs"
-                  >
-                    <option value="passenger">passenger</option>
-                    <option value="front-seat passenger">front-seat passenger</option>
-                    <option value="rear passenger">rear passenger</option>
-                    <option value="driver">driver</option>
-                    <option value="child passenger">child passenger</option>
-                  </select>
-                  <button
-                    onClick={() => {
-                      const n = subjectName.trim()
-                      if (!n) return
-                      if (window.confirm(`Rewrite this contact's intake for ${n} (${subjectRel})?\n\nThe crash facts stay the same; injuries, treatment and personal details become theirs. The current values are replaced.`))
-                        redoIntake({ name: n, relationship: subjectRel })
-                    }}
-                    disabled={redoState === 'running' || !subjectName.trim()}
-                    className="rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-40"
-                  >
-                    Redo for passenger
-                  </button>
-                </div>
-
-                {redoMsg && (
-                  <p className={`mt-2 text-xs ${redoState === 'error' ? 'text-destructive' : 'text-emerald-600'}`}>
-                    {redoMsg}
-                  </p>
-                )}
-                <p className="mt-2 text-[11px] text-muted-foreground">
-                  Both options overwrite this contact&apos;s fields — they do not create a second contact.
-                </p>
-              </div>
             </div>
           )}
 
@@ -618,11 +527,30 @@ function LeadDetail({
                           />
                         </div>
                       )}
-                      {call.transcripts.length > 0 && (
-                        <div className="border-t border-border px-4 py-2 space-y-2">
-                          {call.transcripts.map(tx => <TranscriptViewer key={tx.id} tx={tx} />)}
-                        </div>
-                      )}
+                      {/* A transcript line on every call, always.
+
+                          It used to render only when a transcript existed,
+                          so a call with none looked identical to a call
+                          nobody had scrolled far enough to see — and the
+                          question "was this one transcribed?" could not be
+                          answered from the card. Every call now says where
+                          it stands: the transcript, or why there is not
+                          one. */}
+                      <div className="border-t border-border px-4 py-2 space-y-2">
+                        {call.transcripts.length > 0 ? (
+                          call.transcripts.map(tx => <TranscriptViewer key={tx.id} tx={tx} />)
+                        ) : (
+                          <p className="px-1 text-xs text-muted-foreground">
+                            {!call.recording_url
+                              ? (call.duration ?? 0) > 0
+                                /* Talked, but no audio came back — worth
+                                   seeing, because it should not happen. */
+                                ? 'No recording for this call.'
+                                : 'Not answered — nothing to transcribe.'
+                              : 'Transcript still processing…'}
+                          </p>
+                        )}
+                      </div>
                     </div>
                   ))}
                 </div>

@@ -120,8 +120,14 @@ export function LeadSearch({
         </button>
       )}
 
+      {/* Wider than the box it hangs off.
+
+          The input sits in a 288px rail, and a dropdown matching that
+          width truncated every name and hid the phone number behind the
+          pills — the two things a rep reads to know they have the right
+          person. It is free to be wider than its parent, so it is. */}
       {open && q.trim().length >= 2 && (
-        <div className="absolute z-30 mt-1 max-h-80 w-full overflow-y-auto rounded-lg border bg-card shadow-lg">
+        <div className="absolute z-30 mt-1 max-h-[26rem] w-[22rem] max-w-[calc(100vw-2rem)] overflow-y-auto rounded-lg border bg-card shadow-lg">
           {hits.length === 0 ? (
             <p className="px-3 py-6 text-center text-xs text-muted-foreground">
               {loading ? 'Searching…' : 'No lead matches that.'}
@@ -134,19 +140,22 @@ export function LeadSearch({
                 onClick={() => pick(lead)}
                 disabled={disabled}
                 title={disabled ? disabledReason : `Call ${lead.name}`}
-                className="flex w-full items-center justify-between gap-2 border-b px-3 py-2 text-left last:border-0 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                className="group flex w-full items-center gap-2 border-b px-3 py-2 text-left last:border-0 hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-medium">{lead.name}</span>
-                  <span className="block font-mono text-[11px] text-muted-foreground">{lead.phone}</span>
+                {/* Name on its own line, then the number and the labels
+                    under it. Stacked rather than side by side because
+                    side by side is what squeezed the name. */}
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-sm font-medium leading-tight">{lead.name}</span>
+                  <span className="mt-0.5 flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-[11px] text-muted-foreground">{lead.phone}</span>
+                    {lead.firm && <Pill>{lead.firm.toUpperCase()}</Pill>}
+                    {lead.signed
+                      ? <Pill tone="green">signed</Pill>
+                      : lead.stageName && <Pill tone="blue">{lead.stageName}</Pill>}
+                  </span>
                 </span>
-                <span className="flex shrink-0 items-center gap-1.5">
-                  {lead.firm && <Pill>{lead.firm.toUpperCase()}</Pill>}
-                  {lead.signed
-                    ? <Pill tone="green">signed</Pill>
-                    : lead.stageName && <Pill tone="blue">{lead.stageName}</Pill>}
-                  <Phone className="size-3.5 text-muted-foreground" aria-hidden />
-                </span>
+                <Phone className="size-4 shrink-0 text-muted-foreground group-hover:text-primary" aria-hidden />
               </button>
             ))
           )}
