@@ -119,7 +119,18 @@ export async function POST(req: NextRequest) {
     dueDate = new Date(Date.now() + 2 * 3600 * 1000)
   }
 
-  const { error } = await db.from('dialer_callbacks').insert({
+  /* Upsert, not insert.
+
+     GHL fires this webhook and /webhooks/ghl/task for the same task about
+     two seconds apart. This route used to insert blind, so very nearly
+     every task produced two callbacks and the floor got two identical
+     "Dialer Callback in 5 Minutes" messages for one call.
+
+     Keyed on the task id, which is what makes a re-fire an update rather
+     than a second row. A callback with no task id — one a rep typed in —
+     still inserts normally, because the unique index behind this is
+     partial. */
+  const row = {
     contact_id:       contactId,
     contact_name:     resolvedName,
     phone:            resolvedPhone,
@@ -128,7 +139,10 @@ export async function POST(req: NextRequest) {
     callback_context: resolvedNotes,
     source:           'ghl',
     ghl_task_id:      ghlTaskId,
-  })
+  }
+  const { error } = ghlTaskId
+    ? await db.from('dialer_callbacks').upsert(row, { onConflict: 'ghl_task_id' })
+    : await db.from('dialer_callbacks').insert(row)
 
   if (error) {
     console.error('[callback-webhook] insert error:', error)
