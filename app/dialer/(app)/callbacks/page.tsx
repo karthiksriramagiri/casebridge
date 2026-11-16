@@ -82,6 +82,37 @@ function fmtTime(iso: string, firm?: string | null) {
   })
 }
 
+/* The Pacific day a callback falls on — the floor's day, the same one the
+   rest of the book keeps. Grouping on the firm's own timezone would put
+   two callbacks an hour apart under different headings. */
+function pacificDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+}
+
+/* What to call that day. "Today" and "Tomorrow" are what a rep actually
+   thinks in; anything further out gets its date. Days already gone are
+   named as overdue, because a callback whose time has passed is not a
+   plan, it is a debt. */
+function dayHeading(day: string): { label: string; overdue: boolean } {
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  const tomorrow = new Date(Date.now() + 86_400_000).toLocaleDateString('en-CA', { timeZone: 'America/Los_Angeles' })
+  if (day === today) return { label: 'Today', overdue: false }
+  if (day === tomorrow) return { label: 'Tomorrow', overdue: false }
+  const d = new Date(`${day}T12:00:00Z`)
+  const label = d.toLocaleDateString('en-US', {
+    weekday: 'long', month: 'short', day: 'numeric', timeZone: 'UTC',
+  })
+  return { label, overdue: day < today }
+}
+
+/** Just the clock part — the day is already the heading above it. */
+function fmtClock(iso: string, firm?: string | null) {
+  const tz = firm ? (FIRM_TZ[firm] ?? 'America/New_York') : 'America/New_York'
+  return new Date(iso).toLocaleTimeString('en-US', {
+    timeZone: tz, hour: 'numeric', minute: '2-digit', hour12: true,
+  })
+}
+
 function fmtRelative(iso: string) {
   const diff = new Date(iso).getTime() - Date.now()
   const mins = Math.round(diff / 60000)
@@ -203,6 +234,29 @@ export default function CallbacksPage() {
 
   const now = Date.now()
   const pending = callbacks.filter(c => c.status === 'pending')
+
+  /* Grouped by the day they are due, earliest first, and each day's
+     callbacks in time order within it.
+
+     The flat list was the problem: 460 rows with no breaks in them, most
+     of them long past, so "what do I owe today" could not be read off the
+     page at all. A day heading answers it before anything is scrolled. */
+  const byDay = (() => {
+    const map = new Map<string, Callback[]>()
+    for (const cb of pending) {
+      const day = pacificDay(cb.callback_at)
+      const list = map.get(day) ?? []
+      list.push(cb)
+      map.set(day, list)
+    }
+    return [...map.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([day, items]) => ({
+        day,
+        ...dayHeading(day),
+        items: items.sort((x, y) => x.callback_at.localeCompare(y.callback_at)),
+      }))
+  })()
   const completed = callbacks.filter(c => c.status === 'completed' || c.status === 'cancelled')
 
   return (
@@ -321,42 +375,56 @@ export default function CallbacksPage() {
         </Card>
       )}
 
-      {/* Upcoming — what is still owed. A callback past its time is the one
-          thing on this page that needs acting on, so it reads red. */}
-      <Card>
-        <CardHeader title="Upcoming" note={pending.length > 0 ? `${pending.length} owed` : undefined} />
-        {loading ? (
+      {/* One card per day. The flat list could not answer "what do I owe
+          today" without scrolling past everything already missed; a day
+          heading answers it before anything is scrolled. */}
+      {loading ? (
+        <Card>
           <div className="divide-y">
             {[1, 2, 3].map((i) => <div key={i} className="h-14 animate-pulse bg-muted/50" />)}
           </div>
-        ) : pending.length === 0 ? (
+        </Card>
+      ) : pending.length === 0 ? (
+        <Card>
+          <CardHeader title="Upcoming" />
           <p className="px-5 py-10 text-center text-sm text-muted-foreground">Nothing scheduled.</p>
-        ) : (
+        </Card>
+      ) : byDay.map(({ day, label, overdue, items }) => (
+        <Card key={day} className={overdue ? 'border-destructive/30' : undefined}>
+        <CardHeader
+          title={
+            <span className="flex items-center gap-2">
+              {label}
+              {overdue && <Pill tone="red">overdue</Pill>}
+            </span>
+          }
+          note={`${items.length} callback${items.length === 1 ? '' : 's'}`}
+        />
           <TableWrap>
           <Table>
             <thead>
               <tr>
-                {['Lead', 'Phone', 'Firm', 'Scheduled', 'Source', 'Notes', 'Assigned to', ''].map((h) => (
+                {['Time', 'Lead', 'Phone', 'Firm', 'Source', 'Notes', 'Assigned to', ''].map((h) => (
                   <Th key={h}>{h}</Th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {pending.map(cb => {
+              {items.map(cb => {
                 const isPast = new Date(cb.callback_at).getTime() < now
                 return (
                   <tr key={cb.id} className="hover:bg-muted/40">
+                    <Td className="whitespace-nowrap">
+                      <span className={`text-sm font-medium tabular-nums ${isPast ? 'text-destructive' : ''}`}>
+                        {fmtClock(cb.callback_at, cb.firm)}
+                      </span>
+                      <p className="text-[11px] text-muted-foreground">
+                        {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'} · {fmtRelative(cb.callback_at)}
+                      </p>
+                    </Td>
                     <Td className="font-medium">{cb.contact_name}</Td>
                     <Td className="font-mono text-xs text-muted-foreground">{cb.phone}</Td>
                     <Td className="text-xs uppercase text-muted-foreground">{cb.firm ? (FIRM_LABEL[cb.firm] ?? cb.firm) : '—'}</Td>
-                    <Td>
-                      <div>
-                        <span className={`text-xs font-medium ${isPast ? 'text-destructive' : 'text-primary'}`}>
-                          {fmtRelative(cb.callback_at)}
-                        </span>
-                        <p className="text-[11px] text-muted-foreground">{fmtTime(cb.callback_at, cb.firm)} {cb.firm ? (FIRM_TZ_LABEL[cb.firm] ?? 'ET') : 'ET'}</p>
-                      </div>
-                    </Td>
                     <Td><Pill tone={SOURCE_TONE[cb.source] ?? 'muted'}>{SOURCE_LABEL[cb.source] ?? cb.source}</Pill></Td>
                     <Td className="max-w-[200px] truncate text-xs text-muted-foreground">
                       {cb.callback_context ? stripHtml(cb.callback_context) : '—'}
@@ -381,8 +449,8 @@ export default function CallbacksPage() {
             </tbody>
           </Table>
           </TableWrap>
-        )}
-      </Card>
+        </Card>
+      ))}
 
       {/* Completed — kept, and dimmed. What was promised and done is the
           answer to "did anyone call them back". */}
