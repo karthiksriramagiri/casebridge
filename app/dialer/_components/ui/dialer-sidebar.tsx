@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
@@ -110,6 +110,18 @@ export function DialerSidebar({ role = 'REP' }: { role?: 'REP' | 'SUPERVISOR' | 
     .filter((g) => g.items.length > 0)
   const allItems = groups.flatMap((g) => g.items)
 
+  /* Bring the open page into view in the scrolling row.
+
+     The row holds more tabs than a phone is wide, and it always started at
+     the left edge — so opening DocuSeal, the last item, showed a nav with
+     five other pages on it and no sign of which one you were on. The active
+     tab is scrolled to on arrival. */
+  const mobileNav = useRef<HTMLElement>(null)
+  useEffect(() => {
+    const el = mobileNav.current?.querySelector('[data-active]')
+    el?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }, [pathname])
+
   return (
     <>
       <aside className="sticky top-0 hidden h-dvh w-60 shrink-0 flex-col border-r bg-card md:flex">
@@ -200,7 +212,14 @@ export function DialerSidebar({ role = 'REP' }: { role?: 'REP' | 'SUPERVISOR' | 
             <LogOut className="size-4" aria-hidden />
           </button>
         </div>
-        <nav aria-label="Dialer" className="flex gap-1 overflow-x-auto px-2 pb-2">
+        <nav
+          ref={mobileNav}
+          /* Distinct from the sidebar's own nav. Both landmarks were
+             labelled "Dialer", which leaves a screen reader announcing the
+             same navigation twice with nothing to tell them apart. */
+          aria-label="Dialer pages"
+          className="flex gap-1 overflow-x-auto px-2 pb-2 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        >
           {allItems.map((item) => {
             const active = isActive(pathname, item.href)
             const count = badgeFor(item.href)
@@ -208,9 +227,12 @@ export function DialerSidebar({ role = 'REP' }: { role?: 'REP' | 'SUPERVISOR' | 
               <Link
                 key={item.href}
                 href={item.href}
+                data-active={active || undefined}
                 aria-current={active ? 'page' : undefined}
                 className={cn(
-                  'flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-1 text-xs',
+                  /* py-2 rather than py-1: this row is the only navigation on
+                     a phone and a 24px-tall link is a miss waiting to happen. */
+                  'flex items-center gap-1 whitespace-nowrap rounded-md px-2.5 py-2 text-xs',
                   active ? 'bg-accent font-medium text-accent-foreground' : 'text-muted-foreground',
                 )}
               >
