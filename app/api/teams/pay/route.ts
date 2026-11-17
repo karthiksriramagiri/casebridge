@@ -9,7 +9,7 @@ import {
   DEFAULT_REPLACEMENT_WINDOW_DAYS,
   PERIOD_START_OVERRIDES,
 } from '@/lib/pay'
-import { reconnectBonusesFor } from '@/lib/mia/reconnect-bonus'
+import { reconnectBonusesFor, reconnectDeductionsFor, closerShareCents } from '@/lib/mia/reconnect-bonus'
 
 const admin = adminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -117,7 +117,14 @@ export async function GET() {
   const { sessions: dailySessions, totalHours } = buildDailySessions(timeRes.data || [])
 
   // --- Classify cases with tier-based commission (resets monthly) ---
-  type CaseEntry = { id: string; name: string; date: string; eligibleAt: Date; commission: number; tier: number; closeNumber: number }
+  type CaseEntry = {
+    id: string; name: string; date: string; eligibleAt: Date
+    commission: number; tier: number; closeNumber: number
+    /** What the case paid before any reconnection split. */
+    fullRate?: number
+    /** Who took the other 25%, when somebody else brought the client back. */
+    sharedWith?: string | null
+  }
   const caseSeen = new Set<string>()
 
   // First pass: collect all non-replacement signed cases
@@ -143,6 +150,16 @@ export async function GET() {
     })
   }
 
+  /* Cases this rep closed that somebody else got back on the phone.
+
+     A quarter of the commission moves to whoever reconnected it, so the
+     closer's share of those cases drops to 75%. Looked up before the tiers
+     are assigned, because the deduction applies to the rate the case earned
+     and not to some flat figure. */
+  const deductions = await reconnectDeductionsFor(
+    admin, user.id, repName ?? '', rawCases.map(c => c.id),
+  )
+
   // Sort by sign date to assign close numbers within each month
   rawCases.sort((a, b) => a.date.localeCompare(b.date))
   const monthCounts: Record<string, number> = {}
@@ -150,7 +167,17 @@ export async function GET() {
     monthCounts[c.monthKey] = (monthCounts[c.monthKey] || 0) + 1
     const closeNumber = monthCounts[c.monthKey]
     const { tier, rate } = tierCommission(closeNumber)
-    return { ...c, commission: rate, tier, closeNumber }
+
+    /* The case still counts as a close and still sets the tier — the rep
+       did close it. Only what they collect on it changes. */
+    const given = deductions.get(c.id)
+    const commission = given ? closerShareCents(rate) / 100 : rate
+
+    return {
+      ...c, commission, tier, closeNumber,
+      fullRate: rate,
+      sharedWith: given?.reconnectedByName ?? null,
+    }
   })
 
   /* What this paycheck pays, counted to the pay date rather than to now.
@@ -192,13 +219,15 @@ export async function GET() {
   const commissionClearing = clearingBeforePayday.reduce((sum, c) => sum + c.commission, 0)
   /* MIA reconnections.
 
-     A quarter of a case's commission, earned by whoever got the client back
-     on the phone when that was not the person who closed it. Paid on top of
-     the closer's full commission rather than taken out of it — the work is
-     additional, so the money is too.
+     A quarter of a case's commission, moved from the closer to whoever got
+     the client back on the phone.
+
+     This is the receiving half of the split — the giving half is applied to
+     the closer's own cases above, so the case's commission is never paid
+     twice and never paid more than once over.
 
      Counted into the estimate straight away, with no replacement window:
-     the bonus is for making the call, and a case that is later replaced does
+     the share is for making the call, and a case that is later replaced does
      not un-make it. */
   const reconnectBonuses = await reconnectBonusesFor(admin, user.id, repName ?? '')
   const reconnectEarnings = Math.round(reconnectBonuses.reduce((s, b) => s + b.amount, 0) * 100) / 100
@@ -259,14 +288,14 @@ export async function GET() {
       /* The whole cheque, with each case saying whether it has cleared its
          replacement window yet or is still to clear before payday. */
       eligibleThisPeriod: eligibleThisPeriod
-        .map(({ id, name, date, commission, tier, closeNumber, eligibleAt }) => ({
-          id, name, date, commission, tier, closeNumber,
+        .map(({ id, name, date, commission, tier, closeNumber, eligibleAt, fullRate, sharedWith }) => ({
+          id, name, date, commission, tier, closeNumber, fullRate, sharedWith,
           clearsOn: eligibleAt.toISOString().slice(0, 10),
           cleared: eligibleAt <= now,
         }))
         .sort((a, b) => a.clearsOn.localeCompare(b.clearsOn)),
-      pending: signedPending.map(({ id, name, date, commission, tier, closeNumber, eligibleAt }) => ({
-        id, name, date, commission, tier, closeNumber,
+      pending: signedPending.map(({ id, name, date, commission, tier, closeNumber, eligibleAt, fullRate, sharedWith }) => ({
+        id, name, date, commission, tier, closeNumber, fullRate, sharedWith,
         clearsOn: eligibleAt.toISOString().slice(0, 10),
       })),
     },

@@ -1,31 +1,44 @@
 /* ═══════════════════════════════════════════════════════════════════════════
-   A quarter of the commission, to whoever got them back.
+   A quarter of the commission, moved from the closer to whoever got them back.
 
    A signed case that goes quiet is money already booked and walking out. The
    closer is usually busy closing; the rep who works the MIA board and gets
-   through is doing the work that saves it. So that rep earns 25% of what the
-   case paid — and the closer keeps their full commission. This is an
-   addition, not a split.
+   through is the one who saves it. So a quarter of that case's commission
+   moves across: the reconnector gains 25%, the closer keeps 75%.
 
-   Three things have to be true before a penny is owed:
+   It is a SPLIT, not a bonus. The case still pays exactly what it always
+   paid — the same $30, $40 or $50 — and the only question is who collects
+   it. Nothing here creates money, so the two halves must always add back to
+   the whole; that is what the arithmetic below is for.
+
+   Three things have to be true before anything moves:
 
      someone reconnected it   reconnected_by_id and reconnected_at are set
      it was not the closer    reconnecting your own case is just finishing it
      the case actually paid   it has to resolve to a signed lead with a rate
 
    The rate is the case's own tier, not the reconnector's. A case closed as
-   somebody's 30th of the month paid $50, so saving it is worth $12.50 —
+   somebody's 30th of the month paid $50, so saving it moves $12.50 —
    whatever tier the rep doing the saving happens to be on themselves.
    ═══════════════════════════════════════════════════════════════════════════ */
 
 import { tierCommission } from '@/lib/pay'
 
-/** The share of a case's commission earned for reconnecting it. */
+/** The share of a case's commission that moves to the reconnecting rep. */
 export const RECONNECT_SHARE = 0.25
 
-/** 25% of a tier rate, in whole cents. $30 → 750, $40 → 1000, $50 → 1250. */
+/** The reconnector's share, in whole cents. $30 → 750, $40 → 1000, $50 → 1250. */
 export function reconnectBonusCents(tierRate: number): number {
   return Math.round(tierRate * RECONNECT_SHARE * 100)
+}
+
+/* What the closer is left with — the remainder, not an independent sum.
+
+   Taking 75% directly would let rounding lose or invent a cent on a rate
+   that does not divide cleanly. Subtracting from the whole means the two
+   shares always add back to exactly what the case paid, whatever the rate. */
+export function closerShareCents(tierRate: number): number {
+  return Math.round(tierRate * 100) - reconnectBonusCents(tierRate)
 }
 
 export interface ReconnectBonus {
@@ -34,8 +47,10 @@ export interface ReconnectBonus {
   /** The full commission the case paid its closer. */
   caseRate:     number
   tier:         number
-  /** What the reconnecting rep earns, in dollars. */
+  /** What moves to the reconnecting rep, in dollars. */
   amount:       number
+  /** What the closer is left with on this case, in dollars. */
+  closerKeeps:  number
   closerName:   string | null
   reconnectedAt: string
   /** The month the bonus belongs to, YYYY-MM — the month the case signed. */
@@ -153,6 +168,7 @@ export async function reconnectBonusesFor(
       caseRate: rate,
       tier,
       amount: reconnectBonusCents(rate) / 100,
+      closerKeeps: closerShareCents(rate) / 100,
       closerName: closerName || c.closer || null,
       reconnectedAt: String(c.reconnected_at),
       monthKey: String(lead.qualified_at).slice(0, 7),
@@ -160,5 +176,55 @@ export async function reconnectBonusesFor(
   }
 
   out.sort((a, b) => b.reconnectedAt.localeCompare(a.reconnectedAt))
+  return out
+}
+
+/* The other side of the split: what a closer gives up.
+
+   Looked up by lead id, because that is what a closed case is keyed on
+   everywhere else. Only cases somebody ELSE reconnected appear — a closer
+   who got their own case back gives up nothing.
+
+   Returns an empty map when the migration has not been run, which reads as
+   "nobody has reconnected anything", and leaves every commission whole.
+*/
+export async function reconnectDeductionsFor(
+  admin: any,
+  closerProfileId: string,
+  closerName: string,
+  leadIds: string[],
+): Promise<Map<string, { share: number; reconnectedByName: string | null }>> {
+  const out = new Map<string, { share: number; reconnectedByName: string | null }>()
+  if (!leadIds.length) return out
+
+  const rows: any[] = []
+  for (let i = 0; i < leadIds.length; i += 200) {
+    const { data, error } = await admin
+      .from('mia_cases')
+      .select('lead_id, closer, closer_id, reconnected_by_id, reconnected_by, reconnected_at')
+      .in('lead_id', leadIds.slice(i, i + 200))
+      .not('reconnected_by_id', 'is', null)
+      .not('reconnected_at', 'is', null)
+    if (error) {
+      if (!/column .* does not exist|schema cache/i.test(error.message || '')) {
+        console.error('[mia:deduction]', error.message)
+      }
+      return out
+    }
+    rows.push(...(data ?? []))
+  }
+
+  for (const r of rows) {
+    if (!r.lead_id) continue
+    // The rep who reconnected it is the one being paid; if that is this
+    // closer, nothing moves.
+    if (r.reconnected_by_id === closerProfileId) continue
+    // And only deduct from the person who actually closed it.
+    if (!isTheCloser(r, closerProfileId, closerName)) continue
+    out.set(String(r.lead_id), {
+      share: RECONNECT_SHARE,
+      reconnectedByName: r.reconnected_by ?? null,
+    })
+  }
   return out
 }

@@ -757,7 +757,9 @@ function DetailSheet({
           </div>
 
           {/* Who closed it, stated before the owner picker rather than after,
-              because it is the fact that decides who the owner should be. */}
+              because it is the fact that decides who the owner should be —
+              and, when somebody else reconnects the case, whose commission
+              the 25% comes out of. */}
           {c.closerName && (
             <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2.5">
               <p className="text-xs">
@@ -800,15 +802,28 @@ function DetailSheet({
                 </Button>
               )}
             </div>
-            {c.reconnectedById && (
-              <p className="pt-1 text-xs text-muted-foreground">
-                {c.closerId
-                  ? c.reconnectedById === c.closerId
-                  : (c.reconnectedByName ?? '').trim().toLowerCase() === (c.closerName ?? '').trim().toLowerCase()
-                  ? 'Their own case — no reconnection bonus.'
-                  : <>Earns <b className="font-semibold text-foreground">25%</b> of this case&rsquo;s commission.</>}
-              </p>
-            )}
+            {c.reconnectedById && (() => {
+              /* Same case, same money — the only question is who collects it.
+                 Saying whose 25% it is matters, because it comes out of a
+                 named person's pay rather than from nowhere. */
+              const ownCase = c.closerId
+                ? c.reconnectedById === c.closerId
+                : (c.reconnectedByName ?? '').trim().toLowerCase() ===
+                  (c.closerName ?? '').trim().toLowerCase()
+              return (
+                <p className="pt-1 text-xs text-muted-foreground">
+                  {ownCase ? (
+                    'Their own case — the commission stays whole.'
+                  ) : (
+                    <>
+                      Takes <b className="font-semibold text-foreground">25%</b> of this
+                      case&rsquo;s commission{c.closerName ? <> from <b className="font-semibold text-foreground">{c.closerName}</b></> : null},
+                      who keeps 75%.
+                    </>
+                  )}
+                </p>
+              )
+            })()}
           </div>
 
           <div>
