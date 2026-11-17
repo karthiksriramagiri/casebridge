@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { upsertCallback } from '@/lib/dialer/callback-upsert'
 
 function supabaseAdmin() {
   return createClient(
@@ -140,9 +141,7 @@ export async function POST(req: NextRequest) {
     source:           'ghl',
     ghl_task_id:      ghlTaskId,
   }
-  const { error } = ghlTaskId
-    ? await db.from('dialer_callbacks').upsert(row, { onConflict: 'ghl_task_id' })
-    : await db.from('dialer_callbacks').insert(row)
+  const { error } = await upsertCallback(db, row)
 
   if (error) {
     console.error('[callback-webhook] insert error:', error)
