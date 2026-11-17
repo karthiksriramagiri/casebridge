@@ -26,20 +26,11 @@ export const dynamic = 'force-dynamic'
    ═══════════════════════════════════════════════════════════════════════════ */
 
 const WEBHOOK = (process.env.SLACK_MIA_WEBHOOK || '').trim().replace(/\\n$/, '')
-const BOARD_URL = 'https://teams.case-bridge.com/teams/mia'
 
 const admin = () => createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
-
-/** How long a case has been sitting, in words a rep reads at a glance. */
-function waiting(since: string | null): string {
-  if (!since) return ''
-  const days = Math.floor((Date.now() - Date.parse(since)) / 86_400_000)
-  if (!Number.isFinite(days) || days < 0) return ''
-  return days === 0 ? 'today' : days === 1 ? '1 day' : `${days} days`
-}
 
 export async function GET(req: NextRequest) {
   /* Vercel sends the secret; a browser hitting this by accident must not
@@ -66,10 +57,10 @@ export async function GET(req: NextRequest) {
 
   const db = admin()
   const [{ data: cases, error }, { data: profiles }] = await Promise.all([
-    db.from('mia_cases')
-      .select('name, phone, firm_id, closer, created_at')
-      .eq('status', 'mia')
-      .order('created_at', { ascending: true }),
+    /* Only the count is needed — the message does not list them. A head
+       count still has to be a real query, because an empty board is the one
+       case where saying nothing is right. */
+    db.from('mia_cases').select('id', { count: 'exact' }).eq('status', 'mia'),
     db.from('profiles').select('name, slack_user_id'),
   ])
 
@@ -81,40 +72,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ sent: false, reason: 'board is empty', rep: rep.name })
   }
 
-  const { data: firms } = await db.from('firms').select('id, name')
-  const firmName = (id: string | null) =>
-    id ? ((firms ?? []).find((f: any) => f.id === id)?.name ?? null) : null
-
   /* A real mention where we have the id, the plain name where we do not.
      Only one rep has a slack_user_id today, so most of these are names —
      which still reads correctly, it just does not buzz their phone. */
   const slackId = (profiles ?? []).find(
     (p: any) => String(p.name || '').trim().toLowerCase() === rep.name.toLowerCase(),
   )?.slack_user_id
-  const mention = slackId ? `<@${slackId}>` : `*${rep.name}*`
+  const mention = slackId ? `<@${slackId}>` : rep.name
 
-  const lines = cases.map(c => {
-    const bits = [c.phone, firmName(c.firm_id), waiting(c.created_at)].filter(Boolean)
-    return `• *${c.name}* — ${bits.join('  ·  ')}`
-  })
-
-  const blocks: unknown[] = [
-    {
-      type: 'section',
-      text: {
-        type: 'mrkdwn',
-        text: `🔴 *MIA calls — ${at(WINDOW_TZ)} PT*\n${mention}, these are yours this hour. Call every one.`,
-      },
-    },
-    { type: 'section', text: { type: 'mrkdwn', text: lines.join('\n') } },
-    {
-      type: 'context',
-      elements: [{
-        type: 'mrkdwn',
-        text: `${cases.length} on the board  ·  on shift now: ${onShift.map(s => s.name).join(', ')}  ·  <${BOARD_URL}|Open the MIA board>`,
-      }],
-    },
-  ]
+  const text = `${mention} This is an hourly reminder. Please call all the MIAs on the Board.`
 
   if (!WEBHOOK) {
     console.error('[cron:mia-reminder] SLACK_MIA_WEBHOOK is not set')
@@ -127,7 +93,7 @@ export async function GET(req: NextRequest) {
     const res = await fetch(WEBHOOK, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ text: `MIA calls for ${rep.name} — ${cases.length} on the board`, blocks }),
+      body: JSON.stringify({ text }),
       signal: ctrl.signal,
     })
     clearTimeout(timer)
