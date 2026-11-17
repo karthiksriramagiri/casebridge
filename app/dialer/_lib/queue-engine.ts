@@ -154,7 +154,7 @@ export async function syncGHLToQueue(): Promise<{
     sb.from('dialer_cadence_rules').select('stage_name, calls_per_day, enabled'),
     sb.from('dialer_lead_state').select('contact_id, suppressed, exhausted'),
     (async () => ({ data: await fetchAll(() => sb.from('dialer_attempts')
-      .select('id, contact_id, attempt_number, status, stage_name, priority, lead_created_at')
+      .select('id, contact_id, attempt_number, status, stage_name, priority, lead_created_at, due_from')
       .eq('plan_date', today)
       .eq('is_callback', false)) }))(),
   ])
@@ -169,7 +169,7 @@ export async function syncGHLToQueue(): Promise<{
     if (row.suppressed || row.exhausted) skip.add(row.contact_id)
   }
 
-  const existing = new Map<string, { id: string; status: string; stage_name: string; priority: number; lead_created_at: string | null }>()
+  const existing = new Map<string, { id: string; status: string; stage_name: string; priority: number; lead_created_at: string | null; due_from: string | null }>()
   for (const a of existingRes.data ?? []) existing.set(`${a.contact_id}:${a.attempt_number}`, a as any)
 
   // ── Which (pipeline, stage) pairs to sweep ───────────────────────────────
@@ -206,7 +206,12 @@ export async function syncGHLToQueue(): Promise<{
   const seen       = new Set<string>()
   const queuedKeys = new Set<string>()
   const toInsert:     Record<string, any>[] = []
-  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number; lead_created_at: string | null }[] = []
+  const toUpdate: {
+    id: string; stage_name: string; stage_id: string; priority: number
+    lead_created_at: string | null
+    slot: { dueFrom: Date; dueUntil: Date; dayEndsAt: Date; block: string } | null
+    attempts_total: number
+  }[] = []
   const toReactivate: { id: string; fields: Record<string, any> }[] = []
   let skipped = 0
 
@@ -308,10 +313,28 @@ export async function syncGHLToQueue(): Promise<{
                  next morning rebuilt it from scratch. GHL is the truth; this
                  is where we hear it. */
               const freshMoved = newCols && leadCreatedAt && prev.lead_created_at !== leadCreatedAt
-              if (prev.stage_name !== stage.name || prev.priority !== priority || freshMoved) {
+
+              /* A pending row's slot is re-planned, not just its stage.
+
+                 Only the insert ever set due_from, so a row planned under an
+                 older schedule kept that schedule for the rest of the day
+                 however much the plan changed underneath it. Today's queue
+                 was showing slots at 5:20 AM and 11:50 PM — times nobody may
+                 be called at — because they were computed by a planner that
+                 clipped its windows differently.
+
+                 Pending only. A buffered row is sitting in front of a rep
+                 right now and moving its window under them reads as the list
+                 rewriting itself; it will be re-planned the moment it goes
+                 back to the pool. */
+              const reslot = prev.status === 'pending' && prev.due_from !== slot.dueFrom.toISOString()
+
+              if (prev.stage_name !== stage.name || prev.priority !== priority || freshMoved || reslot) {
                 toUpdate.push({
                   id: prev.id, stage_name: stage.name, stage_id: stage.id, priority,
                   lead_created_at: newCols ? leadCreatedAt : null,
+                  slot: reslot ? slot : null,
+                  attempts_total: slots.length,
                 })
               }
             }
@@ -383,21 +406,29 @@ export async function syncGHLToQueue(): Promise<{
     }
   }
 
-  type Group = { stage_name: string; stage_id: string; priority: number; lead_created_at: string | null; ids: string[] }
-  const groups = new Map<string, Group>()
+  /* Grouped by the whole payload so rows sharing one go in a single
+     statement. Leads that moved in the same sync tend to share a timestamp
+     and a stage, so this stays a handful of requests rather than one a row. */
+  const groups = new Map<string, { payload: Record<string, any>; ids: string[] }>()
   for (const u of toUpdate) {
-    const k = `${u.stage_name}:${u.priority}:${u.lead_created_at ?? ''}`
-    if (!groups.has(k)) groups.set(k, { ...u, ids: [] })
+    const payload: Record<string, any> = {
+      stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority, updated_at: now,
+    }
+    if (u.lead_created_at) payload.lead_created_at = u.lead_created_at
+    if (u.slot) {
+      payload.due_from    = u.slot.dueFrom.toISOString()
+      payload.due_until   = u.slot.dueUntil.toISOString()
+      payload.day_ends_at = u.slot.dayEndsAt.toISOString()
+      payload.block       = u.slot.block
+      payload.attempts_total = u.attempts_total
+    }
+    const k = JSON.stringify(payload)
+    if (!groups.has(k)) groups.set(k, { payload, ids: [] })
     groups.get(k)!.ids.push(u.id)
   }
   for (const g of groups.values()) {
     for (let i = 0; i < g.ids.length; i += 500) {
-      await sb.from('dialer_attempts')
-        .update({
-          stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now,
-          ...(g.lead_created_at ? { lead_created_at: g.lead_created_at } : {}),
-        })
-        .in('id', g.ids.slice(i, i + 500))
+      await sb.from('dialer_attempts').update(g.payload).in('id', g.ids.slice(i, i + 500))
     }
   }
 
