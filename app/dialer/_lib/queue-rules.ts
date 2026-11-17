@@ -85,14 +85,34 @@ export const APPOINTMENT_MISSED_RANK = RANK.FOLLOW_UP
 /* How long a lead counts as fresh.
 
    Speed to lead is the whole game, so for two days a new lead outranks every
-   case we already have and is called every two hours. After that it has had
-   fourteen-odd attempts and is worked on its stage's own merits. */
+   case we already have and is called every two hours — six times across a
+   full calling day. After that it is worked on its stage's own merits. */
 export const FRESH_WINDOW_HOURS = 48
 export const FRESH_GAP_MINUTES  = 120
 
-/** Did this lead arrive inside the fresh window? */
-export function isFresh(leadCreatedAt: string | Date | null | undefined, now = Date.now()): boolean {
+/* Being new is not enough on its own — the lead also has to be unworked.
+
+   Freshness answers "nobody has got hold of this person yet", and the only
+   two stages that still mean that are the one a lead lands in and the one it
+   falls to when it does not pick up. The moment a rep has actually spoken to
+   someone and moved them to Chase, Follow Up, Contract Sent, an appointment
+   or MIA, the lead has been worked: it is a case now, and it ranks as the
+   case it is. Without this a signed-in-the-morning Contract Sent sat at the
+   very top of the floor's list all day on the strength of having arrived
+   recently, which is the opposite of what the fresh tier is for. */
+const FRESH_STAGES = new Set(['new lead', 'no response'])
+
+/** Is this lead inside its first 48 hours AND still unworked? */
+export function isFresh(
+  leadCreatedAt: string | Date | null | undefined,
+  stageName?: string | null,
+  now = Date.now(),
+): boolean {
   if (!leadCreatedAt) return false
+  /* Called with no stage — scheduling, which asks only about age. */
+  if (stageName !== undefined && !FRESH_STAGES.has(String(stageName ?? '').trim().toLowerCase())) {
+    return false
+  }
   const t = leadCreatedAt instanceof Date ? leadCreatedAt.getTime() : Date.parse(leadCreatedAt)
   if (!Number.isFinite(t)) return false
   return now - t < FRESH_WINDOW_HOURS * 3_600_000
@@ -133,7 +153,7 @@ export function rankOf(a: Rankable, now = Date.now()): number {
     return inWindow(a.due_from, a.due_until, now) ? RANK.APPOINTMENT_LIVE : APPOINTMENT_MISSED_RANK
   }
 
-  if (isFresh(a.lead_created_at, now)) return RANK.FRESH
+  if (isFresh(a.lead_created_at, stage, now)) return RANK.FRESH
 
   return STAGE_RANK[stage] ?? RANK.NO_RESPONSE
 }
@@ -267,16 +287,6 @@ export const DEFAULT_CADENCE: Record<string, number> = {
   'no response':           4,
 }
 
-export type BlockName = 'morning' | 'afternoon' | 'evening' | 'night'
-
-/** A display label for a time, so the UI can group a day into four parts. */
-export function blockForHour(hourLocal: number): BlockName {
-  if (hourLocal < 11.5) return 'morning'
-  if (hourLocal < 14.5) return 'afternoon'
-  if (hourLocal < 17.5) return 'evening'
-  return 'night'
-}
-
 /* Turn a wall-clock time in some timezone into the UTC instant it names.
 
    Formats a probe instant in the target zone, measures how far that is from
@@ -297,21 +307,10 @@ export function wallClockToUTC(dateStr: string, h: number, m: number, timezone: 
   return new Date(probe.getTime() + (probe.getTime() - asUtc))
 }
 
-/** The hour-of-day a UTC instant lands on in some timezone, as a decimal. */
-export function localHour(at: Date, timezone: string): number {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: timezone, hour: '2-digit', minute: '2-digit', hour12: false,
-  }).formatToParts(at)
-  const h = Number(parts.find(p => p.type === 'hour')?.value ?? 0)
-  const m = Number(parts.find(p => p.type === 'minute')?.value ?? 0)
-  return (h === 24 ? 0 : h) + m / 60
-}
-
 export interface Slot {
   dueFrom:   Date
   dueUntil:  Date
   dayEndsAt: Date
-  block:     BlockName
 }
 
 /* Today's calling slots for one lead.
@@ -337,25 +336,34 @@ export function slotsForDay(opts: {
   timezone:      string
   callsPerDay:   number
   leadCreatedAt: Date | null     // when the lead first arrived
+  stageName?:    string | null   // decides fresh the same way the ladder does
   now?:          Date
 }): Slot[] {
-  const { planDate, timezone, callsPerDay, leadCreatedAt } = opts
+  const { planDate, timezone, callsPerDay, leadCreatedAt, stageName } = opts
 
   const dayStart = wallClockToUTC(planDate, DAY_START_H, DAY_START_M, timezone)
   const dayEnd   = wallClockToUTC(planDate, DAY_END_H,   DAY_END_M,   timezone)
   if (dayEnd <= dayStart) return []
 
-  const label = (d: Date): BlockName => blockForHour(localHour(d, timezone))
+  /* No block label. The day used to be carved into four named parts and
+     every slot tagged with the one it fell in, which meant a lead's time was
+     described twice — once as a clock range, once as a word that only
+     approximated it. A slot every two hours does not land in four buckets,
+     so the word had stopped agreeing with the times beside it. The range is
+     the whole truth; the label was noise on top of it. */
   const build = (starts: Date[]): Slot[] =>
     starts.map((dueFrom, i) => ({
       dueFrom,
       dueUntil:  starts[i + 1] ?? dayEnd,
       dayEndsAt: dayEnd,
-      block:     label(dueFrom),
     }))
 
   // ── Fresh: every two hours, for as long as the lead is still fresh ──────
-  if (leadCreatedAt && isFresh(leadCreatedAt, dayStart.getTime())) {
+  /* The same test the ladder uses, stage included. Scheduling and ranking
+     have to agree: a lead given the two-hour cadence but ranked as Contract
+     Sent would be planned for six calls it would never climb high enough to
+     receive. */
+  if (leadCreatedAt && isFresh(leadCreatedAt, stageName, dayStart.getTime())) {
     const gapMs    = FRESH_GAP_MINUTES * 60_000
     const freshEnd = leadCreatedAt.getTime() + FRESH_WINDOW_HOURS * 3_600_000
     const stop     = Math.min(dayEnd.getTime(), freshEnd)

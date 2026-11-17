@@ -35,7 +35,7 @@ function ordinal(n: number) {
 
 /* Why this lead, and not another one.
 
-   It used to read the stage and the block name, which told a rep what the
+   It used to read the stage and a block name, which told a rep what the
    database called the row rather than why it was in front of them. The tier
    is the answer to that question — "New lead" and "Appointment now" are
    worth saying out loud, and they are exactly the ones the stage name hid. */
@@ -133,7 +133,6 @@ export function MiniQueue({ repIdentity, disabled, onCall, onSelect, refreshKey,
         callbackContext:  null,
         ownerRepIdentity: item.owner_rep ?? item.ownerRepIdentity,
         priority:         item.priority,
-        block:            item.block,
         attempt_number:   item.attempt_number,
         attempts_total:   item.attempts_total,
         is_carryover:     item.is_carryover,

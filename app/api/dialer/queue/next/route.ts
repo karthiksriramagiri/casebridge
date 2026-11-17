@@ -105,7 +105,6 @@ function attemptToLead(a: Attempt) {
     owner_rep:        a.owner_rep,
     priority:         a.priority,
     // New fields
-    block:            a.block,
     /* The client ranks what it is shown, so it needs what the ladder reads.
        Without lead_created_at every lead renders as its stage and a rep
        cannot tell a twenty-minute-old lead from a three-week-old one. */

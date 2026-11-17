@@ -15,7 +15,6 @@ interface Attempt {
   plan_date:      string
   attempt_number: number
   attempts_total: number
-  block:          string
   lead_timezone:  string
   due_from:       string
   due_until:      string
@@ -135,7 +134,6 @@ export default function QueueAdminPage() {
   // Filters
   const [firm,   setFirm]   = useState('')
   const [status, setStatus] = useState('')
-  const [block,  setBlock]  = useState('')
   const [state,  setState]  = useState('')      // table view only
   const [search, setSearch] = useState('')
   const [tab,    setTab]    = useState<'active' | 'done' | 'callbacks' | 'all'>('active')
@@ -284,7 +282,6 @@ export default function QueueAdminPage() {
     const params = new URLSearchParams({ limit: '10000' })
     if (firm)   params.set('firm', firm)
     if (status) params.set('status', status)
-    if (block)  params.set('block', block)
     if (tab === 'done') params.set('status', 'completed')
     // Let the server drop terminal rows for the Active tab rather than
     // shipping them to be filtered out here.
@@ -295,7 +292,7 @@ export default function QueueAdminPage() {
     setItems(data.items ?? [])
     setSummary(data.summary ?? null)
     setLoading(false)
-  }, [firm, status, block, tab])
+  }, [firm, status, tab])
 
   // Initial load
   useEffect(() => { fetchData(); fetchReps() }, [fetchData, fetchReps])
@@ -382,20 +379,10 @@ export default function QueueAdminPage() {
 
   /* One order, the ladder, for everyone.
 
-     This used to group by assigned rep and then by block, which is why
-     Contract Sent leads appeared scattered down the list behind whichever
-     rep's morning happened to sort first. Rep and block no longer influence
-     position at all — the list reads top to bottom as the work to do:
-
-       callbacks (a promise at a stated time)
-       appointment scheduled
-       contract sent
-       chase
-       today's leads   (any stage)
-       follow up required
-       no response     (newest first)
-
-     Firm never enters the sort. */
+This used to group by assigned rep and then by block, which is
+     why the list never read as a queue — the top of the page was whichever
+     rep's morning happened to sort first. Neither influences the order any
+     more; the ladder does. */
   /* One row per lead — the attempt that is actually next for them.
 
      The table listed every planned attempt, so a lead with six scheduled
@@ -607,15 +594,6 @@ export default function QueueAdminPage() {
           <option value="lhp">Larry H. Parker</option>
           <option value="fears">Fears Law</option>
           <option value="jm">Jacoby &amp; Meyers</option>
-        </select>
-
-        <select value={block} onChange={e => setBlock(e.target.value)}
-          className="rounded-lg border border-input bg-card px-3 py-1.5 text-sm text-foreground">
-          <option value="">All blocks</option>
-          <option value="morning">Morning</option>
-          <option value="afternoon">Afternoon</option>
-          <option value="evening">Evening</option>
-          <option value="night">Night</option>
         </select>
 
         <select value={state} onChange={e => setState(e.target.value)}
@@ -912,7 +890,7 @@ export default function QueueAdminPage() {
           <table className="w-full text-sm">
             <thead className="sticky top-0 bg-card border-b border-border">
               <tr>
-                {['#', 'Lead', 'State', 'Firm / Stage', 'Attempt', 'Block / Window', 'Callback', 'Assigned', 'Status', 'Disposition', ''].map(h => (
+                {['#', 'Lead', 'State', 'Firm / Stage', 'Attempt', 'Next call', 'Callback', 'Assigned', 'Status', 'Disposition', ''].map(h => (
                   <th key={h || '_actions'} className="px-4 py-2.5 text-left text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{h}</th>
                 ))}
               </tr>

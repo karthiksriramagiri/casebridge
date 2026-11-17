@@ -5,7 +5,17 @@ export const maxDuration = 120
 
 export async function POST(req: NextRequest) {
   const body = await req.json()
-  const { contactId, contactIds } = body
+  const { contactId, contactIds, fresh, subject } = body
+
+  /* A redo clears the intake fields and re-extracts; a subject re-points the
+     extraction at someone else in the vehicle. Both are destructive on
+     purpose — they exist because what is on the contact is wrong. */
+  const opts = {
+    fresh: fresh === true,
+    subject: subject && typeof subject.name === 'string' && subject.name.trim()
+      ? { name: String(subject.name).trim(), relationship: subject.relationship ? String(subject.relationship) : undefined }
+      : null,
+  }
 
   // Dry run — show what would be read, spend no Anthropic call.
   if (contactId && body.preview) {
@@ -14,7 +24,7 @@ export async function POST(req: NextRequest) {
 
   // Single contact
   if (contactId && !contactIds) {
-    const result = await runIntakeFill(contactId)
+    const result = await runIntakeFill(contactId, opts)
     return NextResponse.json(result)
   }
 
@@ -25,7 +35,7 @@ export async function POST(req: NextRequest) {
     }
     const results = []
     for (const id of contactIds) {
-      const result = await runIntakeFill(id)
+      const result = await runIntakeFill(id, opts)
       results.push(result)
     }
     return NextResponse.json({ results })

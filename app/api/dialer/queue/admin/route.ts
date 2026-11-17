@@ -10,14 +10,12 @@ function supabaseAdmin() {
 // Query params:
 //   firm=lhp|fears
 //   status=pending|buffered|leased|completed|cancelled|expired|merged
-//   block=morning|afternoon|evening|night
 //   exhausted=true|false  (reads dialer_lead_state)
 //   limit, offset
 export async function GET(req: NextRequest) {
   const sp      = req.nextUrl.searchParams
   const firm    = sp.get('firm')    ?? ''
   const status  = sp.get('status')  ?? ''
-  const block   = sp.get('block')   ?? ''
   const exhausted = sp.get('exhausted')
   const limit   = parseInt(sp.get('limit')  ?? '10000', 10)
   /* The Active tab drops completed/cancelled client-side. Sending them anyway
@@ -48,7 +46,6 @@ export async function GET(req: NextRequest) {
 
   if (firm)   q = q.eq('firm', firm)
   if (status) q = q.eq('status', status)
-  if (block)  q = q.eq('block', block)
   if (activeOnly) q = q.not('status', 'in', '(completed,cancelled,expired,merged)')
   if (exhausted === 'false') {
     // Exclude exhausted leads — join isn't directly possible; filter via NOT IN

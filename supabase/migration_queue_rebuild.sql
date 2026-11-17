@@ -96,3 +96,21 @@ where not exists (
 -- money already booked and walking out.
 update public.dialer_cadence_rules set calls_per_day = 6, enabled = true
  where lower(stage_name) = 'mia';
+
+-- ── 6. The day is no longer carved into named blocks ────────────────────────
+-- Every slot carried a clock range AND a word — morning, afternoon, evening,
+-- night — that only approximated it. A slot every two hours does not land in
+-- four buckets, so the word had stopped agreeing with the times beside it.
+-- The range is the whole truth.
+--
+-- The column is made nullable rather than dropped, because production still
+-- runs the previous engine and that one writes it on every insert. Once the
+-- rebuild is deployed this becomes safe:
+--
+--     alter table public.dialer_attempts drop column block;
+--
+alter table public.dialer_attempts alter column block drop not null;
+alter table public.dialer_attempts alter column block set default null;
+
+comment on column public.dialer_attempts.block is
+  'Deprecated. The day is no longer divided into named blocks; due_from/due_until carry the whole truth. Drop once the previous engine is off production.';

@@ -25,7 +25,6 @@ import {
   CALLABLE_STAGES, isCallableStage, DEFAULT_CADENCE, MAX_LEAD_AGE_DAYS,
   slotsForDay, orderQueue, compare, dialedTooRecently, rankOf, rankLabel,
   queueToday, isFresh, inWindow, MIN_REDIAL_GAP_MS,
-  type BlockName,
 } from './queue-rules'
 
 export {
@@ -80,7 +79,9 @@ export interface Attempt {
   plan_date:          string
   attempt_number:     number
   attempts_total:     number
-  block:              string
+  /** @deprecated the day is no longer carved into named blocks. The column
+   *  still exists because production writes it; drop it after deploy. */
+  block:              string | null
   lead_timezone:      string
   due_from:           string
   due_until:          string
@@ -123,6 +124,23 @@ async function hasNewColumns(): Promise<boolean> {
     console.warn('[queue] migration_queue_rebuild.sql has not been run — freshness falls back to stage_changed_at')
   }
   return HAS_NEW_COLUMNS
+}
+
+/* `block` is dead but the column is still NOT NULL on production, because the
+   engine that is deployed there writes it on every insert. Rather than make
+   the rebuild wait on a migration, the first insert that trips the not-null
+   constraint turns a stub back on for the rest of the process. Nothing ever
+   reads the value. Once migration_queue_rebuild.sql has run — or the column
+   is dropped — this never fires again. */
+let BLOCK_STUB_NEEDED = false
+const NOT_NULL_VIOLATION = '23502'
+
+function withBlockStub<T extends Record<string, any>>(row: T): T {
+  return BLOCK_STUB_NEEDED && row.block === undefined ? { ...row, block: '' } : row
+}
+
+function isBlockNotNull(err: { code?: string; message?: string } | null): boolean {
+  return err?.code === NOT_NULL_VIOLATION && /\bblock\b/.test(err.message ?? '')
 }
 
 /** PostgREST stops at 1000 rows however wide the range. Page, always. */
@@ -209,7 +227,7 @@ export async function syncGHLToQueue(): Promise<{
   const toUpdate: {
     id: string; stage_name: string; stage_id: string; priority: number
     lead_created_at: string | null
-    slot: { dueFrom: Date; dueUntil: Date; dayEndsAt: Date; block: string } | null
+    slot: { dueFrom: Date; dueUntil: Date; dayEndsAt: Date } | null
     attempts_total: number
   }[] = []
   const toReactivate: { id: string; fields: Record<string, any> }[] = []
@@ -275,6 +293,7 @@ export async function syncGHLToQueue(): Promise<{
           timezone,
           callsPerDay,
           leadCreatedAt: freshAnchor,
+          stageName:     stage.name,
         })
         if (slots.length === 0) { skipped++; continue }
 
@@ -296,7 +315,7 @@ export async function syncGHLToQueue(): Promise<{
                 due_from: slot.dueFrom.toISOString(),
                 due_until: slot.dueUntil.toISOString(),
                 day_ends_at: slot.dayEndsAt.toISOString(),
-                attempts_total: slots.length, block: slot.block,
+                attempts_total: slots.length,
                 buffered_for: null, buffered_at: null,
                 leased_by: null, leased_at: null, lease_expires_at: null,
                 completed_by: null, completed_at: null, disposition: null,
@@ -361,7 +380,6 @@ export async function syncGHLToQueue(): Promise<{
             plan_date:          today,
             attempt_number:     i + 1,
             attempts_total:     slots.length,
-            block:              slot.block,
             lead_timezone:      timezone,
             due_from:           slot.dueFrom.toISOString(),
             due_until:          slot.dueUntil.toISOString(),
@@ -396,11 +414,20 @@ export async function syncGHLToQueue(): Promise<{
   let created = 0
   for (let i = 0; i < toInsert.length; i += 500) {
     const chunk = toInsert.slice(i, i + 500)
-    const { error } = await sb.from('dialer_attempts').insert(chunk)
+    let { error } = await sb.from('dialer_attempts').insert(chunk.map(withBlockStub))
+
+    if (isBlockNotNull(error)) {
+      if (!BLOCK_STUB_NEEDED) {
+        console.warn('[queue:plan] dialer_attempts.block is still NOT NULL — run migration_queue_rebuild.sql; stubbing it meanwhile')
+        BLOCK_STUB_NEEDED = true
+      }
+      ;({ error } = await sb.from('dialer_attempts').insert(chunk.map(withBlockStub)))
+    }
+
     if (!error) { created += chunk.length; continue }
     console.error('[queue:plan] chunk of %d failed (%s) — retrying individually', chunk.length, error.code)
     for (const row of chunk) {
-      const { error: rowErr } = await sb.from('dialer_attempts').insert(row)
+      const { error: rowErr } = await sb.from('dialer_attempts').insert(withBlockStub(row))
       if (!rowErr) created++
       else if (rowErr.code !== '23505') console.error('[queue:plan] row failed', rowErr.code, row.contact_id)
     }
@@ -419,7 +446,6 @@ export async function syncGHLToQueue(): Promise<{
       payload.due_from    = u.slot.dueFrom.toISOString()
       payload.due_until   = u.slot.dueUntil.toISOString()
       payload.day_ends_at = u.slot.dayEndsAt.toISOString()
-      payload.block       = u.slot.block
       payload.attempts_total = u.attempts_total
     }
     const k = JSON.stringify(payload)
@@ -522,7 +548,6 @@ export async function syncCallbacksIntoQueue(): Promise<number> {
       plan_date:    today,
       attempt_number: 1,
       attempts_total: 1,
-      block:        'morning',
       lead_timezone: 'America/Los_Angeles',
       due_from:     at.toISOString(),
       /* A promise does not expire at the end of an hour. The window stays
@@ -545,7 +570,11 @@ export async function syncCallbacksIntoQueue(): Promise<number> {
   })
 
   if (!rows.length) return 0
-  const { error } = await sb.from('dialer_attempts').insert(rows)
+  let { error } = await sb.from('dialer_attempts').insert(rows.map(withBlockStub))
+  if (isBlockNotNull(error)) {
+    BLOCK_STUB_NEEDED = true
+    ;({ error } = await sb.from('dialer_attempts').insert(rows.map(withBlockStub)))
+  }
   if (error) {
     console.error('[queue:callbacks] insert failed', error.message)
     return 0
