@@ -365,11 +365,12 @@ function Card({
             <User className="size-2.5" aria-hidden /> {c.ownerName}
           </Pill>
         ) : c.closerName ? (
-          /* Unclaimed, but not unassigned in spirit: the closer gets the
-             first call, so an untouched card says whose it is rather than
-             inviting whoever is nearest to ring a stranger's client. */
+          /* Unclaimed, but not unassigned in spirit: an untouched card names
+             the closer rather than inviting whoever is nearest to ring a
+             stranger's client. Just the fact — the floor knows what it
+             means, and spelling the rule out on every card is noise. */
           <Pill tone="amber">
-            <PhoneOutgoing className="size-2.5" aria-hidden /> {c.closerName} calls first
+            <PhoneOutgoing className="size-2.5" aria-hidden /> closed by {c.closerName}
           </Pill>
         ) : (
           <span className="rounded-full px-1.5 py-0.5 text-[10px] text-muted-foreground/70">unclaimed</span>
@@ -742,7 +743,7 @@ function DetailSheet({
           {c.closerName && (
             <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2.5">
               <p className="text-xs">
-                Closed by <b className="font-semibold">{c.closerName}</b> — they call first.
+                Closed by <b className="font-semibold">{c.closerName}</b>
               </p>
               {c.closerId && c.ownerId !== c.closerId && reps.some((r) => r.id === c.closerId) && (
                 <button
