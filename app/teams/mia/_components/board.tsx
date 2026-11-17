@@ -171,6 +171,22 @@ export function MiaBoard({ initial }: { initial: Data }) {
       setData((d) => ({ ...d, cases: d.cases.map((c) => (c.id === id ? { ...c, ownerId: before, ownerName: beforeName } : c)) })))
   }, [cases, data.reps, write])
 
+  /* Same optimistic write as claim: the select moves at once and rolls back
+     if the server refuses, because a dropdown that lags reads as broken. */
+  const setReconnectedBy = useCallback((id: string, repId: string | null) => {
+    const card = cases.find((c) => c.id === id)
+    if (!card) return
+    const before = { id: card.reconnectedById, name: card.reconnectedByName, at: card.reconnectedAt }
+    const name = repId ? (data.reps.find((r) => r.id === repId)?.name ?? null) : null
+    setData((d) => ({ ...d, cases: d.cases.map((c) => (c.id === id
+      ? { ...c, reconnectedById: repId, reconnectedByName: name, reconnectedAt: repId ? new Date().toISOString() : null }
+      : c)) }))
+    void write({ id, reconnectedById: repId }, () =>
+      setData((d) => ({ ...d, cases: d.cases.map((c) => (c.id === id
+        ? { ...c, reconnectedById: before.id, reconnectedByName: before.name, reconnectedAt: before.at }
+        : c)) })))
+  }, [cases, data.reps, write])
+
   const remove = useCallback(async (c: MiaCase) => {
     const keep = data.cases
     setData((d) => ({ ...d, cases: d.cases.filter((x) => x.id !== c.id) }))
@@ -300,6 +316,7 @@ export function MiaBoard({ initial }: { initial: Data }) {
           reps={data.reps}
           onClose={() => setOpenId(null)}
           onClaim={(owner) => claim(openId, owner)}
+          onReconnectedBy={(repId) => setReconnectedBy(openId, repId)}
           onMove={(to) => move(openId, to)}
           onRemove={remove}
           onSaveNote={(note) => {
@@ -678,13 +695,14 @@ function AddDialog({
 /* ── One case, opened ─────────────────────────────────────────────────── */
 
 function DetailSheet({
-  c, me, reps, onClose, onClaim, onMove, onRemove, onSaveNote,
+  c, me, reps, onClose, onClaim, onReconnectedBy, onMove, onRemove, onSaveNote,
 }: {
   c: MiaCase
   me: MiaViewer
   reps: { id: string; name: string }[]
   onClose: () => void
   onClaim: (ownerId: string | null) => void
+  onReconnectedBy: (repId: string | null) => void
   onMove: (to: MiaStatus) => void
   onRemove: (c: MiaCase) => void
   onSaveNote: (note: string) => void
@@ -756,6 +774,42 @@ function DetailSheet({
               )}
             </div>
           )}
+
+          {/* Who got them back on the phone.
+
+              Sits under the closer because the two together are the whole
+              question: when they differ, the reconnecting rep earns a
+              quarter of the case's commission, and the line below says so
+              rather than leaving it to be discovered on a payslip. */}
+          <div>
+            <p className="pb-1.5 text-xs font-medium text-muted-foreground">Reconnected by</p>
+            <div className="flex gap-2">
+              <select
+                value={c.reconnectedById ?? ''}
+                onChange={(e) => onReconnectedBy(e.target.value || null)}
+                aria-label="Reconnected by"
+                className={cn(inputCls, 'flex-1')}
+              >
+                <option value="">Nobody yet</option>
+                {reps.map((r) => <option key={r.id} value={r.id}>{r.name}</option>)}
+              </select>
+              {c.reconnectedById !== me.id && (
+                <Button variant="outline" size="sm" className="whitespace-nowrap"
+                  onClick={() => onReconnectedBy(me.id)}>
+                  It was me
+                </Button>
+              )}
+            </div>
+            {c.reconnectedById && (
+              <p className="pt-1 text-xs text-muted-foreground">
+                {c.closerId
+                  ? c.reconnectedById === c.closerId
+                  : (c.reconnectedByName ?? '').trim().toLowerCase() === (c.closerName ?? '').trim().toLowerCase()
+                  ? 'Their own case — no reconnection bonus.'
+                  : <>Earns <b className="font-semibold text-foreground">25%</b> of this case&rsquo;s commission.</>}
+              </p>
+            )}
+          </div>
 
           <div>
             <p className="pb-1.5 text-xs font-medium text-muted-foreground">Owner</p>

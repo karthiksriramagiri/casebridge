@@ -43,6 +43,12 @@ export type MiaCase = {
      name is what shows when there is no profile behind it. */
   closerId: string | null
   closerName: string | null
+  /* Who got them back on the phone. Often not the closer — and when it is
+     not, that rep earns a quarter of the case's commission, so this is a
+     pay record as much as a board field. */
+  reconnectedById: string | null
+  reconnectedByName: string | null
+  reconnectedAt: string | null
   note: string
   createdBy: string | null
   createdAt: string
@@ -54,7 +60,7 @@ export type MiaCase = {
 export type MiaEvent = {
   id: string
   caseId: string
-  kind: 'created' | 'moved' | 'claimed' | 'note' | 'edited'
+  kind: 'created' | 'moved' | 'claimed' | 'note' | 'edited' | 'reconnected'
   fromStatus: MiaStatus | null
   toStatus: MiaStatus | null
   detail: string

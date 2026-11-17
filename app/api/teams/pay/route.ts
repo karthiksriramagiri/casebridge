@@ -5,16 +5,21 @@ import {
   currentPayPeriodStart, nextPaymentDate, fmtPayDate,
   billableHoursForDay, recentPayDates,
   tierCommission,
+  STANDARD_HOURLY,
   DEFAULT_REPLACEMENT_WINDOW_DAYS,
   PERIOD_START_OVERRIDES,
 } from '@/lib/pay'
+import { reconnectBonusesFor } from '@/lib/mia/reconnect-bonus'
 
 const admin = adminClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
 
-const HOURLY_RATE = 5
+/* One definition, in lib/pay.ts — the Financial Center reads the same
+   constant, so what a rep is paid and what a firm is charged for the hour
+   can never be two different numbers. */
+const HOURLY_RATE = STANDARD_HOURLY
 
 export async function GET() {
   const supabase = await createClient()
@@ -148,19 +153,57 @@ export async function GET() {
     return { ...c, commission: rate, tier, closeNumber }
   })
 
-  // Current period: became eligible after last paycheck (periodStart) and on/before today
-  // This captures cases signed in ANY past period whose 28-day window cleared during this period
-  const eligibleThisPeriod = allSignedCases.filter(
+  /* What this paycheck pays, counted to the pay date rather than to now.
+
+     These used to be the same list: cases whose replacement window had
+     cleared on or before today. That is the right answer to "what have I
+     earned so far" and the wrong one to "what is this cheque", because a
+     case clearing the day before payday is on the cheque and was not being
+     counted — the figure crept up over the fortnight and only became the
+     real one on the morning of the pay date. Nobody could plan against it,
+     and a case clearing tomorrow looked like it belonged to next month.
+
+     So the period now runs to its own end:
+
+       cleared      already through its window — banked
+       clearing     will clear before payday — on this cheque
+       pending      clears after payday — a future cheque
+
+     `eligibleThisPeriod` keeps its name and now means the whole cheque,
+     because that is what every caller was already treating it as. */
+  const cleared = allSignedCases.filter(
     c => c.eligibleAt > periodStart && c.eligibleAt <= now
   )
-  // Pending: not yet eligible (will pay out in a future paycheck)
+  const clearingBeforePayday = allSignedCases.filter(
+    c => c.eligibleAt > now && c.eligibleAt <= periodEnd
+  )
+  const eligibleThisPeriod = [...cleared, ...clearingBeforePayday]
+  // Pending: clears after this paycheck, so it belongs to a future one.
   const signedPending = allSignedCases.filter(
-    c => c.eligibleAt > now
+    c => c.eligibleAt > periodEnd
   )
 
   const hourlyEarnings   = Math.round(totalHours * HOURLY_RATE * 100) / 100
   const commissionSigned = eligibleThisPeriod.reduce((sum, c) => sum + c.commission, 0)
-  const totalEstimated   = hourlyEarnings + commissionSigned
+  /* Kept apart so the page can show what is already banked against what is
+     still to clear — the difference is the only part of the figure that can
+     still change, and it changes by a case being replaced. */
+  const commissionCleared  = cleared.reduce((sum, c) => sum + c.commission, 0)
+  const commissionClearing = clearingBeforePayday.reduce((sum, c) => sum + c.commission, 0)
+  /* MIA reconnections.
+
+     A quarter of a case's commission, earned by whoever got the client back
+     on the phone when that was not the person who closed it. Paid on top of
+     the closer's full commission rather than taken out of it — the work is
+     additional, so the money is too.
+
+     Counted into the estimate straight away, with no replacement window:
+     the bonus is for making the call, and a case that is later replaced does
+     not un-make it. */
+  const reconnectBonuses = await reconnectBonusesFor(admin, user.id, repName ?? '')
+  const reconnectEarnings = Math.round(reconnectBonuses.reduce((s, b) => s + b.amount, 0) * 100) / 100
+
+  const totalEstimated   = Math.round((hourlyEarnings + commissionSigned + reconnectEarnings) * 100) / 100
 
   // --- Historical periods: check eligibility against paycheck date (not today) ---
   const histRows = histTimeRes.data || []
@@ -206,14 +249,34 @@ export async function GET() {
       total: totalHours,
       dailySessions,
     },
+    reconnections: {
+      /* Cases this rep brought back that somebody else closed. */
+      total: reconnectEarnings,
+      count: reconnectBonuses.length,
+      items: reconnectBonuses,
+    },
     cases: {
-      eligibleThisPeriod: eligibleThisPeriod.map(({ id, name, date, commission, tier, closeNumber }) => ({ id, name, date, commission, tier, closeNumber })),
-      pending: signedPending.map(({ id, name, date, commission, tier, closeNumber }) => ({ id, name, date, commission, tier, closeNumber })),
+      /* The whole cheque, with each case saying whether it has cleared its
+         replacement window yet or is still to clear before payday. */
+      eligibleThisPeriod: eligibleThisPeriod
+        .map(({ id, name, date, commission, tier, closeNumber, eligibleAt }) => ({
+          id, name, date, commission, tier, closeNumber,
+          clearsOn: eligibleAt.toISOString().slice(0, 10),
+          cleared: eligibleAt <= now,
+        }))
+        .sort((a, b) => a.clearsOn.localeCompare(b.clearsOn)),
+      pending: signedPending.map(({ id, name, date, commission, tier, closeNumber, eligibleAt }) => ({
+        id, name, date, commission, tier, closeNumber,
+        clearsOn: eligibleAt.toISOString().slice(0, 10),
+      })),
     },
     pay: {
       hourlyRate: HOURLY_RATE,
       hourlyEarnings,
       commissionSigned,
+      commissionCleared,
+      commissionClearing,
+      clearingCount: clearingBeforePayday.length,
       totalEstimated,
     },
     previousPeriods,

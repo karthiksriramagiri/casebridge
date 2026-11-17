@@ -72,6 +72,9 @@ const toCase = (r: Row, firmName: (id: string | null) => string | null, repName:
   /* The stored name wins over the looked-up one: a closer who has since left
      still has a name on the row and no longer has a profile. */
   closerName: r.closer ?? repName(r.closer_id ?? null),
+  reconnectedById: r.reconnected_by_id ?? null,
+  reconnectedByName: r.reconnected_by ?? repName(r.reconnected_by_id ?? null),
+  reconnectedAt: r.reconnected_at ?? null,
   note: r.note ?? '',
   createdBy: r.created_by ?? null,
   createdAt: String(r.created_at ?? ''),
@@ -240,6 +243,11 @@ export async function PATCH(req: NextRequest) {
   const patch: Record<string, unknown> = { updated_at: new Date().toISOString() }
   const events: { kind: string; from?: string; to?: string; detail: string }[] = []
 
+  /* Names are stored alongside ids throughout this table, so that a rep who
+     leaves still reads as a person rather than a dangling uuid. */
+  const { data: repRows } = await admin.from('profiles').select('id, name')
+  const repNameById = new Map((repRows ?? []).map((r: any) => [String(r.id), String(r.name ?? '').trim()]))
+
   if (body.status !== undefined) {
     if (!isMiaStatus(body.status)) return NextResponse.json({ error: 'Unknown column.' }, { status: 400 })
     if (body.status !== before.status) {
@@ -261,6 +269,29 @@ export async function PATCH(req: NextRequest) {
     })
   }
 
+  /* Who got them back on the phone.
+
+     Recorded against the case rather than inferred from the history, because
+     a quarter of the commission hangs on it: the trail says who dragged the
+     card, which is not the same question as who made the call. A rep who
+     reconnects a case somebody else closed earns 25% of that case's tier —
+     see lib/mia/reconnect-bonus.ts — so this field is a pay record and is
+     written deliberately, by hand. */
+  if (body.reconnectedById !== undefined && body.reconnectedById !== before.reconnected_by_id) {
+    const repId = clean(body.reconnectedById, 60) || null
+    patch.reconnected_by_id = repId
+    patch.reconnected_by = repId ? (repNameById.get(repId) ?? null) : null
+    /* Cleared as well as set: an entry made in error must not leave a date
+       behind that pay would read as an unpaid bonus. */
+    patch.reconnected_at = repId ? new Date().toISOString() : null
+    events.push({
+      kind: 'reconnected',
+      detail: repId
+        ? `Reconnected by ${repNameById.get(repId) ?? 'a rep'}`
+        : 'Reconnected-by cleared',
+    })
+  }
+
   for (const [key, col, max] of [['name', 'name', 120], ['phone', 'phone', 40], ['email', 'email', 160], ['note', 'note', 2000]] as const) {
     if (body[key] !== undefined) {
       const v = clean(body[key], max)
@@ -273,7 +304,17 @@ export async function PATCH(req: NextRequest) {
   if (body.firmId !== undefined) patch.firm_id = body.firmId || null
 
   const { error } = await admin.from('mia_cases').update(patch).eq('id', id)
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    /* The reconnected-by columns are added by their own migration. Until it
+       is run the field simply cannot be written, and saying which file to
+       run is more use than the raw Postgres complaint. */
+    if (/reconnected_by|reconnected_at/.test(error.message || '')) {
+      return NextResponse.json({
+        error: 'Run supabase/migration_mia_reconnect.sql in the Supabase SQL editor to record who reconnected a case.',
+      }, { status: 503 })
+    }
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
 
   for (const e of events) {
     await logEvent({ caseId: id, kind: e.kind, fromStatus: e.from, toStatus: e.to, detail: e.detail, actorId: me.id, actorName: me.name })
