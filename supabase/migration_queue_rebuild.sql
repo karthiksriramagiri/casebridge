@@ -18,9 +18,12 @@
 --   callback_context  the note the rep left when they made the promise, so
 --                     whoever picks it up knows what was said.
 --
--- Safe to run more than once. The engine works without it — freshness falls
--- back to the stage timestamp and callbacks stay on their own page — so
--- there is no window where the floor is broken waiting for this.
+-- Safe to run more than once. The engine works without it — nothing reads as
+-- fresh and callbacks stay on their own page — so there is no window where
+-- the floor is broken waiting for this.
+--
+-- If you have already run an earlier version of this file, run it again:
+-- section 2 clears a backfill that was actively wrong.
 -- ─────────────────────────────────────────────────────────────────────────────
 
 -- ── 1. Columns ───────────────────────────────────────────────────────────────
@@ -34,15 +37,26 @@ comment on column public.dialer_attempts.lead_created_at is
 comment on column public.dialer_attempts.callback_id is
   'The dialer_callbacks row this attempt mirrors. Completing one settles the other.';
 
--- ── 2. Backfill freshness from what we already know ─────────────────────────
--- stage_changed_at is the best available stand-in for rows that predate the
--- column. It is wrong for a lead that has moved stage since arriving, which
--- is exactly why the column exists — but it is right for the new leads this
--- is meant to catch, and they are the ones that matter today.
+-- ── 2. Freshness is left null until GHL says otherwise ──────────────────────
+-- An earlier draft of this file seeded lead_created_at from stage_changed_at
+-- and that was wrong in precisely the way the column exists to prevent: a
+-- No Response lead that merely MOVED in the last two days came out looking
+-- brand new. On the live queue it promoted 90 leads, 66 of them No Response,
+-- straight to the top of the floor's list.
+--
+-- A null reads as "not fresh", which ranks the lead on its stage — the old
+-- behaviour, and the safe one. The sync refreshes this column on every
+-- existing row from the opportunity's own createdAt, so the real values
+-- arrive on the next run and the queue heals itself within ten minutes.
+--
+-- Idempotent and safe to re-run after the bad backfill: it only clears
+-- values that are indistinguishable from a stage timestamp, and the sync
+-- puts the true value back.
 update public.dialer_attempts
-   set lead_created_at = stage_changed_at
- where lead_created_at is null
-   and stage_changed_at is not null;
+   set lead_created_at = null
+ where lead_created_at is not null
+   and lead_created_at = stage_changed_at
+   and lower(stage_name) <> 'new lead';
 
 -- ── 3. One queue row per callback ───────────────────────────────────────────
 -- The mirror is driven by "is this callback already in the queue", and a

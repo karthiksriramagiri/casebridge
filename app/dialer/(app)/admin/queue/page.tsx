@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { createClient } from '@/app/dialer/_lib/supabase'
-import { rankOf, rankLabel, formatSlot, type BlockName } from '@/app/dialer/_lib/queue-rules'
+import { rankLabel, formatSlot } from '@/app/dialer/_lib/queue-rules'
 import { stateForPhone } from '@/app/dialer/_lib/area-codes'
 
 interface Attempt {
@@ -423,36 +423,21 @@ export default function QueueAdminPage() {
     return [...best.values()]
   }, [items])
 
-  const sorted = useMemo(() => {
-    return [...collapsed].sort((a, b) => {
-      if (a.is_callback !== b.is_callback) return a.is_callback ? -1 : 1
-      if (a.is_carryover !== b.is_carryover) return a.is_carryover ? -1 : 1
+  /* The server's order, kept.
 
-      const ra = ladderRank(a), rb = ladderRank(b)
-      if (ra !== rb) return rb - ra
+     This page used to re-sort what it was given with a comparator of its
+     own — a different one from the engine's, missing the fresh tier and the
+     redial gap entirely. So the list on screen was not the list leads went
+     out in, and "start from the top" meant nothing.
 
-      // Newest first inside a rank — latest to oldest for no-response.
-      const scA = a.stage_changed_at ? Date.parse(a.stage_changed_at) : 0
-      const scB = b.stage_changed_at ? Date.parse(b.stage_changed_at) : 0
-      if (scA !== scB) return scB - scA
+     /api/dialer/queue/admin already runs every waiting row through
+     sortQueueCanonical, which is the same function that decides what each
+     rep is handed next and the only one that can see last_dialed_at. The
+     one useful thing left to do here is collapse a lead's several attempts
+     into the single row that represents it. */
+  const sorted = collapsed
 
-      // Then the earliest window, so a day still reads chronologically
-      // within a rank rather than arbitrarily.
-      const dfA = a.due_from ?? '', dfB = b.due_from ?? ''
-      if (dfA !== dfB) return dfA < dfB ? -1 : 1
-      if (a.attempt_number !== b.attempt_number) return a.attempt_number - b.attempt_number
-      return a.id < b.id ? -1 : 1
-    })
-  }, [collapsed])
 
-  /* The ladder itself, not a copy of it.
-
-     This page used to carry its own reimplementation of the ranking rules.
-     It drifted from the engine's — they disagreed about where a fresh lead
-     sat — so the order on this screen was not the order leads went out in,
-     and "work from the top" was not a thing anyone could do. One function,
-     imported, in queue-rules.ts. */
-  const ladderRank = (a: any): number => rankOf(a)
 
   /* One row per lead. A lead carries three to six attempts for the day, and
      once recency groups them they land in consecutive slots — the top twelve
@@ -967,7 +952,24 @@ export default function QueueAdminPage() {
                     </td>
                     <td className="px-4 py-2.5">
                       <p className="font-medium text-foreground">{FIRM_LABEL[item.firm] ?? item.firm}</p>
-                      <p className="text-xs text-muted-foreground">{item.stage_name}</p>
+                      {/* The tier, when it is not simply the stage name.
+
+                          A lead's position on this page is decided by its
+                          tier, and for the two tiers that cut across stages
+                          — a lead inside its first 48 hours, an appointment
+                          live right now — the stage name alone cannot
+                          explain why it is sitting where it is. */}
+                      {(() => {
+                        const tier = rankLabel(item as any)
+                        return tier === item.stage_name ? (
+                          <p className="text-xs text-muted-foreground">{item.stage_name}</p>
+                        ) : (
+                          <p className="text-xs">
+                            <span className="font-semibold text-primary">{tier}</span>
+                            <span className="text-muted-foreground"> · {item.stage_name}</span>
+                          </p>
+                        )
+                      })()}
                     </td>
                     <td className="px-4 py-2.5 text-xs tabular-nums">
                       <span className="rounded-full bg-muted px-1.5 py-0.5 text-muted-foreground">

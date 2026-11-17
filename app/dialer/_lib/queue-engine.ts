@@ -154,7 +154,7 @@ export async function syncGHLToQueue(): Promise<{
     sb.from('dialer_cadence_rules').select('stage_name, calls_per_day, enabled'),
     sb.from('dialer_lead_state').select('contact_id, suppressed, exhausted'),
     (async () => ({ data: await fetchAll(() => sb.from('dialer_attempts')
-      .select('id, contact_id, attempt_number, status, stage_name, priority')
+      .select('id, contact_id, attempt_number, status, stage_name, priority, lead_created_at')
       .eq('plan_date', today)
       .eq('is_callback', false)) }))(),
   ])
@@ -169,7 +169,7 @@ export async function syncGHLToQueue(): Promise<{
     if (row.suppressed || row.exhausted) skip.add(row.contact_id)
   }
 
-  const existing = new Map<string, { id: string; status: string; stage_name: string; priority: number }>()
+  const existing = new Map<string, { id: string; status: string; stage_name: string; priority: number; lead_created_at: string | null }>()
   for (const a of existingRes.data ?? []) existing.set(`${a.contact_id}:${a.attempt_number}`, a as any)
 
   // ── Which (pipeline, stage) pairs to sweep ───────────────────────────────
@@ -206,7 +206,7 @@ export async function syncGHLToQueue(): Promise<{
   const seen       = new Set<string>()
   const queuedKeys = new Set<string>()
   const toInsert:     Record<string, any>[] = []
-  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number }[] = []
+  const toUpdate:     { id: string; stage_name: string; stage_id: string; priority: number; lead_created_at: string | null }[] = []
   const toReactivate: { id: string; fields: Record<string, any> }[] = []
   let skipped = 0
 
@@ -301,8 +301,18 @@ export async function syncGHLToQueue(): Promise<{
               /* Buffered rows are refreshed too — they sit in a rep's list
                  unanswered, so a stage move still applies to them. `leased`
                  is excluded on purpose: a rep is on that call right now. */
-              if (prev.stage_name !== stage.name || prev.priority !== priority) {
-                toUpdate.push({ id: prev.id, stage_name: stage.name, stage_id: stage.id, priority })
+              /* lead_created_at is refreshed here, not only written on
+                 insert. A row planned before the column existed carries
+                 nothing, and nothing else would ever fill it — the whole
+                 day's queue would sit with no freshness at all until the
+                 next morning rebuilt it from scratch. GHL is the truth; this
+                 is where we hear it. */
+              const freshMoved = newCols && leadCreatedAt && prev.lead_created_at !== leadCreatedAt
+              if (prev.stage_name !== stage.name || prev.priority !== priority || freshMoved) {
+                toUpdate.push({
+                  id: prev.id, stage_name: stage.name, stage_id: stage.id, priority,
+                  lead_created_at: newCols ? leadCreatedAt : null,
+                })
               }
             }
             continue
@@ -373,16 +383,20 @@ export async function syncGHLToQueue(): Promise<{
     }
   }
 
-  const groups = new Map<string, { stage_name: string; stage_id: string; priority: number; ids: string[] }>()
+  type Group = { stage_name: string; stage_id: string; priority: number; lead_created_at: string | null; ids: string[] }
+  const groups = new Map<string, Group>()
   for (const u of toUpdate) {
-    const k = `${u.stage_name}:${u.priority}`
-    if (!groups.has(k)) groups.set(k, { stage_name: u.stage_name, stage_id: u.stage_id, priority: u.priority, ids: [] })
+    const k = `${u.stage_name}:${u.priority}:${u.lead_created_at ?? ''}`
+    if (!groups.has(k)) groups.set(k, { ...u, ids: [] })
     groups.get(k)!.ids.push(u.id)
   }
   for (const g of groups.values()) {
     for (let i = 0; i < g.ids.length; i += 500) {
       await sb.from('dialer_attempts')
-        .update({ stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now })
+        .update({
+          stage_name: g.stage_name, stage_id: g.stage_id, priority: g.priority, updated_at: now,
+          ...(g.lead_created_at ? { lead_created_at: g.lead_created_at } : {}),
+        })
         .in('id', g.ids.slice(i, i + 500))
     }
   }
