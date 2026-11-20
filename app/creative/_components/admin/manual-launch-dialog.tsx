@@ -41,7 +41,7 @@ export function ManualLaunchDialog({
   onOpenChange: (o: boolean) => void
   onCreate: (input: ManualLaunchInput) => void
 }) {
-  const { creatives, assignments, today } = useStore()
+  const { creatives, assignments, today, launchDay } = useStore()
 
   /* The named hooks, so the angle pickers read "A18 · SMS / Texting" rather
      than a bare code. Same source the assignment form uses. */
@@ -69,7 +69,10 @@ export function ManualLaunchDialog({
   const [state, setState] = useState<LaunchState>(LAUNCH_STATES[0])
   const [offer, setOffer] = useState<string>(CREATIVE_OFFERS[0])
   const [campaignType, setCampaignType] = useState<string>(CAMPAIGN_TYPES[0])
-  const [launchDate, setLaunchDate] = useState(today)
+  /* Defaults to the day it will actually run. The floor launches for the
+     next day, and this date both names the ad and files it. Still a date
+     picker — a launch moved to Friday is typed here. */
+  const [launchDate, setLaunchDate] = useState(launchDay)
   const [budget, setBudget] = useState('200')
   const [notes, setNotes] = useState('')
 

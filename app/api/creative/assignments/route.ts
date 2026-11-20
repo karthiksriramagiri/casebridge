@@ -86,6 +86,7 @@ export async function GET() {
       creativeName: r.creative_name ?? undefined,
       offer: r.offer ?? undefined,
       campaignType: r.campaign_type ?? undefined,
+      director: r.director ?? undefined,
       script: r.script ?? undefined,
       launchDate: r.launch_date ?? undefined,
       order: r.sort_order ?? 0,
@@ -118,6 +119,7 @@ export async function GET() {
       creativeName: r.creative_name ?? undefined,
       offer: r.offer ?? undefined,
       campaignType: r.campaign_type ?? undefined,
+      director: r.director ?? undefined,
       attachments: Array.isArray(r.attachments) ? r.attachments : [],
       order: r.sort_order ?? 0,
       createdAt: day(r.created_at),
@@ -189,6 +191,7 @@ export async function POST(req: NextRequest) {
       creative_name: body.creativeName ?? null,
       offer: body.offer ?? null,
       campaign_type: body.campaignType ?? null,
+      director: body.director ?? null,
       sort_order: Number(body.order ?? 0),
       created_by: body.createdBy ?? null,
     }
@@ -227,6 +230,7 @@ export async function POST(req: NextRequest) {
       creative_name: body.creativeName ?? null,
       offer: body.offer ?? null,
       campaign_type: body.campaignType ?? null,
+      director: body.director ?? null,
       script: body.script ?? null,
     launch_date: body.launchDate ?? null,
     sort_order: Number(body.order ?? 0),
@@ -294,6 +298,7 @@ export async function PATCH(req: NextRequest) {
     set('creative_name', body.creativeName)
     set('offer', body.offer)
     set('campaign_type', body.campaignType)
+    set('director', body.director)
     set('attachments', body.attachments)
     if (body.priority !== undefined) patch.priority = clampPriority(body.priority)
     if (body.visualCode !== undefined) patch.visual_code = upperCode(body.visualCode)
@@ -314,6 +319,7 @@ export async function PATCH(req: NextRequest) {
     set('creative_name', body.creativeName)
     set('offer', body.offer)
     set('campaign_type', body.campaignType)
+    set('director', body.director)
     set('script', body.script)
     set('launch_date', body.launchDate)
     set('attachments', body.attachments)

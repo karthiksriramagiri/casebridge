@@ -212,9 +212,12 @@ export const isImageDoubleDown = (a: { type: AssignmentType; format?: CreativeFo
    hands it passes through are the ones that launch it. It used to fall
    through to 'creative' by default, which is why it had to be filtered off
    the assignments page wholesale rather than simply shown on the right
-   tab. */
-export const assigneeOf = (a: { type: AssignmentType; format?: CreativeFormat }): Role =>
-  a.type === RELAUNCH_TYPE || isImageDoubleDown(a) ? 'admin' : 'creative'
+   tab.
+
+   An explicit `director` overrides all of it: the default is about what a
+   card usually is, and a handover is about this one. */
+export const assigneeOf = (a: { type: AssignmentType; format?: CreativeFormat; director?: Role }): Role =>
+  a.director ?? (a.type === RELAUNCH_TYPE || isImageDoubleDown(a) ? 'admin' : 'creative')
 
 /* Production tasks — the hands-on work that turns an approved creative into
    something launchable. Formerly the K-Team board; the work is the same, it
@@ -573,6 +576,14 @@ export type Assignment = {
      a cut ends up in an ad set that differs by a segment. */
   adsetName?: string
   creativeName?: string
+  /* Whose brief this is, when somebody has said so explicitly.
+
+     Normally the type decides: a relaunch and an image double down are
+     Jason's, everything else is Faisal's. That is a sensible default and a
+     poor rule — work gets handed over, and there was no way to say so. Set
+     here, it wins; left unset, the type still decides. */
+  director?: Role
+
   /** The offer segment both names share — OG | RIP. */
   offer?: string
   /** Campaign type — INV | VAR. */

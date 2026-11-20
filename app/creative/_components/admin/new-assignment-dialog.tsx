@@ -180,7 +180,7 @@ export function NewAssignmentDialog({
      is searched for this batch, and the new cut takes the next number after
      the highest. Typing it meant remembering what a batch was up to, and
      being wrong produced two different ads filed under one name. */
-  const { creatives, assignments, today } = useStore()
+  const { creatives, assignments, today, launchDay } = useStore()
   const knownNames = useMemo(
     () => [
       ...creatives.map((c) => c.convention || c.name),
@@ -193,7 +193,7 @@ export function NewAssignmentDialog({
     [knownNames, batch, format, firmCode],
   )
 
-  const base = { firm: firmCode, format, offer, campaignType, date: today, seq }
+  const base = { firm: firmCode, format, offer, campaignType, date: launchDay, seq }
 
   /* Two readings of the same name. The preview fills the gaps with dots so a
      missing field is visible; what gets saved leaves them out, because a

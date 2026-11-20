@@ -246,6 +246,18 @@ type Store = {
      timer, and the day under view follows it over the roll-over unless
      someone has deliberately stepped back. */
   today: string
+  /* The day a cut raised now will actually go live — tomorrow.
+
+     The floor launches for the next day, always. The date segment of an ad
+     set and a creative name says when the ad ran, so a cut briefed this
+     afternoon carries tomorrow's date: it is the day it goes up, not the
+     day somebody typed it. Naming it after today filed every ad a day
+     early and made the account read as though the work had already run.
+
+     Only the NAMES move. Which day's launch list a card sits on is still
+     `today` — the list is the queue of work in hand, and a card that
+     vanished from it until tomorrow would be a card nobody worked. */
+  launchDay: string
   /** Viewing a day that is finished. Its numbers are a record: frozen, and
       nothing on it can be changed. */
   dayLocked: boolean
@@ -507,6 +519,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      day indefinitely. Every date this provider stamps on a row reads this,
      never the module constant. */
   const [today, setToday] = useState(TODAY)
+  /* Derived rather than its own state: it can never drift from `today`,
+     and it follows the roll-over for free. */
+  const launchDay = useMemo(() => addDays(today, 1), [today])
   useEffect(() => {
     const t = setInterval(() => {
       const now = pacificDay()
@@ -1188,6 +1203,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     day,
     setDay,
     today,
+    launchDay,
     /* A finished day is a record. Nothing on it can be changed — not the
        kill list, not a launch tick — or the record stops being one. A
        forward date is not a record: Launch Lists queues tomorrow's ads on
@@ -1583,14 +1599,14 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       /* The names it goes back up under, dated today.
 
          A relaunch reuses the ad set and the cut it already had — same
-         batch, same angles, same sequence — but it is going live today,
-         and the date segment of both names says when something launched.
-         Carrying the original's date forward filed a relaunch under the
-         day it first ran, so the account read as though nothing had gone
-         up. Same rule as a Double Down. A name that does not follow the
-         convention is left exactly as found rather than rebuilt. */
-      const adsetName = withAdsetDate(c.adset, today)
-      const creativeName = withCreativeDate(c.convention || c.name, today)
+         batch, same angles, same sequence — but it is going live on the
+         next launch day, and the date segment of both names says when an
+         ad ran. Carrying the original's date forward filed a relaunch
+         under the day it first ran, so the account read as though nothing
+         had gone up. Same rule as a Double Down. A name that does not
+         follow the convention is left exactly as found. */
+      const adsetName = withAdsetDate(c.adset, launchDay)
+      const creativeName = withCreativeDate(c.convention || c.name, launchDay)
 
       addAssignment({
         title: `Relaunch – ${creativeName}`,

@@ -34,7 +34,7 @@ const firmRank = (code: string) => {
 }
 
 export default function WinnersPage() {
-  const { creatives, killedIds, assignments, addAssignment, removeAssignment, today } = useStore()
+  const { creatives, killedIds, assignments, addAssignment, removeAssignment, today, launchDay } = useStore()
   const isAdmin = useRole() === 'admin'
   const { open, toggle } = useExpanded('cc:winners-open')
 
@@ -172,8 +172,9 @@ export default function WinnersPage() {
     [creatives, assignments],
   )
 
-  /** The ad set the new cut runs in — the winner's, stamped with today. */
-  const adsetFor = (c: Creative) => withAdsetDate(c.adset, today)
+  /** The ad set the new cut runs in — the winner's, stamped with the day
+   *  it will actually go up. The floor launches for the next day. */
+  const adsetFor = (c: Creative) => withAdsetDate(c.adset, launchDay)
 
   /** What this cut's next double down will be called. `taken` holds names
    *  claimed earlier in the same click, so sending a whole ad set numbers
@@ -186,7 +187,7 @@ export default function WinnersPage() {
     const { seq } = batchUsage([...knownNames, ...taken], src.batch ?? '', src.format ?? '', src.firm ?? '')
     /* Today's date, and the next free cut number. The rest of the name —
        firm, format, offer, batch, hooks — carries over from the winner. */
-    return withCreativeDate(withCreativeSeq(from, seq), today)
+    return withCreativeDate(withCreativeSeq(from, seq), launchDay)
   }
 
   /* The brief.
@@ -237,7 +238,7 @@ export default function WinnersPage() {
         offer: setParts[3] ?? src.offer,
         campaignType: setParts[4],
         /* Both names on the brief itself, not only in the prose. The ad set
-           is the winner's, re-dated to today: same firm, format, offer,
+           is the winner's, re-dated to the next launch day: same firm, format, offer,
            campaign type and batch, going up now rather than on the day the
            winner launched. */
         adsetName: adsetFor(c),

@@ -20,9 +20,9 @@ import { useStore } from '@/app/creative/_lib/store'
 import { BenchmarkField } from './admin/benchmark-field'
 import {
   ASSIGNMENT_STATUSES, CREATIVE_FORMATS, CREATIVE_TYPES, LANE_KEYS, RELAUNCH_TYPE, ROLE_LABEL,
-  laneAccount, laneAssignmentFirm, laneCode, laneOf,
+  assigneeOf, laneAccount, laneAssignmentFirm, laneCode, laneOf,
   parseRequests,
-  type AssignmentFirm, type AssignmentStatus, type AssignmentType, type CreativeFormat,
+  type AssignmentFirm, type AssignmentStatus, type AssignmentType, type CreativeFormat, type Role,
 } from '@/app/creative/_lib/types'
 import { cn } from '@/lib/utils'
 
@@ -47,7 +47,7 @@ const byNumber = (a: string, b: string) => (parseInt(a.slice(1), 10) || 0) - (pa
 export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId: string | null; onClose: () => void }) {
   const role = useRole()
   const isAdmin = role === 'admin'
-  const { assignments, getCreative, addComment, addAttachments, updateAssignment, today } = useStore()
+  const { assignments, getCreative, addComment, addAttachments, updateAssignment, today, launchDay } = useStore()
   const a = assignments.find((x) => x.id === assignmentId)
 
   const [hooks, setHooks] = useState<{ visual: Record<string, string>; verbal: Record<string, string> }>({ visual: {}, verbal: {} })
@@ -79,9 +79,9 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
      neither, so they are derived the same way here rather than reading
      blank. */
   const adsetName = a.adsetName?.trim()
-    || (a.type === RELAUNCH_TYPE && src ? withAdsetDate(src.adset, a.launchDate || today) : undefined)
+    || (a.type === RELAUNCH_TYPE && src ? withAdsetDate(src.adset, a.launchDate || launchDay) : undefined)
   const creativeName = a.creativeName?.trim()
-    || (a.type === RELAUNCH_TYPE && src ? withCreativeDate(src.convention, a.launchDate || today) : undefined)
+    || (a.type === RELAUNCH_TYPE && src ? withCreativeDate(src.convention, a.launchDate || launchDay) : undefined)
 
   const visualOptions = Object.keys(hooks.visual).filter((c) => !fmt || c.startsWith(fmt.visual)).sort(byNumber)
   const verbalOptions = Object.keys(hooks.verbal).filter((c) => !fmt || c.startsWith(fmt.verbal)).sort(byNumber)
@@ -266,11 +266,32 @@ export function AssignmentDetailSheet({ assignmentId, onClose }: { assignmentId:
               </span>
             </PropertyRow>
 
+            {/* Whose brief this is.
+
+                It used to print "Faisal" unconditionally — not even reading
+                the assignee — so a relaunch, which is Jason's, still named
+                Faisal. Now it says who actually holds it and lets an admin
+                hand it over, which is what moves the card between the two
+                boards. */}
             <PropertyRow icon={Layers} label="Director">
-              <span className="flex items-center gap-2">
-                <span className="flex size-5 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-accent-foreground">F</span>
-                {ROLE_LABEL.creative}
-              </span>
+              {isAdmin ? (
+                <select
+                  value={assigneeOf(a)}
+                  onChange={(e) => set({ director: e.target.value as Role })}
+                  aria-label="Director"
+                  className="rounded-md border bg-card px-2 py-1 text-sm"
+                >
+                  <option value="creative">{ROLE_LABEL.creative}</option>
+                  <option value="admin">{ROLE_LABEL.admin}</option>
+                </select>
+              ) : (
+                <span className="flex items-center gap-2">
+                  <span className="flex size-5 items-center justify-center rounded-full bg-accent text-[10px] font-semibold text-accent-foreground">
+                    {ROLE_LABEL[assigneeOf(a)].charAt(0)}
+                  </span>
+                  {ROLE_LABEL[assigneeOf(a)]}
+                </span>
+              )}
             </PropertyRow>
 
             {src && (
