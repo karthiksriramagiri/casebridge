@@ -20,19 +20,32 @@
    "JM_SP" never matched "JM" — it fell through to UNKNOWN_FIRM, leaving 14
    Spanish Jacoby & Meyers ads and 4 FL ads unattributed in every report that
    groups by firm. Adding them fixes that for the legacy center too. */
-export const FIRMS = [
+type Firm = {
+  code: string
+  label: string
+  name: string
+  /* Other spellings of the same firm, as they appear in ad names.
+
+     Bernard Law is written BLG in the campaign and BL in the firm list it
+     was first added under. Two entries would be two firm tabs for one
+     client, each holding half the ads; one entry with the other spelling
+     listed here keeps them together. The canonical code is what every
+     report groups on. */
+  aliases?: string[]
+}
+
+export const FIRMS: Firm[] = [
   { code: 'LHP',    label: 'LHP',    name: 'Larry H. Parker' },
   { code: 'LHP_SP', label: 'LHP_SP', name: 'Larry H. Parker [SPANISH]' },
   { code: 'JM',     label: 'JM',     name: 'Jacoby & Meyers' },
   { code: 'JM_SP',  label: 'JM_SP',  name: 'Jacoby & Meyers [SPANISH]' },
-  /* Bernard Law Group — Washington. Runs in the Accident Support Desk
-     account alongside Larry H. Parker, so the campaign code is the only
-     thing that separates their spend. */
-  { code: 'BLG',    label: 'BLG',    name: 'Bernard Law Group' },
+  /* Bernard Law — Washington. Runs in the Accident Support Desk account
+     alongside Larry H. Parker, so the campaign code is the only thing that
+     separates their spend. `BL` is the same firm under its older spelling. */
+  { code: 'BLG',    label: 'BLG',    name: 'Bernard Law', aliases: ['BL'] },
   // No full name supplied for these yet — they show as their code until one is.
   { code: 'FL',     label: 'FL',     name: 'FL' },
   { code: 'EBL',    label: 'EBL',    name: 'EBL' },
-  { code: 'BL',     label: 'BL',     name: 'BL' },
 ]
 
 /** The firm as a person would say it; falls back to the code, then to a dash. */
@@ -41,9 +54,15 @@ export function firmName(code: string | null | undefined): string {
   return FIRMS.find(f => f.code === code)?.name ?? code
 }
 
-/* Longest first: "LHP_SP" must win before "LHP" can match a prefix of it, and
-   "BL" must not swallow a segment that is really "EBL". */
-const BY_LENGTH = [...FIRMS].sort((a, b) => b.code.length - a.code.length)
+/* Every spelling that identifies a firm, canonical code first.
+
+   Longest first: "LHP_SP" must win before "LHP" can match a prefix of it,
+   and "BL" must not swallow a segment that is really "EBL". Matching is on
+   whole segments, so this is belt and braces — but the sort is what keeps
+   it true if that ever changes. */
+const BY_LENGTH = FIRMS
+  .flatMap((f) => [f.code, ...(f.aliases ?? [])].map((spelling) => ({ spelling, code: f.code })))
+  .sort((a, b) => b.spelling.length - a.spelling.length)
 
 export const UNKNOWN_FIRM = '—'
 
@@ -51,7 +70,8 @@ export function firmOf(adName: string | null | undefined): string {
   if (!adName) return UNKNOWN_FIRM
   const segments = adName.split('|').map(s => s.trim().toUpperCase())
   for (const f of BY_LENGTH) {
-    if (segments.includes(f.code)) return f.code
+    // The canonical code, whichever spelling matched.
+    if (segments.includes(f.spelling)) return f.code
   }
   return UNKNOWN_FIRM
 }

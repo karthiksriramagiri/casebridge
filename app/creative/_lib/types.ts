@@ -328,7 +328,7 @@ export type AssignmentFirm = (typeof ASSIGNMENT_FIRMS)[number]
 export const ASSIGNMENT_FIRM_LABEL: Record<string, string> = {
   'LHP': 'Larry H. Parker',
   'LHP [SPANISH]': 'Larry H. Parker [SPANISH]',
-  'BLG': 'Bernard Law Group',
+  'BLG': 'Bernard Law',
   'JM': 'Jacoby & Meyers',
   'JM [SPANISH]': 'Jacoby & Meyers [SPANISH]',
 }
@@ -355,6 +355,10 @@ const TO_KEY: Record<string, FirmKey> = {
   JM_SP: 'JM_SP',
   'JM [SPANISH]': 'JM_SP',
   BLG: 'BLG',
+  /* The same firm under its older spelling. Without this an ad named with
+     BL opens a lane of its own — one client, two headings, each holding
+     half the ads. */
+  BL: 'BLG',
 }
 
 /** Either spelling → the one key both sides agree on. */
@@ -366,7 +370,7 @@ export const FIRM_KEY_LABEL: Record<FirmKey, string> = {
   LHP_SP: 'Larry H. Parker [SPANISH]',
   JM: 'Jacoby & Meyers',
   JM_SP: 'Jacoby & Meyers [SPANISH]',
-  BLG: 'Bernard Law Group',
+  BLG: 'Bernard Law',
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
