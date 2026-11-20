@@ -25,6 +25,10 @@ export const FIRMS = [
   { code: 'LHP_SP', label: 'LHP_SP', name: 'Larry H. Parker [SPANISH]' },
   { code: 'JM',     label: 'JM',     name: 'Jacoby & Meyers' },
   { code: 'JM_SP',  label: 'JM_SP',  name: 'Jacoby & Meyers [SPANISH]' },
+  /* Bernard Law Group — Washington. Runs in the Accident Support Desk
+     account alongside Larry H. Parker, so the campaign code is the only
+     thing that separates their spend. */
+  { code: 'BLG',    label: 'BLG',    name: 'Bernard Law Group' },
   // No full name supplied for these yet — they show as their code until one is.
   { code: 'FL',     label: 'FL',     name: 'FL' },
   { code: 'EBL',    label: 'EBL',    name: 'EBL' },

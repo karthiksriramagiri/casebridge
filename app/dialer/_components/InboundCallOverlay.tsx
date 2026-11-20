@@ -5,6 +5,7 @@ import { useCall } from '../_context/call'
 import { useAuth } from '../_context/auth'
 import { useInboundRingtone } from '../_lib/ringtone'
 import type { Lead } from '../_types'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 interface InboundCall {
   id: string
@@ -18,7 +19,7 @@ interface InboundCall {
   status: string
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+
 
 export function InboundCallOverlay() {
   const { deviceReady, callState, answerInbound } = useCall()

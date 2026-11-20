@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import { createClient } from '../_lib/supabase'
 import type { QueueLead } from '../_types'
 import { rankLabel } from '../_lib/queue-rules'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 interface Props {
   repIdentity:    string
@@ -15,7 +16,7 @@ interface Props {
   selectedId?:    string | null
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+
 
 function fmtTime(iso: string, timezone: string) {
   try {

@@ -10,6 +10,7 @@ import {
   Card, CardHeader, EmptyState, PageBody, PageHeader, Pill, Table, TableWrap, Td, Th,
 } from '../../_components/ui/shell'
 import type { Lead } from '../../_types'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 interface InboundCall {
   id: string
@@ -27,7 +28,7 @@ interface InboundCall {
   ended_at: string | null
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+
 
 function fmtTime(iso: string) {
   return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', second: '2-digit', timeZone: 'America/Los_Angeles' })

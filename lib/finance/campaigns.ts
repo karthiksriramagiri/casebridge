@@ -32,6 +32,10 @@ export const FIRM_CAMPAIGN_CODES: Record<string, string[]> = {
      Both are the firm's, and both are billed to it. */
   lhp: ['LHP', 'LHP_SP'],
   jm: ['JM'],
+  /* Bernard Law Group shares the Accident Support Desk account with Larry
+     H. Parker, so the campaign code is the only thing separating the two
+     firms' spend. Getting this wrong bills one firm for the other's ads. */
+  blg: ['BLG'],
   /* Archived firms, kept so historical spend still attributes if their
      campaigns are ever read again. */
   mca: ['MCA', 'GA_MCA'],

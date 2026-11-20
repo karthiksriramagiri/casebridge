@@ -319,7 +319,7 @@ export function parseRequests(value: string | undefined): { picked: string[]; ot
 export const joinRequests = (picked: string[], other: string) =>
   [...picked, other.trim()].filter(Boolean).join(REQUEST_SEP)
 
-export const ASSIGNMENT_FIRMS = ['LHP', 'LHP [SPANISH]', 'JM', 'JM [SPANISH]'] as const
+export const ASSIGNMENT_FIRMS = ['LHP', 'LHP [SPANISH]', 'JM', 'JM [SPANISH]', 'BLG'] as const
 export type AssignmentFirm = (typeof ASSIGNMENT_FIRMS)[number]
 
 /* The code is what goes in the ad name; this is what a person is called by.
@@ -328,6 +328,7 @@ export type AssignmentFirm = (typeof ASSIGNMENT_FIRMS)[number]
 export const ASSIGNMENT_FIRM_LABEL: Record<string, string> = {
   'LHP': 'Larry H. Parker',
   'LHP [SPANISH]': 'Larry H. Parker [SPANISH]',
+  'BLG': 'Bernard Law Group',
   'JM': 'Jacoby & Meyers',
   'JM [SPANISH]': 'Jacoby & Meyers [SPANISH]',
 }
@@ -343,7 +344,7 @@ export const firmLabel = (code: string | undefined | null) =>
    carries the one a person picked on a form — 'LHP', 'LHP [SPANISH]'. Any
    page that puts live ads next to planned ones has to put both on the same
    footing first, or the Spanish boards silently split in two. */
-export const FIRM_KEYS = ['LHP', 'LHP_SP', 'JM', 'JM_SP'] as const
+export const FIRM_KEYS = ['LHP', 'LHP_SP', 'JM', 'JM_SP', 'BLG'] as const
 export type FirmKey = (typeof FIRM_KEYS)[number]
 
 const TO_KEY: Record<string, FirmKey> = {
@@ -353,6 +354,7 @@ const TO_KEY: Record<string, FirmKey> = {
   JM: 'JM',
   JM_SP: 'JM_SP',
   'JM [SPANISH]': 'JM_SP',
+  BLG: 'BLG',
 }
 
 /** Either spelling → the one key both sides agree on. */
@@ -364,6 +366,7 @@ export const FIRM_KEY_LABEL: Record<FirmKey, string> = {
   LHP_SP: 'Larry H. Parker [SPANISH]',
   JM: 'Jacoby & Meyers',
   JM_SP: 'Jacoby & Meyers [SPANISH]',
+  BLG: 'Bernard Law Group',
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
@@ -504,6 +507,7 @@ export const FIRM_KEY_SPELLING: Record<FirmKey, AssignmentFirm> = {
   LHP_SP: 'LHP [SPANISH]',
   JM: 'JM',
   JM_SP: 'JM [SPANISH]',
+  BLG: 'BLG',
 }
 
 /** The firm half of a lane, spelled the way a brief stores it. */

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react'
 import { useCall } from '../../_context/call'
 import { StatusPill } from '../../_components/StatusPill'
 import type { RepStatus } from '../../_types'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -48,7 +49,7 @@ function elapsed(startedAt: string | null): number {
   return Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+
 
 // ── Icons ──────────────────────────────────────────────────────────────────────
 

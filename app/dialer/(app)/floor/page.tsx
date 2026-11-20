@@ -8,6 +8,7 @@ import { Button } from '@/app/_ui/button'
 import { Card, EmptyState, PageBody, PageHeader, Pill, StatCard } from '../../_components/ui/shell'
 import type { RepStatus } from '../../_types'
 import { cn } from '@/lib/utils'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 /* ═══════════════════════════════════════════════════════════════════════════
    The floor, live.
@@ -60,7 +61,7 @@ function fmtDuration(sec: number) {
 const elapsed = (startedAt: string | null) =>
   startedAt ? Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000) : 0
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+
 
 /** A duration that counts while the call is up, and stops when it is not. */
 function useLiveElapsed(startedAt: string | null, running: boolean) {

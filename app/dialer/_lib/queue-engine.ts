@@ -39,6 +39,10 @@ const PIPELINES = [
   { id: 'r1AsAtC7lzwO9ybtkQlA', firm: 'lhp',   lang: 'es', defaultTz: 'America/Los_Angeles' },
   { id: 'Jj4DCdu5duYDgI87ERbx', firm: 'fears', lang: 'en', defaultTz: 'America/Chicago'     },
   { id: '0tBzhg0eGSNKL870y3yV', firm: 'jm',    lang: 'en', defaultTz: 'America/Los_Angeles' },
+  /* Bernard Law Group — Washington, so Pacific like the California firms.
+     Its pipeline carries the same stages as Larry H. Parker's apart from
+     Replacement, which the queue does not call anyway. */
+  { id: 'kASvZyZcX3mI2ipnLB5v', firm: 'blg',   lang: 'en', defaultTz: 'America/Los_Angeles' },
 ]
 
 /** How many leads a rep holds at once. */
@@ -615,6 +619,9 @@ export async function getFirmFilter(): Promise<FirmFilter> {
    client is — and disagreed with the firm on 101 leads in a single day. */
 export const FIRM_STATE: Record<string, string> = {
   lhp: 'CA', lhp_spanish: 'CA', jm: 'CA', fears: 'TX', fl: 'TX',
+  /* Bernard Law is a Washington firm — the first outside CA/TX, and the
+     reason the state filter reads the firm rather than the area code. */
+  blg: 'WA',
 }
 
 export function stateForLead(lead: { firm?: string | null }): string | null {

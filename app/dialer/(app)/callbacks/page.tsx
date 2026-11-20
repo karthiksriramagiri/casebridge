@@ -9,6 +9,7 @@ import { Button } from '@/app/_ui/button'
 import {
   Card, CardHeader, PageBody, PageHeader, Pill, Table, TableWrap, Td, Th,
 } from '../../_components/ui/shell'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 interface Callback {
   id: string
@@ -35,7 +36,7 @@ interface ContactResult {
   firm: string | null
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', lhp_s: 'LHP (ES)', fears: 'Fears', jm: 'J&M' }
+
 const FIRM_TZ: Record<string, string> = { lhp: 'America/Los_Angeles', lhp_s: 'America/Los_Angeles', fears: 'America/Chicago', jm: 'America/Los_Angeles' }
 const FIRM_TZ_LABEL: Record<string, string> = { lhp: 'PT', lhp_s: 'PT', fears: 'CT', jm: 'PT' }
 

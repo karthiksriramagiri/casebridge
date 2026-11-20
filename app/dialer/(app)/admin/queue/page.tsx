@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { createClient } from '@/app/dialer/_lib/supabase'
 import { rankLabel, formatSlot } from '@/app/dialer/_lib/queue-rules'
 import { stateForPhone } from '@/app/dialer/_lib/area-codes'
+import { FIRM_LABEL } from '@/app/dialer/_lib/firms'
 
 interface Attempt {
   id:             string
@@ -47,7 +48,7 @@ interface Summary {
   byFirm:         { lhp: number; fears: number; jm: number }
 }
 
-const FIRM_LABEL: Record<string, string> = { lhp: 'LHP', fears: 'Fears', jm: 'J&M' }
+
 
 /** A firm code we have no label for is still a real firm — show the code. */
 const firmLabel = (code: string) => FIRM_LABEL[code] ?? code.toUpperCase()
