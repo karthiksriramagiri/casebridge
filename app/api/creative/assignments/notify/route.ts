@@ -36,6 +36,12 @@ const clean = (v: string | undefined) => (v || '').trim().replace(/\\n$/, '')
 const WEBHOOKS: Record<string, string> = {
   review: clean(process.env.SLACK_CREATIVE_REVIEW_WEBHOOK),
   revise: clean(process.env.SLACK_CREATIVE_REVISE_WEBHOOK),
+  /* Work that is Jason's own to build — an image double down, a relaunch —
+     goes to his channel instead of Faisal's. Its own variable, not a reuse
+     of one of the two above: a webhook is bound to one channel, so pointing
+     an existing one here would silently redirect everything that already
+     uses it. */
+  admin: clean(process.env.SLACK_CREATIVE_ADMIN_WEBHOOK),
 }
 
 /* Where the thread lives. One channel for the whole conversation about a
@@ -50,6 +56,11 @@ const THREAD_CHANNEL = clean(process.env.SLACK_CREATIVE_CHANNEL)
 const CHANNELS: Record<string, string> = {
   review: THREAD_CHANNEL || clean(process.env.SLACK_CREATIVE_REVIEW_CHANNEL),
   revise: THREAD_CHANNEL || clean(process.env.SLACK_CREATIVE_REVISE_CHANNEL),
+  /* Deliberately NOT falling back to THREAD_CHANNEL. The single-channel
+     arrangement exists so one brief's conversation stays in one place;
+     Jason's own queue is a different conversation and belongs where he
+     reads it. Threading here needs its own channel id. */
+  admin: clean(process.env.SLACK_CREATIVE_ADMIN_CHANNEL),
 }
 
 /* The center's own bot token, falling back to the shared one.
@@ -112,7 +123,14 @@ export async function POST(req: NextRequest) {
   /* With one channel configured this is decided already. The routing below
      only matters on the old two-channel arrangement, where a message goes
      to whoever is waiting on it. */
-  const channel = THREAD_CHANNEL ? 'revise' :
+  /* Work Jason builds himself goes to his own channel, whatever the kind.
+
+     Checked before everything else because it is about WHO is waiting on
+     the card rather than what happened to it — an image double down is his
+     to make, so telling Faisal is telling the wrong person, and the
+     single-channel shortcut below would otherwise swallow it. */
+  const channel = body.audience === 'admin' && (WEBHOOKS.admin || CHANNELS.admin) ? 'admin' :
+    THREAD_CHANNEL ? 'revise' :
     kind === 'comment'  ? (body.author === 'admin' ? 'revise' : 'review') :
     kind === 'revise'   ? 'revise' :
     kind === 'assigned' ? 'revise' :
@@ -124,7 +142,9 @@ export async function POST(req: NextRequest) {
      only real failure. */
   const threaded = !!BOT_TOKEN && !!CHANNEL_ID
   if (!threaded && !WEBHOOK) {
-    const key = channel === 'revise' ? 'SLACK_CREATIVE_REVISE_WEBHOOK' : 'SLACK_CREATIVE_REVIEW_WEBHOOK'
+    const key = channel === 'admin' ? 'SLACK_CREATIVE_ADMIN_WEBHOOK'
+      : channel === 'revise' ? 'SLACK_CREATIVE_REVISE_WEBHOOK'
+      : 'SLACK_CREATIVE_REVIEW_WEBHOOK'
     return NextResponse.json(
       { sent: false, error: `${key} is not set, and no bot token + channel id to post with instead.` },
       { status: 200 },
@@ -176,7 +196,14 @@ export async function POST(req: NextRequest) {
               ? `✅ ${by} finished the notes — ready for updates`
               : `*${title}* — feedback is done\n${by} finished reviewing this cut. Please check the notes and make the updates.`)
           : kind === 'assigned'
-            ? `*Task assigned* — ${title}\n${by} raised ${type ? `a *${type}*` : 'a brief'} for you. It is on the board under *Assigned*.`
+            /* "for you" is addressed to whoever reads the channel, which is
+               right for a brief being handed over and wrong for work the
+               reader has to do himself. An image double down is Jason's own
+               build — nobody raised it for him, he is the one making it —
+               so it says what landed rather than who it is for. */
+            ? (body.audience === 'admin'
+                ? `*Yours to build* — ${title}\n${type ? `A *${type}*` : 'A brief'} is on your queue under *Assigned*.`
+                : `*Task assigned* — ${title}\n${by} raised ${type ? `a *${type}*` : 'a brief'} for you. It is on the board under *Assigned*.`)
             : (threadReply
                 ? `🎬 ${by} finished this cut — ready for review`
                 : `*${title}* is ready for review\n${by} finished this cut and moved it to *Feedback Request*.`)

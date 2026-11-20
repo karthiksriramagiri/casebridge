@@ -897,10 +897,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          each button, so a new way of raising one cannot forget it. */
       if (a.type === 'Double Down') a = { ...a, priority: 5 }
 
-      /* Whose desk this lands on. A relaunch is nothing anyone makes, and an
-         image double down is Jason's own build; neither is a job being
-         handed over, so neither rings Faisal's phone. */
-      const tellFaisal = isCreativeWork({ type: a.type }) && assigneeOf({ type: a.type, format: a.format }) === 'creative'
+      /* Whose desk this lands on, and therefore whose phone rings.
+
+         A brief handed to Faisal goes to his channel. Work Jason builds
+         himself — an image double down, which he makes rather than briefs —
+         goes to his. It used to go to Faisal, because the notification was
+         decided by the kind of card rather than by who holds it, and the
+         one person who had to make it was never told.
+
+         A relaunch tells nobody: nothing is made, the ad already exists,
+         and it reaches Jason as a row on his own launch list anyway. */
+      const audience = assigneeOf({ type: a.type, format: a.format })
+      const tellSomeone = isCreativeWork({ type: a.type })
       const order = Math.max(-1, ...assignments.map((p) => p.order)) + 1
       const temp = uid('a')
       /* Shown immediately under a temporary id, then swapped for the real one
@@ -960,10 +968,18 @@ export function StoreProvider({ children }: { children: ReactNode }) {
                carries a thread timestamp that has to be written back onto
                the card — and a card with a temporary id has nowhere to
                write it to. */
-            if (tellFaisal) {
+            if (tellSomeone) {
               void notifySlack(
                 { ...row, id: d?.id ?? temp },
-                { kind: 'assigned', assignmentType: a.type, by: ROLE_LABEL.admin, notes: a.notes ?? '' },
+                {
+                  kind: 'assigned', assignmentType: a.type,
+                  by: ROLE_LABEL.admin, notes: a.notes ?? '',
+                  /* The route picks the channel from this. Falls back to
+                     Faisal's when Jason's is not configured, so a missing
+                     variable is a message in the wrong place rather than no
+                     message at all. */
+                  audience,
+                },
               )
             }
           }),
@@ -975,9 +991,9 @@ export function StoreProvider({ children }: { children: ReactNode }) {
          actually starts work did not. A brief was raised and sat on the
          board until he happened to look.
 
-         Only the briefs that are his. A relaunch is nothing anyone makes,
-         and an image double down is Jason's own build; neither is a job
-         being handed over, so neither rings. */
+         Addressed by who holds the card: Faisal's briefs ring Faisal,
+         Jason's own builds ring Jason. A relaunch rings nobody — nothing is
+         made, and it reaches his launch list regardless. */
     },
     [assignments, persist, notifySlack],
   )
