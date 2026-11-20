@@ -258,6 +258,10 @@ type Store = {
      `today` — the list is the queue of work in hand, and a card that
      vanished from it until tomorrow would be a card nobody worked. */
   launchDay: string
+  /** Whether today's figures re-take themselves every five minutes. Held
+   *  while someone is reading the table; a manual refresh still works. */
+  autoRefresh: boolean
+  setAutoRefresh: (on: boolean) => void
   /** Viewing a day that is finished. Its numbers are a record: frozen, and
       nothing on it can be changed. */
   dayLocked: boolean
@@ -522,6 +526,19 @@ export function StoreProvider({ children }: { children: ReactNode }) {
   /* Derived rather than its own state: it can never drift from `today`,
      and it follows the roll-over for free. */
   const launchDay = useMemo(() => addDays(today, 1), [today])
+
+  /* Auto-refresh, held.
+
+     The numbers move under you while you are reading them: five minutes
+     into comparing two ad sets the table re-sorts, the row you were on is
+     somewhere else, and the figure you half-remembered is now a different
+     figure. Analysis needs the page to sit still.
+
+     A hold, not a setting — it is off by default and says so on screen,
+     because a floor that silently stopped refreshing would make decisions
+     on yesterday's numbers. Refresh by hand still works while held: that is
+     a deliberate look, not the page moving on its own. */
+  const [autoRefresh, setAutoRefresh] = useState(true)
   useEffect(() => {
     const t = setInterval(() => {
       const now = pacificDay()
@@ -604,6 +621,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      Manager having changed something and wants to see it. */
   useEffect(() => {
     if (day !== today) return
+    /* Paused covers the focus listener too. Coming back from Ads Manager is
+       exactly when a held page must not move: it is the moment you return
+       to the row you left. */
+    if (!autoRefresh) return
     const tick = () => {
       if (document.visibilityState !== 'visible') return
       if (inFlight.current > 0) return
@@ -615,7 +636,7 @@ export function StoreProvider({ children }: { children: ReactNode }) {
       clearInterval(id)
       window.removeEventListener('focus', tick)
     }
-  }, [day])
+  }, [day, today, autoRefresh])
 
   /* Signed cases, from the Financial Center's source. One Supabase query, so
      Signed and CPA are filled in almost immediately — long before the
@@ -1204,6 +1225,8 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     setDay,
     today,
     launchDay,
+    autoRefresh,
+    setAutoRefresh,
     /* A finished day is a record. Nothing on it can be changed — not the
        kill list, not a launch tick — or the record stops being one. A
        forward date is not a record: Launch Lists queues tomorrow's ads on

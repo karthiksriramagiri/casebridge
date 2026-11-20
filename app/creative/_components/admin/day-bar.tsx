@@ -1,6 +1,6 @@
 'use client'
 
-import { History, Loader2, RefreshCw, TriangleAlert } from 'lucide-react'
+import { History, Loader2, Pause, Play, RefreshCw, TriangleAlert } from 'lucide-react'
 import { Button } from '@/app/creative/_ui/button'
 import { formatDate } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
@@ -16,7 +16,7 @@ import { useStore } from '@/app/creative/_lib/store'
    carry the refresh button; on a past day it is a warning, because what is
    on screen is a record and nothing on it can be changed. */
 export function DayBar() {
-  const { day, setDay, dayLocked, dayMissing, lockAvailable, snapshot, loading, refreshDay, today } = useStore()
+  const { day, setDay, dayLocked, dayMissing, lockAvailable, snapshot, loading, refreshDay, today, autoRefresh, setAutoRefresh } = useStore()
 
   if (!dayLocked && lockAvailable && !snapshot) return null
 
@@ -57,10 +57,36 @@ export function DayBar() {
           ? `Today’s numbers, taken ${takenAt(snapshot.takenAt)} · ${snapshot.ads} ads`
           : 'Day lock off — run supabase/migration_creative_snapshot.sql to keep a copy of each day.'}
       </span>
+      {/* Held auto-refresh says so, in the line that reports the numbers.
+
+          A page that quietly stopped updating would have the floor making
+          calls on stale figures without knowing it, so the state is on
+          screen rather than hidden in a menu — and the text is the current
+          state, not the thing the button does. */}
+      {!autoRefresh && (
+        <span className="rounded-full bg-warning/20 px-2 py-0.5 font-medium text-warning-foreground">
+          Auto-refresh paused
+        </span>
+      )}
       <Button
         variant="ghost"
         size="sm"
         className="ml-auto h-7 gap-1.5 text-xs"
+        onClick={() => setAutoRefresh(!autoRefresh)}
+        title={autoRefresh
+          ? 'Stop the five-minute re-take while you read the numbers'
+          : 'Let the numbers re-take themselves every five minutes again'}
+      >
+        {autoRefresh ? <Pause className="size-3.5" aria-hidden /> : <Play className="size-3.5" aria-hidden />}
+        {autoRefresh ? 'Pause refresh' : 'Resume refresh'}
+      </Button>
+      {/* Still here while paused: a deliberate look is not the page moving
+          on its own, and it is the obvious thing to want once you are done
+          reading. */}
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1.5 text-xs"
         onClick={refreshDay}
         disabled={loading}
         title="Ask Meta again and replace today’s figures"

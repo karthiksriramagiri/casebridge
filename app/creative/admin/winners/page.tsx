@@ -5,7 +5,8 @@ import { ChevronDown, ChevronRight, RotateCcw, Send, Undo2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/app/creative/_ui/button'
 import { EmptyState, matchesQuery, PageHeader, Pill, SearchBox, Thumb } from '@/app/creative/_components/admin/shared'
-import { adsetDupeTags, adsetKey, adsetTotalsFor, batchUsage, isDelivering, parseCreativeName, pct, totalsFor, usd, WINNER_ADSET_CPL, withAdsetDate, withCreativeDate, withCreativeSeq } from '@/app/creative/_lib/metrics'
+import { adsetDupeTags, adsetKey, adsetTotalsFor, isDelivering, parseCreativeName, pct, totalsFor, usd, WINNER_ADSET_CPL } from '@/app/creative/_lib/metrics'
+import { buildDoubleDowns, doubleDownAdset, doubleDownTarget, knownCreativeNames, nextDoubleDownName } from '@/app/creative/_lib/double-down'
 import { useExpanded } from '@/app/creative/_lib/use-expanded'
 import { useRole } from '@/app/creative/_lib/role'
 import { useStore } from '@/app/creative/_lib/store'
@@ -157,106 +158,18 @@ export default function WinnersPage() {
     )
   }
 
-  /* Every creative name in play — live in the account and already briefed.
-
-     The next cut number is read off the whole batch, not off the cut being
-     doubled. An ad set holding IMG1 and IMG2 was producing IMG2 again when
-     you doubled down off IMG1, because the old rule stepped from the source
-     rather than looking at what the batch had already used. Same rule the
-     new-assignment form uses when you type a batch number. */
-  const knownNames = useMemo(
-    () => [
-      ...creatives.map((c) => c.convention || c.name),
-      ...assignments.map((a) => a.creativeName ?? a.title),
-    ],
-    [creatives, assignments],
-  )
-
-  /** The ad set the new cut runs in — the winner's, stamped with the day
-   *  it will actually go up. The floor launches for the next day. */
-  const adsetFor = (c: Creative) => withAdsetDate(c.adset, launchDay)
-
-  /** What this cut's next double down will be called. `taken` holds names
-   *  claimed earlier in the same click, so sending a whole ad set numbers
-   *  its cuts in sequence instead of giving them all the same one. */
-  const nextNameFor = (c: Creative, taken: string[] = []) => {
-    const from = c.convention || c.name
-    const src = parseCreativeName(from)
-    /* Scoped to the winner's own firm — another firm's B000123 is a
-       different batch that happens to share a number. */
-    const { seq } = batchUsage([...knownNames, ...taken], src.batch ?? '', src.format ?? '', src.firm ?? '')
-    /* Today's date, and the next free cut number. The rest of the name —
-       firm, format, offer, batch, hooks — carries over from the winner. */
-    return withCreativeDate(withCreativeSeq(from, seq), launchDay)
-  }
-
-  /* The brief.
-
-     The ad set is copied exactly — a double down runs in the same ad set,
-     so renaming it would create a second one. The creative name is the only
-     thing that moves. Both go in the notes because they are what Faisal
-     files the finished cut under, and the title is the new name so the card
-     reads as the thing to build rather than as a reference to the old one. */
-  /* Back to the long firm spelling the board's own fields use — the ad name
-     carries LHP_SP, the form carries LHP [SPANISH], and the two have to meet
-     somewhere or the Spanish boards split in two. */
-  const FIRM_FROM_CODE: Record<string, AssignmentFirm> = {
-    LHP: 'LHP', LHP_SP: 'LHP [SPANISH]', JM: 'JM', JM_SP: 'JM [SPANISH]',
-  }
+  /* The names already in play, and the brief that comes out of them, both
+     live in _lib/double-down so Creative Analysis raises exactly the same
+     thing from the same inputs. */
+  const knownNames = useMemo(() => knownCreativeNames(creatives, assignments), [creatives, assignments])
+  const adsetFor = (c: Creative) => doubleDownAdset(c, launchDay)
+  const nextNameFor = (c: Creative, taken: string[] = []) => nextDoubleDownName(c, launchDay, knownNames, taken)
 
   const push = (list: Creative[], label: string) => {
-    const taken: string[] = []
-    for (const c of list) {
-      const from = c.convention || c.name
-      const to = nextNameFor(c, taken)
-      taken.push(to)
-
-      /* Everything the winning cut was built from, carried over.
-
-         A double down is the same idea made again: same batch, same hooks,
-         same ad set. Leaving those blank meant Jason retyping from the old
-         ad name, which is both the tedious part and the part that goes
-         wrong. The offer and campaign type come off the ad set, which is
-         the one that is definitely live. */
-      const src = parseCreativeName(from)
-      const setParts = c.adset.split('|').map((x) => x.trim())
-
-      addAssignment({
-        title: `[DD] ${to}`,
-        type: 'Double Down',
-        angle: c.angle,
-        sourceCreativeId: c.id,
-        firm: FIRM_FROM_CODE[src.firm ?? ''] ?? undefined,
-        /* A double down runs in the winner's own ad set, so it is always the
-           winner's account. Carried so the brief lands on the right one of
-           the two Jacoby & Meyers boards. */
-        account: c.account,
-        format: (src.format as CreativeFormat) ?? undefined,
-        batch: src.batch,
-        visualCode: src.visualCode,
-        verbalCode: src.verbalCode,
-        offer: setParts[3] ?? src.offer,
-        campaignType: setParts[4],
-        /* Both names on the brief itself, not only in the prose. The ad set
-           is the winner's, re-dated to the next launch day: same firm, format, offer,
-           campaign type and batch, going up now rather than on the day the
-           winner launched. */
-        adsetName: adsetFor(c),
-        creativeName: to,
-        notes: [
-          `Ad set: ${adsetFor(c)}`,
-          `New creative name: ${to}`,
-          `Doubling down on: ${from}  (${c.adset})`,
-        ].join('\n'),
-      })
+    for (const { assignment } of buildDoubleDowns(list, launchDay, knownNames)) {
+      addAssignment(assignment)
     }
-    /* Who it went to. An image double down is Jason's own work — saying it
-       went to Faisal was the page telling him something that was not true,
-       and the card was not on Faisal's board either. */
-    const who = (c: Creative) =>
-      assigneeOf({ type: 'Double Down', format: parseCreativeName(c.convention || c.name).format as CreativeFormat }) === 'admin'
-        ? 'your queue' : 'Faisal'
-    const targets = [...new Set(list.map(who))]
+    const targets = [...new Set(list.map(doubleDownTarget))]
     const to = targets.length === 1 ? targets[0] : 'you and Faisal'
     toast(
       list.length === 1

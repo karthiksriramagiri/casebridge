@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { addDays } from '@/app/creative/_lib/data'
 import { adIsOn, adsetDupeTags, adsetKey, daysLive, hasDeliveryIssue, isWatchCandidate, leadsIn, num, pct, RANGES, isDelivering, signedInRange, stageOf, sumTotals, totalsFor, usd, WATCH_CPL } from '@/app/creative/_lib/metrics'
 import { useStore } from '@/app/creative/_lib/store'
+import { buildDoubleDowns, doubleDownTarget, knownCreativeNames } from '@/app/creative/_lib/double-down'
 import { useDailyExclusions } from '@/app/creative/_lib/use-daily-exclusions'
 import type { Creative, RangeKey, SignedLead, Stage, Totals } from '@/app/creative/_lib/types'
 import { FIRMS, firmName } from '@/app/_metrics/firms'
@@ -192,7 +193,7 @@ function namesOf(signed: { name: string }[]): string | undefined {
 }
 
 export function AnalysisView() {
-  const { creatives, killedIds, watch, kill, addToWatch, addToKill, relaunch, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals, today } = useStore()
+  const { creatives, killedIds, watch, kill, addToWatch, addToKill, relaunch, addAssignment, assignments, accounts, loading, loadError, hasOutcomes, adsetTotals, today, launchDay } = useStore()
   const [range, setRange] = useState<RangeKey>('today')
   const [query, setQuery] = useState('')
   const [account, setAccount] = useState('all')
@@ -367,25 +368,32 @@ export function AnalysisView() {
     [assignments],
   )
 
-  const bulkDoubleDown = (ids: string[]) => {
-    const fresh = ids.filter((id) => !alreadyDoubled.has(id))
-    for (const id of fresh) {
-      const c = creatives.find((x) => x.id === id)
-      if (!c) continue
-      addAssignment({
-        title: `Double Down – ${c.id} ${c.angle}`,
-        type: 'Double Down',
-        angle: c.angle,
-        sourceCreativeId: c.id,
-        /* Same ad set as the winner, so the same account — which is what
-           decides whether it queues under Jacoby & Meyers (ASD) or (CSD). */
-        account: c.account,
-      })
-    }
+  /* The same brief Winner Analysis raises, from the same builder.
+
+     This used to write a stub — `Double Down – <id> <angle>` and an account,
+     nothing else — so a cut doubled from this table reached Faisal with no
+     batch, no hook codes, no ad set, and a title that was not a name. The
+     decision is the same decision on either page, so it now produces the
+     same card: _lib/double-down builds both. */
+  const knownNames = useMemo(() => knownCreativeNames(creatives, assignments), [creatives, assignments])
+
+  const bulkDoubleDown = (ids: string[], label?: string) => {
+    const fresh = ids
+      .filter((id) => !alreadyDoubled.has(id))
+      .map((id) => creatives.find((x) => x.id === id))
+      .filter(Boolean) as Creative[]
+
+    const built = buildDoubleDowns(fresh, launchDay, knownNames)
+    for (const { assignment } of built) addAssignment(assignment)
+
+    const targets = [...new Set(fresh.map(doubleDownTarget))]
+    const to = targets.length === 1 ? targets[0] : 'you and Faisal'
     toast(
-      fresh.length
-        ? `Sent ${fresh.length} to double down`
-        : 'Already sent to double down',
+      built.length === 0
+        ? 'Already sent to double down'
+        : built.length === 1
+        ? `${built[0].creativeName} sent to ${to}`
+        : `${label ? `${label} — ` : ''}${built.length} sent to ${to}`,
     )
     setSelected(new Set())
   }
@@ -766,7 +774,7 @@ export function AnalysisView() {
                                 aria-label={`Send every ad in ${g.adset} to double down`}
                                 title="Send the whole ad set to double down"
                                 disabled={groupIds.every((id) => alreadyDoubled.has(id))}
-                                onClick={() => bulkDoubleDown(groupIds)}
+                                onClick={() => bulkDoubleDown(groupIds, g.adset)}
                               >
                                 <TrendingUp aria-hidden />
                               </Button>
