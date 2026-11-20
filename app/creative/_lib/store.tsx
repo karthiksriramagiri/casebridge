@@ -10,6 +10,10 @@ import { adsetIndex, buildAdsetName, buildCreativeName, bumpConvention, buildCon
    two accounts, four calls each, twelve times an hour. */
 const AUTO_REFRESH_MS = 5 * 60_000
 
+/* Where the hold is remembered. Only ever holds the string 'paused' —
+   absent means running, which is the default and the safe one. */
+const AUTO_REFRESH_KEY = 'cc:auto-refresh'
+
 /** The row collections /api/creative/board writes. */
 type BoardName = 'watch' | 'kill' | 'launches' | 'exclusions'
 import { api, fetchBoard, isPersisted } from './assignments-api'
@@ -534,11 +538,34 @@ export function StoreProvider({ children }: { children: ReactNode }) {
      somewhere else, and the figure you half-remembered is now a different
      figure. Analysis needs the page to sit still.
 
-     A hold, not a setting — it is off by default and says so on screen,
-     because a floor that silently stopped refreshing would make decisions
-     on yesterday's numbers. Refresh by hand still works while held: that is
-     a deliberate look, not the page moving on its own. */
-  const [autoRefresh, setAutoRefresh] = useState(true)
+     A hold, not a setting — it says so on screen, because a floor that
+     silently stopped refreshing would make decisions on yesterday's
+     numbers. Refresh by hand still works while held: that is a deliberate
+     look, not the page moving on its own.
+
+     It survives a reload and a closed tab. Analysis is not one sitting —
+     you open Ads Manager, come back, open a spreadsheet, come back — and a
+     hold that lifted itself every time the page reloaded would be a hold
+     you could not rely on. It stays until somebody resumes it.
+
+     Read in an effect rather than in useState's initialiser: the server
+     renders this too, and reaching for localStorage during render gives
+     the client a different first paint from the server's. */
+  const [autoRefresh, setAutoRefreshState] = useState(true)
+
+  useEffect(() => {
+    try {
+      if (window.localStorage.getItem(AUTO_REFRESH_KEY) === 'paused') setAutoRefreshState(false)
+    } catch { /* storage unavailable — the default stands */ }
+  }, [])
+
+  const setAutoRefresh = useCallback((on: boolean) => {
+    setAutoRefreshState(on)
+    try {
+      if (on) window.localStorage.removeItem(AUTO_REFRESH_KEY)
+      else window.localStorage.setItem(AUTO_REFRESH_KEY, 'paused')
+    } catch { /* storage unavailable — the hold still holds for this tab */ }
+  }, [])
   useEffect(() => {
     const t = setInterval(() => {
       const now = pacificDay()

@@ -32,6 +32,13 @@ type Firm = {
      listed here keeps them together. The canonical code is what every
      report groups on. */
   aliases?: string[]
+  /* Not being advertised for any more.
+
+     Archived rather than deleted: ads already in the account still carry
+     the code, and a firm the list does not know becomes UNKNOWN — spend
+     that belongs to somebody turning into spend that belongs to nobody.
+     So it keeps attributing, and only stops being offered as a choice. */
+  archived?: boolean
 }
 
 export const FIRMS: Firm[] = [
@@ -44,14 +51,32 @@ export const FIRMS: Firm[] = [
      separates their spend. `BL` is the same firm under its older spelling. */
   { code: 'BLG',    label: 'BLG',    name: 'Bernard Law', aliases: ['BL'] },
   // No full name supplied for these yet — they show as their code until one is.
-  { code: 'FL',     label: 'FL',     name: 'FL' },
+  // Fears Law — not running. Its ads still attribute; see `archived`.
+  { code: 'FL',     label: 'FL',     name: 'Fears Law', archived: true },
   { code: 'EBL',    label: 'EBL',    name: 'EBL' },
 ]
+
+/** Firms still being advertised for — what a chooser should offer. */
+export const ACTIVE_FIRMS = FIRMS.filter((f) => !f.archived)
+
+/** Is this code (or any spelling of it) a firm we have stopped running? */
+export function isArchivedFirm(code: string | null | undefined): boolean {
+  if (!code) return false
+  const want = String(code).trim().toUpperCase()
+  return FIRMS.some(
+    (f) => f.archived && (f.code === want || (f.aliases ?? []).some((a) => a === want)),
+  )
+}
 
 /** The firm as a person would say it; falls back to the code, then to a dash. */
 export function firmName(code: string | null | undefined): string {
   if (!code) return UNKNOWN_FIRM
-  return FIRMS.find(f => f.code === code)?.name ?? code
+  const want = String(code).trim().toUpperCase()
+  /* Aliases answer here too. A row stamped with the older spelling has to
+     read as the firm, not as the spelling — otherwise the same client
+     appears twice on one screen under two different names. */
+  const firm = FIRMS.find(f => f.code === want || (f.aliases ?? []).some(a => a === want))
+  return firm?.name ?? code
 }
 
 /* Every spelling that identifies a firm, canonical code first.

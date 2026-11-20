@@ -4,7 +4,8 @@ import { useState, type ReactNode } from 'react'
 import { Search, X } from 'lucide-react'
 import { Input } from '@/app/creative/_ui/input'
 import { RANGES } from '@/app/creative/_lib/metrics'
-import { laneLabel, laneRank, type RangeKey } from '@/app/creative/_lib/types'
+import { laneFirm, laneLabel, laneRank, type RangeKey } from '@/app/creative/_lib/types'
+import { isArchivedFirm } from '@/app/_metrics/firms'
 import { cn } from '@/lib/utils'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/app/creative/_ui/select'
 /* The firm filter, one definition for every page that has one.
@@ -26,7 +27,12 @@ export function FirmSelect({
   onChange: (v: string) => void
   firms: readonly string[]
 }) {
-  const sorted = [...new Set(firms)].sort((a, b) => laneRank(a) - laneRank(b) || a.localeCompare(b))
+  /* A firm we have stopped running is not a choice, even while its old ads
+     are still in the account. They keep their rows and keep attributing —
+     this only takes the name out of the chooser. */
+  const sorted = [...new Set(firms)]
+    .filter((f) => !isArchivedFirm(laneFirm(f) ?? f))
+    .sort((a, b) => laneRank(a) - laneRank(b) || a.localeCompare(b))
   return (
     <Select value={value} onValueChange={onChange}>
       <SelectTrigger className="w-56 bg-card" aria-label="Firm">
