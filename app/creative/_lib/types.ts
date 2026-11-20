@@ -205,8 +205,16 @@ export const isCreativeWork = (a: { type: AssignmentType }) => a.type !== RELAUN
 export const isImageDoubleDown = (a: { type: AssignmentType; format?: CreativeFormat }) =>
   a.type === 'Double Down' && a.format === 'IMG'
 
+/* Whose desk a card lands on.
+
+   A relaunch is Jason's. Nothing is made — the ad already exists and is
+   going back up — so there is no brief for Faisal to work, and the only
+   hands it passes through are the ones that launch it. It used to fall
+   through to 'creative' by default, which is why it had to be filtered off
+   the assignments page wholesale rather than simply shown on the right
+   tab. */
 export const assigneeOf = (a: { type: AssignmentType; format?: CreativeFormat }): Role =>
-  isImageDoubleDown(a) ? 'admin' : 'creative'
+  a.type === RELAUNCH_TYPE || isImageDoubleDown(a) ? 'admin' : 'creative'
 
 /* Production tasks — the hands-on work that turns an approved creative into
    something launchable. Formerly the K-Team board; the work is the same, it

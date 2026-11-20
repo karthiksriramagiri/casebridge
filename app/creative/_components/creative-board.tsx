@@ -43,13 +43,18 @@ export function CreativeBoard({
   const isAdmin = role === 'admin'
   const { assignments: allAssignments, moveAssignment, removeAssignment } = useStore()
 
-  /* Relaunches are not creative work — an ad that already exists going back
-     up, with nothing for anyone to make. They live on the launch list and
-     the ad meeting; this board is what Faisal has to build. */
+  /* A relaunch is not creative work — an ad that already exists going back
+     up, with nothing for anyone to make — so it never belongs on Faisal's
+     board. It does belong on Jason's: he is the one who has to put it back
+     up, and a queue that hides the thing you have to do is not a queue.
+
+     Which is why the test is by assignee rather than by type. `assigneeOf`
+     sends relaunches to 'admin', so the same filter keeps them off the
+     creative board and shows them on the launch side. */
   const assignments = useMemo(
     () => allAssignments.filter(
       (a) =>
-        isCreativeWork(a) &&
+        (assignee === 'admin' || isCreativeWork(a)) &&
         assigneeOf(a) === assignee &&
         /* Everything printed on the card, plus the two names the brief
            produces — the ad set and the creative name are what someone is

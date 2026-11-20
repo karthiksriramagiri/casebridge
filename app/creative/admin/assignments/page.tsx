@@ -38,13 +38,23 @@ export default function AssignmentsPage() {
     boardLoading, boardSetupNeeded, boardError, refreshBoard,
   } = useStore()
 
-  /* Relaunches are not creative work — an ad that already exists going back
-     up — so they live on the launch list and the ad meeting, not here. */
-  const assignments = useMemo(() => allAssignments.filter(isCreativeWork), [allAssignments])
+  /* Everything on this page, relaunches included.
+
+     They used to be filtered out here entirely, on the grounds that a
+     relaunch is not creative work. True, and it is still not Faisal's — but
+     it is work, it is Jason's, and dropping it meant the one person who has
+     to launch it could not see it on the page that lists what he has to do.
+     It now lands on his tab like anything else he owns. */
+  const assignments = allAssignments
   /* Faisal's briefs and Jason's own, split by the same rule the boards use.
-     An image double down is Jason's to build — it is counted and shown on
-     his tab, not sent out on a board he does not own. */
-  const forFaisal = useMemo(() => assignments.filter((a) => assigneeOf(a) === 'creative'), [assignments])
+     An image double down is Jason's to build, and a relaunch is his to put
+     back up; both are counted and shown on his tab rather than sent out on
+     a board he does not own. `isCreativeWork` still guards Faisal's side so
+     a relaunch can never appear as a brief. */
+  const forFaisal = useMemo(
+    () => assignments.filter((a) => isCreativeWork(a) && assigneeOf(a) === 'creative'),
+    [assignments],
+  )
   const forJason = useMemo(() => assignments.filter((a) => assigneeOf(a) === 'admin'), [assignments])
   const [tab, setTab] = useState('creative')
   /* One search per tab, kept apart.
@@ -174,7 +184,7 @@ export default function AssignmentsPage() {
                 {forJason.length > 0 && (
                   <section className="flex flex-col gap-2">
                     <h2 className="text-sm font-semibold">
-                      Jason’s briefs <span className="font-normal text-muted-foreground">· image double downs</span>
+                      Jason’s queue <span className="font-normal text-muted-foreground">· image double downs &amp; relaunches</span>
                     </h2>
                     <CreativeBoard assignee="admin" query={tasksQuery} onOpen={(a) => setOpenId(a.id)} onStatus={changeStatus} onLaunch={setLaunching} />
                   </section>

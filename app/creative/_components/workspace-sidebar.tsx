@@ -100,9 +100,11 @@ export function WorkspaceSidebar() {
     'launch-lists': assignments.filter((a) => a.status === 'Launching').length,
     /* Jason's Assignments page holds both boards — Faisal's briefs and his
        own production queue — so his badge counts both. Faisal only ever sees
-       his own. */
+       his own, and never a relaunch: there is no brief in one. */
     assignments:
-      assignments.filter((a) => isCreativeWork(a) && a.status !== 'Ad Launched' && a.status !== 'Winner Ad').length +
+      assignments.filter((a) =>
+        (role === 'admin' ? true : isCreativeWork(a)) &&
+        a.status !== 'Ad Launched' && a.status !== 'Winner Ad').length +
       (role === 'admin' ? ktasks.filter((t) => t.status !== 'Done').length : 0),
   }
 
