@@ -160,7 +160,7 @@ export default async function ReportingCenterPage({
           <span className="fin-card-t">Invoice projection</span>
           <span className="fin-card-n">delivery against the order, from the firms' case workbooks</span>
         </div>
-        <ProjectionTable report={report} />
+        <ProjectionTable {...report.projection} />
       </section>
 
       <section className="fin-card fin-sec">

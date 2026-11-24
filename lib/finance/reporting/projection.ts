@@ -22,12 +22,31 @@ export function canonicalCode(raw: string): string {
   return m ? `INV-${Number(m[1])}` : (raw ?? '').trim().toUpperCase()
 }
 
+/* The delivery window, counted from the day the invoice kicked off.
+
+   An invoice is not due on the last day of its billing period — that is an
+   accounting boundary, not a commitment. The commitment is to deliver the
+   order within 30 to 35 days of kickoff, so the deadline is a window and
+   the report has to read as one: a finish inside it is on time, and only a
+   finish past its far edge is late. */
+export const DEADLINE_MIN_DAYS = 30
+export const DEADLINE_MAX_DAYS = 35
+
+/* Pace is read two ways and the projection spans both: across the whole
+   invoice so far, and across the last week. One alone is misleading in a
+   predictable direction — the lifetime average buries a week that has
+   stopped, and the last week alone turns a quiet Thanksgiving into a
+   collapse. The two together are the honest answer: a range. */
+export const RECENT_WINDOW_DAYS = 7
+
 export type ProjectionState =
   /** Every contracted case delivered. */
   | 'complete'
-  /** On pace to finish on or before the period ends. */
+  /** The whole projected range lands inside the delivery window. */
   | 'on_track'
-  /** On pace, but not before the period ends. */
+  /** The range straddles the deadline — it could go either way. */
+  | 'at_risk'
+  /** Even the fastest reading finishes after the window closes. */
   | 'behind'
   /** Nothing delivered yet, so there is no pace to project from. */
   | 'stalled'
@@ -54,15 +73,34 @@ export interface InvoiceProjection {
   lastSignedOn: ISODate | null
   /** Days the invoice has been open, through the completion date or today. */
   elapsedDays: number
-  /** Cases a day across those days. Null when nothing has been delivered. */
+  /** Cases a day across the whole invoice. Null when nothing is delivered. */
   pace: number | null
+  /** Cases a day across the last week. */
+  paceRecent: number | null
   /** The day the order was filled: when the last contracted case signed. */
   completedOn: ISODate | null
-  /** Where today's pace puts the finish. Null once complete, or if stalled. */
-  expectedCompletion: ISODate | null
-  /** Days between the finish and the end of the period. Positive is early. */
+  /** The delivery window: kickoff + 30 and kickoff + 35 days. */
+  deadlineStart: ISODate
+  deadlineEnd: ISODate
+  /** The fastest and slowest readings of the finish. Null once complete. */
+  expectedEarliest: ISODate | null
+  expectedLatest: ISODate | null
+  /** Days between the slowest finish and the window closing. Positive is
+      inside the window. */
   slackDays: number | null
   state: ProjectionState
+  /** The burn-up curve: what has been delivered, and where the pace leads. */
+  points: ProjectionPoint[]
+}
+
+export interface ProjectionPoint {
+  date: ISODate
+  /** Cumulative signed cases. Null after today — nothing is known yet. */
+  delivered: number | null
+  /** The two readings of the pace carried forward from today, which bound
+      the projection. Null before today, and when there is no pace. */
+  projectedFast: number | null
+  projectedSlow: number | null
 }
 
 export interface ProjectionSummary {
@@ -94,6 +132,11 @@ export function projectInvoice(
   const code = canonicalCode(inv.number)
   const { signed, replacements } = countFor(cases, inv.firmId, code)
   const delivered = signed.length
+  const lastSigned = signed[signed.length - 1]?.signedOn ?? null
+  /* What is on the board today. The same as `delivered` for every row the
+     workbooks carry, since a case cannot sign in the future — kept apart
+     so the projection's starting point stays correct if one ever does. */
+  const deliveredAsOf = signed.filter((c) => c.signedOn <= asOf).length
   const contracted = inv.caseCount && inv.caseCount > 0 ? inv.caseCount : null
   const remaining = contracted === null ? 0 : Math.max(0, contracted - delivered)
 
@@ -111,22 +154,73 @@ export function projectInvoice(
   const elapsedDays = Math.max(1, daysInclusive(inv.periodStart, through))
   const pace = delivered > 0 ? delivered / elapsedDays : null
 
+  const recentFrom = addDays(asOf, -(RECENT_WINDOW_DAYS - 1))
+  const recentCount = signed.filter((c) => c.signedOn >= recentFrom && c.signedOn <= asOf).length
+  const paceRecent = completedOn ? null : recentCount / RECENT_WINDOW_DAYS
+
+  /* The band the projection is drawn between. A pace of zero is dropped
+     rather than used: dividing by it puts the finish at infinity, which is
+     not a slower reading of the same answer but no answer at all. */
+  const rates = [pace, paceRecent].filter((p): p is number => Boolean(p) && (p as number) > 0)
+  const fastest = rates.length ? Math.max(...rates) : null
+  const slowest = rates.length ? Math.min(...rates) : null
+
   /* Projected from today rather than from the start, so a slow week moves
      the date out instead of being averaged away by a fast first week. */
-  const expectedCompletion =
-    completedOn === null && contracted !== null && pace
-      ? addDays(asOf, Math.ceil(remaining / pace))
+  const project = (rate: number | null) =>
+    completedOn === null && contracted !== null && rate
+      ? addDays(asOf, Math.ceil(remaining / rate))
       : null
+  const expectedEarliest = project(fastest)
+  const expectedLatest = project(slowest)
 
-  const finish = completedOn ?? expectedCompletion
-  const slackDays = finish ? dayDiff(finish, inv.periodEnd) : null
+  const deadlineStart = addDays(inv.periodStart, DEADLINE_MIN_DAYS)
+  const deadlineEnd = addDays(inv.periodStart, DEADLINE_MAX_DAYS)
+
+  /* Measured against the far edge of the window, from the slowest reading:
+     the question "is there a problem" is answered by the worst case still
+     landing in time, not the best one. */
+  const finish = completedOn ?? expectedLatest
+  const slackDays = finish ? dayDiff(finish, deadlineEnd) : null
 
   const state: ProjectionState =
     contracted === null ? 'untracked'
     : completedOn ? 'complete'
-    : !pace ? 'stalled'
-    : (slackDays ?? 0) >= 0 ? 'on_track'
+    : !expectedLatest ? 'stalled'
+    : expectedLatest <= deadlineEnd ? 'on_track'
+    : expectedEarliest && expectedEarliest <= deadlineEnd ? 'at_risk'
     : 'behind'
+
+  /* The curve runs from the first day of the period to whichever comes
+     last: the end of the period, the projected finish, or the final
+     delivery. Capped, because a pace of one case a fortnight against an
+     order of a hundred projects a line two years wide. */
+  const horizon = [inv.periodEnd, deadlineEnd, expectedLatest, lastSigned]
+    .filter((d): d is ISODate => Boolean(d))
+    .reduce((a, b) => (a > b ? a : b), inv.periodEnd)
+  const chartEnd = minDate(horizon, addDays(inv.periodStart, 180))
+  const points: ProjectionPoint[] = []
+  for (let i = 0; i < daysInclusive(inv.periodStart, chartEnd); i++) {
+    const date = addDays(inv.periodStart, i)
+    const cumulative = signed.filter((c) => c.signedOn <= date).length
+    /* The two lines meet on today: the actual curve ends there and the
+       projection starts there, so the join is continuous rather than a
+       gap the reader has to bridge by eye. */
+    const isPast = date <= asOf
+    /* Each edge of the band runs at its own rate from today and then flattens
+       on the order, so the two lines close into a shape rather than running
+       on past the number they were heading for. */
+    const edge = (rate: number | null, until: ISODate | null) =>
+      rate && until && contracted !== null && date >= asOf && date <= until
+        ? Math.round(Math.min(contracted, deliveredAsOf + rate * dayDiff(asOf, date)) * 10) / 10
+        : null
+    points.push({
+      date,
+      delivered: isPast ? cumulative : null,
+      projectedFast: edge(fastest, expectedLatest),
+      projectedSlow: edge(slowest, expectedLatest),
+    })
+  }
 
   return {
     invoiceId: inv.id,
@@ -141,13 +235,18 @@ export function projectInvoice(
     remaining,
     percent: contracted ? Math.min(100, (delivered / contracted) * 100) : null,
     firstSignedOn: signed[0]?.signedOn ?? null,
-    lastSignedOn: signed[signed.length - 1]?.signedOn ?? null,
+    lastSignedOn: lastSigned,
     elapsedDays,
     pace,
+    paceRecent,
     completedOn,
-    expectedCompletion,
+    deadlineStart,
+    deadlineEnd,
+    expectedEarliest,
+    expectedLatest,
     slackDays,
     state,
+    points,
   }
 }
 

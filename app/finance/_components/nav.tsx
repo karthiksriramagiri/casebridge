@@ -48,6 +48,21 @@ const GROUPS: { title: string; items: { sub: string; label: string; icon: React.
         ),
       },
       {
+        /* Next to the Reporting Center because they are read together, but
+           ahead of it: this one answers what is still going to happen, and
+           the report settles what already has. */
+        sub: '/projection',
+        label: 'Projection',
+        icon: (
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden>
+            <path d="M2 13.2V2.8M2 13.2h12" strokeLinecap="round" />
+            <path d="M4.3 10.8l3.1-3.4" strokeLinecap="round" />
+            <path d="M7.4 7.4l6 -4" strokeLinecap="round" strokeDasharray="2.6 2" />
+            <circle cx="13.4" cy="3.4" r="1.3" />
+          </svg>
+        ),
+      },
+      {
         sub: '/reporting',
         label: 'Reporting Center',
         icon: (

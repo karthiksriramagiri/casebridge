@@ -158,6 +158,7 @@
   background:var(--sunk); color:var(--ink-3); border:1px solid var(--line); font-weight:500}
 .fin-tag.warn{color:var(--flag); border-color:var(--flag)}
 .fin-tag.good{color:var(--pos); border-color:var(--pos)}
+.fin-tag.bad{color:var(--neg); border-color:var(--neg)}
 .fin-btn{font:inherit; font-size:13px; padding:6px 12px; border-radius:5px;
   border:1px solid var(--line-2); background:var(--card); color:var(--ink); cursor:pointer}
 .fin-btn:hover{background:var(--sunk)}
@@ -310,6 +311,9 @@
 .fin-chart-wrap{padding:4px 2px 0}
 .fin-chart{width:100%; height:auto; display:block; aspect-ratio:900/300}
 .fin-chart text{font-size:9.5px; fill:var(--ink-3)}
+/* The burn-up is shorter and narrower than the trend chart it sits beside. */
+.fin-chart.burn{aspect-ratio:560/230}
+.fin-chart text.fin-chart-pin{font-size:9px; fill:var(--ink-3); letter-spacing:.04em}
 .fin-legend{display:flex; gap:14px; flex-wrap:wrap; padding:10px 16px 0; font-size:11.5px; color:var(--ink-3)}
 .fin-legend i{display:inline-block; width:9px; height:9px; border-radius:2px; margin-right:5px}
 

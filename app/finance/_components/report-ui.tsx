@@ -3,6 +3,7 @@ import { PaidToggle } from './paid-toggle'
 import { formatDay, formatRange } from '@/lib/finance/reporting/dates'
 import { formatPct, formatUSD, formatUSDCompact, pctChange, type Cents } from '@/lib/finance/reporting/money'
 import type { Metrics, ReportData, TrendPoint } from '@/lib/finance/reporting/report-types'
+import type { InvoiceProjection, ProjectionSummary } from '@/lib/finance/reporting/projection'
 import { OPEX_CATEGORY_LABELS, type OpexCategory } from '@/lib/finance/reporting/types'
 import { SANGUINE_PER_CASE } from '@/lib/finance/sanguine'
 
@@ -358,8 +359,7 @@ export function TargetAttainment({ report }: { report: ReportData }) {
    it is on course to be filled, and the day it was due. Only one of the
    first two is ever set: an invoice that is finished has no projection
    left to make, and one still running has no completion date yet. */
-export function ProjectionTable({ report }: { report: ReportData }) {
-  const { rows, unavailable, orphanCodes } = report.projection
+export function ProjectionTable({ rows, unavailable, orphanCodes }: ProjectionSummary) {
   if (unavailable) {
     return (
       <p className="fin-empty">
@@ -372,8 +372,12 @@ export function ProjectionTable({ report }: { report: ReportData }) {
   if (rows.length === 0) return <p className="fin-empty">No invoices in this range.</p>
 
   const day = (iso: string | null) => (iso ? formatDay(iso, false) : '—')
+  /* A range collapses to one date when both readings land on the same day —
+     "Dec 8 – Dec 8" says less than "Dec 8" and takes twice the room. */
+  const span = (a: string | null, b: string | null) =>
+    !a && !b ? '—' : !a || !b || a === b ? day(a ?? b) : `${day(a)} – ${day(b)}`
   const slack = (n: number | null) =>
-    n === null ? null : n === 0 ? 'on the day' : `${Math.abs(n)}d ${n > 0 ? 'early' : 'late'}`
+    n === null ? null : n === 0 ? 'on the last day' : n > 0 ? `${n}d of room` : `${Math.abs(n)}d past`
 
   return (
     <div className="fin-scroll">
@@ -386,7 +390,7 @@ export function ProjectionTable({ report }: { report: ReportData }) {
             <th className="n">Pace</th>
             <th className="n">Completed</th>
             <th className="n">Expected</th>
-            <th className="n">Due by</th>
+            <th className="n">Due within</th>
           </tr>
         </thead>
         <tbody>
@@ -395,7 +399,8 @@ export function ProjectionTable({ report }: { report: ReportData }) {
               <td>
                 {r.number}
                 {r.state === 'complete' && <> <span className="fin-tag good">complete</span></>}
-                {r.state === 'behind' && <> <span className="fin-tag warn">behind</span></>}
+                {r.state === 'behind' && <> <span className="fin-tag bad">behind</span></>}
+                {r.state === 'at_risk' && <> <span className="fin-tag warn">at risk</span></>}
                 {r.state === 'stalled' && <> <span className="fin-tag warn">nothing yet</span></>}
                 {r.replacements > 0 && (
                   <div className="fin-fig-s">
@@ -420,19 +425,19 @@ export function ProjectionTable({ report }: { report: ReportData }) {
               </td>
               <td className="n fin-num">
                 {r.pace ? `${r.pace.toFixed(1)}/day` : '—'}
-                {r.pace !== null && (
-                  <div className="fin-fig-s">over {r.elapsedDays} day{r.elapsedDays === 1 ? '' : 's'}</div>
+                {r.paceRecent !== null && (
+                  <div className="fin-fig-s">{r.paceRecent.toFixed(1)} this week</div>
                 )}
               </td>
               <td className="n fin-num">{day(r.completedOn)}</td>
               <td className="n fin-num">
-                {day(r.expectedCompletion)}
-                {r.remaining > 0 && r.expectedCompletion && (
+                {span(r.expectedEarliest, r.expectedLatest)}
+                {r.remaining > 0 && r.expectedLatest && (
                   <div className="fin-fig-s">{r.remaining} to go</div>
                 )}
               </td>
               <td className="n fin-num">
-                {day(r.periodEnd)}
+                {span(r.deadlineStart, r.deadlineEnd)}
                 {r.slackDays !== null && (
                   <div className={`fin-fig-s ${r.slackDays >= 0 ? 'pos' : 'neg'}`}>{slack(r.slackDays)}</div>
                 )}
@@ -448,6 +453,147 @@ export function ProjectionTable({ report }: { report: ReportData }) {
         </p>
       )}
     </div>
+  )
+}
+
+/* One invoice's burn-up: delivery against the order, and where the pace
+   leads.
+
+   A burn-up rather than a burn-down. The reader is asking two questions —
+   how much is done, and will the line reach the order before the period
+   ends — and both are answered by where the curve sits against two straight
+   references: the order across the top, and the due date down the side. A
+   countdown to zero hides the second of them. */
+export function ProjectionChart({ row }: { row: InvoiceProjection }) {
+  const { points, contracted } = row
+  if (points.length === 0 || contracted === null) {
+    return <p className="fin-empty">Nothing to project — this invoice names no case count.</p>
+  }
+
+  const W = 560
+  const H = 230
+  /* Room on the right for the due marker's label, which sits on the last
+     point whenever the period ends before the pace gets there. */
+  const PAD = { l: 38, r: 26, t: 14, b: 30 }
+  const iw = W - PAD.l - PAD.r
+  const ih = H - PAD.t - PAD.b
+
+  const top = Math.max(contracted, row.delivered, 1)
+  const x = (i: number) => PAD.l + (iw * i) / Math.max(1, points.length - 1)
+  const y = (v: number) => PAD.t + ih - (v / top) * ih
+
+  const path = (key: 'delivered' | 'projectedFast' | 'projectedSlow') => {
+    let d = ''
+    points.forEach((p, i) => {
+      const v = p[key]
+      if (v === null) return
+      d += `${d ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`
+    })
+    return d
+  }
+
+  /* The cone between the two readings of the pace, closed into one shape:
+     fast edge out, slow edge back. Where the finish actually falls is
+     somewhere inside it, and a filled band says that better than two lines
+     the reader has to mentally join. */
+  const cone = (() => {
+    const fast = points.map((p, i) => [i, p.projectedFast] as const).filter(([, v]) => v !== null)
+    const slow = points.map((p, i) => [i, p.projectedSlow] as const).filter(([, v]) => v !== null)
+    if (fast.length < 2 || slow.length < 2) return ''
+    const out = fast.map(([i, v]) => `${x(i).toFixed(1)},${y(v!).toFixed(1)}`)
+    const back = [...slow].reverse().map(([i, v]) => `${x(i).toFixed(1)},${y(v!).toFixed(1)}`)
+    return [...out, ...back].join(' ')
+  })()
+
+  const idxOf = (iso: string | null) => (iso ? points.findIndex((p) => p.date === iso) : -1)
+  const dueStartIdx = idxOf(row.deadlineStart)
+  const dueEndIdx = idxOf(row.deadlineEnd)
+  const doneIdx = idxOf(row.completedOn ?? row.expectedLatest)
+  const late = row.slackDays !== null && row.slackDays < 0
+
+  /* Six labels at most, and never two on top of each other: the final date
+     is worth naming, but only if the last stepped label is not already
+     sitting on it. */
+  const step = Math.max(1, Math.ceil(points.length / 6))
+  const ticks = new Set<number>()
+  for (let i = 0; i < points.length; i += step) ticks.add(i)
+  const last = points.length - 1
+  if (last - Math.max(...ticks) >= step / 2) ticks.add(last)
+  else { ticks.delete(Math.max(...ticks)); ticks.add(last) }
+
+  return (
+    <>
+      <div className="fin-chart-wrap">
+        <svg viewBox={`0 0 ${W} ${H}`} className="fin-chart burn" role="img"
+             aria-label={`${row.number}: ${row.delivered} of ${contracted} cases delivered`}>
+          {[0, 0.5, 1].map((f) => (
+            <g key={f}>
+              <line x1={PAD.l} x2={W - PAD.r} y1={PAD.t + ih * f} y2={PAD.t + ih * f}
+                    stroke="var(--line)" strokeWidth="1" />
+              <text x={PAD.l - 7} y={PAD.t + ih * f + 3.5} textAnchor="end">
+                {Math.round(top * (1 - f))}
+              </text>
+            </g>
+          ))}
+
+          {/* The order: the line the curve has to reach. */}
+          <line x1={PAD.l} x2={W - PAD.r} y1={y(contracted)} y2={y(contracted)}
+                stroke="var(--ink-3)" strokeWidth="1.2" strokeDasharray="2 3" />
+
+          {/* The delivery window, kickoff + 30 to + 35 days. A band rather
+              than a line: the commitment is to land inside it, and a single
+              rule would say the 31st day was as late as the 40th. */}
+          {dueStartIdx >= 0 && dueEndIdx >= 0 && (
+            <>
+              <rect x={x(dueStartIdx)} y={PAD.t} width={Math.max(1, x(dueEndIdx) - x(dueStartIdx))} height={ih}
+                    fill="var(--ink-3)" opacity="0.1" />
+              <line x1={x(dueEndIdx)} x2={x(dueEndIdx)} y1={PAD.t} y2={PAD.t + ih}
+                    stroke={late ? 'var(--neg)' : 'var(--line-2)'} strokeWidth="1.2" />
+              <text x={Math.min(x(dueEndIdx), W - PAD.r)} y={PAD.t - 4}
+                    textAnchor={dueEndIdx >= points.length - 2 ? 'end' : 'middle'}
+                    className="fin-chart-pin">due</text>
+            </>
+          )}
+
+          {cone && (
+            <polygon points={cone} fill={late ? 'var(--neg)' : 'var(--pos)'} opacity="0.13" />
+          )}
+          <path d={path('projectedSlow')} fill="none" stroke={late ? 'var(--neg)' : 'var(--pos)'}
+                strokeWidth="1.6" strokeDasharray="4 3" strokeLinejoin="round" />
+          <path d={path('projectedFast')} fill="none" stroke={late ? 'var(--neg)' : 'var(--pos)'}
+                strokeWidth="1.6" strokeDasharray="4 3" strokeLinejoin="round" opacity="0.6" />
+          <path d={path('delivered')} fill="none" stroke="var(--ink)"
+                strokeWidth="2" strokeLinejoin="round" />
+
+          {/* Where it lands, actual or projected. */}
+          {doneIdx >= 0 && (
+            <circle cx={x(doneIdx)} cy={y(contracted)} r="3.4" fill="var(--card)"
+                    stroke={row.completedOn ? 'var(--pos)' : late ? 'var(--neg)' : 'var(--pos)'} strokeWidth="2">
+              <title>
+                {row.completedOn
+                  ? `filled ${row.completedOn}`
+                  : `projected ${row.expectedEarliest} – ${row.expectedLatest}`}
+              </title>
+            </circle>
+          )}
+
+          {points.map((p, i) =>
+            ticks.has(i) ? (
+              <text key={p.date} x={x(i)} y={H - 10}
+                    textAnchor={i === 0 ? 'start' : i === last ? 'end' : 'middle'}>
+                {formatDay(p.date, false)}
+              </text>
+            ) : null,
+          )}
+        </svg>
+      </div>
+      <div className="fin-legend">
+        <span><i style={{ background: 'var(--ink)' }} />Delivered</span>
+        <span><i style={{ background: late ? 'var(--neg)' : 'var(--pos)', opacity: 0.5 }} />Projected range</span>
+        <span><i style={{ background: 'var(--ink-3)' }} />Order of {contracted}</span>
+        <span><i style={{ background: 'var(--ink-3)', opacity: 0.25 }} />Due day 30–35</span>
+      </div>
+    </>
   )
 }
 
