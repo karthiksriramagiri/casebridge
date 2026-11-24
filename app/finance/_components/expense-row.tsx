@@ -7,33 +7,57 @@ import {
   type AllocationMethod, type Firm, type OpexCategory,
 } from '@/lib/finance/reporting/types'
 
-/* One expense, and what can be done to it.
+/* One expense, and what can be done to it — in the list it is read in.
 
    Editing happens in place rather than on a page of its own: an expense is
-   six fields, and a reader who has just found the wrong one in a list
-   wants to fix it where they found it.
+   six fields, and a reader who has just found the wrong one wants to fix
+   it where they found it. Voiding rather than deleting, which is what the
+   endpoint does: an expense that has already moved a reported margin
+   cannot simply vanish, or the margin it moved becomes unexplainable. A
+   void row stays in the list, struck through, and stops counting.
 
-   Voiding rather than deleting, which is what the endpoint does — an
-   expense that has already moved a reported margin cannot simply vanish,
-   or the margin it moved becomes unexplainable. A void row stays in the
-   list, struck through, and stops counting. */
+   The shape below is what both callers hand over.
 
+   The expenses page reads the table directly and the Reporting Center
+   reads it through the ledger, so the two arrive with different field
+   names for the same row. Rather than teach this component both, each
+   caller hands over this shape — which is the report's, because that one
+   is already camelCase. */
 export type ExpenseRecord = {
   id: string
-  expense_date: string
-  service_start: string
-  service_end: string
+  expenseDate: string
+  servicePeriodStart: string
+  servicePeriodEnd: string
   description: string
   vendor: string
   category: OpexCategory
-  amount_cents: number
+  amountCents: number
   recurrence: 'one_time' | 'monthly'
-  allocation: AllocationMethod
-  firm_ids: string[]
+  allocationMethod: AllocationMethod
+  firmIds: string[]
   status: 'posted' | 'pending' | 'void'
   notes: string
-  updated_by?: string
-  updated_at?: string
+  updatedBy?: string
+}
+
+/** The table's own column names, mapped to the shape above. */
+export function fromRow(r: any): ExpenseRecord {
+  return {
+    id: r.id,
+    expenseDate: String(r.expense_date).slice(0, 10),
+    servicePeriodStart: String(r.service_start).slice(0, 10),
+    servicePeriodEnd: String(r.service_end).slice(0, 10),
+    description: r.description ?? '',
+    vendor: r.vendor ?? '',
+    category: r.category,
+    amountCents: Number(r.amount_cents) || 0,
+    recurrence: r.recurrence === 'monthly' ? 'monthly' : 'one_time',
+    allocationMethod: r.allocation,
+    firmIds: Array.isArray(r.firm_ids) ? r.firm_ids : [],
+    status: r.status,
+    notes: r.notes ?? '',
+    updatedBy: r.updated_by ?? '',
+  }
 }
 
 const money = (cents: number) =>
@@ -44,23 +68,34 @@ const day = (iso: string) =>
     month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC',
   })
 
-export function ExpenseRow({ e, firms }: { e: ExpenseRecord; firms: Firm[] }) {
+export function ExpenseRow({
+  e, firms, extra, columns = 7,
+}: {
+  e: ExpenseRecord
+  firms: Firm[]
+  /* A cell this component does not own, rendered before the controls —
+     the Reporting Center's "recognised in range", which only makes sense
+     against a window this component knows nothing about. */
+  extra?: React.ReactNode
+  /** How wide the editor row has to span in the host table. */
+  columns?: number
+}) {
   const router = useRouter()
   const [editing, setEditing] = useState(false)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
   const [form, setForm] = useState({
-    expenseDate: e.expense_date.slice(0, 10),
-    serviceStart: e.service_start.slice(0, 10),
-    serviceEnd: e.service_end.slice(0, 10),
+    expenseDate: e.expenseDate.slice(0, 10),
+    serviceStart: e.servicePeriodStart.slice(0, 10),
+    serviceEnd: e.servicePeriodEnd.slice(0, 10),
     vendor: e.vendor,
     description: e.description,
     category: e.category,
-    amount: String(e.amount_cents / 100),
+    amount: String(e.amountCents / 100),
     recurrence: e.recurrence,
-    allocation: e.allocation,
-    firmIds: e.firm_ids ?? [],
+    allocation: e.allocationMethod,
+    firmIds: e.firmIds ?? [],
     notes: e.notes,
   })
   const set = (patch: Partial<typeof form>) => setForm((f) => ({ ...f, ...patch }))
@@ -126,7 +161,7 @@ export function ExpenseRow({ e, firms }: { e: ExpenseRecord; firms: Firm[] }) {
   }
 
   const voided = e.status === 'void'
-  const firmNames = (e.firm_ids ?? [])
+  const firmNames = (e.firmIds ?? [])
     .map((id) => firms.find((f) => f.id === id)?.name)
     .filter(Boolean)
     .join(', ')
@@ -134,7 +169,7 @@ export function ExpenseRow({ e, firms }: { e: ExpenseRecord; firms: Firm[] }) {
   if (!editing) {
     return (
       <tr style={voided ? { opacity: 0.55 } : undefined}>
-        <td className="fin-num">{day(e.expense_date)}</td>
+        <td className="fin-num">{day(e.expenseDate)}</td>
         <td>
           <span style={voided ? { textDecoration: 'line-through' } : undefined}>{e.vendor || '—'}</span>
           {voided && <> <span className="fin-tag warn">void</span></>}
@@ -143,12 +178,13 @@ export function ExpenseRow({ e, firms }: { e: ExpenseRecord; firms: Firm[] }) {
         <td>{e.description || '—'}</td>
         <td>{OPEX_CATEGORY_LABELS[e.category]}</td>
         <td>
-          {e.allocation === 'unallocated' ? 'Company' : firmNames || ALLOCATION_LABELS[e.allocation]}
+          {e.allocationMethod === 'unallocated' ? 'Company' : firmNames || ALLOCATION_LABELS[e.allocationMethod]}
           {e.recurrence === 'monthly' && (
-            <div className="fin-fig-s fin-num">{day(e.service_start)} – {day(e.service_end)}</div>
+            <div className="fin-fig-s fin-num">{day(e.servicePeriodStart)} – {day(e.servicePeriodEnd)}</div>
           )}
         </td>
-        <td className="n fin-num">{money(e.amount_cents)}</td>
+        <td className="n fin-num">{money(e.amountCents)}</td>
+        {extra}
         <td className="n">
           <div className="fin-rowacts-b">
             <button type="button" className="fin-ot" onClick={() => setEditing(true)} disabled={busy}>Edit</button>
@@ -168,7 +204,7 @@ export function ExpenseRow({ e, firms }: { e: ExpenseRecord; firms: Firm[] }) {
 
   return (
     <tr>
-      <td colSpan={7} style={{ padding: 0 }}>
+      <td colSpan={columns} style={{ padding: 0 }}>
         <form className="fin-form" onSubmit={save}>
           <div className="fin-row3">
             <label className="fin-field">
@@ -266,9 +302,9 @@ export function ExpenseRow({ e, firms }: { e: ExpenseRecord; firms: Firm[] }) {
           <div style={{ display: 'flex', gap: 8 }}>
             <button type="submit" className="fin-btn pri" disabled={busy}>{busy ? 'Saving…' : 'Save changes'}</button>
             <button type="button" className="fin-btn" onClick={() => setEditing(false)} disabled={busy}>Cancel</button>
-            {e.updated_by && (
+            {e.updatedBy && (
               <span className="fin-fig-s" style={{ alignSelf: 'center' }}>
-                last changed by {e.updated_by}
+                last changed by {e.updatedBy}
               </span>
             )}
           </div>

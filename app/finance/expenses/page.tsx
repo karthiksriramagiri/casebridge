@@ -8,7 +8,7 @@ import { formatUSD, type Cents } from '@/lib/finance/reporting/money'
 import { financeToday } from '@/lib/finance/clock'
 import { OPEX_CATEGORY_LABELS, type OpexCategory } from '@/lib/finance/reporting/types'
 import { ExpenseForm } from '../_components/expense-form'
-import { ExpenseRow, type ExpenseRecord } from '../_components/expense-row'
+import { ExpenseRow, fromRow, type ExpenseRecord } from '../_components/expense-row'
 
 export const metadata: Metadata = { title: 'Operating expenses · Financial Center' }
 export const dynamic = 'force-dynamic'
@@ -39,14 +39,14 @@ const MISSING = /does not exist|schema cache/i
 /** The slice of a monthly cost that lands inside a window. */
 function recognisedIn(e: ExpenseRecord, start: string, end: string): Cents {
   if (e.status === 'void') return 0
-  const s = e.service_start.slice(0, 10)
-  const en = e.service_end.slice(0, 10)
+  const s = e.servicePeriodStart
+  const en = e.servicePeriodEnd
   if (en < start || s > end) return 0
   const days = (a: string, b: string) =>
     Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000) + 1
   const total = days(s, en)
   const inside = days(s > start ? s : start, en < end ? en : end)
-  return Math.round((e.amount_cents * inside) / Math.max(1, total))
+  return Math.round((e.amountCents * inside) / Math.max(1, total))
 }
 
 export default async function ExpensesPage() {
@@ -89,18 +89,18 @@ export default async function ExpensesPage() {
     )
   }
 
-  const expenses = (data ?? []) as ExpenseRecord[]
+  const expenses = (data ?? []).map(fromRow)
   const live = expenses.filter((e) => e.status !== 'void')
 
   const thisMonth = live.reduce((a, e) => a + recognisedIn(e, monthStart, today), 0)
-  const committed = live.reduce((a, e) => a + e.amount_cents, 0)
+  const committed = live.reduce((a, e) => a + e.amountCents, 0)
   const recurring = live.filter((e) => e.recurrence === 'monthly')
-  const unallocated = live.filter((e) => e.allocation === 'unallocated').reduce((a, e) => a + e.amount_cents, 0)
+  const unallocated = live.filter((e) => e.allocationMethod === 'unallocated').reduce((a, e) => a + e.amountCents, 0)
 
   /* By category, over everything live — the shape of the overhead rather
      than one month of it. */
   const byCategory = new Map<OpexCategory, Cents>()
-  for (const e of live) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amount_cents)
+  for (const e of live) byCategory.set(e.category, (byCategory.get(e.category) ?? 0) + e.amountCents)
   const categories = [...byCategory.entries()].sort((a, b) => b[1] - a[1])
 
   return (
