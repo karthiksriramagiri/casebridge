@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { sendSlack } from '@/lib/slack'
 import { format } from 'date-fns'
+import { advanceOnly } from '@/app/teams/admin/candidates/stages'
 
 export async function GET() {
   const supabase = await createClient()
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('name')
+    .select('name, candidate_stage')
     .eq('id', user.id)
     .single()
   const userName = profile?.name || 'A rep'
@@ -69,6 +70,17 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'That slot was just taken. Please pick another.' }, { status: 409 })
     }
     return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  /* Advance the onboarding board. advanceOnly returns null if an admin has
+     already dragged this rep past Booked Call, so a late booking cannot pull
+     someone backwards. Failing here must not fail the booking itself — the
+     board can be corrected by hand, a lost booking cannot. */
+  const nextStage = advanceOnly(profile?.candidate_stage, 'booked_call')
+  if (nextStage) {
+    const { error: stageErr } = await supabase
+      .from('profiles').update({ candidate_stage: nextStage }).eq('id', user.id)
+    if (stageErr) console.error('[booking] candidate_stage not advanced:', stageErr.message)
   }
 
   const slotLabel = format(slot, "EEEE, MMMM d 'at' h:mm a")
