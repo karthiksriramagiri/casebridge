@@ -178,13 +178,16 @@ export default function SendCasePage() {
     if (opening && !photos[contactId]) void loadPhotos(contactId)
   }
 
-  async function runFill(contactId: string) {
+  async function runFill(
+    contactId: string,
+    opts: { fresh?: boolean; subject?: { name: string; relationship?: string } } = {},
+  ) {
     setRunning(prev => new Set(prev).add(contactId))
     try {
       await fetch('/api/dialer/intake-fill', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contactId }),
+        body: JSON.stringify({ contactId, ...opts }),
       })
       await fetchLeads()
     } catch (err) {
@@ -369,6 +372,34 @@ export default function SendCasePage() {
                       }}
                     >
                       {isRunning ? '...' : canRun ? 'Run' : 'Done'}
+                    </button>
+
+                    {/* Redo — clears every intake field and re-reads the call.
+                        Separate from Run because it throws away what is there,
+                        and the whole reason to press it is that those values
+                        are wrong. Confirmed, since it cannot be undone. */}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        const ok = window.confirm(
+                          `Redo the entire intake for ${lead.contactName ?? 'this lead'}?\n\n` +
+                          'Every intake field is cleared and re-filled from the calls and texts. ' +
+                          'Anything typed in by hand will be lost.'
+                        )
+                        if (ok) runFill(lead.contactId, { fresh: true })
+                      }}
+                      disabled={isRunning}
+                      title="Clear every intake field and fill it again from scratch"
+                      style={{
+                        fontSize: 11, fontWeight: 600,
+                        color: isRunning ? MUTED : '#b45309',
+                        background: 'transparent',
+                        border: `1px solid ${isRunning ? BORDER : '#f59e0b55'}`,
+                        borderRadius: 6, padding: '4px 10px', marginLeft: 6,
+                        cursor: isRunning ? 'default' : 'pointer',
+                      }}
+                    >
+                      Redo
                     </button>
 
                     {/* Expand arrow */}
