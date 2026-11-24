@@ -89,6 +89,7 @@ export async function GET(request: NextRequest) {
   const SHIFT_SLOTS: Record<string, string[]> = {
     morning:           ['morning'],
     afternoon:         ['afternoon'],
+    early_evening:     ['evening'],
     evening:           ['evening'],
     morning_afternoon: ['morning', 'afternoon'],
     afternoon_evening: ['afternoon', 'evening'],

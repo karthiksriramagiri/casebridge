@@ -113,6 +113,7 @@ function getSlot(estHour: number): { slot: Slot | null; slotEndLabel: string; ne
 const SHIFT_SLOTS: Record<string, Slot[]> = {
   morning:           ['morning'],
   afternoon:         ['afternoon'],
+  early_evening:     ['evening'],
   evening:           ['evening'],
   overnight:         ['overnight'],
   morning_afternoon: ['morning', 'afternoon'],

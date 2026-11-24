@@ -85,7 +85,7 @@ export async function GET(req: NextRequest) {
   // ── Find Pablo ─────────────────────────────────────────────────────────────
   const { data: pablo } = await supabase
     .from('profiles')
-    .select('id, name')
+    .select('id, name, shift')
     .ilike('name', '%pablo%')
     .eq('role', 'rep')
     .maybeSingle()
@@ -148,7 +148,7 @@ export async function GET(req: NextRequest) {
 
     const firstIn = dayEntries.reduce((min, e) =>
       e.clock_in < min ? e.clock_in : min, dayEntries[0].clock_in)
-    const { late, minutesLate } = clockInIsLate(firstIn)
+    const { late, minutesLate } = clockInIsLate(firstIn, pablo.shift)
     if (late) {
       const hrs     = Math.floor(minutesLate / 60)
       const mins    = minutesLate % 60
