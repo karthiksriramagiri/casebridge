@@ -1,6 +1,6 @@
 // Firm-specific NR tags that are eligible for bot enrollment.
 // Only contacts with one of these exact tags will be enrolled.
-const ELIGIBLE_NR_TAGS = new Set(["lhp_nr", "lhp_s_nr", "eb_nr", "thl_nr", "jll_nr", "jm_nr", "fl_nr", "mca_ga_nr"])
+const ELIGIBLE_NR_TAGS = new Set(["lhp_nr", "lhp_s_nr", "eb_nr", "thl_nr", "jll_nr", "jm_nr", "jm_s_nr", "fl_nr", "mca_ga_nr"])
 
 // For each firm, the ONLY tags a contact may have for the bot to send messages.
 // Any tag outside this set means the contact has been assigned another status — do not send.
@@ -11,6 +11,7 @@ const FIRM_ALLOWED_TAGS = {
   thl_nr:    new Set(["thl",    "thl_nr"]),
   jll_nr:    new Set(["jll",    "jll_nr"]),
   jm_nr:     new Set(["jm",     "jm_nr"]),
+  jm_s_nr:   new Set(["jm", "jm_s", "jm_s_nr"]),
   fl_nr:     new Set(["fl",     "fl_nr"]),
   mca_ga_nr: new Set(["mca_ga", "mca_ga_nr"]),
 }
