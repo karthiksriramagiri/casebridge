@@ -26,6 +26,10 @@ const PIPELINES: { firm: string; id: string }[] = [
   { firm: 'fears',       id: 'Jj4DCdu5duYDgI87ERbx' },
   { firm: 'levine',      id: 'JPyMNjGGAIxUv0FWW7Cg' },
   { firm: 'jm',          id: '0tBzhg0eGSNKL870y3yV' },
+  /* Bernard Law [WA]. Its pipeline carries the same Pending Send stage as the
+     California firms, so nothing here is firm-specific — it was simply never
+     added when the firm was onboarded, and its signed cases sat unseen. */
+  { firm: 'blg',         id: 'kASvZyZcX3mI2ipnLB5v' },
 ]
 
 // "Pending Send" is the one and only stage we track: signed, not yet sent to
