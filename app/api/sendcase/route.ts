@@ -30,6 +30,12 @@ const PIPELINES: { firm: string; id: string }[] = [
      California firms, so nothing here is firm-specific — it was simply never
      added when the firm was onboarded, and its signed cases sat unseen. */
   { firm: 'blg',         id: 'kASvZyZcX3mI2ipnLB5v' },
+  /* Jacoby & Meyers Spanish and Ed Bernstein [NV] were missing for the same
+     reason, and both are live firms — jm_s_nr and eb_nr are drip-eligible
+     tags. Empty today, so there is no backlog to catch up on; this is so the
+     next case either firm signs lands on the board instead of nowhere. */
+  { firm: 'jm_spanish',  id: 'TiyXTHCkxjb2m2UG2COR' },
+  { firm: 'eb',          id: 'rhkfHpznaQrWtKwOeaj8' },
 ]
 
 // "Pending Send" is the one and only stage we track: signed, not yet sent to

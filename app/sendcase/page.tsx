@@ -63,7 +63,7 @@ function firmLabel(firm: string) {
   const map: Record<string, string> = {
     lhp: 'LHP', lhp_spanish: 'LHP-S', fears: 'Fears', jm: 'J&M',
     eisenberg: 'EBL', levine: 'Levine', thl: 'THL', mca: 'MCA',
-    blg: 'BLG',
+    blg: 'BLG', jm_spanish: 'J&M-S', eb: 'EB',
   }
   return map[firm] ?? firm.toUpperCase()
 }
