@@ -10,14 +10,29 @@ import { existsSync } from 'node:fs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 
-export function resolve(specifier, context, next) {
-  if (!specifier.startsWith('@/')) return next(specifier, context)
+/** Try each extension TypeScript would have supplied, in source order. */
+function withExtension(target) {
+  if (path.extname(target)) return target
+  for (const candidate of [`${target}.ts`, `${target}.tsx`, path.join(target, 'index.ts')]) {
+    if (existsSync(candidate)) return candidate
+  }
+  return target
+}
 
-  let target = path.join(root, specifier.slice(2))
-  if (!path.extname(target)) {
-    for (const candidate of [`${target}.ts`, `${target}.tsx`, path.join(target, 'index.ts')]) {
-      if (existsSync(candidate)) { target = candidate; break }
+export function resolve(specifier, context, next) {
+  if (specifier.startsWith('@/')) {
+    return next(pathToFileURL(withExtension(path.join(root, specifier.slice(2)))).href, context)
+  }
+
+  /* A source file importing a sibling writes './dates', not './dates.ts' —
+     tsc fills the extension in and node does not. Only reached for files
+     under this repo, so nothing in node_modules is touched. */
+  if (specifier.startsWith('./') || specifier.startsWith('../')) {
+    if (!path.extname(specifier) && context.parentURL?.startsWith('file:')) {
+      const target = withExtension(path.resolve(path.dirname(fileURLToPath(context.parentURL)), specifier))
+      if (path.extname(target)) return next(pathToFileURL(target).href, context)
     }
   }
-  return next(pathToFileURL(target).href, context)
+
+  return next(specifier, context)
 }

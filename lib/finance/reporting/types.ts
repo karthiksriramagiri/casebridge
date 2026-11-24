@@ -32,6 +32,22 @@ export interface Invoice {
   caseCount: number | null
 }
 
+/* One case delivered against an invoice.
+
+   Imported from the firms' own case management workbooks, which is what
+   they are invoiced from. ghl_leads carries an invoice_code of its own and
+   disagrees with them in both directions, so delivery is counted here and
+   nowhere else. */
+export interface InvoiceCase {
+  firmId: string
+  /** Canonical, without spaces: INV-9. */
+  invoiceCode: string
+  name: string
+  signedOn: ISODate
+  /** 'e_signed' is the only status that counts as delivered. */
+  status: string
+}
+
 /** One firm's advertising on one day. */
 export interface AdSpendRecord {
   date: ISODate
@@ -184,6 +200,7 @@ export interface FinanceDataset {
   adSpend: AdSpendRecord[]
   intakeCosts: IntakeCostRecord[]
   caseRevenue: CaseRevenueRecord[]
+  invoiceCases: InvoiceCase[]
   expenses: OpexExpense[]
   targets: TargetsConfig | null
   earnout: EarnoutConfig | null
@@ -194,6 +211,8 @@ export interface FinanceDataset {
   gaps: {
     /** No operating_expenses table yet — the migration has not been run. */
     opexTableMissing: boolean
+    /** No invoice_cases table yet, so no invoice can be projected. */
+    invoiceCasesMissing: boolean
     /** No pay rates configured, so base pay cannot be computed. */
     payRatesMissing: boolean
     /* What the Team Center pays an hour when a rep has no rate of their

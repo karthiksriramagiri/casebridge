@@ -12,7 +12,8 @@ import { ReportFilters } from '../_components/report-filters'
 import { SignOutButton } from '../_components/sign-out'
 import {
   ComparisonTable, CostBreakdown, EarnoutCard, FirmTable, InvoiceTable,
-  KpiCards, OpexByCategory, OpexTable, PeriodStrip, TargetAttainment, TrendChart,
+  KpiCards, OpexByCategory, OpexTable, PeriodStrip, ProjectionTable,
+  TargetAttainment, TrendChart,
 } from '../_components/report-ui'
 
 export const metadata: Metadata = {
@@ -149,6 +150,17 @@ export default async function ReportingCenterPage({
           </span>
         </div>
         <FirmTable report={report} hrefForFirm={(id) => scoped({ firm: id })} />
+      </section>
+
+      {/* Before the invoice table rather than after it: the question "is
+          this invoice going to land" is asked first, and the money each one
+          made is read once that is known. */}
+      <section className="fin-card fin-sec">
+        <div className="fin-card-h">
+          <span className="fin-card-t">Invoice projection</span>
+          <span className="fin-card-n">delivery against the order, from the firms' case workbooks</span>
+        </div>
+        <ProjectionTable report={report} />
       </section>
 
       <section className="fin-card fin-sec">

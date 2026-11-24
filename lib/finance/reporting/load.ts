@@ -13,6 +13,7 @@ import {
   type CaseRevenueRecord,
   type EarnoutConfig,
   type FinanceDataset,
+  type InvoiceCase,
   type Firm,
   type IntakeCostRecord,
   type Invoice,
@@ -99,7 +100,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   const supabase = db()
   const errors: string[] = []
 
-  const [firmsRes, invRes, timeRes, ratesRes, caseRes, profileRes, opexRes, targetRes, earnRes] =
+  const [firmsRes, invRes, timeRes, ratesRes, caseRes, profileRes, opexRes, targetRes, earnRes, deliveredRes] =
     await Promise.all([
       supabase.from('firms').select('id, name, slug, archived, meta_account_id, case_value').order('name'),
       supabase
@@ -118,6 +119,13 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
       supabase.from('operating_expenses').select('*').order('expense_date', { ascending: false }),
       supabase.from('reporting_targets').select('*').eq('id', 1).maybeSingle(),
       supabase.from('earnout_config').select('*').eq('id', 1).maybeSingle(),
+      /* Delivery against each invoice, as the firms' own workbooks record
+         it. See lib/finance/reporting/projection.ts for why this and not
+         ghl_leads.invoice_code. */
+      supabase
+        .from('invoice_cases')
+        .select('firm_id, invoice_code, full_name, signed_on, status')
+        .order('signed_on', { ascending: true }),
     ])
 
   if (firmsRes.error) errors.push(`firms: ${firmsRes.error.message}`)
@@ -162,6 +170,18 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
   const opexRows = opexRes.error ? [] : (opexRes.data ?? [])
   const opexTableMissing = Boolean(opexRes.error && MISSING.test(opexRes.error.message))
   if (opexRes.error && !opexTableMissing) errors.push(`operating expenses: ${opexRes.error.message}`)
+
+  const invoiceCasesMissing = Boolean(deliveredRes.error && MISSING.test(deliveredRes.error.message))
+  if (deliveredRes.error && !invoiceCasesMissing) errors.push(`invoice cases: ${deliveredRes.error.message}`)
+  const invoiceCases: InvoiceCase[] = (deliveredRes.error ? [] : (deliveredRes.data ?? []))
+    .map((r: any) => ({
+      firmId: r.firm_id,
+      invoiceCode: String(r.invoice_code ?? ''),
+      name: r.full_name ?? '',
+      signedOn: String(r.signed_on ?? '').slice(0, 10),
+      status: String(r.status ?? ''),
+    }))
+    .filter((r: InvoiceCase) => r.firmId && r.invoiceCode && r.signedOn)
 
   const allDates = [
     ...invoices.flatMap((i) => [i.periodStart, i.periodEnd]),
@@ -457,6 +477,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     adSpend,
     intakeCosts: [...intakeByKey.values()],
     caseRevenue: [...caseByKey.values()],
+    invoiceCases,
     expenses,
     targets,
     earnout,
@@ -464,6 +485,7 @@ export async function loadFinanceData(): Promise<FinanceDataset> {
     dataAsOf,
     gaps: {
       opexTableMissing,
+      invoiceCasesMissing,
       payRatesMissing,
       standardHourly: STANDARD_HOURLY,
       ratedReps: Object.keys(rates).length,

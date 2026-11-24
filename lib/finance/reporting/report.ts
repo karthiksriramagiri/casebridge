@@ -47,6 +47,7 @@ import type {
   TargetProgress,
   TrendPoint,
 } from './report-types'
+import { buildProjection } from './projection'
 import { OPEX_CATEGORIES, OPEX_CATEGORY_LABELS, type FinanceDataset, type OpexCategory, type ReportFilters } from './types'
 import { COST_START } from './load'
 
@@ -582,6 +583,13 @@ export function buildReport(
     })(),
     firms: { rows: firmRows, total: firmTotal, reconciled: scope.kind === 'invoice' || sameMetrics(firmRowsTotal, firmTotal) },
     invoices: { rows: invoiceRows, total: current, reconciled: sameMetrics(invoiceRowsTotal, current) },
+    /* Built from the invoices already visible under the filters, so the
+       projection and the invoice table below it always name the same set. */
+    projection: buildProjection(
+      store,
+      visibleInvoices,
+      Object.fromEntries(store.firms.map((x) => [x.id, x.name])),
+    ),
     opex: {
       total: current.opex,
       previous: comparison?.dataComplete ? comparison.metrics.opex : null,

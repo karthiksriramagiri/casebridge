@@ -351,6 +351,106 @@ export function TargetAttainment({ report }: { report: ReportData }) {
   )
 }
 
+/* The projection: how much of each invoice has been delivered, and where
+   today's pace puts the finish.
+
+   Read as three dates side by side — the day the order was filled, the day
+   it is on course to be filled, and the day it was due. Only one of the
+   first two is ever set: an invoice that is finished has no projection
+   left to make, and one still running has no completion date yet. */
+export function ProjectionTable({ report }: { report: ReportData }) {
+  const { rows, unavailable, orphanCodes } = report.projection
+  if (unavailable) {
+    return (
+      <p className="fin-empty">
+        Case delivery is not set up yet. Run <code>supabase/migration_invoice_cases.sql</code>,
+        then import the firms' case management workbooks with{' '}
+        <code>scripts/import-case-workbooks.py</code>.
+      </p>
+    )
+  }
+  if (rows.length === 0) return <p className="fin-empty">No invoices in this range.</p>
+
+  const day = (iso: string | null) => (iso ? formatDay(iso, false) : '—')
+  const slack = (n: number | null) =>
+    n === null ? null : n === 0 ? 'on the day' : `${Math.abs(n)}d ${n > 0 ? 'early' : 'late'}`
+
+  return (
+    <div className="fin-scroll">
+      <table className="fin-table">
+        <thead>
+          <tr>
+            <th>Invoice</th>
+            <th>Law firm</th>
+            <th className="n">Delivered</th>
+            <th className="n">Pace</th>
+            <th className="n">Completed</th>
+            <th className="n">Expected</th>
+            <th className="n">Due by</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr key={r.invoiceId}>
+              <td>
+                {r.number}
+                {r.state === 'complete' && <> <span className="fin-tag good">complete</span></>}
+                {r.state === 'behind' && <> <span className="fin-tag warn">behind</span></>}
+                {r.state === 'stalled' && <> <span className="fin-tag warn">nothing yet</span></>}
+                {r.replacements > 0 && (
+                  <div className="fin-fig-s">
+                    {r.replacements} replacement{r.replacements === 1 ? '' : 's'}, not counted
+                  </div>
+                )}
+              </td>
+              <td>{r.firmName}</td>
+              <td className="n">
+                <span className="fin-num">
+                  {r.delivered.toLocaleString('en-US')}
+                  {r.contracted === null ? '' : ` / ${r.contracted.toLocaleString('en-US')}`}
+                </span>
+                {r.percent !== null && (
+                  <div className="fin-bar-track fin-bar-cell">
+                    <div
+                      className={`fin-bar-fill ${r.state === 'behind' || r.state === 'stalled' ? 'under' : 'over'}`}
+                      style={{ width: `${r.percent}%` }}
+                    />
+                  </div>
+                )}
+              </td>
+              <td className="n fin-num">
+                {r.pace ? `${r.pace.toFixed(1)}/day` : '—'}
+                {r.pace !== null && (
+                  <div className="fin-fig-s">over {r.elapsedDays} day{r.elapsedDays === 1 ? '' : 's'}</div>
+                )}
+              </td>
+              <td className="n fin-num">{day(r.completedOn)}</td>
+              <td className="n fin-num">
+                {day(r.expectedCompletion)}
+                {r.remaining > 0 && r.expectedCompletion && (
+                  <div className="fin-fig-s">{r.remaining} to go</div>
+                )}
+              </td>
+              <td className="n fin-num">
+                {day(r.periodEnd)}
+                {r.slackDays !== null && (
+                  <div className={`fin-fig-s ${r.slackDays >= 0 ? 'pos' : 'neg'}`}>{slack(r.slackDays)}</div>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      {orphanCodes.length > 0 && (
+        <p className="fin-note" style={{ padding: '10px 16px 0' }}>
+          Delivery is also recorded for {orphanCodes.join(', ')}, which have no invoice in the book.
+          Those cases are counted nowhere above.
+        </p>
+      )}
+    </div>
+  )
+}
+
 function MetricCells({ m }: { m: Metrics }) {
   return (
     <>

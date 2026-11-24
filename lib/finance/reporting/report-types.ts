@@ -1,4 +1,5 @@
 import type { ISODate } from './dates'
+import type { ProjectionSummary } from './projection'
 import type { Cents } from './money'
 import type { EarnoutConfig, Firm, OpexCategory, OpexExpense, ReportFilters, RevenueTargets } from './types'
 
@@ -191,6 +192,8 @@ export interface ReportData {
   targets: { items: TargetProgress[]; configured: RevenueTargets; firmMonthly: Record<string, Cents> } | null
   firms: { rows: FirmRow[]; total: Metrics; reconciled: boolean }
   invoices: { rows: InvoiceRow[]; total: Metrics; reconciled: boolean }
+  /** Delivery against each invoice, and where its pace puts the finish. */
+  projection: ProjectionSummary
   opex: {
     total: Cents
     previous: Cents | null
